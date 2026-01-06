@@ -13,7 +13,7 @@
    python -m of_tui.cli ./of_example
    ```
 
-   After installing the package via `pip install .` (or from PyPI/GitHub), use the console script:
+   After installing the package via `pip install .`  use the console script:
 
    ```bash
    of_tui ./of_example
