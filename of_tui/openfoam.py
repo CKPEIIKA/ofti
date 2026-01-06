@@ -1,9 +1,11 @@
 import logging
 import os
+import re
 import shutil
 import subprocess
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional, Sequence
 
 
 class OpenFOAMError(RuntimeError):
@@ -30,7 +32,13 @@ def run_foam_dictionary(
 ) -> subprocess.CompletedProcess[str]:
     cmd = ["foamDictionary", str(file_path), *args]
     logging.debug("Running command: %s", " ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if result.returncode != 0:
         logging.debug("Command failed with code %s: %s", result.returncode, result.stderr.strip())
     return result
@@ -118,6 +126,91 @@ def get_entry_enum_values(file_path: Path, key: str) -> List[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
+def parse_required_entries(info_lines: Sequence[str]) -> List[str]:
+    """
+    Parse `foamDictionary -info` output looking for required entry hints.
+
+    Several OpenFOAM dictionaries emit lines such as
+
+    ``Required entries: type value``
+
+    or bullet lists. This helper extracts the reported entry names
+    so that callers can verify they exist on disk.
+    """
+
+    required: List[str] = []
+    capture_block = False
+
+    for raw in info_lines:
+        line = raw.strip()
+        lower = line.lower()
+
+        if not line:
+            capture_block = False
+            continue
+
+        if lower.startswith("optional"):
+            # Explicitly skip optional hints when we are collecting a block.
+            continue
+
+        if lower.startswith("required entries") or lower.startswith("required entry"):
+            capture_block = True
+            after_colon = line.split(":", 1)[1] if ":" in line else ""
+            if after_colon.strip():
+                required.extend(_split_requirement_line(after_colon))
+                capture_block = False
+            continue
+
+        if capture_block:
+            if ":" in line and not lower.startswith("required"):
+                capture_block = False
+                continue
+            required.extend(_split_requirement_line(line))
+
+    # Deduplicate while keeping order.
+    seen: set[str] = set()
+    unique: List[str] = []
+    for item in required:
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        unique.append(item)
+    return unique
+
+
+def _split_requirement_line(text: str) -> List[str]:
+    cleaned = text.strip("-: ")
+    if not cleaned:
+        return []
+    tokens = re.split(r"[,\s]+", cleaned)
+    return [tok for tok in tokens if tok and tok.lower() not in {"entries", "entry"}]
+
+
+def missing_required_entries(required: Sequence[str], available: Sequence[str]) -> List[str]:
+    available_set = set(available)
+    missing = [req for req in required if req not in available_set]
+    return missing
+
+
+def normalize_scalar_token(value: str) -> str:
+    """
+    Extract the final scalar token from an entry for comparison against enums.
+
+    `foamDictionary -list` often reports plain tokens without trailing
+    semicolons. This helper mirrors the heuristic used by the editor for
+    determining scalar types so that enum validation is consistent across
+    the TUI and automated checks.
+    """
+
+    if not value:
+        return ""
+    cleaned = value.replace(";", " ").strip()
+    if not cleaned:
+        return ""
+    token = cleaned.split()[-1]
+    return token.strip('"')
+
+
 def read_entry(file_path: Path, key: str) -> str:
     result = run_foam_dictionary(file_path, ["-entry", key])
     if result.returncode != 0:
@@ -169,7 +262,19 @@ def discover_case_files(case_dir: Path) -> Dict[str, List[Path]]:
 
     zero_dirs: List[Path] = []
     for entry in case_dir.iterdir():
-        if entry.is_dir() and entry.name.startswith("0"):
+        if not entry.is_dir():
+            continue
+        name = entry.name
+        if not name.startswith("0"):
+            continue
+        include = True
+        try:
+            value = float(name)
+        except ValueError:
+            include = True
+        else:
+            include = value == 0.0
+        if include:
             zero_dirs.append(entry)
 
     zero_files: List[Path] = []
@@ -180,24 +285,78 @@ def discover_case_files(case_dir: Path) -> Dict[str, List[Path]]:
     return sections
 
 
-def verify_case(case_dir: Path) -> Dict[Path, Optional[str]]:
-    """
-    Run a simple correctness check over all discovered dictionary files.
+@dataclass
+class FileCheckResult:
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
 
-    For each file, try to list its keywords with foamDictionary.
-    Returns a mapping of file path -> error message (or None if OK).
+
+def verify_case(
+    case_dir: Path,
+    progress: Callable[[Path], None] | None = None,
+) -> Dict[Path, FileCheckResult]:
     """
+    Run a correctness check over all discovered dictionary files.
+
+    Beyond ensuring the files parse with `foamDictionary -keywords`,
+    this inspects each entry recursively to detect missing required
+    sub-entries (as hinted by `foamDictionary -info`) and invalid
+    enum values (compared against `foamDictionary -list`).
+    """
+
     sections = discover_case_files(case_dir)
-    results: Dict[Path, Optional[str]] = {}
+    results: Dict[Path, FileCheckResult] = {}
 
     for files in sections.values():
         for file_path in files:
+            if progress:
+                progress(file_path)
+            result = FileCheckResult()
+            results[file_path] = result
+
             try:
-                list_keywords(file_path)
+                top_level_keys = list_keywords(file_path)
             except OpenFOAMError as exc:
                 msg = str(exc).strip() or "Unknown error"
-                results[file_path] = msg
-            else:
-                results[file_path] = None
+                result.errors.append(msg)
+                continue
+
+            _check_entries(file_path, result, top_level_keys)
+
+            if "boundaryField" in top_level_keys:
+                patches = list_subkeys(file_path, "boundaryField")
+                nested_keys = [f"boundaryField.{patch}" for patch in patches]
+                _check_entries(file_path, result, nested_keys)
 
     return results
+
+
+def _check_entries(file_path: Path, result: FileCheckResult, keys: Sequence[str]) -> None:
+    for key in keys:
+        _check_single_entry(file_path, result, key)
+
+
+def _check_single_entry(file_path: Path, result: FileCheckResult, key: str) -> None:
+    info_lines = get_entry_info(file_path, key)
+    required = parse_required_entries(info_lines)
+    if required:
+        subkeys = list_subkeys(file_path, key)
+        missing = missing_required_entries(required, subkeys)
+        if missing:
+            result.errors.append(f"{key}: missing required entries: {', '.join(missing)}")
+
+    enum_values = get_entry_enum_values(file_path, key)
+    if enum_values:
+        try:
+            value = read_entry(file_path, key)
+        except OpenFOAMError as exc:
+            result.errors.append(f"{key}: {exc}")
+            return
+
+        token = normalize_scalar_token(value)
+        allowed = {val.strip() for val in enum_values if val.strip()}
+        if token and token not in allowed:
+            allowed_list = ", ".join(sorted(allowed))
+            result.errors.append(
+                f"{key}: invalid value '{token}'. Allowed: {allowed_list}"
+            )

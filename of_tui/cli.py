@@ -4,7 +4,7 @@ import argparse
 import os
 import sys
 
-from tui.app import run_tui
+from .app import run_tui
 
 
 def build_parser() -> argparse.ArgumentParser:

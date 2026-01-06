@@ -1,7 +1,7 @@
 from pathlib import Path
 from unittest import mock
 
-from tui.app import run_tui
+from of_tui.app import run_tui
 
 
 def test_run_tui_resolves_case_dir(tmp_path: Path) -> None:
@@ -13,7 +13,7 @@ def test_run_tui_resolves_case_dir(tmp_path: Path) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
 
-    with mock.patch("tui.app.curses.wrapper") as wrapper:
+    with mock.patch("of_tui.app.curses.wrapper") as wrapper:
         run_tui(str(case_dir.relative_to(tmp_path)))
 
     # Second argument passed into curses.wrapper should be absolute
@@ -22,4 +22,3 @@ def test_run_tui_resolves_case_dir(tmp_path: Path) -> None:
     resolved_path = args[1]
     assert isinstance(resolved_path, Path)
     assert resolved_path.is_absolute()
-

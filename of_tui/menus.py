@@ -57,11 +57,20 @@ def _fzf_pick_option(stdscr: Any, options: List[str]) -> int | None:
 
 
 class Menu:
-    def __init__(self, stdscr: Any, title: str, options: List[str]) -> None:
+    def __init__(
+        self,
+        stdscr: Any,
+        title: str,
+        options: List[str],
+        extra_lines: List[str] | None = None,
+        banner_lines: List[str] | None = None,
+    ) -> None:
         self.stdscr = stdscr
         self.title = title
         self.options = options
         self.current_option = 0
+        self.extra_lines = extra_lines or []
+        self.banner_lines = banner_lines or ["=== OpenFOAM Config Editor ==="]
 
     def display(self) -> None:
         self.stdscr.clear()
@@ -69,9 +78,14 @@ class Menu:
 
         # Header
         try:
-            header = "=== OpenFOAM Config Editor ==="
-            self.stdscr.addstr(header[: max(1, width - 1)] + "\n\n")
+            for line in self.banner_lines:
+                self.stdscr.addstr(line[: max(1, width - 1)] + "\n")
+            self.stdscr.addstr("\n")
             self.stdscr.addstr((self.title[: max(1, width - 1)]) + "\n\n")
+            for line in self.extra_lines:
+                self.stdscr.addstr(line[: max(1, width - 1)] + "\n")
+            if self.extra_lines:
+                self.stdscr.addstr("\n")
         except curses.error:
             # Ignore drawing errors on very small terminals.
             pass
@@ -157,6 +171,16 @@ class RootMenu(Menu):
     """
     Root-level menu where 'q' quits the program but 'h' does not.
     """
+
+    def __init__(
+        self,
+        stdscr: Any,
+        title: str,
+        options: List[str],
+        extra_lines: List[str] | None = None,
+        banner_lines: List[str] | None = None,
+    ) -> None:
+        super().__init__(stdscr, title, options, extra_lines=extra_lines, banner_lines=banner_lines)
 
     def navigate(self) -> int:
         while True:

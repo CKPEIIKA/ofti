@@ -1,4 +1,4 @@
-from tui.app import _autoformat_value
+from of_tui.app import _autoformat_value
 
 
 def test_autoformat_single_line_trims_edges_only() -> None:
@@ -9,4 +9,3 @@ def test_autoformat_single_line_trims_edges_only() -> None:
 def test_autoformat_multiline_preserves_inner_whitespace() -> None:
     text = "line1  x;\n  line2    y;\n"
     assert _autoformat_value(text) == "line1  x;\n  line2    y;"
-

@@ -1,4 +1,4 @@
-from tui import validation
+from of_tui import validation
 
 
 def test_non_empty_validator() -> None:
