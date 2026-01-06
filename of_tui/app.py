@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import shutil
+import shlex
 import subprocess
 import tempfile
 from pathlib import Path
