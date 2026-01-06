@@ -1,6 +1,7 @@
 import curses
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -12,6 +13,7 @@ from .domain import DictionaryFile, EntryRef, Case
 from .menus import Menu, RootMenu, Submenu
 from .tools import tools_screen, diagnostics_screen
 from .openfoam import (
+    FileCheckResult,
     OpenFOAMError,
     discover_case_files,
     ensure_environment,
@@ -110,7 +112,16 @@ def _main_loop(stdscr: Any, case_path: Path) -> None:
         quit_index = len(menu_options)
         menu_options.append("Quit")
 
-        root_menu = RootMenu(stdscr, "Main menu", menu_options)
+        case_meta = _case_metadata(case_path)
+        banner_lines = _case_banner_lines(case_meta)
+        overview_lines = _case_overview_lines(case_meta)
+        root_menu = RootMenu(
+            stdscr,
+            "Main menu",
+            menu_options,
+            extra_lines=overview_lines,
+            banner_lines=banner_lines,
+        )
         choice = root_menu.navigate()
         if choice == -1 or choice == quit_index:
             return
@@ -128,24 +139,36 @@ def _main_loop(stdscr: Any, case_path: Path) -> None:
             continue
 
         # Editor: choose section (system, constant, 0*, ...)
+        _editor_screen(stdscr, case_path)
+
+
+def _editor_screen(stdscr: Any, case_path: Path) -> None:
+    sections = discover_case_files(case_path)
+    section_names = [name for name, files in sections.items() if files]
+    if not section_names:
+        _show_message(stdscr, "No OpenFOAM case files found in this case.")
+        return
+
+    while True:
         section_menu = Menu(stdscr, "Editor – select section", section_names + ["Back"])
         section_index = section_menu.navigate()
         if section_index == -1 or section_index == len(section_names):
-            continue
+            return
 
         section = section_names[section_index]
-        files = sections[section]
+        files = sections.get(section, [])
         if not files:
+            _show_message(stdscr, f"No files found in section {section}.")
             continue
 
         file_labels = [f.relative_to(case_path).as_posix() for f in files]
-        file_menu = Menu(stdscr, f"{section} files", file_labels + ["Back"])
-        file_index = file_menu.navigate()
-        if file_index == -1 or file_index == len(file_labels):
-            continue
-
-        file_path = files[file_index]
-        _entry_browser_screen(stdscr, case_path, file_path)
+        while True:
+            file_menu = Menu(stdscr, f"{section} files", file_labels + ["Back"])
+            file_index = file_menu.navigate()
+            if file_index == -1 or file_index == len(file_labels):
+                break
+            file_path = files[file_index]
+            _entry_browser_screen(stdscr, case_path, file_path)
 
 
 def _file_screen(stdscr: Any, case_path: Path, file_path: Path) -> None:
@@ -555,8 +578,106 @@ def _view_file_screen(stdscr: Any, file_path: Path) -> None:
         _show_message(stdscr, f"Failed to read file: {exc}")
         return
 
-    viewer = Viewer(stdscr, content)
+    warnings = _find_suspicious_lines(content)
+    if warnings:
+        warning_text = "\n".join(["Suspicious lines detected:"] + warnings + ["", content])
+    else:
+        warning_text = content
+
+    viewer = Viewer(stdscr, warning_text)
     viewer.display()
+
+
+def _find_suspicious_lines(content: str) -> list[str]:
+    warnings: list[str] = []
+    brace_depth = 0
+    header_done = False
+    in_block_comment = False
+
+    lines = content.splitlines()
+    for idx, raw in enumerate(lines, 1):
+        stripped = raw.strip()
+
+        if not header_done:
+            lower = stripped.lower()
+            if (
+                not stripped
+                or stripped.startswith("/*")
+                or stripped.startswith("*")
+                or stripped.startswith("|")
+                or stripped.startswith("\\")
+                or stripped.startswith("//")
+            ):
+                continue
+            if "foamfile" in lower:
+                header_done = True
+                continue
+            header_done = True
+
+        line = raw
+
+        # Remove block comments while keeping text outside them.
+        cleaned = ""
+        remainder = line
+        while remainder:
+            if in_block_comment:
+                end = remainder.find("*/")
+                if end == -1:
+                    remainder = ""
+                    break
+                remainder = remainder[end + 2 :]
+                in_block_comment = False
+                continue
+            start = remainder.find("/*")
+            if start == -1:
+                cleaned += remainder
+                break
+            cleaned += remainder[:start]
+            remainder = remainder[start + 2 :]
+            end = remainder.find("*/")
+            if end == -1:
+                in_block_comment = True
+                remainder = ""
+            else:
+                remainder = remainder[end + 2 :]
+
+        line = cleaned
+        if in_block_comment:
+            # Inside a multi-line block comment; nothing to check on this line.
+            continue
+
+        # Strip single-line comments.
+        if "//" in line:
+            line = line.split("//", 1)[0]
+
+        stripped_line = line.strip()
+        if not stripped_line:
+            continue
+
+        # Track brace balance to flag premature closing braces.
+        for ch in line:
+            if ch == "{":
+                brace_depth += 1
+            elif ch == "}":
+                brace_depth -= 1
+                if brace_depth < 0:
+                    warnings.append(f"Line {idx}: unexpected '}}'.")
+                    brace_depth = 0
+
+        # Skip blank lines and comments/includes when checking semicolons.
+        if stripped_line.startswith("#include") or stripped_line.startswith("#ifdef"):
+            continue
+        if stripped_line.endswith(";") or stripped_line.endswith("{") or stripped_line.endswith("}"):
+            continue
+        if stripped_line.endswith("(") or stripped_line.endswith(")"):
+            continue
+
+        warnings.append(f"Line {idx}: missing ';'? -> {stripped_line[:60]}")
+
+    if brace_depth > 0:
+        warnings.append("File ends with unmatched '{'.")
+
+    return warnings
 
 
 def _show_message(stdscr: Any, message: str) -> None:
@@ -609,6 +730,7 @@ def _get_entry_metadata(
     subkeys = list_subkeys(file_path, full_key)
     comments = get_entry_comments(file_path, full_key)
     info_lines = get_entry_info(file_path, full_key)
+    info_lines.extend(_boundary_condition_info(file_path, full_key))
 
     # If foamDictionary reports an explicit list of allowed values via
     # `-list`, prefer an enum-style validator over heuristics.
@@ -650,6 +772,7 @@ def _refresh_entry_cache(
     subkeys = list_subkeys(file_path, full_key)
     comments = get_entry_comments(file_path, full_key)
     info_lines = get_entry_info(file_path, full_key)
+    info_lines.extend(_boundary_condition_info(file_path, full_key))
     cache[full_key] = (value, type_label, subkeys, comments, info_lines)
 
 
@@ -742,24 +865,82 @@ def _fzf_pick_entry_in_file(stdscr: Any, keywords: list[str]) -> int | None:
 
 
 def _check_syntax_screen(stdscr: Any, case_path: Path) -> None:
-    results = verify_case(case_path)
+    def progress_callback(path: Path) -> None:
+        try:
+            rel = path.relative_to(case_path)
+        except ValueError:
+            rel = path
+        _show_progress(stdscr, f"Checking {rel} ...")
+
+    _show_progress(stdscr, "Running foamDictionary checks...")
+    results = verify_case(case_path, progress=progress_callback)
     if not results:
         _show_message(stdscr, "No case files found to check.")
         return
 
-    lines = []
-    for file_path in sorted(results.keys()):
+    entries = sorted(results.items(), key=lambda item: item[0])
+    labels: list[str] = []
+    for file_path, check in entries:
         rel = file_path.relative_to(case_path)
-        error = results[file_path]
-        if error is None:
-            status = "OK"
+        if check.errors:
+            status = f"ERROR ({len(check.errors)})"
+        elif check.warnings:
+            status = f"Warn ({len(check.warnings)})"
         else:
-            status = f"ERROR: {error}"
-        lines.append(f"{rel}: {status}")
+            status = "OK"
+        labels.append(f"{rel}: {status}")
 
-    text = "\n".join(lines)
-    viewer = Viewer(stdscr, text)
-    viewer.display()
+    menu = Menu(stdscr, "Check syntax – select file", labels + ["Back"])
+    while True:
+        choice = menu.navigate()
+        if choice == -1 or choice == len(labels):
+            return
+        file_path, check = entries[choice]
+        rel = file_path.relative_to(case_path)
+
+        if _show_check_result(stdscr, rel, check):
+            _view_file_screen(stdscr, file_path)
+
+
+def _show_progress(stdscr: Any, message: str) -> None:
+    stdscr.clear()
+    try:
+        stdscr.addstr(message + "\n")
+    except curses.error:
+        pass
+    stdscr.refresh()
+
+
+def _show_check_result(stdscr: Any, rel_path: Path, result: FileCheckResult) -> bool:
+    status = "OK"
+    if result.errors:
+        status = "ERROR"
+    elif result.warnings:
+        status = "Warnings"
+
+    stdscr.clear()
+    line = f"{rel_path}: {status}"
+    try:
+        stdscr.addstr(line + "\n\n")
+        if result.errors:
+            stdscr.addstr("Detected issues:\n")
+            for item in result.errors:
+                stdscr.addstr(f"- {item}\n")
+            stdscr.addstr("\n")
+        elif result.warnings:
+            stdscr.addstr("Warnings:\n")
+            for item in result.warnings:
+                stdscr.addstr(f"- {item}\n")
+            stdscr.addstr("\n")
+        else:
+            stdscr.addstr("No issues detected.\n\n")
+        stdscr.addstr("Press 'v' to view file or any other key to return.\n")
+        stdscr.refresh()
+    except curses.error:
+        stdscr.refresh()
+
+    ch = stdscr.getch()
+    return ch in (ord("v"), ord("V"))
 
 
 def _global_search_screen(stdscr: Any, case_path: Path) -> None:
@@ -916,6 +1097,192 @@ def _load_tool_presets(case_path: Path) -> list[tuple[str, list[str]]]:
         return presets
 
     return presets
+
+
+def _case_metadata(case_path: Path) -> dict[str, str]:
+    return {
+        "case_name": case_path.name,
+        "case_path": str(case_path),
+        "solver": _detect_solver(case_path),
+        "foam_version": _detect_openfoam_version(),
+        "case_header_version": _detect_case_header_version(case_path),
+        "latest_time": _latest_time(case_path),
+    }
+
+
+def _case_overview_lines(meta: dict[str, str]) -> list[str]:
+    # Additional summary lines below the banner; keep minimal to avoid clutter.
+    return []
+
+
+def _case_banner_lines(meta: dict[str, str]) -> list[str]:
+    rows = [
+        (f"Case: {meta['case_name']}", f"Solver: {meta['solver']}"),
+        (f"Env: {meta['foam_version']}", f"Case header: {meta['case_header_version']}"),
+        (f"Latest time: {meta['latest_time']}", f"Path: {meta['case_path']}"),
+    ]
+    return _foam_style_banner("of_tui", rows)
+
+
+def _foam_style_banner(label: str, rows: list[tuple[str, str]]) -> list[str]:
+    top = f"/*--------------------------------*- {label} -*----------------------------------*\\"
+    bottom = "\\*---------------------------------------------------------------------------*/"
+    lines = [top]
+    for left, right in rows:
+        lines.append(_format_banner_row(left, right))
+    lines.append(bottom)
+    return lines
+
+
+def _format_banner_row(left: str, right: str, column_width: int = 36) -> str:
+    def clip(text: str) -> str:
+        return text[:column_width]
+
+    return f"| {clip(left).ljust(column_width)} | {clip(right).ljust(column_width)} |"
+
+
+def _detect_solver(case_path: Path) -> str:
+    control_dict = case_path / "system" / "controlDict"
+    if not control_dict.is_file():
+        return "unknown"
+    try:
+        value = read_entry(control_dict, "application")
+    except OpenFOAMError:
+        return "unknown"
+    text = value.strip()
+    if not text:
+        return "unknown"
+    solver = text.split()[0].rstrip(";")
+    return solver or "unknown"
+
+
+def _detect_openfoam_version() -> str:
+    for env in ("WM_PROJECT_VERSION", "FOAM_VERSION"):
+        version = os.environ.get(env)
+        if version:
+            return version
+    try:
+        result = subprocess.run(
+            ["foamVersion", "-short"],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return "unknown"
+    if result.returncode != 0:
+        return "unknown"
+    version = result.stdout.strip()
+    return version or "unknown"
+
+
+def _detect_case_header_version(case_path: Path) -> str:
+    control_dict = case_path / "system" / "controlDict"
+    if not control_dict.is_file():
+        return "unknown"
+    try:
+        text = control_dict.read_text()
+    except OSError:
+        return "unknown"
+
+    header_version = _parse_header_comment_version(text)
+    if header_version:
+        return header_version
+
+    block_version = _parse_foamfile_block_version(text)
+    if block_version:
+        return block_version
+    return "unknown"
+
+
+def _parse_header_comment_version(text: str) -> str | None:
+    """
+    Extract the version string from the ASCII banner that precedes FoamFile.
+    """
+    version_pattern = re.compile(r"Version:\s*([^\s|]+)", re.IGNORECASE)
+    for line in text.splitlines():
+        lower = line.lower()
+        if "foamfile" in lower:
+            break
+        match = version_pattern.search(line)
+        if match:
+            value = match.group(1).strip().strip("|")
+            if value:
+                return value
+    return None
+
+
+def _parse_foamfile_block_version(text: str) -> str | None:
+    """
+    Fallback: read the 'version' entry inside the FoamFile dictionary block.
+    """
+    inside_block = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        lower = stripped.lower()
+        if lower.startswith("foamfile"):
+            inside_block = True
+            continue
+        if inside_block and stripped.startswith("}"):
+            break
+        if inside_block and lower.startswith("version"):
+            parts = stripped.split()
+            if len(parts) >= 2:
+                value = parts[1].rstrip(";")
+                if value:
+                    return value
+    return None
+
+
+def _latest_time(case_path: Path) -> str:
+    latest_value = 0.0
+    found = False
+    for entry in case_path.iterdir():
+        if not entry.is_dir():
+            continue
+        try:
+            value = float(entry.name)
+        except ValueError:
+            continue
+        if not found or value > latest_value:
+            latest_value = value
+            found = True
+    return f"{latest_value:g}" if found else "0"
+
+
+def _read_optional_entry(file_path: Path, key: str) -> str | None:
+    try:
+        return read_entry(file_path, key).strip()
+    except OpenFOAMError:
+        return None
+
+
+def _boundary_condition_info(file_path: Path, full_key: str) -> list[str]:
+    """
+    Provide extra info for boundary patches: show type/value when possible.
+    """
+    parts = full_key.split(".")
+    info: list[str] = []
+    if "boundaryField" not in parts:
+        return info
+    idx = parts.index("boundaryField")
+    if idx + 1 >= len(parts):
+        return info
+    patch = parts[idx + 1]
+    patch_key = ".".join(parts[: idx + 2])
+
+    bc_type = _read_optional_entry(file_path, f"{patch_key}.type")
+    if bc_type:
+        info.append(f"BC {patch} type: {bc_type}")
+    else:
+        info.append(f"BC {patch}: missing required entry 'type'")
+
+    bc_value = _read_optional_entry(file_path, f"{patch_key}.value")
+    if bc_value:
+        info.append(f"BC {patch} value: {bc_value}")
+    else:
+        info.append(f"BC {patch}: value entry not found")
+
+    return info
 
 
 def _guess_validator(key: str) -> Validator:

@@ -1,4 +1,4 @@
-from tui.menus import Menu
+from of_tui.menus import Menu
 
 
 class FakeScreen:

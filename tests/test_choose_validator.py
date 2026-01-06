@@ -1,5 +1,5 @@
-from tui.app import _choose_validator
-from tui.validation import as_float, as_int, vector_values
+from of_tui.app import _choose_validator
+from of_tui.validation import as_float, as_int, vector_values
 
 
 def test_choose_validator_treats_real_vector_as_vector() -> None:

@@ -7,16 +7,24 @@
 ## Usage
 
 1. Source your OpenFOAM environment so `foamDictionary` (and other foam* tools) are on `PATH`.
-2. Run on a case folder (the example case is in `of_example`):
+2. From a source checkout, run the CLI module directly (the example case is in `of_example`):
 
    ```bash
-   ./of_tui of_example
+   python -m of_tui.cli ./of_example
    ```
 
-   You can also run it in the current directory:
+   After installing the package via `pip install .` (or from PyPI/GitHub), use the console script:
 
    ```bash
-   of_tui .
+   of_tui ./of_example
+   ```
+
+   To install straight from this GitHub repo without cloning:
+
+   ```bash
+   pip install "git+https://github.com/<your-user>/OpenFOAM-TUI.git"
+   # then
+   of_tui /path/to/case
    ```
 
 3. Optional flags:
@@ -38,11 +46,14 @@ Main menu entries:
 - `Diagnostics` – run `foamSystemCheck`, `foamInstallationTest`, `checkMesh`.
 - `Global search` – (shown only when `fzf` is available) search across all keys with `fzf` and jump to the chosen entry.
 
+The main menu renders a FOAM-style banner that shows the case folder, solver, OpenFOAM environment version, case-header version, latest time directory, and absolute path so you always know which case is loaded.
+
 ## Editor and entry browser
 
 - In the editor, pick a section (`system`, `constant`, `0*`), then a file, then an entry.
 - Left pane: list of keys; right pane: preview of the selected entry (key path, type, value, comments, info).
 - Status bar: shows case name, file, and full key path.
+- When browsing `boundaryField` entries, the preview automatically shows the detected boundary-condition type and value (queried via `foamDictionary`).
 
 Keybindings in the entry browser:
 
@@ -61,34 +72,34 @@ Keybindings in the entry editor:
 - `Ctrl+C` or `b`: cancel editing
 - `h`: run `foamHelp` with user-provided arguments and show the result in a viewer
 
-Values are auto-formatted conservatively on save (e.g. trimming trailing newlines and leading/trailing spaces on simple scalars) before being written back with `foamDictionary -set`.
+Values are auto-formatted conservatively on save (e.g. trimming trailing newlines and leading/trailing spaces on simple scalars) before being written back with `foamDictionary -set`. The editor also surfaces extra metadata gathered from `foamDictionary -info/-list` (enum values, required sub-entries) plus boundary-condition summaries for `boundaryField`.
 
 ## Tools and diagnostics
 
-- `Tools → Run tools`:
-  - `blockMesh`, `decomposePar`, `reconstructPar`, `foamListTimes`
-  - Extra tools can be defined in `of_tui.tools` (one `name: command` per line) in the case directory.
-  - `foamCheckJobs`, `foamPrintJobs`
-  - `foamJob` – prompt for arguments (e.g. `simpleFoam -case .`) and run it
-  - `foamEndJob` – prompt for arguments (e.g. `simpleFoam`) and run it
-  - `View logs` – pick a `log.*` file and either view the full log or only the last 100 lines
-  - `Run .sh script` – discover and run `*.sh` scripts in the case directory
+- `Tools`
+  - Built-in entries for `blockMesh`, `decomposePar`, `reconstructPar`, `foamListTimes`, `foamCheckJobs`, `foamPrintJobs`, and the `foamJob` / `foamEndJob` helpers.
+  - Extra commands can be added via `of_tui.tools`; optional post-processing commands live in `of_tui.postprocessing` and appear prefixed with `[post]`.
+  - `postProcess (prompt)` and `foamCalc (prompt)` capture arguments interactively, defaulting to `-latestTime` when it makes sense.
+  - `Run current solver (runApplication)` sources `$WM_PROJECT_DIR/bin/tools/RunFunctions` and runs the solver declared in `system/controlDict`.
+  - Cleanup helpers (`Remove all logs`, `Clean time directories`, `Clean case`) source `$WM_PROJECT_DIR/bin/tools/CleanFunctions`.
+  - `Run .sh script` discovers shell scripts in the case directory; `foamDictionary (prompt)` offers an escape hatch for arbitrary queries.
+  - Any entry from `of_tui.tools`/`of_tui.postprocessing` can use the placeholder `{{latestTime}}` which expands to the numerically largest time directory.
 - `Diagnostics`:
-  - `foamSystemCheck`, `foamInstallationTest`
-  - `checkMesh`
+  - `foamSystemCheck`, `foamInstallationTest`, `checkMesh`
+  - `View logs` – pick a `log.*` file and either view the full log or just the last 100 lines
 
 All tool runs show a summary with the command, exit status, stdout, and stderr in a scrollable viewer.
 
 ## Repository layout
 
-- `of_tui` – CLI entry script (used as `./of_tui` or installed as `of_tui`).
-- `tui/` – main Python package:
-  - `app.py` – entry point and main loop.
-  - `editor.py` – entry editor and viewer components.
-  - `menus.py` – generic menus and keybindings.
-  - `openfoam.py` – wrappers around OpenFOAM utilities (foamDictionary, etc.).
-  - `tools.py` – tools, jobs, and diagnostics screens.
-- `tests/` – pytest-based test suite.
+- `of_tui/` – Python package that provides the CLI (`of_tui.cli:main`) and all runtime modules:
+  - `app.py` – curses entry point, menus, editor/browser glue.
+  - `editor.py` – entry editor UI and file viewer.
+  - `menus.py` – shared menu widgets (with `fzf` integration).
+  - `openfoam.py` – wrappers around `foamDictionary`, RunFunctions helpers, syntax checks.
+  - `tools.py` – tools/diagnostics implementations.
+  - `domain.py`, `validation.py` – supporting types and validators.
+- `tests/` – pytest suite (unit + optional integration).
 - `of_example/` – small example OpenFOAM case for experimentation.
 - `TODO.md` – roadmap of remaining P2/P3 items.
 
@@ -106,8 +117,8 @@ Run tests:
 pytest
 ```
 
-You can work directly from a clone of this repository; no packaging or installation step is required beyond making `of_tui` executable or calling it with:
+You can work directly from a clone of this repository; no packaging step is required. Run the CLI via:
 
 ```bash
-python ./of_tui
+python -m of_tui.cli /path/to/case
 ```

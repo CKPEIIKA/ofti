@@ -1,6 +1,6 @@
 import curses
 
-from tui.editor import Entry, EntryEditor
+from of_tui.editor import Entry, EntryEditor
 
 
 class FakeScreen:
