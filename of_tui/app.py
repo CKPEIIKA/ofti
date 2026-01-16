@@ -4,42 +4,84 @@ import curses
 import logging
 import os
 import re
-import shutil
-import shlex
 import subprocess
-import tempfile
+from dataclasses import dataclass, field
+from enum import Enum
+import threading
 from pathlib import Path
-from typing import List, Any
+from typing import List, Any, Optional
 
-from .editor import Entry, EntryEditor, Viewer
+from .browser import BrowserCallbacks, entry_browser_screen
+from .editor import Entry, EntryEditor, Viewer, autoformat_value
+from .entry_meta import choose_validator
+from .layout import (
+    case_banner_lines,
+    case_overview_lines,
+    draw_status_bar,
+    next_spinner,
+    status_message,
+)
 from .domain import DictionaryFile, EntryRef, Case
 from .menus import Menu, RootMenu, Submenu
-from .tools import tools_screen, diagnostics_screen
+from .commands import CommandCallbacks, command_suggestions, handle_command
+from .config import get_config, key_in, fzf_enabled
+from .tools import (
+    tools_screen,
+    diagnostics_screen,
+    run_current_solver,
+)
 from .openfoam import (
     FileCheckResult,
     OpenFOAMError,
     discover_case_files,
     ensure_environment,
-    get_entry_comments,
-    get_entry_info,
-    get_entry_enum_values,
     list_keywords,
     list_subkeys,
     read_entry,
     verify_case,
     write_entry,
 )
-from .validation import (
-    Validator,
-    as_float,
-    as_int,
-    bool_flag,
-    non_empty,
-    vector_values,
-)
 
 
-def run_tui(case_dir: str, debug: bool = False) -> None:
+class Screen(Enum):
+    MAIN_MENU = "main_menu"
+    EDITOR = "editor"
+    ENTRY_BROWSER = "entry_browser"
+    CHECK = "check"
+    TOOLS = "tools"
+    DIAGNOSTICS = "diagnostics"
+    SEARCH = "search"
+    VIEWER = "viewer"
+    NO_FOAM_FILE = "no_foam_file"
+
+
+@dataclass
+class AppState:
+    no_foam: bool = False
+    current_screen: Screen = Screen.MAIN_MENU
+    last_action: Optional[str] = None
+    check_lock: threading.Lock = field(default_factory=threading.Lock)
+    check_in_progress: bool = False
+    check_total: int = 0
+    check_done: int = 0
+    check_current: Optional[Path] = None
+    check_results: Optional[dict[Path, FileCheckResult]] = None
+    check_thread: Optional[threading.Thread] = None
+
+    def transition(self, screen: Screen, action: Optional[str] = None) -> None:
+        self.current_screen = screen
+        if action is not None:
+            self.last_action = action
+
+    def check_status_line(self) -> str:
+        with self.check_lock:
+            if self.check_in_progress:
+                current = f" {self.check_current.name}" if self.check_current else ""
+                return f"{next_spinner()} check: {self.check_done}/{self.check_total}{current}"
+        return ""
+
+
+def run_tui(case_dir: str, debug: bool = False, no_foam: bool = False) -> None:
     """
     Run the TUI on the given OpenFOAM case directory.
     """
@@ -52,37 +94,45 @@ def run_tui(case_dir: str, debug: bool = False) -> None:
     # discovered later share the same root, which keeps
     # Path.relative_to calls safe.
     case_path = Path(case_dir).resolve()
-    curses.wrapper(_main, case_path, debug)
+    state = AppState(no_foam=no_foam)
+    if no_foam:
+        os.environ["OF_TUI_NO_FOAM"] = "1"
+    else:
+        os.environ.pop("OF_TUI_NO_FOAM", None)
+    curses.wrapper(_main, case_path, debug, state)
 
 
-def _main(stdscr: Any, case_path: Path, debug: bool) -> None:
+def _main(stdscr: Any, case_path: Path, debug: bool, state: AppState) -> None:
     curses.start_color()
-    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_CYAN)
+    cfg = get_config()
+    fg = _color_from_name(cfg.colors.get("focus_fg", "black"), curses.COLOR_BLACK)
+    bg = _color_from_name(cfg.colors.get("focus_bg", "cyan"), curses.COLOR_CYAN)
+    curses.init_pair(1, fg, bg)
+
+    if not state.no_foam:
+        try:
+            ensure_environment()
+        except OpenFOAMError as exc:
+            stdscr.clear()
+            stdscr.addstr(str(exc) + "\n")
+            stdscr.addstr("Press any key to exit.\n")
+            stdscr.refresh()
+            stdscr.getch()
+            return
 
     try:
-        ensure_environment()
-    except OpenFOAMError as exc:
-        stdscr.clear()
-        stdscr.addstr(str(exc) + "\n")
-        stdscr.addstr("Press any key to exit.\n")
-        stdscr.refresh()
-        stdscr.getch()
-        return
-
-    try:
-        _main_loop(stdscr, case_path)
+        _main_loop(stdscr, case_path, state)
     except KeyboardInterrupt:
         # Clean, user-initiated exit with restored terminal state.
         return
-    except Exception as exc:  # pragma: no cover - defensive safety net
+    except (OpenFOAMError, OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
         if debug:
             # Re-raise to get a full traceback in debug mode.
             raise
         _show_message(stdscr, f"Unexpected error: {exc}")
 
 
-def _main_loop(stdscr: Any, case_path: Path) -> None:
-
+def _main_loop(stdscr: Any, case_path: Path, state: AppState) -> None:
     foam_case = Case(root=case_path)
     sections = discover_case_files(foam_case.root)
     section_names = [name for name, files in sections.items() if files]
@@ -93,70 +143,113 @@ def _main_loop(stdscr: Any, case_path: Path) -> None:
         stdscr.getch()
         return
 
-    while True:
-        has_fzf = shutil.which("fzf") is not None
-
-        menu_options = [
-            "Editor",
-            "Check syntax",
-            "Tools",
-            "Diagnostics",
-        ]
-        editor_index = 0
-        check_index = 1
-        tools_index = 2
-        diag_index = 3
-
-        search_index: int | None = None
-        if has_fzf:
-            search_index = len(menu_options)
-            menu_options.append("Global search")
-
-        quit_index = len(menu_options)
-        menu_options.append("Quit")
-
-        case_meta = _case_metadata(case_path)
-        banner_lines = _case_banner_lines(case_meta)
-        overview_lines = _case_overview_lines(case_meta)
-        root_menu = RootMenu(
-            stdscr,
-            "Main menu",
-            menu_options,
-            extra_lines=overview_lines,
-            banner_lines=banner_lines,
-        )
-        choice = root_menu.navigate()
-        if choice == -1 or choice == quit_index:
-            return
-        if choice == check_index:
-            _check_syntax_screen(stdscr, case_path)
+    next_screen: Optional[Screen] = Screen.MAIN_MENU
+    while next_screen is not None:
+        if next_screen == Screen.MAIN_MENU:
+            next_screen = _main_menu_screen(stdscr, case_path, state)
             continue
-        if choice == tools_index:
+        if next_screen == Screen.CHECK:
+            state.transition(Screen.CHECK, action="check")
+            _check_syntax_screen(stdscr, case_path, state)
+            next_screen = Screen.MAIN_MENU
+            continue
+        if next_screen == Screen.TOOLS:
+            state.transition(Screen.TOOLS, action="tools")
             tools_screen(stdscr, case_path)
+            next_screen = Screen.MAIN_MENU
             continue
-        if choice == diag_index:
+        if next_screen == Screen.DIAGNOSTICS:
+            state.transition(Screen.DIAGNOSTICS, action="diagnostics")
             diagnostics_screen(stdscr, case_path)
+            next_screen = Screen.MAIN_MENU
             continue
-        if search_index is not None and choice == search_index:
-            _global_search_screen(stdscr, case_path)
+        if next_screen == Screen.SEARCH:
+            state.transition(Screen.SEARCH, action="search")
+            _global_search_screen(stdscr, case_path, state)
+            next_screen = Screen.MAIN_MENU
             continue
+        if next_screen == Screen.EDITOR:
+            state.transition(Screen.EDITOR, action="editor")
+            _editor_screen(stdscr, case_path, state)
+            next_screen = Screen.MAIN_MENU
+            continue
+        next_screen = Screen.MAIN_MENU
 
-        # Editor: choose section (system, constant, 0*, ...)
-        _editor_screen(stdscr, case_path)
+
+def _main_menu_screen(
+    stdscr: Any, case_path: Path, state: AppState
+) -> Optional[Screen]:
+    state.transition(Screen.MAIN_MENU)
+    has_fzf = fzf_enabled()
+
+    menu_options = [
+        "Editor",
+        "Check syntax",
+        "Tools",
+        "Diagnostics",
+    ]
+    check_index = 1
+    tools_index = 2
+    diag_index = 3
+
+    search_index: Optional[int] = None
+    if has_fzf:
+        search_index = len(menu_options)
+        menu_options.append("Global search")
+
+    quit_index = len(menu_options)
+    menu_options.append("Quit")
+
+    case_meta = _case_metadata(case_path)
+    banner_lines = case_banner_lines(case_meta)
+    overview_lines = case_overview_lines(case_meta)
+    callbacks = _command_callbacks()
+    root_menu = RootMenu(
+        stdscr,
+        "Main menu",
+        menu_options,
+        extra_lines=overview_lines,
+        banner_lines=banner_lines,
+        command_handler=lambda cmd: handle_command(stdscr, case_path, state, cmd, callbacks),
+        command_suggestions=lambda: command_suggestions(case_path),
+    )
+    choice = root_menu.navigate()
+    if choice == -1 or choice == quit_index:
+        return None
+    if choice == check_index:
+        return Screen.CHECK
+    if choice == tools_index:
+        return Screen.TOOLS
+    if choice == diag_index:
+        return Screen.DIAGNOSTICS
+    if search_index is not None and choice == search_index:
+        return Screen.SEARCH
+    return Screen.EDITOR
 
 
-def _editor_screen(stdscr: Any, case_path: Path) -> None:
-    sections = discover_case_files(case_path)
+def _select_case_file(
+    stdscr: Any,
+    case_path: Path,
+    state: AppState,
+    sections: dict[str, list[Path]],
+) -> Optional[Path]:
     section_names = [name for name, files in sections.items() if files]
     if not section_names:
         _show_message(stdscr, "No OpenFOAM case files found in this case.")
-        return
+        return None
 
     while True:
-        section_menu = Menu(stdscr, "Editor – select section", section_names + ["Back"])
+        callbacks = _command_callbacks()
+        section_menu = Menu(
+            stdscr,
+            "Editor – select section",
+            section_names + ["Back"],
+            command_handler=lambda cmd: handle_command(stdscr, case_path, state, cmd, callbacks),
+            command_suggestions=lambda: command_suggestions(case_path),
+        )
         section_index = section_menu.navigate()
         if section_index == -1 or section_index == len(section_names):
-            return
+            return None
 
         section = section_names[section_index]
         files = sections.get(section, [])
@@ -166,15 +259,37 @@ def _editor_screen(stdscr: Any, case_path: Path) -> None:
 
         file_labels = [f.relative_to(case_path).as_posix() for f in files]
         while True:
-            file_menu = Menu(stdscr, f"{section} files", file_labels + ["Back"])
+            callbacks = _command_callbacks()
+            file_menu = Menu(
+                stdscr,
+                f"{section} files",
+                file_labels + ["Back"],
+                command_handler=lambda cmd: handle_command(stdscr, case_path, state, cmd, callbacks),
+                command_suggestions=lambda: command_suggestions(case_path),
+            )
             file_index = file_menu.navigate()
             if file_index == -1 or file_index == len(file_labels):
                 break
-            file_path = files[file_index]
-            _entry_browser_screen(stdscr, case_path, file_path)
+            return files[file_index]
 
 
-def _file_screen(stdscr: Any, case_path: Path, file_path: Path) -> None:
+def _editor_screen(stdscr: Any, case_path: Path, state: AppState) -> None:
+    sections = discover_case_files(case_path)
+    while True:
+        state.transition(Screen.EDITOR)
+        file_path = _select_case_file(stdscr, case_path, state, sections)
+        if file_path is None:
+            return
+        if state.no_foam:
+            state.transition(Screen.NO_FOAM_FILE, action="no_foam_file")
+            _no_foam_file_screen(stdscr, case_path, file_path, state)
+        else:
+            state.transition(Screen.ENTRY_BROWSER, action="entry_browser")
+            callbacks = _browser_callbacks(case_path, state)
+            entry_browser_screen(stdscr, case_path, file_path, state, callbacks)
+
+
+def _file_screen(stdscr: Any, case_path: Path, file_path: Path, state: AppState) -> None:
     try:
         keywords = list_keywords(file_path)
     except OpenFOAMError as exc:
@@ -187,346 +302,66 @@ def _file_screen(stdscr: Any, case_path: Path, file_path: Path) -> None:
         return
 
     options = ["Edit entry", "View file", "Back"]
-    submenu = Submenu(stdscr, f"{file_path.relative_to(case_path)}", options[:-1])
+    callbacks = _command_callbacks()
+    submenu = Submenu(
+        stdscr,
+        f"{file_path.relative_to(case_path)}",
+        options[:-1],
+        command_handler=lambda cmd: handle_command(stdscr, case_path, state, cmd, callbacks),
+        command_suggestions=lambda: command_suggestions(case_path),
+    )
     while True:
         choice = submenu.navigate()
         if choice == -1 or choice == len(options) - 1:
             return
         if choice == 0:
-            _edit_entry_screen(stdscr, file_path, keywords)
+            _edit_entry_screen(stdscr, case_path, file_path, keywords, state)
         elif choice == 1:
             _view_file_screen(stdscr, file_path)
 
 
-def _entry_browser_screen(
-    stdscr: Any, case_path: Path, file_path: Path, initial_index: int | None = None
+def _no_foam_file_screen(
+    stdscr: Any, case_path: Path, file_path: Path, state: AppState
 ) -> None:
-    """
-    Browse entries in a file with a left-hand list and right-hand preview.
-
-    Keys:
-      j/k or arrows : move between entries
-      l or Enter    : drill into sub-dicts or edit entry
-      h or q        : go back (or up one dict level)
-      v             : view entire file
-    """
-    base_entry: str | None = None
-    stack: list[tuple[str | None, list[str], int]] = []
-    cache: dict[str, tuple[str, str, list[str], list[str], list[str]]] = {}
-
-    try:
-        keywords = list_keywords(file_path)
-    except OpenFOAMError as exc:
-        _show_message(stdscr, f"Error reading {file_path.relative_to(case_path)}: {exc}")
-        return
-
-    if not keywords:
-        _show_message(stdscr, "No entries found in file.")
-        return
-
-    index = 0 if initial_index is None else max(0, min(initial_index, len(keywords) - 1))
-
+    options = ["View file", "Open in $EDITOR", "Back"]
     while True:
-        # Determine current key path and preview info (using a simple cache
-        # so moving over values does not repeatedly hit foamDictionary).
-        key = keywords[index]
-        full_key = key if base_entry is None else f"{base_entry}.{key}"
-
-        value, type_label, subkeys, comments, info_lines, validator = _get_entry_metadata(
-            cache, file_path, case_path, full_key
-        )
-
-        _draw_entry_browser(
+        callbacks = _command_callbacks()
+        menu = Menu(
             stdscr,
-            case_path,
-            file_path,
-            base_entry,
-            keywords,
-            index,
-            full_key,
-            value,
-            type_label,
-            subkeys,
-            comments,
-            info_lines,
+            f"{file_path.relative_to(case_path)}",
+            options,
+            command_handler=lambda cmd: handle_command(stdscr, case_path, state, cmd, callbacks),
+            command_suggestions=lambda: command_suggestions(case_path),
         )
-
-        key_code = stdscr.getch()
-
-        if key_code in (ord("k"), curses.KEY_UP):
-            index = (index - 1) % len(keywords)
-        elif key_code in (ord("j"), curses.KEY_DOWN):
-            index = (index + 1) % len(keywords)
-        elif key_code in (ord("h"), curses.KEY_LEFT, ord("q")):
-            if stack:
-                base_entry, keywords, index = stack.pop()
-            else:
-                return
-        elif key_code == ord("o"):
-            # Open the current entry in an external editor ($EDITOR) and
-            # write back whatever the user saves.
-            try:
-                original_value = read_entry(file_path, full_key)
-            except OpenFOAMError as exc:
-                _show_message(stdscr, f"Failed to read entry for editor: {exc}")
-                continue
-
-            edited_value = _open_in_external_editor(stdscr, original_value)
-            if edited_value is None or edited_value == original_value:
-                continue
-
-            formatted = _autoformat_value(edited_value)
-            if not write_entry(file_path, full_key, formatted):
-                _show_message(stdscr, "Failed to save value from editor.")
-                continue
-
-            # Refresh cached value after external edit.
-            _refresh_entry_cache(cache, file_path, case_path, full_key)
-        elif key_code == ord("v"):
+        choice = menu.navigate()
+        if choice == -1 or choice == len(options) - 1:
+            return
+        if choice == 0:
             _view_file_screen(stdscr, file_path)
-        elif key_code in (
-            ord("l"),
-            ord("e"),
-            curses.KEY_RIGHT,
-            ord("\n"),
-            curses.KEY_ENTER,
-        ):
-            # Drill into dict or edit value.
-            if subkeys:
-                stack.append((base_entry, keywords, index))
-                base_entry = full_key
-                keywords = subkeys
-                index = 0
-                continue
-
-            # No subkeys: edit this entry in place.
-            entry = Entry(key=full_key, value=value)
-
-            def on_save(new_value: str) -> bool:
-                formatted = _autoformat_value(new_value)
-                return write_entry(file_path, full_key, formatted)
-
-            editor = EntryEditor(
-                stdscr,
-                entry,
-                on_save,
-                validator=validator,
-                type_label=type_label,
-                subkeys=subkeys,
-            )
-            editor.edit()
-
-            # After editing, refresh cache from disk so that the browser
-            # reflects the actual saved value (if write succeeded).
-            _refresh_entry_cache(cache, file_path, case_path, full_key)
-        elif key_code == curses.KEY_RESIZE:
-            # Screen will be fully redrawn on next loop iteration.
-            continue
-        elif key_code == ord("/"):
-            # Prefer fzf-based search when available; fall back to simple
-            # in-file search otherwise.
-            if shutil.which("fzf") is not None:
-                new_index = _fzf_pick_entry_in_file(stdscr, keywords)
-                if new_index is not None:
-                    index = new_index
-            else:
-                # Search keys, values, and comments in this file.
-                curses.echo()
-                stdscr.clear()
-                stdscr.addstr("Search (keys/values/comments): ")
-                stdscr.refresh()
-                query = stdscr.getstr().decode()
-                curses.noecho()
-                if query:
-                    new_index = _search_entries(
-                        cache, file_path, case_path, keywords, index, query, direction=1
-                    )
-                    if new_index is None:
-                        _show_message(stdscr, f"No matches for '{query}'.")
-                    else:
-                        index = new_index
-            continue
-        elif key_code == ord("?"):
-            _show_message(
-                stdscr,
-                "j/k or arrows: move, l/e/Right/Enter: edit, h/Left/q: back, v: view file, /: search, ?: help",
-            )
-
-
-def _draw_entry_browser(
-    stdscr: Any,
-    case_path: Path,
-    file_path: Path,
-    base_entry: str | None,
-    keys: list[str],
-    current_index: int,
-    full_key: str,
-    value: str,
-    type_label: str,
-    subkeys: list[str],
-    comments: list[str],
-    info_lines: list[str],
-) -> None:
-    stdscr.clear()
-    height, width = stdscr.getmaxyx()
-    split_col = max(20, width // 2)
-    left_width = split_col - 1
-    right_width = width - split_col - 1
-
-    # Use dedicated windows for left/right panes; status bar stays on stdscr.
-    try:
-        left_win = stdscr.derwin(max(1, height - 1), split_col, 0, 0)
-        right_win = stdscr.derwin(max(1, height - 1), max(1, width - split_col), 0, split_col)
-    except curses.error:
-        # Fallback: draw everything on stdscr if window creation fails.
-        left_win = stdscr
-        right_win = stdscr
-
-    left_win.erase()
-    right_win.erase()
-
-    # Left pane: file + entries.
-    try:
-        file_label = file_path.relative_to(case_path).as_posix()
-        left_win.addstr(0, 0, file_label[: max(1, left_width)])
-        level_label = base_entry or "(top level)"
-        left_win.addstr(1, 0, level_label[: max(1, left_width)])
-        left_win.addstr(
-            2,
-            0,
-            "j/k: move  l: edit  o: edit section  v: view  h: back"[
-                : max(1, left_width)
-            ],
-        )
-    except curses.error:
-        pass
-
-    start_row = 4
-    for idx, k in enumerate(keys):
-        if start_row + idx >= height - 1:
-            break
-        prefix = ">> " if idx == current_index else "   "
-        label = (prefix + k)[: max(1, left_width)]
-        try:
-            left_win.addstr(start_row + idx, 0, label)
-        except curses.error:
-            break
-
-    # Right pane: preview of current entry and hierarchy.
-    try:
-        right_win.addstr(0, 0, "Entry preview"[: max(1, right_width)])
-        # Show key hierarchy as dotted path.
-        right_win.addstr(
-            1,
-            0,
-            f"Path: {full_key}"[: max(1, right_width)],
-        )
-        right_win.addstr(
-            2,
-            0,
-            f"Type: {type_label}"[: max(1, right_width)],
-        )
-    except curses.error:
-        pass
-
-    row = 4
-    try:
-        right_win.addstr(row, 0, "Current value:"[: max(1, right_width)])
-    except curses.error:
-        pass
-    row += 1
-    for line in value.splitlines() or [value]:
-        if row >= height - 1:
-            break
-        try:
-            right_win.addstr(row, 0, line[: max(1, right_width)])
-        except curses.error:
-            break
-        row += 1
-
-    # Comments (docs) if present.
-    if comments and row < height - 1:
-        try:
-            right_win.addstr(row, 0, "Comments:"[: max(1, right_width)])
-        except curses.error:
-            pass
-        row += 1
-        for c in comments:
-            if row >= height - 1:
-                break
-            try:
-                right_win.addstr(
-                    row,
-                    0,
-                    c[: max(1, right_width)],
-                )
-            except curses.error:
-                break
-            row += 1
-
-    # Additional info from foamDictionary -info, if available.
-    if info_lines and row < height - 1:
-        try:
-            right_win.addstr(row, 0, "Info:"[: max(1, right_width)])
-        except curses.error:
-            pass
-        row += 1
-        for line in info_lines:
-            if row >= height - 1:
-                break
-            try:
-                right_win.addstr(
-                    row,
-                    0,
-                    line[: max(1, right_width)],
-                )
-            except curses.error:
-                break
-            row += 1
-
-    # Sub-keys if this is a dictionary.
-    if subkeys and row < height - 1:
-        try:
-            right_win.addstr(row, 0, "Sub-keys:"[: max(1, right_width)])
-        except curses.error:
-            pass
-        row += 1
-        for sk in subkeys:
-            if row >= height - 1:
-                break
-            try:
-                right_win.addstr(
-                    row,
-                    0,
-                    f"- {sk}"[: max(1, right_width)],
-                )
-            except curses.error:
-                break
-            row += 1
-
-    # Status bar with case and current path.
-    _draw_status_bar(
-        stdscr,
-        f"case: {case_path.name} | file: {file_path.relative_to(case_path)} | path: {full_key}",
-    )
-
-    try:
-        left_win.noutrefresh()
-        right_win.noutrefresh()
-        stdscr.noutrefresh()
-        curses.doupdate()
-    except curses.error:
-        stdscr.refresh()
+        elif choice == 1:
+            _open_file_in_editor(stdscr, file_path)
 
 
 def _edit_entry_screen(
-    stdscr: Any, file_path: Path, keywords: List[str], base_entry: str | None = None
+    stdscr: Any,
+    case_path: Path,
+    file_path: Path,
+    keywords: List[str],
+    state: AppState,
+    base_entry: Optional[str] = None,
 ) -> None:
     if not keywords:
         _show_message(stdscr, "No entries found in file.")
         return
 
-    entry_menu = Menu(stdscr, "Select entry to edit", keywords + ["Back"])
+    callbacks = _command_callbacks()
+    entry_menu = Menu(
+        stdscr,
+        "Select entry to edit",
+        keywords + ["Back"],
+        command_handler=lambda cmd: handle_command(stdscr, case_path, state, cmd, callbacks),
+        command_suggestions=lambda: command_suggestions(case_path),
+    )
     entry_index = entry_menu.navigate()
     if entry_index == -1 or entry_index == len(keywords):
         return
@@ -538,14 +373,24 @@ def _edit_entry_screen(
     subkeys = list_subkeys(file_path, full_key)
     if subkeys:
         # Submenu to choose between browsing sub-entries or editing this entry directly.
+        callbacks = _command_callbacks()
         submenu = Menu(
             stdscr,
             f"{full_key} is a dictionary",
             ["Browse sub-entries", "Edit this entry", "Back"],
+            command_handler=lambda cmd: handle_command(stdscr, case_path, state, cmd, callbacks),
+            command_suggestions=lambda: command_suggestions(case_path),
         )
         choice = submenu.navigate()
         if choice == 0:
-            _edit_entry_screen(stdscr, file_path, subkeys, base_entry=full_key)
+            _edit_entry_screen(
+                stdscr,
+                case_path,
+                file_path,
+                subkeys,
+                state,
+                base_entry=full_key,
+            )
             return
         if choice in (-1, 2):
             return
@@ -557,10 +402,10 @@ def _edit_entry_screen(
         return
 
     entry = Entry(key=full_key, value=value)
-    validator, type_label = _choose_validator(full_key, value)
+    validator, type_label = choose_validator(full_key, value)
 
     def on_save(new_value: str) -> bool:
-        formatted = _autoformat_value(new_value)
+        formatted = autoformat_value(new_value)
         return write_entry(file_path, full_key, formatted)
 
     editor = EntryEditor(
@@ -598,6 +443,18 @@ def _find_suspicious_lines(content: str) -> list[str]:
     in_block_comment = False
 
     lines = content.splitlines()
+
+    def next_significant_line(idx: int) -> Optional[str]:
+        for j in range(idx + 1, len(lines)):
+            candidate = lines[j].strip()
+            if not candidate:
+                continue
+            if candidate.startswith("//"):
+                continue
+            if candidate.startswith("/*") or candidate.startswith("*"):
+                continue
+            return candidate
+        return None
     for idx, raw in enumerate(lines, 1):
         stripped = raw.strip()
 
@@ -670,9 +527,14 @@ def _find_suspicious_lines(content: str) -> list[str]:
         # Skip blank lines and comments/includes when checking semicolons.
         if stripped_line.startswith("#include") or stripped_line.startswith("#ifdef"):
             continue
+        if "{" in line and "}" in line:
+            continue
         if stripped_line.endswith(";") or stripped_line.endswith("{") or stripped_line.endswith("}"):
             continue
         if stripped_line.endswith("(") or stripped_line.endswith(")"):
+            continue
+        next_line = next_significant_line(idx - 1)
+        if next_line == "{":
             continue
 
         warnings.append(f"Line {idx}: missing ';'? -> {stripped_line[:60]}")
@@ -691,218 +553,300 @@ def _show_message(stdscr: Any, message: str) -> None:
     stdscr.getch()
 
 
-def _draw_status_bar(stdscr: Any, text: str) -> None:
-    """
-    Draw a simple status bar on the last line of the screen.
-    """
-    try:
-        height, width = stdscr.getmaxyx()
-        stdscr.attron(curses.A_REVERSE)
-        stdscr.addstr(
-            height - 1,
-            0,
-            text[: max(1, width - 1)].ljust(max(1, width - 1)),
-        )
-        stdscr.attroff(curses.A_REVERSE)
-    except curses.error:
-        pass
+def _prompt_command(stdscr: Any, suggestions: Optional[list[str]]) -> str:
+    height, width = stdscr.getmaxyx()
+    buffer: list[str] = []
+    cursor = 0
+    last_matches: list[str] = []
+    match_index = 0
+    last_buffer = ""
 
-
-def _get_entry_metadata(
-    cache: dict[str, tuple[str, str, list[str], list[str], list[str]]],
-    file_path: Path,
-    case_path: Path,
-    full_key: str,
-) -> tuple[str, str, list[str], list[str], list[str], Validator]:
-    """
-    Load entry metadata (value, type label, subkeys, comments, info_lines, validator),
-    using a simple cache to avoid repeated foamDictionary calls while
-    navigating.
-    """
-    if full_key in cache:
-        value, type_label, subkeys, comments, info_lines = cache[full_key]
-        validator, _ = _choose_validator(full_key, value)
-        return value, type_label, subkeys, comments, info_lines, validator
-
-    try:
-        value = read_entry(file_path, full_key)
-    except OpenFOAMError:
-        value = "<error reading value>"
-
-    validator, type_label = _choose_validator(full_key, value)
-    subkeys = list_subkeys(file_path, full_key)
-    comments = get_entry_comments(file_path, full_key)
-    info_lines = get_entry_info(file_path, full_key)
-    info_lines.extend(_boundary_condition_info(file_path, full_key))
-
-    # If foamDictionary reports an explicit list of allowed values via
-    # `-list`, prefer an enum-style validator over heuristics.
-    enum_values = get_entry_enum_values(file_path, full_key)
-    if enum_values:
-        allowed_set = set(enum_values)
-
-        def enum_validator(v: str) -> str | None:
-            text = v.strip().rstrip(";").strip()
-            if text in allowed_set:
-                return None
-            return f"Value must be one of: {', '.join(sorted(allowed_set))}."
-
-        validator = enum_validator
-        type_label = "enum"
-        # Surface allowed values in the info pane as well.
-        info_lines = info_lines + [f"Allowed values: {', '.join(enum_values)}"]
-
-    cache[full_key] = (value, type_label, subkeys, comments, info_lines)
-    return value, type_label, subkeys, comments, info_lines, validator
-
-
-def _refresh_entry_cache(
-    cache: dict[str, tuple[str, str, list[str], list[str], list[str]]],
-    file_path: Path,
-    case_path: Path,
-    full_key: str,
-) -> None:
-    """
-    Refresh a single entry in the cache after an edit, swallowing
-    OpenFOAM errors so the UI remains responsive.
-    """
-    try:
-        value = read_entry(file_path, full_key)
-    except OpenFOAMError:
-        return
-
-    validator, type_label = _choose_validator(full_key, value)
-    subkeys = list_subkeys(file_path, full_key)
-    comments = get_entry_comments(file_path, full_key)
-    info_lines = get_entry_info(file_path, full_key)
-    info_lines.extend(_boundary_condition_info(file_path, full_key))
-    cache[full_key] = (value, type_label, subkeys, comments, info_lines)
-
-
-def _autoformat_value(value: str) -> str:
-    """
-    Apply a very small amount of auto-formatting before saving.
-
-    - For single-line values, trim leading/trailing whitespace.
-    - For multi-line values, leave content as-is (only strip trailing
-      newlines) to avoid breaking complex dictionaries.
-    """
-    text = value.rstrip("\n")
-    if "\n" in text:
-        return text
-    return text.strip()
-
-
-def _search_entries(
-    cache: dict[str, tuple[str, str, list[str], list[str], list[str]]],
-    file_path: Path,
-    case_path: Path,
-    keywords: list[str],
-    current_index: int,
-    query: str,
-    direction: int = 1,
-) -> int | None:
-    """
-    Search forward or backward from current_index for an entry whose key,
-    value, or comments contain the query (case-insensitive).
-    Returns the index of the next match, or None if no match is found.
-    """
-    if not keywords:
-        return None
-
-    q = query.lower()
-
-    n = len(keywords)
-    for step in range(1, n + 1):
-        idx = (current_index + direction * step) % n
-        key = keywords[idx]
-        full_key = key
-        value, _type_label, _subkeys, comments, _info_lines, _validator = _get_entry_metadata(
-            cache, file_path, case_path, full_key
-        )
-        haystack = " ".join([key, value] + comments).lower()
-        if q in haystack:
-            return idx
-
-    return None
-
-
-def _fzf_pick_entry_in_file(stdscr: Any, keywords: list[str]) -> int | None:
-    """
-    Use fzf to pick an entry from the current file (current directory
-    context) based on its key. Returns the selected index or None if
-    selection was cancelled.
-    """
-    if not keywords:
-        return None
-
-    fzf_input = "\n".join(keywords)
-
-    # Temporarily suspend curses UI while running fzf.
-    curses.def_prog_mode()
-    curses.endwin()
-    try:
-        result = subprocess.run(
-            ["fzf"],
-            input=fzf_input,
-            text=True,
-            capture_output=True,
-        )
-    finally:
-        # Restore curses mode and refresh the screen.
-        curses.reset_prog_mode()
-        stdscr.clear()
-        stdscr.refresh()
-
-    if result.returncode != 0:
-        return None
-
-    selected = result.stdout.strip()
-    if not selected:
-        return None
-
-    try:
-        return keywords.index(selected)
-    except ValueError:
-        return None
-
-
-def _check_syntax_screen(stdscr: Any, case_path: Path) -> None:
-    def progress_callback(path: Path) -> None:
+    def render() -> None:
         try:
-            rel = path.relative_to(case_path)
-        except ValueError:
-            rel = path
-        _show_progress(stdscr, f"Checking {rel} ...")
+            stdscr.move(height - 1, 0)
+            stdscr.clrtoeol()
+            display = ":" + "".join(buffer)
+            stdscr.addstr(height - 1, 0, display[: max(1, width - 1)])
+            stdscr.move(height - 1, min(width - 1, 1 + cursor))
+            stdscr.refresh()
+        except curses.error:
+            pass
 
-    _show_progress(stdscr, "Running foamDictionary checks...")
-    results = verify_case(case_path, progress=progress_callback)
-    if not results:
+    render()
+    while True:
+        key = stdscr.getch()
+
+        if key in (curses.KEY_ENTER, 10, 13):
+            return "".join(buffer).strip()
+        if key in (27,):  # ESC
+            return ""
+        if key in (curses.KEY_BACKSPACE, 127, 8):
+            if cursor > 0:
+                buffer.pop(cursor - 1)
+                cursor -= 1
+            render()
+            continue
+        if key == curses.KEY_LEFT:
+            if cursor > 0:
+                cursor -= 1
+            render()
+            continue
+        if key == curses.KEY_RIGHT:
+            if cursor < len(buffer):
+                cursor += 1
+            render()
+            continue
+        if key == 9:  # TAB
+            pool = suggestions or []
+            current = "".join(buffer)
+            if current != last_buffer:
+                last_matches = [s for s in pool if s.startswith(current)]
+                match_index = 0
+                last_buffer = current
+            if last_matches:
+                completion = last_matches[match_index % len(last_matches)]
+                buffer = list(completion)
+                cursor = len(buffer)
+                match_index += 1
+                render()
+            continue
+        if 32 <= key <= 126:
+            buffer.insert(cursor, chr(key))
+            cursor += 1
+            render()
+
+
+def _command_callbacks() -> CommandCallbacks:
+    return CommandCallbacks(
+        check_syntax=_check_syntax_screen,
+        tools_screen=tools_screen,
+        diagnostics_screen=diagnostics_screen,
+        run_current_solver=run_current_solver,
+        show_message=_show_message,
+    )
+
+
+def _browser_callbacks(case_path: Path, state: AppState) -> BrowserCallbacks:
+    cmd_callbacks = _command_callbacks()
+
+    def handle_cmd(stdscr: Any, path: Path, app_state: AppState, cmd: str) -> Optional[str]:
+        return handle_command(stdscr, path, app_state, cmd, cmd_callbacks)
+
+    return BrowserCallbacks(
+        show_message=_show_message,
+        view_file=_view_file_screen,
+        prompt_command=_prompt_command,
+        command_suggestions=command_suggestions,
+        handle_command=handle_cmd,
+        mode_status=_mode_status,
+    )
+
+
+def _status_with_check(state: AppState, base: str) -> str:
+    status = state.check_status_line()
+    if not status:
+        return base
+    if not base:
+        return status
+    return f"{base} | {status}"
+
+
+def _mode_status(state: AppState) -> str:
+    mode = "no-foam" if state.no_foam else "foam"
+    wm_dir = os.environ.get("WM_PROJECT_DIR")
+    suffix = f" ({wm_dir})" if wm_dir else ""
+    return f"mode: {mode}{suffix}"
+
+
+def _start_check_thread(case_path: Path, state: AppState) -> None:
+    def worker() -> None:
+        sections = discover_case_files(case_path)
+        total = sum(len(files) for files in sections.values())
+        with state.check_lock:
+            state.check_in_progress = True
+            state.check_total = total
+            state.check_done = 0
+            state.check_current = None
+            state.check_results = {}
+
+        def progress_callback(path: Path) -> None:
+            with state.check_lock:
+                state.check_done += 1
+                state.check_current = path
+
+        def result_callback(path: Path, result: FileCheckResult) -> None:
+            with state.check_lock:
+                if state.check_results is None:
+                    state.check_results = {}
+                state.check_results[path] = result
+
+        try:
+            results = verify_case(
+                case_path, progress=progress_callback, result_callback=result_callback
+            )
+        except (OpenFOAMError, OSError):
+            results = {}
+        with state.check_lock:
+            state.check_results = results
+            state.check_in_progress = False
+
+    thread = threading.Thread(target=worker, daemon=True)
+    state.check_thread = thread
+    thread.start()
+
+
+def _color_from_name(value: str, default: int) -> int:
+    mapping = {
+        "black": curses.COLOR_BLACK,
+        "red": curses.COLOR_RED,
+        "green": curses.COLOR_GREEN,
+        "yellow": curses.COLOR_YELLOW,
+        "blue": curses.COLOR_BLUE,
+        "magenta": curses.COLOR_MAGENTA,
+        "cyan": curses.COLOR_CYAN,
+        "white": curses.COLOR_WHITE,
+    }
+    return mapping.get(value.strip().lower(), default)
+
+
+def _check_syntax_screen(stdscr: Any, case_path: Path, state: AppState) -> None:
+    if state.check_in_progress:
+        pass
+    if state.check_results is None and not state.check_in_progress:
+        _start_check_thread(case_path, state)
+
+    _check_syntax_menu(stdscr, case_path, state)
+
+
+def _check_syntax_menu(stdscr: Any, case_path: Path, state: AppState) -> None:
+    cfg = get_config()
+    sections = discover_case_files(case_path)
+    files: list[Path] = []
+    for group in sections.values():
+        files.extend(group)
+    if not files:
         _show_message(stdscr, "No case files found to check.")
         return
 
-    entries = sorted(results.items(), key=lambda item: item[0])
+    current = 0
+    scroll = 0
+    stdscr.timeout(200)
+    try:
+        while True:
+            labels, checks = _check_labels(case_path, files, state)
+            status = _status_with_check(state, "Check syntax")
+            status = f"{status} | {_mode_status(state)}" if status else _mode_status(state)
+            _draw_check_menu(stdscr, labels, checks, current, scroll, status)
+            key = stdscr.getch()
+            if key == -1:
+                continue
+            if key in (curses.KEY_UP,) or key_in(key, cfg.keys.get("up", [])):
+                current = (current - 1) % len(labels)
+            elif key in (curses.KEY_DOWN,) or key_in(key, cfg.keys.get("down", [])):
+                current = (current + 1) % len(labels)
+            elif key_in(key, cfg.keys.get("top", [])):
+                current = 0
+            elif key_in(key, cfg.keys.get("bottom", [])):
+                current = len(labels) - 1
+            elif key_in(key, cfg.keys.get("back", [])):
+                return
+            elif key_in(key, cfg.keys.get("help", [])):
+                _show_message(
+                    stdscr,
+                    "Check syntax menu\n\nEnter: view result, q/h: back\n\nProgress is shown in the status bar.",
+                )
+            elif key_in(key, cfg.keys.get("command", [])):
+                callbacks = _command_callbacks()
+                command = _prompt_command(stdscr, command_suggestions(case_path))
+                if command and handle_command(stdscr, case_path, state, command, callbacks) == "quit":
+                    return
+            elif key_in(key, cfg.keys.get("select", [])):
+                file_path = files[current]
+                check = checks[current]
+                rel = file_path.relative_to(case_path)
+                if check is None or not check.checked:
+                    _show_message(stdscr, f"{rel} not checked yet.")
+                    continue
+                if _show_check_result(stdscr, rel, check):
+                    _view_file_screen(stdscr, file_path)
+
+            scroll = _menu_scroll(current, scroll, stdscr, len(labels), header_rows=3)
+    finally:
+        stdscr.timeout(-1)
+
+
+def _check_labels(
+    case_path: Path, files: list[Path], state: AppState
+) -> tuple[list[str], list[Optional[FileCheckResult]]]:
     labels: list[str] = []
-    for file_path, check in entries:
+    checks: list[Optional[FileCheckResult]] = []
+    results = state.check_results or {}
+    for file_path in files:
         rel = file_path.relative_to(case_path)
-        if check.errors:
+        check = results.get(file_path)
+        checks.append(check)
+        if check is None or not check.checked:
+            status = "Not checked"
+        elif check.errors:
             status = f"ERROR ({len(check.errors)})"
         elif check.warnings:
             status = f"Warn ({len(check.warnings)})"
         else:
             status = "OK"
         labels.append(f"{rel}: {status}")
+    return labels, checks
 
-    menu = Menu(stdscr, "Check syntax – select file", labels + ["Back"])
-    while True:
-        choice = menu.navigate()
-        if choice == -1 or choice == len(labels):
-            return
-        file_path, check = entries[choice]
-        rel = file_path.relative_to(case_path)
 
-        if _show_check_result(stdscr, rel, check):
-            _view_file_screen(stdscr, file_path)
+def _draw_check_menu(
+    stdscr: Any,
+    labels: list[str],
+    checks: list[Optional[FileCheckResult]],
+    current: int,
+    scroll: int,
+    status: str,
+) -> None:
+    stdscr.clear()
+    height, width = stdscr.getmaxyx()
+    header = "Check syntax – select file"
+    try:
+        stdscr.addstr(0, 0, header[: max(1, width - 1)])
+        stdscr.addstr(1, 0, "Enter: view result  q/h: back"[: max(1, width - 1)])
+    except curses.error:
+        pass
+
+    start_row = 3
+    visible = max(0, height - start_row - 1)
+    for idx in range(scroll, min(len(labels), scroll + visible)):
+        prefix = ">> " if idx == current else "   "
+        line = f"{prefix}{labels[idx]}"
+        is_checked = checks[idx] is not None and checks[idx].checked
+        try:
+            if is_checked:
+                stdscr.attron(curses.A_BOLD)
+            stdscr.addstr(start_row + (idx - scroll), 0, line[: max(1, width - 1)])
+            if is_checked:
+                stdscr.attroff(curses.A_BOLD)
+        except curses.error:
+            break
+
+    draw_status_bar(stdscr, status)
+
+
+def _menu_scroll(
+    current: int, scroll: int, stdscr: Any, total: int, header_rows: int
+) -> int:
+    height, _ = stdscr.getmaxyx()
+    visible = max(0, height - header_rows - 1)
+    if visible <= 0:
+        return 0
+    if current < scroll:
+        scroll = current
+    elif current >= scroll + visible:
+        scroll = current - visible + 1
+    max_scroll = max(0, total - visible)
+    if scroll > max_scroll:
+        scroll = max_scroll
+    return scroll
 
 
 def _show_progress(stdscr: Any, message: str) -> None:
@@ -916,7 +860,9 @@ def _show_progress(stdscr: Any, message: str) -> None:
 
 def _show_check_result(stdscr: Any, rel_path: Path, result: FileCheckResult) -> bool:
     status = "OK"
-    if result.errors:
+    if not result.checked:
+        status = "NOT CHECKED"
+    elif result.errors:
         status = "ERROR"
     elif result.warnings:
         status = "Warnings"
@@ -925,7 +871,9 @@ def _show_check_result(stdscr: Any, rel_path: Path, result: FileCheckResult) -> 
     line = f"{rel_path}: {status}"
     try:
         stdscr.addstr(line + "\n\n")
-        if result.errors:
+        if not result.checked:
+            stdscr.addstr("Check interrupted before this file ran.\n\n")
+        elif result.errors:
             stdscr.addstr("Detected issues:\n")
             for item in result.errors:
                 stdscr.addstr(f"- {item}\n")
@@ -946,7 +894,8 @@ def _show_check_result(stdscr: Any, rel_path: Path, result: FileCheckResult) -> 
     return ch in (ord("v"), ord("V"))
 
 
-def _global_search_screen(stdscr: Any, case_path: Path) -> None:
+
+def _global_search_screen(stdscr: Any, case_path: Path, state: AppState) -> None:
     """
     Global search wrapper around `fzf`.
 
@@ -954,8 +903,8 @@ def _global_search_screen(stdscr: Any, case_path: Path) -> None:
     fuzzy-select one via `fzf`, and then opens the editor browser at
     the chosen entry as if it was selected manually.
     """
-    if shutil.which("fzf") is None:
-        _show_message(stdscr, "fzf not found on PATH. Please install fzf to use global search.")
+    if not fzf_enabled():
+        _show_message(stdscr, "fzf not available (disabled or missing).")
         return
 
     foam_case = Case(root=case_path)
@@ -964,10 +913,17 @@ def _global_search_screen(stdscr: Any, case_path: Path) -> None:
 
     for _section, files in sections.items():
         for file_path in files:
+            status_message(stdscr, f"Indexing {file_path.relative_to(case_path)}...")
             dict_file = DictionaryFile(foam_case.root, file_path)
             try:
                 keys = list_keywords(file_path)
-            except OpenFOAMError:
+            except OpenFOAMError as exc:
+                if state.no_foam:
+                    _show_message(
+                        stdscr,
+                        f"Global search failed: {exc} (no-foam mode may disable OpenFOAM tools)",
+                    )
+                    return
                 continue
             for key in keys:
                 entries.append(EntryRef(dict_file, key))
@@ -988,6 +944,7 @@ def _global_search_screen(stdscr: Any, case_path: Path) -> None:
             input=fzf_input,
             text=True,
             capture_output=True,
+            check=False,
         )
     finally:
         # Restore curses mode and refresh the screen.
@@ -1022,126 +979,45 @@ def _global_search_screen(stdscr: Any, case_path: Path) -> None:
 
     # Jump into the entry browser at the selected key; from there user can
     # edit and navigate as if they arrived via the normal editor path.
-    _entry_browser_screen(stdscr, case_path, file_path, initial_index=initial_index)
+    callbacks = _browser_callbacks(case_path, state)
+    entry_browser_screen(
+        stdscr,
+        case_path,
+        file_path,
+        state,
+        callbacks,
+        initial_index=initial_index,
+    )
 
 
-def _open_in_external_editor(stdscr: Any, initial_text: str) -> str | None:
-    """
-    Open the given text in $EDITOR and return the edited content.
-
-    Returns None if the editor could not be launched.
-    """
+def _open_file_in_editor(stdscr: Any, file_path: Path) -> None:
     editor = os.environ.get("EDITOR") or "vi"
-
-    # Use a NamedTemporaryFile so the editor can work on a real file path.
-    try:
-        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as tmp:
-            tmp_path = Path(tmp.name)
-            tmp.write(initial_text)
-    except OSError as exc:
-        _show_message(stdscr, f"Failed to create temp file for editor: {exc}")
-        return None
-
-    # Suspend curses UI while the external editor runs.
     curses.endwin()
     try:
-        subprocess.run([editor, str(tmp_path)])
+        subprocess.run([editor, str(file_path)], check=False)
+    except OSError as exc:
+        _show_message(stdscr, f"Failed to run {editor}: {exc}")
     finally:
-        # Re-initialize the screen; next draw call will refresh the UI.
         stdscr.clear()
         stdscr.refresh()
 
-    try:
-        edited = tmp_path.read_text()
-    except OSError as exc:
-        _show_message(stdscr, f"Failed to read edited value: {exc}")
-        return None
-    finally:
-        try:
-            tmp_path.unlink()
-        except OSError:
-            pass
-
-    return edited
-
-
-def _load_tool_presets(case_path: Path) -> list[tuple[str, list[str]]]:
-    """
-    Load extra tools from an optional per-case file `of_tui.tools`.
-
-    Format (one per line, lines starting with # are ignored):
-      name: command with args
-    Example:
-      simpleFoam: simpleFoam -case .
-    """
-    presets: list[tuple[str, list[str]]] = []
-    cfg_path = case_path / "of_tui.tools"
-    if not cfg_path.is_file():
-        return presets
-
-    try:
-        for raw_line in cfg_path.read_text().splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if ":" not in line:
-                continue
-            name, cmd_str = line.split(":", 1)
-            name = name.strip()
-            cmd_str = cmd_str.strip()
-            if not name or not cmd_str:
-                continue
-            try:
-                cmd = shlex.split(cmd_str)
-            except ValueError:
-                continue
-            presets.append((name, cmd))
-    except OSError:
-        return presets
-
-    return presets
-
 
 def _case_metadata(case_path: Path) -> dict[str, str]:
+    latest_time = _latest_time(case_path)
+    status = "ran" if latest_time not in ("0", "0.0", "") else "clean"
+    parallel = _detect_parallel_settings(case_path)
+    mesh = _detect_mesh_stats(case_path)
     return {
         "case_name": case_path.name,
         "case_path": str(case_path),
         "solver": _detect_solver(case_path),
         "foam_version": _detect_openfoam_version(),
         "case_header_version": _detect_case_header_version(case_path),
-        "latest_time": _latest_time(case_path),
+        "latest_time": latest_time,
+        "status": status,
+        "mesh": mesh,
+        "parallel": parallel,
     }
-
-
-def _case_overview_lines(meta: dict[str, str]) -> list[str]:
-    # Additional summary lines below the banner; keep minimal to avoid clutter.
-    return []
-
-
-def _case_banner_lines(meta: dict[str, str]) -> list[str]:
-    rows = [
-        (f"Case: {meta['case_name']}", f"Solver: {meta['solver']}"),
-        (f"Env: {meta['foam_version']}", f"Case header: {meta['case_header_version']}"),
-        (f"Latest time: {meta['latest_time']}", f"Path: {meta['case_path']}"),
-    ]
-    return _foam_style_banner("of_tui", rows)
-
-
-def _foam_style_banner(label: str, rows: list[tuple[str, str]]) -> list[str]:
-    top = f"/*--------------------------------*- {label} -*----------------------------------*\\"
-    bottom = "\\*---------------------------------------------------------------------------*/"
-    lines = [top]
-    for left, right in rows:
-        lines.append(_format_banner_row(left, right))
-    lines.append(bottom)
-    return lines
-
-
-def _format_banner_row(left: str, right: str, column_width: int = 36) -> str:
-    def clip(text: str) -> str:
-        return text[:column_width]
-
-    return f"| {clip(left).ljust(column_width)} | {clip(right).ljust(column_width)} |"
 
 
 def _detect_solver(case_path: Path) -> str:
@@ -1159,6 +1035,72 @@ def _detect_solver(case_path: Path) -> str:
     return solver or "unknown"
 
 
+def _detect_parallel_settings(case_path: Path) -> str:
+    decompose_dict = case_path / "system" / "decomposeParDict"
+    if not decompose_dict.is_file():
+        return "n/a"
+    number = _read_optional_entry(decompose_dict, "numberOfSubdomains")
+    method = _read_optional_entry(decompose_dict, "method")
+    if number and method:
+        return f"{number} ({method})"
+    if number:
+        return number
+    if method:
+        return method
+    return "n/a"
+
+
+def _detect_mesh_stats(case_path: Path) -> str:
+    log_path = _latest_checkmesh_log(case_path)
+    if log_path is None:
+        return "unknown"
+    try:
+        text = log_path.read_text(errors="ignore")
+    except OSError:
+        return "unknown"
+
+    cells = _parse_cells_count(text)
+    skew = _parse_max_skewness(text)
+    if cells and skew:
+        return f"cells={cells}, skew={skew}"
+    if cells:
+        return f"cells={cells}"
+    if skew:
+        return f"skew={skew}"
+    return "unknown"
+
+
+def _latest_checkmesh_log(case_path: Path) -> Optional[Path]:
+    candidates = list(case_path.glob("log.checkMesh*"))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def _parse_cells_count(text: str) -> Optional[str]:
+    match = re.search(r"(?i)number of cells\\s*:\\s*(\\d+)", text)
+    if match:
+        return match.group(1)
+    match = re.search(r"(?i)cells\\s*:\\s*(\\d+)", text)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _parse_max_skewness(text: str) -> Optional[str]:
+    match = re.search(r"(?i)max\\s+skewness\\s*=\\s*([0-9eE.+-]+)", text)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _read_optional_entry(file_path: Path, key: str) -> Optional[str]:
+    try:
+        return read_entry(file_path, key).strip()
+    except OpenFOAMError:
+        return None
+
+
 def _detect_openfoam_version() -> str:
     for env in ("WM_PROJECT_VERSION", "FOAM_VERSION"):
         version = os.environ.get(env)
@@ -1169,6 +1111,7 @@ def _detect_openfoam_version() -> str:
             ["foamVersion", "-short"],
             capture_output=True,
             text=True,
+            check=False,
         )
     except OSError:
         return "unknown"
@@ -1179,25 +1122,35 @@ def _detect_openfoam_version() -> str:
 
 
 def _detect_case_header_version(case_path: Path) -> str:
+    versions: list[str] = []
     control_dict = case_path / "system" / "controlDict"
-    if not control_dict.is_file():
+    control_version = _extract_header_version(control_dict)
+    if control_version:
+        versions.append(control_version)
+
+    sample_files = _case_header_candidates(case_path, max_files=20)
+    for path in sample_files:
+        if path == control_dict:
+            continue
+        version = _extract_header_version(path)
+        if version:
+            versions.append(version)
+
+    if not versions:
         return "unknown"
-    try:
-        text = control_dict.read_text()
-    except OSError:
-        return "unknown"
 
-    header_version = _parse_header_comment_version(text)
-    if header_version:
-        return header_version
+    counts: dict[str, int] = {}
+    for version in versions:
+        counts[version] = counts.get(version, 0) + 1
 
-    block_version = _parse_foamfile_block_version(text)
-    if block_version:
-        return block_version
-    return "unknown"
+    best_count = max(counts.values())
+    best_versions = [v for v, count in counts.items() if count == best_count]
+    if control_version and control_version in best_versions:
+        return control_version
+    return sorted(best_versions)[0]
 
 
-def _parse_header_comment_version(text: str) -> str | None:
+def _parse_header_comment_version(text: str) -> Optional[str]:
     """
     Extract the version string from the ASCII banner that precedes FoamFile.
     """
@@ -1214,7 +1167,7 @@ def _parse_header_comment_version(text: str) -> str | None:
     return None
 
 
-def _parse_foamfile_block_version(text: str) -> str | None:
+def _parse_foamfile_block_version(text: str) -> Optional[str]:
     """
     Fallback: read the 'version' entry inside the FoamFile dictionary block.
     """
@@ -1236,6 +1189,33 @@ def _parse_foamfile_block_version(text: str) -> str | None:
     return None
 
 
+def _extract_header_version(path: Path) -> Optional[str]:
+    if not path.is_file():
+        return None
+    try:
+        text = path.read_text()
+    except OSError:
+        return None
+    header_version = _parse_header_comment_version(text)
+    if header_version:
+        return header_version
+    return _parse_foamfile_block_version(text)
+
+
+def _case_header_candidates(case_path: Path, max_files: int = 20) -> list[Path]:
+    candidates: list[Path] = []
+    for rel in ("system", "constant", "0"):
+        folder = case_path / rel
+        if not folder.is_dir():
+            continue
+        for entry in sorted(folder.iterdir()):
+            if entry.is_file():
+                candidates.append(entry)
+            if len(candidates) >= max_files:
+                return candidates
+    return candidates
+
+
 def _latest_time(case_path: Path) -> str:
     latest_value = 0.0
     found = False
@@ -1250,101 +1230,3 @@ def _latest_time(case_path: Path) -> str:
             latest_value = value
             found = True
     return f"{latest_value:g}" if found else "0"
-
-
-def _read_optional_entry(file_path: Path, key: str) -> str | None:
-    try:
-        return read_entry(file_path, key).strip()
-    except OpenFOAMError:
-        return None
-
-
-def _boundary_condition_info(file_path: Path, full_key: str) -> list[str]:
-    """
-    Provide extra info for boundary patches: show type/value when possible.
-    """
-    parts = full_key.split(".")
-    info: list[str] = []
-    if "boundaryField" not in parts:
-        return info
-    idx = parts.index("boundaryField")
-    if idx + 1 >= len(parts):
-        return info
-    patch = parts[idx + 1]
-    patch_key = ".".join(parts[: idx + 2])
-
-    bc_type = _read_optional_entry(file_path, f"{patch_key}.type")
-    if bc_type:
-        info.append(f"BC {patch} type: {bc_type}")
-    else:
-        info.append(f"BC {patch}: missing required entry 'type'")
-
-    bc_value = _read_optional_entry(file_path, f"{patch_key}.value")
-    if bc_value:
-        info.append(f"BC {patch} value: {bc_value}")
-    else:
-        info.append(f"BC {patch}: value entry not found")
-
-    return info
-
-
-def _guess_validator(key: str) -> Validator:
-    """
-    Simple heuristic to choose a validator based on key name.
-    """
-    lower = key.lower()
-    if any(tok in lower for tok in ("on", "off", "switch", "enable", "disable")):
-        return bool_flag
-    if any(tok in lower for tok in ("iter", "step", "n", "count")):
-        return as_int
-    if any(tok in lower for tok in ("tol", "dt", "time", "coeff", "alpha", "beta")):
-        return as_float
-    return non_empty
-
-
-def _choose_validator(key: str, value: str) -> tuple[Validator, str]:
-    """
-    Choose a validator based on both key name and current value.
-
-    This allows us to handle scalar types and simple vectors.
-    """
-    # Prefer vector validation when the value looks like a vector.
-    # Only treat as vector if it actually parses as a vector; otherwise
-    # fall back to scalar / key-based heuristics (e.g. schemes like
-    # "div(tauMC) Gauss linear" are not vectors even though they have
-    # parentheses in the name).
-    if "(" in value and ")" in value:
-        vec_error = vector_values(value)
-        if vec_error is None:
-            return vector_values, "vector"
-
-    # Try to infer scalar type from the value itself: check the last token
-    # for a numeric literal before falling back to key-based heuristics.
-    tokens = value.replace(";", " ").split()
-    if tokens:
-        last = tokens[-1]
-        try:
-            # If this parses as int and looks integer-like, prefer integer.
-            int(last)
-            if "." not in last and "e" not in last.lower():
-                return as_int, "integer"
-        except ValueError:
-            pass
-        try:
-            float(last)
-        except ValueError:
-            pass
-        else:
-            return as_float, "float"
-
-    validator = _guess_validator(key)
-    # Simple label based on which validator was chosen.
-    if validator is bool_flag:
-        label = "boolean-like"
-    elif validator is as_int:
-        label = "integer"
-    elif validator is as_float:
-        label = "float"
-    else:
-        label = "text"
-    return validator, label

@@ -1,5 +1,3 @@
-import curses
-
 from of_tui.editor import Entry, EntryEditor
 
 

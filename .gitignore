@@ -15,3 +15,5 @@ env/
 
 .DS_Store
 *.egg-info/
+qa_output.txt
+examples/

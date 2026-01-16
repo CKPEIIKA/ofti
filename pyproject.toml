@@ -21,7 +21,9 @@ dependencies = []
 [project.scripts]
 of_tui = "of_tui.cli:main"
 
+[tool.pytest.ini_options]
+addopts = "--cov=of_tui --cov-report=term-missing --cov-fail-under=60"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["of_tui*"]
-

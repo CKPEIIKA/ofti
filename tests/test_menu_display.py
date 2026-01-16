@@ -13,9 +13,10 @@ class FakeScreen:
     def getmaxyx(self):
         return (self.height, self.width)
 
-    def addstr(self, s: str) -> None:
+    def addstr(self, *args) -> None:
         # Record what would be printed; mimic simple line behavior.
-        self.lines.append(s)
+        text = args[-1]
+        self.lines.append(str(text))
 
     def attron(self, *args, **kwargs) -> None:  # pragma: no cover - unused in logic
         pass

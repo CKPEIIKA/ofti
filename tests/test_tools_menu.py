@@ -1,3 +1,5 @@
+"""Tool menu behavior and integration points."""
+
 from pathlib import Path
 from unittest import mock
 
@@ -9,7 +11,6 @@ from of_tui.tools import (
     clean_time_directories,
     clean_case,
     load_postprocessing_presets,
-    foam_dictionary_prompt,
 )
 
 
@@ -62,6 +63,7 @@ class FakeScreen:
 
 
 def test_run_shell_script_screen_runs_script_and_shows_output(tmp_path: Path) -> None:
+    """Render output from a selected shell script."""
     case_dir = tmp_path / "case"
     case_dir.mkdir()
     script = case_dir / "hello.sh"
@@ -79,6 +81,7 @@ def test_run_shell_script_screen_runs_script_and_shows_output(tmp_path: Path) ->
 
 
 def test_run_shell_script_screen_handles_no_scripts(tmp_path: Path) -> None:
+    """Warn when no scripts exist in the case directory."""
     case_dir = tmp_path / "case"
     case_dir.mkdir()
 
@@ -91,6 +94,7 @@ def test_run_shell_script_screen_handles_no_scripts(tmp_path: Path) -> None:
 
 
 def test_diagnostics_screen_runs_selected_tool(tmp_path: Path) -> None:
+    """Run a diagnostics command and show its output."""
     case_dir = tmp_path / "case"
     case_dir.mkdir()
 
@@ -114,6 +118,7 @@ def test_diagnostics_screen_runs_selected_tool(tmp_path: Path) -> None:
 
 
 def test_run_current_solver_uses_runfunctions(tmp_path: Path, monkeypatch) -> None:
+    """Use RunFunctions to launch the solver when available."""
     case_dir = tmp_path / "case"
     control = case_dir / "system" / "controlDict"
     control.parent.mkdir(parents=True)
@@ -131,12 +136,13 @@ def test_run_current_solver_uses_runfunctions(tmp_path: Path, monkeypatch) -> No
             run_current_solver(screen, case_dir)
 
     assert run.called
-    shell_cmd = run.call_args[0][0][2]
+    shell_cmd = run.call_args[0][0][-1]
     assert "RunFunctions" in shell_cmd
     assert "runApplication simpleFoam" in shell_cmd
 
 
 def test_remove_all_logs_uses_cleanfunctions(tmp_path: Path, monkeypatch) -> None:
+    """Clean logs through the OpenFOAM helper script."""
     case_dir = tmp_path / "case"
     case_dir.mkdir()
     screen = FakeScreen(keys=[ord("q")])
@@ -151,12 +157,13 @@ def test_remove_all_logs_uses_cleanfunctions(tmp_path: Path, monkeypatch) -> Non
         remove_all_logs(screen, case_dir)
 
     assert run.called
-    shell_cmd = run.call_args[0][0][2]
+    shell_cmd = run.call_args[0][0][-1]
     assert "CleanFunctions" in shell_cmd
     assert "cleanApplicationLogs" in shell_cmd
 
 
 def test_clean_time_directories(tmp_path: Path, monkeypatch) -> None:
+    """Clean time directories via CleanFunctions."""
     case_dir = tmp_path / "case"
     case_dir.mkdir()
     screen = FakeScreen(keys=[ord("q")])
@@ -171,12 +178,13 @@ def test_clean_time_directories(tmp_path: Path, monkeypatch) -> None:
         clean_time_directories(screen, case_dir)
 
     assert run.called
-    shell_cmd = run.call_args[0][0][2]
+    shell_cmd = run.call_args[0][0][-1]
     assert "CleanFunctions" in shell_cmd
     assert "cleanTimeDirectories" in shell_cmd
 
 
 def test_clean_case(tmp_path: Path, monkeypatch) -> None:
+    """Clean the case directory via CleanFunctions."""
     case_dir = tmp_path / "case"
     case_dir.mkdir()
     screen = FakeScreen(keys=[ord("q")])
@@ -191,12 +199,13 @@ def test_clean_case(tmp_path: Path, monkeypatch) -> None:
         clean_case(screen, case_dir)
 
     assert run.called
-    shell_cmd = run.call_args[0][0][2]
+    shell_cmd = run.call_args[0][0][-1]
     assert "CleanFunctions" in shell_cmd
     assert "cleanCase" in shell_cmd
 
 
 def test_load_postprocessing_presets(tmp_path: Path) -> None:
+    """Parse post-processing preset config entries."""
     case_dir = tmp_path / "case"
     case_dir.mkdir()
     cfg = case_dir / "of_tui.postprocessing"

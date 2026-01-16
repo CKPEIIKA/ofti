@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Sequence
+from typing import Callable, Dict, Iterable, List, Sequence, Optional
 
 
 class OpenFOAMError(RuntimeError):
@@ -34,13 +33,17 @@ def run_foam_dictionary(
 ) -> subprocess.CompletedProcess[str]:
     cmd = ["foamDictionary", str(file_path), *args]
     logging.debug("Running command: %s", " ".join(cmd))
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except OSError as exc:
+        raise OpenFOAMError(f"Failed to run foamDictionary: {exc}") from exc
     if result.returncode != 0:
         logging.debug("Command failed with code %s: %s", result.returncode, result.stderr.strip())
     return result
@@ -291,11 +294,13 @@ def discover_case_files(case_dir: Path) -> Dict[str, List[Path]]:
 class FileCheckResult:
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    checked: bool = False
 
 
 def verify_case(
     case_dir: Path,
-    progress: Callable[[Path], None] | None = None,
+    progress: Optional[Callable[[Path], None]] = None,
+    result_callback: Optional[Callable[[Path, FileCheckResult], None]] = None,
 ) -> Dict[Path, FileCheckResult]:
     """
     Run a correctness check over all discovered dictionary files.
@@ -308,27 +313,41 @@ def verify_case(
 
     sections = discover_case_files(case_dir)
     results: Dict[Path, FileCheckResult] = {}
-
+    all_files: List[Path] = []
     for files in sections.values():
-        for file_path in files:
-            if progress:
-                progress(file_path)
-            result = FileCheckResult()
-            results[file_path] = result
+        all_files.extend(files)
 
-            try:
-                top_level_keys = list_keywords(file_path)
-            except OpenFOAMError as exc:
-                msg = str(exc).strip() or "Unknown error"
-                result.errors.append(msg)
-                continue
+    for file_path in all_files:
+        results[file_path] = FileCheckResult()
 
+    for file_path in all_files:
+        result = results[file_path]
+        if progress:
+            progress(file_path)
+        try:
+            top_level_keys = list_keywords(file_path)
+        except OpenFOAMError as exc:
+            msg = str(exc).strip() or "Unknown error"
+            result.errors.append(msg)
+            result.checked = True
+            if result_callback:
+                result_callback(file_path, result)
+            continue
+        except KeyboardInterrupt:
+            break
+
+        try:
             _check_entries(file_path, result, top_level_keys)
 
             if "boundaryField" in top_level_keys:
                 patches = list_subkeys(file_path, "boundaryField")
                 nested_keys = [f"boundaryField.{patch}" for patch in patches]
                 _check_entries(file_path, result, nested_keys)
+        except KeyboardInterrupt:
+            break
+        result.checked = True
+        if result_callback:
+            result_callback(file_path, result)
 
     return results
 

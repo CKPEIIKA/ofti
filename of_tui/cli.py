@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from typing import Optional, List
 
 from .app import run_tui
+from .openfoam import OpenFOAMError
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,10 +27,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable debug logging and more verbose error reporting",
     )
+    parser.add_argument(
+        "--no-foam",
+        action="store_true",
+        help="Run without OpenFOAM tools (view-only mode)",
+    )
     return parser
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: Optional[List[str]] = None) -> None:
     """
     Entry point for the OpenFOAM TUI.
 
@@ -39,8 +46,8 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     try:
-        run_tui(args.case_dir, debug=args.debug)
-    except Exception as exc:  # pragma: no cover - safety net
+        run_tui(args.case_dir, debug=args.debug, no_foam=args.no_foam)
+    except (OpenFOAMError, OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
         if args.debug:
             raise
         print(f"of_tui error: {exc}", file=sys.stderr)

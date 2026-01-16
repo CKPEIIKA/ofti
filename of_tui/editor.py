@@ -7,6 +7,22 @@ from curses import textpad
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Any
 
+from .config import get_config, key_in
+
+
+def autoformat_value(value: str) -> str:
+    """
+    Apply a very small amount of auto-formatting before saving.
+
+    - For single-line values, trim leading/trailing whitespace.
+    - For multi-line values, leave content as-is (only strip trailing
+      newlines) to avoid breaking complex dictionaries.
+    """
+    text = value.rstrip("\n")
+    if "\n" in text:
+        return text
+    return text.strip()
+
 
 @dataclass
 class Entry:
@@ -125,7 +141,7 @@ class EntryEditor:
 
         # Left pane: old entry preview (mirrors _draw_layout).
         left_width = split_col - 1
-        header = "=== OpenFOAM Config Editor ==="
+        header = "=== Config Editor ==="
         try:
             self.stdscr.addstr(0, 0, header[: max(1, left_width)])
             self.stdscr.addstr(2, 0, f"Key: {self.entry.key}"[: max(1, left_width)])
@@ -220,6 +236,7 @@ class EntryEditor:
                 ["foamHelp", *parts],
                 capture_output=True,
                 text=True,
+                check=False,
             )
         except OSError as exc:
             self._show_message(f"Failed to run foamHelp: {exc}")
@@ -236,7 +253,7 @@ class EntryEditor:
 
         # Left pane: old entry preview.
         left_width = split_col - 1
-        header = "=== OpenFOAM Config Editor ==="
+        header = "=== Config Editor ==="
         try:
             self.stdscr.addstr(0, 0, header[: max(1, left_width)])
             self.stdscr.addstr(2, 0, f"Key: {self.entry.key}"[: max(1, left_width)])
@@ -351,7 +368,7 @@ class Viewer:
     def display(self) -> None:
         lines = self.content.splitlines()
         start_line = 0
-        search_term: str | None = None
+        search_term: Optional[str] = None
 
         while True:
             self.stdscr.erase()
@@ -381,7 +398,7 @@ class Viewer:
                 # Recompute layout on next iteration.
                 continue
 
-            if key == ord("/"):
+            if key_in(key, get_config().keys.get("search", [])):
                 # Simple search prompt.
                 curses.echo()
                 self.stdscr.clear()
@@ -408,12 +425,16 @@ class Viewer:
                                 break
                 continue
 
-            if key == ord("q"):
+            if key_in(key, get_config().keys.get("back", [])):
                 return
-            if key in (ord("j"), curses.KEY_DOWN):
+            if key_in(key, get_config().keys.get("top", [])):
+                start_line = 0
+            if key_in(key, get_config().keys.get("bottom", [])):
+                start_line = max(0, len(lines) - (height - 3))
+            if key in (curses.KEY_DOWN,) or key_in(key, get_config().keys.get("down", [])):
                 if end_line < len(lines):
                     start_line += 1
-            if key in (ord("k"), curses.KEY_UP):
+            if key in (curses.KEY_UP,) or key_in(key, get_config().keys.get("up", [])):
                 if start_line > 0:
                     start_line -= 1
 
@@ -421,6 +442,7 @@ class Viewer:
         self.stdscr.clear()
         self.stdscr.addstr("Viewer help\n\n")
         self.stdscr.addstr("  j / k or arrows : scroll\n")
+        self.stdscr.addstr("  g / G           : top / bottom\n")
         self.stdscr.addstr("  q               : exit viewer\n")
         self.stdscr.addstr("  /               : search within file\n")
         self.stdscr.addstr("  ?               : show this help\n\n")

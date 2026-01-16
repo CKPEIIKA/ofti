@@ -1,42 +1,38 @@
 # of_tui – OpenFOAM TUI
 
-`of_tui` is a small curses-based tool to browse and edit OpenFOAM case dictionaries.
+`of_tui` is a small curses-based TUI for browsing and editing OpenFOAM case dictionaries, with built-in tools and diagnostics.
 
-> Disclaimer: this project has been vibe coded and is under heavy development. Expect rough edges, rapid changes, and incomplete features. Better fork and do it better!
-
-## Usage
+## Quick start
 
 1. Source your OpenFOAM environment so `foamDictionary` (and other foam* tools) are on `PATH`.
-2. From a source checkout, run the CLI module directly (the example case is in `of_example`):
+2. Run against a case:
 
    ```bash
-   python -m of_tui.cli ./of_example
+   python -m of_tui.cli /path/to/case
    ```
 
-   After installing the package via `pip install .`  use the console script:
+   Or install and use the console script:
 
    ```bash
-   of_tui ./of_example
-   ```
-
-   To install straight from this GitHub repo without cloning:
-
-   ```bash
-   pip install "git+https://github.com/<your-user>/OpenFOAM-TUI.git"
-   # then
+   pip install .
    of_tui /path/to/case
    ```
 
 3. Optional flags:
 
    - `--debug` – enable debug logging and let unexpected errors surface with a traceback.
+   - `--no-foam` – skip OpenFOAM tool usage (view-only mode; tools may fail with a hint).
 
-## Main navigation
+## Navigation
 
 - `j` / `k` or arrows: move up/down in menus and lists
 - `l` or `Enter`: select
 - `h` or `q`: go back / quit (on the root menu, only `q` quits)
 - `/` in menus: fuzzy-pick an option with `fzf` (when available)
+- `:` in menus: open the command line (`:check`, `:tools`, `:diag`, `:run`, `:quit`)
+- `:nofoam` to toggle no-foam mode on/off
+- `:tool <name>` or `:<name>` to run any tool entry from the Tools menu
+- `Tab` in the command line auto-completes (cycles) matching commands
 
 Main menu entries:
 
@@ -46,7 +42,7 @@ Main menu entries:
 - `Diagnostics` – run `foamSystemCheck`, `foamInstallationTest`, `checkMesh`.
 - `Global search` – (shown only when `fzf` is available) search across all keys with `fzf` and jump to the chosen entry.
 
-The main menu renders a FOAM-style banner that shows the case folder, solver, OpenFOAM environment version, case-header version, latest time directory, and absolute path so you always know which case is loaded.
+The header banner shows case info, solver, OpenFOAM version, case header version, latest time, mesh/parallel summary, and path.
 
 ## Editor and entry browser
 
@@ -63,6 +59,11 @@ Keybindings in the entry browser:
 - `v`: view the full file
 - `o`: open the current entry in `$EDITOR` and write back on save
 - `/`: search entries with `fzf` (when available), otherwise simple in-file search
+- `:`: open the command line (`:check`, `:tools`, `:diag`, `:run`, `:quit`)
+- `:nofoam`: toggle no-foam mode on/off
+- `:tool <name>` or `:<name>` to run any tool entry from the Tools menu
+- `Tab` in the command line auto-completes (cycles) matching commands
+- In no-foam mode, file browsing offers "Open in $EDITOR" for quick edits without foamDictionary.
 
 Keybindings in the entry editor:
 
@@ -110,11 +111,36 @@ Requirements:
 - Python 3.11+ (tested with 3.11).
 - `pytest` for running tests.
 - A working OpenFOAM environment for runtime usage (for tests that touch OpenFOAM, see the optional integration test).
+- Coverage target: 60% minimum (pytest-cov).
+- Optional config file: `~/.config/of_tui/config.toml` (or `$OF_TUI_CONFIG`).
 
 Run tests:
 
 ```bash
 pytest
+```
+
+Example config:
+
+```toml
+fzf = "auto" # auto | on | off
+use_runfunctions = true
+use_cleanfunctions = true
+
+[colors]
+focus_fg = "black"
+focus_bg = "cyan"
+
+[keys]
+up = ["k"]
+down = ["j"]
+select = ["l", "\n"]
+back = ["h", "q"]
+help = ["?"]
+command = [":"]
+search = ["/"]
+top = ["g"]
+bottom = ["G"]
 ```
 
 You can work directly from a clone of this repository; no packaging step is required. Run the CLI via:
