@@ -1,6 +1,6 @@
 """Command line prompt behavior in menus."""
 
-from of_tui.menus import Menu
+from ofti.ui_curses.menus import Menu
 
 
 class FakeScreen:

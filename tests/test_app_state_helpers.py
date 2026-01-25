@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import of_tui.app as app
-import of_tui.commands as commands
-from of_tui.openfoam import FileCheckResult
+from ofti.app import app, commands
+from ofti.foam.openfoam import FileCheckResult
 
 
 def test_command_suggestions_include_tools(monkeypatch) -> None:
     monkeypatch.setattr(commands, "list_tool_commands", lambda _path: ["blockMesh", "custom"])
-    suggestions = commands.command_suggestions(Path("."))
+    suggestions = commands.command_suggestions(Path())
     assert "tool blockMesh" in suggestions
     assert "run custom" in suggestions
     assert "blockMesh" in suggestions
@@ -25,7 +24,7 @@ def test_mode_status_includes_env(monkeypatch) -> None:
     assert "/WM" in text
 
 
-def test_check_status_line_when_running(monkeypatch) -> None:
+def test_check_status_line_when_running(monkeypatch) -> None:  # noqa: ARG001
     state = app.AppState(no_foam=False)
     with state.check_lock:
         state.check_in_progress = True
@@ -58,7 +57,7 @@ def test_check_labels_with_results(tmp_path: Path) -> None:
     assert checks[0] == result
 
 
-def test_menu_scroll_bounds(monkeypatch) -> None:
+def test_menu_scroll_bounds(monkeypatch) -> None:  # noqa: ARG001
     class FakeScreen:
         def getmaxyx(self):
             return (10, 80)
@@ -75,15 +74,20 @@ def test_start_check_thread_updates_state(tmp_path: Path, monkeypatch) -> None:
     path.write_text("application simpleFoam;")
     state = app.AppState()
 
-    def fake_verify(_case, progress=None):
+    def fake_verify(_case, progress=None, result_callback=None):
         if progress:
             progress(path)
+        if result_callback:
+            result_callback(path, FileCheckResult(checked=True))
         return {path: FileCheckResult(checked=True)}
 
     monkeypatch.setattr(app, "verify_case", fake_verify)
     monkeypatch.setattr(app, "discover_case_files", lambda _case: {"system": [path]})
 
     app._start_check_thread(case_dir, state)
+    task = state.tasks.get("check_syntax")
+    assert task is not None
+    assert task.status in {"running", "done"}
     assert state.check_thread is not None
     state.check_thread.join(timeout=1.0)
     assert state.check_results is not None

@@ -3,7 +3,8 @@
 from pathlib import Path
 from unittest import mock
 
-import of_tui.tools as tools
+from ofti import tools
+from ofti.core.times import latest_time
 
 
 class FakeScreen:
@@ -41,13 +42,13 @@ class FakeScreen:
     def refresh(self) -> None:
         pass
 
-    def derwin(self, *args, **kwargs):
+    def derwin(self, *_args, **_kwargs):
         return self
 
     def getch(self) -> int:
         if self._keys:
             return self._keys.pop(0)
-        return ord("q")
+        return ord("h")
 
     def getstr(self):
         if self._strings:
@@ -63,8 +64,8 @@ def test_normalize_tool_name() -> None:
 def test_list_tool_commands_includes_presets(tmp_path: Path) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    (case_dir / "of_tui.tools").write_text("custom: echo ok\n")
-    (case_dir / "of_tui.postprocessing").write_text("postA: postProcess -funcs\n")
+    (case_dir / "ofti.tools").write_text("custom: echo ok\n")
+    (case_dir / "ofti.postprocessing").write_text("postA: postProcess -funcs\n")
 
     commands = tools.list_tool_commands(case_dir)
 
@@ -91,10 +92,10 @@ def test_run_tool_by_name_dispatches_simple_tool(tmp_path: Path, monkeypatch) ->
 def test_rerun_last_tool_replays_shell(tmp_path: Path, monkeypatch) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    screen = FakeScreen(keys=[ord("q")])
+    screen = FakeScreen(keys=[ord("h")])
     recorded: list[str] = []
 
-    def fake_run_shell(_stdscr, _case, name, shell_cmd):
+    def fake_run_shell(_stdscr, _case, _name, shell_cmd):
         recorded.append(shell_cmd)
 
     monkeypatch.setattr(tools, "_run_shell_tool", fake_run_shell)
@@ -108,7 +109,7 @@ def test_rerun_last_tool_replays_shell(tmp_path: Path, monkeypatch) -> None:
 def test_post_process_prompt_runs_default_args(tmp_path: Path, monkeypatch) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    screen = FakeScreen(keys=[ord("q")], string_inputs=[""])
+    screen = FakeScreen(keys=[ord("h")], string_inputs=[""])
 
     completed = mock.Mock()
     completed.returncode = 0
@@ -117,7 +118,11 @@ def test_post_process_prompt_runs_default_args(tmp_path: Path, monkeypatch) -> N
 
     monkeypatch.setattr(tools.curses, "echo", lambda: None)
     monkeypatch.setattr(tools.curses, "noecho", lambda: None)
-    monkeypatch.setattr(tools.subprocess, "run", lambda *args, **kwargs: completed)
+
+    def fake_run(*_args, **_kwargs):
+        return completed
+
+    monkeypatch.setattr(tools, "run_trusted", fake_run)
 
     tools.post_process_prompt(screen, case_dir)
 
@@ -128,7 +133,7 @@ def test_post_process_prompt_runs_default_args(tmp_path: Path, monkeypatch) -> N
 def test_foam_calc_prompt_runs_args(tmp_path: Path, monkeypatch) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    screen = FakeScreen(keys=[ord("q")], string_inputs=["components U -latestTime"])
+    screen = FakeScreen(keys=[ord("h")], string_inputs=["components U -latestTime"])
 
     completed = mock.Mock()
     completed.returncode = 0
@@ -137,7 +142,11 @@ def test_foam_calc_prompt_runs_args(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr(tools.curses, "echo", lambda: None)
     monkeypatch.setattr(tools.curses, "noecho", lambda: None)
-    monkeypatch.setattr(tools.subprocess, "run", lambda *args, **kwargs: completed)
+
+    def fake_run(*_args, **_kwargs):
+        return completed
+
+    monkeypatch.setattr(tools, "run_trusted", fake_run)
 
     tools.foam_calc_prompt(screen, case_dir)
 
@@ -148,7 +157,7 @@ def test_foam_calc_prompt_runs_args(tmp_path: Path, monkeypatch) -> None:
 def test_topo_set_prompt_runs_default(tmp_path: Path, monkeypatch) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    screen = FakeScreen(keys=[ord("q")], string_inputs=[""])
+    screen = FakeScreen(keys=[ord("h")], string_inputs=[""])
 
     completed = mock.Mock()
     completed.returncode = 0
@@ -157,7 +166,11 @@ def test_topo_set_prompt_runs_default(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr(tools.curses, "echo", lambda: None)
     monkeypatch.setattr(tools.curses, "noecho", lambda: None)
-    monkeypatch.setattr(tools.subprocess, "run", lambda *args, **kwargs: completed)
+
+    def fake_run(*_args, **_kwargs):
+        return completed
+
+    monkeypatch.setattr(tools, "run_trusted", fake_run)
 
     tools.topo_set_prompt(screen, case_dir)
 
@@ -168,14 +181,17 @@ def test_topo_set_prompt_runs_default(tmp_path: Path, monkeypatch) -> None:
 def test_tool_dicts_screen_generates_and_opens(tmp_path: Path, monkeypatch) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    screen = FakeScreen(keys=[ord("\n"), ord("y"), ord("q")])
+    screen = FakeScreen(keys=[ord("\n"), ord("y"), ord("h")])
 
     completed = mock.Mock()
     completed.returncode = 0
     completed.stdout = "FoamFile\n{\n}\n"
     completed.stderr = ""
 
-    monkeypatch.setattr(tools.subprocess, "run", lambda *args, **kwargs: completed)
+    def fake_run(*_args, **_kwargs):
+        return completed
+
+    monkeypatch.setattr(tools, "run_trusted", fake_run)
 
     tools.tool_dicts_screen(screen, case_dir)
 
@@ -189,7 +205,7 @@ def test_latest_time_picks_max_directory(tmp_path: Path) -> None:
     for name in ("0", "0.5", "2", "postProcessing"):
         (case_dir / name).mkdir()
 
-    assert tools._latest_time(case_dir) == "2"
+    assert latest_time(case_dir) == "2"
 
 
 def test_write_stub_dict_creates_file(tmp_path: Path) -> None:

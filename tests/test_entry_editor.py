@@ -1,4 +1,5 @@
-from of_tui.editor import Entry, EntryEditor
+from ofti.core.entries import Entry
+from ofti.ui_curses.entry_editor import EntryEditor
 
 
 class FakeScreen:
@@ -52,7 +53,7 @@ def test_entry_editor_saves_on_enter_with_valid_value():
         screen,
         entry,
         on_save,
-        validator=lambda v: None,
+        validator=lambda _v: None,
         type_label="int",
         subkeys=[],
     )
@@ -73,7 +74,7 @@ def test_entry_editor_enter_without_change_does_not_save_or_validate():
         saved["value"] = new_value
         return True
 
-    def validator(v: str):
+    def validator(_v: str):
         validated["called"] = True
         return "should not be used"
 
@@ -111,7 +112,7 @@ def test_entry_editor_confirms_on_invalid_and_saves_on_yes():
     screen = FakeScreen(keys=[10, ord("y"), ord("x")])
 
     # Validator always reports an error.
-    def validator(v: str):
+    def validator(_v: str):
         return "example validation error"
 
     editor = EntryEditor(

@@ -1,4 +1,4 @@
-from of_tui.editor import autoformat_value
+from ofti.core.entries import autoformat_value
 
 
 def test_autoformat_single_line_trims_edges_only() -> None:

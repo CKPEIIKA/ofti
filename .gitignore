@@ -7,6 +7,7 @@ __pycache__/
 .mypy_cache/
 
 TODO.md
+done.md
 of_example/
 
 .venv/
@@ -17,3 +18,4 @@ env/
 *.egg-info/
 qa_output.txt
 examples/
+refs/

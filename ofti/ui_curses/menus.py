@@ -1,31 +1,22 @@
 from __future__ import annotations
 
 import curses
-import subprocess
-from typing import List, Any, Callable, Optional
+from collections.abc import Callable
+from contextlib import suppress
+from typing import Any
 
-from .config import get_config, key_in, fzf_enabled
-
-
-def _show_help(stdscr: Any) -> None:
-    stdscr.clear()
-    stdscr.addstr("of_tui help\n\n")
-    stdscr.addstr("Navigation:\n")
-    stdscr.addstr("  j / k or arrows : move up/down\n")
-    stdscr.addstr("  g / G           : jump to top/bottom\n")
-    stdscr.addstr("  l or Enter      : select\n")
-    stdscr.addstr("  h or q          : go back (use :quit on root)\n")
-    stdscr.addstr("  :               : command line (Tab completes)\n")
-    stdscr.addstr("  /               : search (fzf)\n")
-    stdscr.addstr("  ?               : show this help\n\n")
-    stdscr.addstr("Commands:\n")
-    stdscr.addstr("  :check  :tools  :diag  :run  :nofoam  :tool <name>  :quit\n\n")
-    stdscr.addstr("Press any key to return.\n")
-    stdscr.refresh()
-    stdscr.getch()
+from ofti.foam.config import fzf_enabled, get_config, key_in
+from ofti.foam.exceptions import QuitAppError
+from ofti.foam.subprocess_utils import resolve_executable, run_trusted
+from ofti.ui_curses.viewer import Viewer
 
 
-def _prompt_command(stdscr: Any, suggestions: Optional[List[str]]) -> str:
+def _show_help(stdscr: Any, title: str, lines: list[str]) -> None:
+    text = "\n".join([title, "", *lines])
+    Viewer(stdscr, text).display()
+
+
+def _prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:  # noqa: C901, PLR0912
     height, width = stdscr.getmaxyx()
     buffer: list[str] = []
     cursor = 0
@@ -89,7 +80,7 @@ def _prompt_command(stdscr: Any, suggestions: Optional[List[str]]) -> str:
 
 
 
-def _fzf_pick_option(stdscr: Any, options: List[str]) -> Optional[int]:
+def _fzf_pick_option(stdscr: Any, options: list[str]) -> int | None:
     """
     Use fzf to pick an option from the given list.
 
@@ -104,9 +95,10 @@ def _fzf_pick_option(stdscr: Any, options: List[str]) -> Optional[int]:
     curses.def_prog_mode()
     curses.endwin()
     try:
-        result = subprocess.run(
-            ["fzf"],
-            input=fzf_input,
+        resolved = resolve_executable("fzf")
+        result = run_trusted(
+            [resolved],
+            stdin=fzf_input,
             text=True,
             capture_output=True,
             check=False,
@@ -134,29 +126,38 @@ class Menu:
         self,
         stdscr: Any,
         title: str,
-        options: List[str],
-        extra_lines: Optional[List[str]] = None,
-        banner_lines: Optional[List[str]] = None,
-        command_handler: Optional[Callable[[str], Optional[str]]] = None,
-        command_suggestions: Optional[Callable[[], List[str]]] = None,
-        hint_provider: Optional[Callable[[int], Optional[str]]] = None,
+        options: list[str],
+        extra_lines: list[str] | None = None,
+        banner_lines: list[str] | None = None,
+        initial_index: int | None = None,
+        command_handler: Callable[[str], str | None] | None = None,
+        command_suggestions: Callable[[], list[str]] | None = None,
+        hint_provider: Callable[[int], str | None] | None = None,
+        status_line: str | None = None,
+        disabled_indices: set[int] | None = None,
     ) -> None:
         self.stdscr = stdscr
         self.title = title
         self.options = options
-        self.current_option = 0
+        if options:
+            start_index = 0 if initial_index is None else initial_index
+            self.current_option = max(0, min(start_index, len(options) - 1))
+        else:
+            self.current_option = 0
         self.extra_lines = extra_lines or []
         self.banner_lines = banner_lines or ["=== Config Editor ==="]
         self.command_handler = command_handler
         self.command_suggestions = command_suggestions
         self.hint_provider = hint_provider
+        self.status_line = status_line
+        self.disabled_indices = disabled_indices or set()
         self._scroll = 0
 
-    def display(self) -> None:
+    def display(self) -> None:  # noqa: C901, PLR0912
         self.stdscr.clear()
         height, width = self.stdscr.getmaxyx()
         row = 0
-        show_status = self.hint_provider is not None
+        show_status = self.hint_provider is not None or self.status_line is not None
 
         # Header
         try:
@@ -192,8 +193,7 @@ class Menu:
                 self._scroll = self.current_option - available + 1
 
             max_scroll = max(0, len(self.options) - available)
-            if self._scroll > max_scroll:
-                self._scroll = max_scroll
+            self._scroll = min(self._scroll, max_scroll)
 
             for idx in range(self._scroll, min(len(self.options), self._scroll + available)):
                 prefix = "  >> " if idx == self.current_option else "     "
@@ -201,18 +201,25 @@ class Menu:
                 label = self.options[idx][:max_label_len]
                 line = f"{prefix}{label}"
                 try:
-                    if idx == self.current_option:
+                    if idx == self.current_option and idx not in self.disabled_indices:
                         self.stdscr.attron(curses.color_pair(1))
                         self.stdscr.addstr(row, 0, line[: max(1, width - 1)])
                         self.stdscr.attroff(curses.color_pair(1))
+                    elif idx in self.disabled_indices:
+                        self.stdscr.attron(curses.A_DIM)
+                        self.stdscr.addstr(row, 0, line[: max(1, width - 1)])
+                        self.stdscr.attroff(curses.A_DIM)
                     else:
                         self.stdscr.addstr(row, 0, line[: max(1, width - 1)])
                 except curses.error:
                     break
                 row += 1
 
-        if show_status and self.hint_provider is not None:
-            hint = self.hint_provider(self.current_option) or ""
+        if show_status:
+            hint = self.hint_provider(self.current_option) if self.hint_provider else ""
+            hint = hint or ""
+            if self.status_line:
+                hint = f"{self.status_line} | {hint}" if hint else self.status_line
             try:
                 self.stdscr.attron(curses.A_REVERSE)
                 self.stdscr.addstr(
@@ -226,7 +233,36 @@ class Menu:
 
         self.stdscr.refresh()
 
-    def _handle_navigation_key(self, key: int, cfg: Any) -> Optional[str]:
+    def _help_lines(self) -> list[str]:
+        lines = [
+            f"Page: {self.title}",
+            f"Options: {len(self.options)}",
+            "",
+            "Controls:",
+            "  j/k or arrows  : move up/down",
+            "  g/G            : jump to top/bottom",
+            "  l or Enter     : select",
+        ]
+        if isinstance(self, RootMenu):
+            lines.append("  q              : quit")
+        else:
+            lines.append("  h or q          : go back")
+        if self.command_handler is not None:
+            lines.append("  :              : command line (Tab completes)")
+        if fzf_enabled():
+            lines.append("  /              : search (fzf)")
+            lines.append("  s              : config search")
+        lines.append("  ?              : this help")
+        lines.append("")
+        lines.append("Commands:")
+        lines.append("  :check  :tools  :diag  :run  :nofoam  :tasks")
+        lines.append("  :foamenv  :clone  :tool <name>  :cancel <name>  :quit")
+        return lines
+
+    def _show_help(self) -> None:
+        _show_help(self.stdscr, "Help", self._help_lines())
+
+    def _handle_navigation_key(self, key: int, cfg: Any) -> str | None:  # noqa: C901, PLR0911
         if key in (curses.KEY_UP,) or key_in(key, cfg.keys.get("up", [])):
             self.current_option = (self.current_option - 1) % len(self.options)
             return "continue"
@@ -243,10 +279,12 @@ class Menu:
             return "command"
         if key_in(key, cfg.keys.get("search", [])):
             return "search"
+        if key_in(key, cfg.keys.get("global_search", [])):
+            return "global_search"
         if key == curses.KEY_RESIZE:
             return "continue"
         if key_in(key, cfg.keys.get("help", [])):
-            _show_help(self.stdscr)
+            self._show_help()
             return "continue"
         if key in (curses.KEY_ENTER,) or key_in(key, cfg.keys.get("select", [])):
             return "select"
@@ -254,14 +292,14 @@ class Menu:
             return "back"
         return None
 
-    def navigate(self) -> int:
+    def navigate(self) -> int:  # noqa: C901, PLR0912
         cfg = get_config()
         while True:
             self.display()
             key = self.stdscr.getch()
 
-            if key == ord("q"):
-                return -1
+            if key_in(key, cfg.keys.get("quit", [])):
+                raise QuitAppError()
 
             action = self._handle_navigation_key(key, cfg)
             if action == "command":
@@ -274,6 +312,12 @@ class Menu:
                 result = self.command_handler(command)
                 if result == "quit":
                     return -1
+                continue
+            if action == "global_search":
+                if self.command_handler is not None:
+                    result = self.command_handler("search")
+                    if result == "quit":
+                        return -1
                 continue
             if action == "search":
                 idx = _fzf_pick_option(self.stdscr, self.options)
@@ -281,13 +325,15 @@ class Menu:
                     self.current_option = idx
                 continue
             if action == "select":
+                if self.current_option in self.disabled_indices:
+                    with suppress(curses.error):
+                        curses.beep()
+                    continue
                 return self.current_option
             if action == "back":
                 return -1
             if action == "continue":
                 continue
-            if key == ord("q"):
-                return -1
 
 
 class Submenu(Menu):
@@ -295,26 +341,32 @@ class Submenu(Menu):
         self,
         stdscr: Any,
         title: str,
-        options: List[str],
-        command_handler: Optional[Callable[[str], Optional[str]]] = None,
-        command_suggestions: Optional[Callable[[], List[str]]] = None,
-        hint_provider: Optional[Callable[[int], Optional[str]]] = None,
+        options: list[str],
+        command_handler: Callable[[str], str | None] | None = None,
+        command_suggestions: Callable[[], list[str]] | None = None,
+        hint_provider: Callable[[int], str | None] | None = None,
+        status_line: str | None = None,
+        disabled_indices: set[int] | None = None,
     ) -> None:
         super().__init__(
             stdscr,
             title,
-            options + ["Go back"],
+            [*options, "Go back"],
             command_handler=command_handler,
             command_suggestions=command_suggestions,
             hint_provider=hint_provider,
+            status_line=status_line,
+            disabled_indices=disabled_indices,
         )
 
-    def navigate(self) -> int:
+    def navigate(self) -> int:  # noqa: C901, PLR0912
         cfg = get_config()
         while True:
             self.display()
             key = self.stdscr.getch()
 
+            if key_in(key, cfg.keys.get("quit", [])):
+                raise QuitAppError()
             action = self._handle_navigation_key(key, cfg)
             if action == "command":
                 if self.command_handler is None:
@@ -326,6 +378,12 @@ class Submenu(Menu):
                 result = self.command_handler(command)
                 if result == "quit":
                     return -1
+                continue
+            if action == "global_search":
+                if self.command_handler is not None:
+                    result = self.command_handler("search")
+                    if result == "quit":
+                        return -1
                 continue
             if action == "search":
                 idx = _fzf_pick_option(self.stdscr, self.options)
@@ -335,6 +393,10 @@ class Submenu(Menu):
             if action == "select":
                 if self.current_option == len(self.options) - 1:
                     return -1
+                if self.current_option in self.disabled_indices:
+                    with suppress(curses.error):
+                        curses.beep()
+                    continue
                 return self.current_option
             if action == "back":
                 return -1
@@ -351,12 +413,15 @@ class RootMenu(Menu):
         self,
         stdscr: Any,
         title: str,
-        options: List[str],
-        extra_lines: Optional[List[str]] = None,
-        banner_lines: Optional[List[str]] = None,
-        command_handler: Optional[Callable[[str], Optional[str]]] = None,
-        command_suggestions: Optional[Callable[[], List[str]]] = None,
-        hint_provider: Optional[Callable[[int], Optional[str]]] = None,
+        options: list[str],
+        extra_lines: list[str] | None = None,
+        banner_lines: list[str] | None = None,
+        initial_index: int | None = None,
+        command_handler: Callable[[str], str | None] | None = None,
+        command_suggestions: Callable[[], list[str]] | None = None,
+        hint_provider: Callable[[int], str | None] | None = None,
+        status_line: str | None = None,
+        disabled_indices: set[int] | None = None,
     ) -> None:
         super().__init__(
             stdscr,
@@ -364,17 +429,22 @@ class RootMenu(Menu):
             options,
             extra_lines=extra_lines,
             banner_lines=banner_lines,
+            initial_index=initial_index,
             command_handler=command_handler,
             command_suggestions=command_suggestions,
             hint_provider=hint_provider,
+            status_line=status_line,
+            disabled_indices=disabled_indices,
         )
 
-    def navigate(self) -> int:
+    def navigate(self) -> int:  # noqa: C901, PLR0912
         cfg = get_config()
         while True:
             self.display()
             key = self.stdscr.getch()
 
+            if key_in(key, cfg.keys.get("quit", [])):
+                raise QuitAppError()
             action = self._handle_navigation_key(key, cfg)
             if action == "command":
                 if self.command_handler is None:
@@ -387,12 +457,22 @@ class RootMenu(Menu):
                 if result == "quit":
                     return -1
                 continue
+            if action == "global_search":
+                if self.command_handler is not None:
+                    result = self.command_handler("search")
+                    if result == "quit":
+                        return -1
+                continue
             if action == "search":
                 idx = _fzf_pick_option(self.stdscr, self.options)
                 if idx is not None:
                     self.current_option = idx
                 continue
             if action == "select":
+                if self.current_option in self.disabled_indices:
+                    with suppress(curses.error):
+                        curses.beep()
+                    continue
                 return self.current_option
             if action == "back":
                 return -1

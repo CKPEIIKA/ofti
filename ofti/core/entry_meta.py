@@ -1,23 +1,24 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
-from .openfoam import (
+from ofti.core.validation import Validator, as_float, as_int, bool_flag, non_empty, vector_values
+from ofti.foam.openfoam import (
     OpenFOAMError,
     get_entry_comments,
     get_entry_enum_values,
     get_entry_info,
+    is_scalar_value,
     list_subkeys,
+    looks_like_dict,
+    normalize_scalar_token,
     read_entry,
 )
-from .validation import Validator, as_float, as_int, bool_flag, non_empty, vector_values
 
 
 def get_entry_metadata(
     cache: dict[str, tuple[str, str, list[str], list[str], list[str]]],
     file_path: Path,
-    case_path: Path,
     full_key: str,
 ) -> tuple[str, str, list[str], list[str], list[str], Validator]:
     """
@@ -40,6 +41,9 @@ def get_entry_metadata(
     comments = get_entry_comments(file_path, full_key)
     info_lines = get_entry_info(file_path, full_key)
     info_lines.extend(boundary_condition_info(file_path, full_key))
+    if subkeys or looks_like_dict(value):
+        validator = non_empty
+        type_label = "dict"
 
     # If foamDictionary reports an explicit list of allowed values via
     # `-list`, prefer an enum-style validator over heuristics.
@@ -47,7 +51,7 @@ def get_entry_metadata(
     if enum_values:
         allowed_set = set(enum_values)
 
-        def enum_validator(v: str) -> Optional[str]:
+        def enum_validator(v: str) -> str | None:
             text = v.strip().rstrip(";").strip()
             if text in allowed_set:
                 return None
@@ -56,7 +60,7 @@ def get_entry_metadata(
         validator = enum_validator
         type_label = "enum"
         # Surface allowed values in the info pane as well.
-        info_lines = info_lines + [f"Allowed values: {', '.join(enum_values)}"]
+        info_lines = [*info_lines, f"Allowed values: {', '.join(enum_values)}"]
 
     cache[full_key] = (value, type_label, subkeys, comments, info_lines)
     return value, type_label, subkeys, comments, info_lines, validator
@@ -65,7 +69,6 @@ def get_entry_metadata(
 def refresh_entry_cache(
     cache: dict[str, tuple[str, str, list[str], list[str], list[str]]],
     file_path: Path,
-    case_path: Path,
     full_key: str,
 ) -> None:
     """
@@ -77,11 +80,13 @@ def refresh_entry_cache(
     except OpenFOAMError:
         return
 
-    validator, type_label = choose_validator(full_key, value)
+    _validator, type_label = choose_validator(full_key, value)
     subkeys = list_subkeys(file_path, full_key)
     comments = get_entry_comments(file_path, full_key)
     info_lines = get_entry_info(file_path, full_key)
     info_lines.extend(boundary_condition_info(file_path, full_key))
+    if subkeys or looks_like_dict(value):
+        type_label = "dict"
     cache[full_key] = (value, type_label, subkeys, comments, info_lines)
 
 
@@ -120,6 +125,9 @@ def choose_validator(key: str, value: str) -> tuple[Validator, str]:
 
     This allows us to handle scalar types and simple vectors.
     """
+    if looks_like_dict(value):
+        return non_empty, "dict"
+
     # Prefer vector validation when the value looks like a vector.
     # Only treat as vector if it actually parses as a vector; otherwise
     # fall back to scalar / key-based heuristics (e.g. schemes like
@@ -132,22 +140,13 @@ def choose_validator(key: str, value: str) -> tuple[Validator, str]:
 
     # Try to infer scalar type from the value itself: check the last token
     # for a numeric literal before falling back to key-based heuristics.
-    tokens = value.replace(";", " ").split()
-    if tokens:
-        last = tokens[-1]
-        try:
-            # If this parses as int and looks integer-like, prefer integer.
-            int(last)
-            if "." not in last and "e" not in last.lower():
-                return as_int, "integer"
-        except ValueError:
-            pass
-        try:
-            float(last)
-        except ValueError:
-            pass
-        else:
-            return as_float, "float"
+    scalar_choice = _infer_scalar_choice(value)
+    if scalar_choice is not None:
+        return scalar_choice
+
+    numeric_choice = _infer_numeric_choice(value)
+    if numeric_choice is not None:
+        return numeric_choice
 
     validator = _guess_validator(key)
     # Simple label based on which validator was chosen.
@@ -162,7 +161,7 @@ def choose_validator(key: str, value: str) -> tuple[Validator, str]:
     return validator, label
 
 
-def _read_optional_entry(file_path: Path, key: str) -> Optional[str]:
+def _read_optional_entry(file_path: Path, key: str) -> str | None:
     try:
         return read_entry(file_path, key).strip()
     except OpenFOAMError:
@@ -176,8 +175,47 @@ def _guess_validator(key: str) -> Validator:
     lower = key.lower()
     if any(tok in lower for tok in ("on", "off", "switch", "enable", "disable")):
         return bool_flag
-    if any(tok in lower for tok in ("iter", "step", "n", "count")):
+    if any(tok in lower for tok in ("iter", "step", "count")):
         return as_int
     if any(tok in lower for tok in ("tol", "dt", "time", "coeff", "alpha", "beta")):
         return as_float
     return non_empty
+
+
+def _is_word_token(token: str) -> bool:
+    stripped = token.strip().strip('"')
+    if not stripped:
+        return False
+    if not any(ch.isalpha() for ch in stripped):
+        return False
+    return all(ch.isalnum() or ch in ("_", "-", ".", "/") for ch in stripped)
+
+
+def _infer_scalar_choice(value: str) -> tuple[Validator, str] | None:
+    if not is_scalar_value(value):
+        return None
+    token = normalize_scalar_token(value)
+    lower = token.lower()
+    if lower in {"on", "off", "true", "false", "yes", "no"}:
+        return bool_flag, "boolean-like"
+    if token and _is_word_token(token):
+        return non_empty, "word"
+    return None
+
+
+def _infer_numeric_choice(value: str) -> tuple[Validator, str] | None:
+    tokens = value.replace(";", " ").split()
+    if not tokens:
+        return None
+    last = tokens[-1]
+    try:
+        int(last)
+        if "." not in last and "e" not in last.lower():
+            return as_int, "integer"
+    except ValueError:
+        pass
+    try:
+        float(last)
+    except ValueError:
+        return None
+    return as_float, "float"

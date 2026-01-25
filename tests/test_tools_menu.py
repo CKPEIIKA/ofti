@@ -3,14 +3,14 @@
 from pathlib import Path
 from unittest import mock
 
-from of_tui.tools import (
-    run_shell_script_screen,
-    diagnostics_screen,
-    run_current_solver,
-    remove_all_logs,
-    clean_time_directories,
+from ofti.tools import (
     clean_case,
+    clean_time_directories,
+    diagnostics_screen,
     load_postprocessing_presets,
+    remove_all_logs,
+    run_current_solver,
+    run_shell_script_screen,
 )
 
 
@@ -53,8 +53,8 @@ class FakeScreen:
     def getch(self) -> int:
         if self._keys:
             return self._keys.pop(0)
-        # Default to 'q' to avoid infinite loops.
-        return ord("q")
+        # Default to 'h' (back) to avoid QuitAppError.
+        return ord("h")
 
     def getstr(self):
         if self._strings:
@@ -70,7 +70,7 @@ def test_run_shell_script_screen_runs_script_and_shows_output(tmp_path: Path) ->
     script.write_text("#!/bin/sh\necho hello-from-script\n")
 
     # Select first script, then 'q' to exit viewer.
-    screen = FakeScreen(keys=[ord("\n"), ord("q")])
+    screen = FakeScreen(keys=[ord("\n"), ord("h")])
 
     run_shell_script_screen(screen, case_dir)
 
@@ -85,7 +85,7 @@ def test_run_shell_script_screen_handles_no_scripts(tmp_path: Path) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
 
-    screen = FakeScreen(keys=[ord("q")])
+    screen = FakeScreen(keys=[ord("h")])
 
     run_shell_script_screen(screen, case_dir)
 
@@ -99,14 +99,14 @@ def test_diagnostics_screen_runs_selected_tool(tmp_path: Path) -> None:
     case_dir.mkdir()
 
     # Select first diagnostics entry, then 'q' to exit viewer.
-    screen = FakeScreen(keys=[ord("\n"), ord("q")])
+    screen = FakeScreen(keys=[ord("\n"), ord("h")])
 
     completed = mock.Mock()
     completed.returncode = 0
     completed.stdout = "ok\n"
     completed.stderr = ""
 
-    with mock.patch("of_tui.tools.subprocess.run", return_value=completed) as run:
+    with mock.patch("ofti.tools.run_trusted", return_value=completed) as run:
         diagnostics_screen(screen, case_dir)
 
     # Ensure a diagnostics command was invoked.
@@ -123,7 +123,7 @@ def test_run_current_solver_uses_runfunctions(tmp_path: Path, monkeypatch) -> No
     control = case_dir / "system" / "controlDict"
     control.parent.mkdir(parents=True)
     control.write_text("application simpleFoam;\n")
-    screen = FakeScreen(keys=[ord("\n"), ord("q")])
+    screen = FakeScreen(keys=[ord("\n"), ord("h")])
 
     completed = mock.Mock()
     completed.returncode = 0
@@ -131,9 +131,11 @@ def test_run_current_solver_uses_runfunctions(tmp_path: Path, monkeypatch) -> No
     completed.stderr = ""
 
     monkeypatch.setenv("WM_PROJECT_DIR", "/WM")
-    with mock.patch("of_tui.tools.read_entry", return_value="simpleFoam;"):
-        with mock.patch("of_tui.tools.subprocess.run", return_value=completed) as run:
-            run_current_solver(screen, case_dir)
+    with (
+        mock.patch("ofti.tools.read_entry", return_value="simpleFoam;"),
+        mock.patch("ofti.tools.run_trusted", return_value=completed) as run,
+    ):
+        run_current_solver(screen, case_dir)
 
     assert run.called
     shell_cmd = run.call_args[0][0][-1]
@@ -145,7 +147,7 @@ def test_remove_all_logs_uses_cleanfunctions(tmp_path: Path, monkeypatch) -> Non
     """Clean logs through the OpenFOAM helper script."""
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    screen = FakeScreen(keys=[ord("q")])
+    screen = FakeScreen(keys=[ord("h")])
 
     completed = mock.Mock()
     completed.returncode = 0
@@ -153,7 +155,7 @@ def test_remove_all_logs_uses_cleanfunctions(tmp_path: Path, monkeypatch) -> Non
     completed.stderr = ""
 
     monkeypatch.setenv("WM_PROJECT_DIR", "/WM")
-    with mock.patch("of_tui.tools.subprocess.run", return_value=completed) as run:
+    with mock.patch("ofti.tools.run_trusted", return_value=completed) as run:
         remove_all_logs(screen, case_dir)
 
     assert run.called
@@ -166,7 +168,7 @@ def test_clean_time_directories(tmp_path: Path, monkeypatch) -> None:
     """Clean time directories via CleanFunctions."""
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    screen = FakeScreen(keys=[ord("q")])
+    screen = FakeScreen(keys=[ord("h")])
 
     completed = mock.Mock()
     completed.returncode = 0
@@ -174,7 +176,7 @@ def test_clean_time_directories(tmp_path: Path, monkeypatch) -> None:
     completed.stderr = ""
 
     monkeypatch.setenv("WM_PROJECT_DIR", "/WM")
-    with mock.patch("of_tui.tools.subprocess.run", return_value=completed) as run:
+    with mock.patch("ofti.tools.run_trusted", return_value=completed) as run:
         clean_time_directories(screen, case_dir)
 
     assert run.called
@@ -187,7 +189,7 @@ def test_clean_case(tmp_path: Path, monkeypatch) -> None:
     """Clean the case directory via CleanFunctions."""
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    screen = FakeScreen(keys=[ord("q")])
+    screen = FakeScreen(keys=[ord("h")])
 
     completed = mock.Mock()
     completed.returncode = 0
@@ -195,7 +197,7 @@ def test_clean_case(tmp_path: Path, monkeypatch) -> None:
     completed.stderr = ""
 
     monkeypatch.setenv("WM_PROJECT_DIR", "/WM")
-    with mock.patch("of_tui.tools.subprocess.run", return_value=completed) as run:
+    with mock.patch("ofti.tools.run_trusted", return_value=completed) as run:
         clean_case(screen, case_dir)
 
     assert run.called
@@ -208,12 +210,12 @@ def test_load_postprocessing_presets(tmp_path: Path) -> None:
     """Parse post-processing preset config entries."""
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    cfg = case_dir / "of_tui.postprocessing"
+    cfg = case_dir / "ofti.postprocessing"
     cfg.write_text(
         """
         # Sample post-processing command
         foamToVTK: foamToVTK -latestTime
-        """
+        """,
     )
 
     presets = load_postprocessing_presets(case_dir)

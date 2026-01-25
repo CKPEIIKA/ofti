@@ -1,6 +1,6 @@
 """Validation helpers should accept common OpenFOAM value formats."""
 
-from of_tui import validation
+from ofti.core import validation
 
 
 def test_non_empty_validator() -> None:

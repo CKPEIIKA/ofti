@@ -1,0 +1,47 @@
+line-length = 100
+target-version = "py311"
+exclude = ["refs"]
+
+[lint]
+select = [
+  "C90",
+  "E",
+  "F",
+  "I",
+  "B",
+  "C4",
+  "ERA",
+  "A",
+  "ARG",
+  "COM",
+  "DTZ",
+  "FBT",
+  "G",
+  "ISC",
+  "N",
+  "PERF",
+  "PIE",
+  "PTH",
+  "S",
+  "PL",
+  "RUF",
+  "RET",
+  "TID",
+  "TRY",
+  "UP",
+  "SIM",
+]
+ignore = [
+  "FBT",
+  "PLR0913",
+  "PLR0915",
+  "PLR2004",
+  "S101",
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["E501", "S101", "PLR2004"]
+"ofti/app/app.py" = ["C901", "PLR0912", "PLR0911", "PLR0915", "S603", "S607", "SIM105"]
+"ofti/app/commands.py" = ["C901", "PLR0911", "PLR0912"]
+"ofti/foam/config.py" = ["C901", "PLR0912", "PLW0603"]
+"ofti/ui_curses/entry_browser.py" = ["C901", "PLR0912", "SIM105"]

@@ -1,7 +1,7 @@
-from typing import Callable, Optional
+from collections.abc import Callable
 
 
-def non_empty(value: str) -> Optional[str]:
+def non_empty(value: str) -> str | None:
     if not value.strip():
         return "Value must not be empty."
     return None
@@ -18,7 +18,7 @@ def _normalize_numeric(value: str) -> str:
     return text
 
 
-def as_int(value: str) -> Optional[str]:
+def as_int(value: str) -> str | None:
     text = _normalize_numeric(value)
     try:
         int(text)
@@ -27,7 +27,7 @@ def as_int(value: str) -> Optional[str]:
     return None
 
 
-def as_float(value: str) -> Optional[str]:
+def as_float(value: str) -> str | None:
     text = _normalize_numeric(value)
     try:
         float(text)
@@ -36,13 +36,13 @@ def as_float(value: str) -> Optional[str]:
     return None
 
 
-def bool_flag(value: str) -> Optional[str]:
+def bool_flag(value: str) -> str | None:
     if value not in ("on", "off", "true", "false", "True", "False"):
         return "Value should be a boolean-like flag (on/off, true/false)."
     return None
 
 
-def vector_values(value: str) -> Optional[str]:
+def vector_values(value: str) -> str | None:
     """
     Validate a simple OpenFOAM-style vector, e.g.:
       (1 2 3) or 'uniform (1 2 3)'
@@ -64,4 +64,4 @@ def vector_values(value: str) -> Optional[str]:
     return None
 
 
-Validator = Callable[[str], Optional[str]]
+Validator = Callable[[str], str | None]

@@ -2,54 +2,47 @@ from __future__ import annotations
 
 import logging
 import re
-import shutil
 import subprocess
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Sequence, Optional
+
+from ofti.foam.subprocess_utils import run_trusted
 
 
 class OpenFOAMError(RuntimeError):
-    pass
-
-
-def ensure_environment() -> None:
-    """
-    Ensure OpenFOAM utilities are available.
-
-    This checks for `foamDictionary` on PATH and raises a clear
-    error if it is missing. The caller can catch this and show
-    a user-friendly message in the TUI.
-    """
-    if shutil.which("foamDictionary") is None:
-        raise OpenFOAMError(
+    @classmethod
+    def missing_foamdictionary(cls) -> OpenFOAMError:
+        return cls(
             "foamDictionary not found on PATH. "
-            "Please source your OpenFOAM bashrc before running of_tui."
+            "Please source your OpenFOAM bashrc before running ofti.",
         )
+
+    @classmethod
+    def run_failed(cls, exc: OSError) -> OpenFOAMError:
+        return cls(f"Failed to run foamDictionary: {exc}")
 
 
 def run_foam_dictionary(
-    file_path: Path, args: Iterable[str]
+    file_path: Path, args: Iterable[str],
 ) -> subprocess.CompletedProcess[str]:
     cmd = ["foamDictionary", str(file_path), *args]
     logging.debug("Running command: %s", " ".join(cmd))
     try:
-        result = subprocess.run(
+        result = run_trusted(
             cmd,
             capture_output=True,
             text=True,
-            encoding="utf-8",
-            errors="replace",
             check=False,
         )
     except OSError as exc:
-        raise OpenFOAMError(f"Failed to run foamDictionary: {exc}") from exc
+        raise OpenFOAMError.run_failed(exc) from exc
     if result.returncode != 0:
         logging.debug("Command failed with code %s: %s", result.returncode, result.stderr.strip())
     return result
 
 
-def list_keywords(file_path: Path) -> List[str]:
+def list_keywords(file_path: Path) -> list[str]:
     """
     List top-level keywords for a dictionary file.
     """
@@ -59,7 +52,7 @@ def list_keywords(file_path: Path) -> List[str]:
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
-def list_subkeys(file_path: Path, entry: str) -> List[str]:
+def list_subkeys(file_path: Path, entry: str) -> list[str]:
     """
     List sub-keys for a dictionary entry, if it is itself a dictionary.
     """
@@ -70,7 +63,7 @@ def list_subkeys(file_path: Path, entry: str) -> List[str]:
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
-def get_entry_comments(file_path: Path, key: str) -> List[str]:
+def get_entry_comments(file_path: Path, key: str) -> list[str]:
     """
     Try to extract comment lines associated with an entry from the file.
 
@@ -78,7 +71,7 @@ def get_entry_comments(file_path: Path, key: str) -> List[str]:
     key and then collects immediately preceding comment lines starting
     with '//' or '/*' or '*'.
     """
-    comments: List[str] = []
+    comments: list[str] = []
     try:
         text = file_path.read_text()
     except OSError:
@@ -93,7 +86,7 @@ def get_entry_comments(file_path: Path, key: str) -> List[str]:
             j = i - 1
             while j >= 0:
                 stripped = lines[j].lstrip()
-                if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
+                if stripped.startswith(("//", "/*", "*")):
                     comments.insert(0, stripped)
                     j -= 1
                 else:
@@ -103,7 +96,7 @@ def get_entry_comments(file_path: Path, key: str) -> List[str]:
     return comments
 
 
-def get_entry_info(file_path: Path, key: str) -> List[str]:
+def get_entry_info(file_path: Path, key: str) -> list[str]:
     """
     Try to obtain additional information about an entry using
     `foamDictionary -entry <key> -info`.
@@ -117,7 +110,7 @@ def get_entry_info(file_path: Path, key: str) -> List[str]:
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
-def get_entry_enum_values(file_path: Path, key: str) -> List[str]:
+def get_entry_enum_values(file_path: Path, key: str) -> list[str]:
     """
     Try to obtain a set of allowed values for an entry using
     `foamDictionary -entry <key> -list`.
@@ -131,7 +124,7 @@ def get_entry_enum_values(file_path: Path, key: str) -> List[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
-def parse_required_entries(info_lines: Sequence[str]) -> List[str]:
+def parse_required_entries(info_lines: Sequence[str]) -> list[str]:
     """
     Parse `foamDictionary -info` output looking for required entry hints.
 
@@ -143,7 +136,7 @@ def parse_required_entries(info_lines: Sequence[str]) -> List[str]:
     so that callers can verify they exist on disk.
     """
 
-    required: List[str] = []
+    required: list[str] = []
     capture_block = False
 
     for raw in info_lines:
@@ -158,7 +151,7 @@ def parse_required_entries(info_lines: Sequence[str]) -> List[str]:
             # Explicitly skip optional hints when we are collecting a block.
             continue
 
-        if lower.startswith("required entries") or lower.startswith("required entry"):
+        if lower.startswith(("required entries", "required entry")):
             capture_block = True
             after_colon = line.split(":", 1)[1] if ":" in line else ""
             if after_colon.strip():
@@ -174,7 +167,7 @@ def parse_required_entries(info_lines: Sequence[str]) -> List[str]:
 
     # Deduplicate while keeping order.
     seen: set[str] = set()
-    unique: List[str] = []
+    unique: list[str] = []
     for item in required:
         if not item or item in seen:
             continue
@@ -183,7 +176,7 @@ def parse_required_entries(info_lines: Sequence[str]) -> List[str]:
     return unique
 
 
-def _split_requirement_line(text: str) -> List[str]:
+def _split_requirement_line(text: str) -> list[str]:
     cleaned = text.strip("-: ")
     if not cleaned:
         return []
@@ -191,10 +184,9 @@ def _split_requirement_line(text: str) -> List[str]:
     return [tok for tok in tokens if tok and tok.lower() not in {"entries", "entry"}]
 
 
-def missing_required_entries(required: Sequence[str], available: Sequence[str]) -> List[str]:
+def missing_required_entries(required: Sequence[str], available: Sequence[str]) -> list[str]:
     available_set = set(available)
-    missing = [req for req in required if req not in available_set]
-    return missing
+    return [req for req in required if req not in available_set]
 
 
 def normalize_scalar_token(value: str) -> str:
@@ -214,6 +206,27 @@ def normalize_scalar_token(value: str) -> str:
         return ""
     token = cleaned.split()[-1]
     return token.strip('"')
+
+
+def is_scalar_value(value: str) -> bool:
+    """
+    Return True if the value looks like a single scalar token.
+    """
+    if not value:
+        return False
+    cleaned = value.replace(";", " ").strip()
+    if not cleaned:
+        return False
+    if any(ch in cleaned for ch in "{}[]()"):
+        return False
+    return len(cleaned.split()) == 1
+
+
+def looks_like_dict(value: str) -> bool:
+    cleaned = value.strip()
+    if not cleaned:
+        return False
+    return cleaned.startswith("{") or "{\n" in cleaned or "{" in cleaned
 
 
 def read_entry(file_path: Path, key: str) -> str:
@@ -243,7 +256,7 @@ def write_entry(file_path: Path, key: str, value: str) -> bool:
     return result.returncode == 0
 
 
-def discover_case_files(case_dir: Path) -> Dict[str, List[Path]]:
+def discover_case_files(case_dir: Path) -> dict[str, list[Path]]:
     """
     Discover candidate dictionary files in an OpenFOAM case.
 
@@ -265,7 +278,7 @@ def discover_case_files(case_dir: Path) -> Dict[str, List[Path]]:
             p for p in constant_dir.iterdir() if p.is_file()
         )
 
-    zero_dirs: List[Path] = []
+    zero_dirs: list[Path] = []
     for entry in case_dir.iterdir():
         if not entry.is_dir():
             continue
@@ -282,7 +295,7 @@ def discover_case_files(case_dir: Path) -> Dict[str, List[Path]]:
         if include:
             zero_dirs.append(entry)
 
-    zero_files: List[Path] = []
+    zero_files: list[Path] = []
     for d in zero_dirs:
         zero_files.extend(p for p in d.iterdir() if p.is_file())
     sections["0*"] = sorted(zero_files)
@@ -292,16 +305,16 @@ def discover_case_files(case_dir: Path) -> Dict[str, List[Path]]:
 
 @dataclass
 class FileCheckResult:
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     checked: bool = False
 
 
 def verify_case(
     case_dir: Path,
-    progress: Optional[Callable[[Path], None]] = None,
-    result_callback: Optional[Callable[[Path, FileCheckResult], None]] = None,
-) -> Dict[Path, FileCheckResult]:
+    progress: Callable[[Path], None] | None = None,
+    result_callback: Callable[[Path, FileCheckResult], None] | None = None,
+) -> dict[Path, FileCheckResult]:
     """
     Run a correctness check over all discovered dictionary files.
 
@@ -311,45 +324,66 @@ def verify_case(
     enum values (compared against `foamDictionary -list`).
     """
 
-    sections = discover_case_files(case_dir)
-    results: Dict[Path, FileCheckResult] = {}
-    all_files: List[Path] = []
-    for files in sections.values():
-        all_files.extend(files)
+    all_files = _collect_case_files(case_dir)
+    results = {file_path: FileCheckResult() for file_path in all_files}
 
     for file_path in all_files:
-        results[file_path] = FileCheckResult()
-
-    for file_path in all_files:
-        result = results[file_path]
         if progress:
             progress(file_path)
-        try:
-            top_level_keys = list_keywords(file_path)
-        except OpenFOAMError as exc:
-            msg = str(exc).strip() or "Unknown error"
-            result.errors.append(msg)
-            result.checked = True
-            if result_callback:
-                result_callback(file_path, result)
-            continue
-        except KeyboardInterrupt:
+        result = results[file_path]
+        if not _check_file(file_path, result, result_callback):
             break
 
-        try:
-            _check_entries(file_path, result, top_level_keys)
+    return results
 
-            if "boundaryField" in top_level_keys:
-                patches = list_subkeys(file_path, "boundaryField")
-                nested_keys = [f"boundaryField.{patch}" for patch in patches]
-                _check_entries(file_path, result, nested_keys)
-        except KeyboardInterrupt:
-            break
+
+def _collect_case_files(case_dir: Path) -> list[Path]:
+    sections = discover_case_files(case_dir)
+    all_files: list[Path] = []
+    for files in sections.values():
+        all_files.extend(files)
+    return all_files
+
+
+def _check_file(
+    file_path: Path,
+    result: FileCheckResult,
+    result_callback: Callable[[Path, FileCheckResult], None] | None,
+) -> bool:
+    try:
+        top_level_keys = list_keywords(file_path)
+    except OpenFOAMError as exc:
+        msg = str(exc).strip() or "Unknown error"
+        result.errors.append(msg)
         result.checked = True
         if result_callback:
             result_callback(file_path, result)
+        return True
+    except KeyboardInterrupt:
+        return False
 
-    return results
+    try:
+        _check_entries(file_path, result, top_level_keys)
+        _check_boundary_field(file_path, result, top_level_keys)
+    except KeyboardInterrupt:
+        return False
+
+    result.checked = True
+    if result_callback:
+        result_callback(file_path, result)
+    return True
+
+
+def _check_boundary_field(
+    file_path: Path,
+    result: FileCheckResult,
+    top_level_keys: Sequence[str],
+) -> None:
+    if "boundaryField" not in top_level_keys:
+        return
+    patches = list_subkeys(file_path, "boundaryField")
+    nested_keys = [f"boundaryField.{patch}" for patch in patches]
+    _check_entries(file_path, result, nested_keys)
 
 
 def _check_entries(file_path: Path, result: FileCheckResult, keys: Sequence[str]) -> None:
@@ -358,26 +392,61 @@ def _check_entries(file_path: Path, result: FileCheckResult, keys: Sequence[str]
 
 
 def _check_single_entry(file_path: Path, result: FileCheckResult, key: str) -> None:
-    info_lines = get_entry_info(file_path, key)
-    required = parse_required_entries(info_lines)
-    if required:
-        subkeys = list_subkeys(file_path, key)
-        missing = missing_required_entries(required, subkeys)
-        if missing:
-            result.errors.append(f"{key}: missing required entries: {', '.join(missing)}")
+    required_issues = _required_entries_issues(file_path, key)
+    if required_issues:
+        result.errors.extend(required_issues)
+    value: str | None = None
 
     enum_values = get_entry_enum_values(file_path, key)
     if enum_values:
-        try:
-            value = read_entry(file_path, key)
-        except OpenFOAMError as exc:
-            result.errors.append(f"{key}: {exc}")
+        if value is None:
+            try:
+                value = read_entry(file_path, key)
+            except OpenFOAMError as exc:
+                result.errors.append(f"{key}: {exc}")
+                return
+        if looks_like_dict(value):
             return
-
         token = normalize_scalar_token(value)
+        if not token:
+            return
         allowed = {val.strip() for val in enum_values if val.strip()}
         if token and token not in allowed:
             allowed_list = ", ".join(sorted(allowed))
             result.errors.append(
-                f"{key}: invalid value '{token}'. Allowed: {allowed_list}"
+                f"{key}: invalid value '{token}'. Allowed: {allowed_list}",
             )
+
+
+def lint_required_entries(file_path: Path, keys: Sequence[str] | None = None) -> list[str]:
+    """
+    Return linter issues for missing required entries in the given file.
+    """
+    if keys is None:
+        keys = list_keywords(file_path)
+    issues: list[str] = []
+    for key in keys:
+        issues.extend(_required_entries_issues(file_path, key))
+    return issues
+
+
+def _required_entries_issues(file_path: Path, key: str) -> list[str]:
+    info_lines = get_entry_info(file_path, key)
+    required = parse_required_entries(info_lines)
+    if not required:
+        return []
+    subkeys = list_subkeys(file_path, key)
+    if subkeys:
+        missing = missing_required_entries(required, subkeys)
+        if missing:
+            return [f"{key}: missing required entries: {', '.join(missing)}"]
+        return []
+    try:
+        value = read_entry(file_path, key)
+    except OpenFOAMError:
+        return []
+    if value and looks_like_dict(value):
+        missing = missing_required_entries(required, [])
+        if missing:
+            return [f"{key}: missing required entries: {', '.join(missing)}"]
+    return []
