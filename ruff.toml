@@ -1,6 +1,8 @@
 line-length = 100
 target-version = "py311"
 exclude = ["refs"]
+fix = true
+unsafe-fixes = false
 
 [lint]
 select = [
@@ -38,6 +40,8 @@ ignore = [
   "PLR2004",
   "S101",
 ]
+fixable = ["ALL"]
+unfixable = []
 
 [lint.per-file-ignores]
 "tests/*" = ["E501", "S101", "PLR2004"]
