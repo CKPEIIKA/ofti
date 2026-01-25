@@ -1,5 +1,5 @@
-from of_tui.entry_meta import choose_validator
-from of_tui.validation import as_float, as_int, vector_values
+from ofti.core.entry_meta import choose_validator
+from ofti.core.validation import as_float, as_int, vector_values
 
 
 def test_choose_validator_treats_real_vector_as_vector() -> None:
@@ -28,3 +28,9 @@ def test_choose_validator_uses_int_for_scalar_integer() -> None:
     validator, label = choose_validator("startFrom", value)
     assert validator is as_int
     assert label == "integer"
+
+
+def test_choose_validator_labels_word_tokens() -> None:
+    value = "Gauss;"
+    _validator, label = choose_validator("divScheme", value)
+    assert label == "word"

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from of_tui.app import _detect_case_header_version
+from ofti.core.case_headers import detect_case_header_version
 
 
 def _write_control_dict(tmp_path: Path, text: str) -> Path:
@@ -22,7 +22,7 @@ def test_detect_case_header_uses_banner_version(tmp_path: Path) -> None:
         "}\n"
     )
     case = _write_control_dict(tmp_path, text)
-    assert _detect_case_header_version(case) == "v2312"
+    assert detect_case_header_version(case) == "v2312"
 
 
 def test_detect_case_header_falls_back_to_block(tmp_path: Path) -> None:
@@ -33,7 +33,7 @@ def test_detect_case_header_falls_back_to_block(tmp_path: Path) -> None:
         "}\n"
     )
     case = _write_control_dict(tmp_path, text)
-    assert _detect_case_header_version(case) == "8.0"
+    assert detect_case_header_version(case) == "8.0"
 
 
 def test_detect_case_header_returns_unknown_when_missing(tmp_path: Path) -> None:
@@ -44,4 +44,4 @@ def test_detect_case_header_returns_unknown_when_missing(tmp_path: Path) -> None
         "}\n"
     )
     case = _write_control_dict(tmp_path, text)
-    assert _detect_case_header_version(case) == "unknown"
+    assert detect_case_header_version(case) == "unknown"

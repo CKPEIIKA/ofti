@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import of_tui.tools as tools
-import of_tui.config as config
+from ofti import tools
+from ofti.foam import config
 
 
 class FakeScreen:
@@ -27,7 +27,7 @@ class FakeScreen:
     def getch(self) -> int:
         if self._keys:
             return self._keys.pop(0)
-        return ord("q")
+        return ord("h")
 
     def getmaxyx(self):
         return (self.height, self.width)
@@ -44,7 +44,7 @@ def test_remove_all_logs_fallback(tmp_path: Path, monkeypatch) -> None:
     (case_dir / "log.b").write_text("b")
 
     monkeypatch.delenv("WM_PROJECT_DIR", raising=False)
-    monkeypatch.setenv("OF_TUI_USE_CLEANFUNCTIONS", "0")
+    monkeypatch.setenv("OFTI_USE_CLEANFUNCTIONS", "0")
     _reset_config()
 
     screen = FakeScreen()
@@ -62,7 +62,7 @@ def test_clean_time_directories_fallback(tmp_path: Path, monkeypatch) -> None:
     (case_dir / "1.5" / "data.txt").write_text("x")
 
     monkeypatch.delenv("WM_PROJECT_DIR", raising=False)
-    monkeypatch.setenv("OF_TUI_USE_CLEANFUNCTIONS", "0")
+    monkeypatch.setenv("OFTI_USE_CLEANFUNCTIONS", "0")
     _reset_config()
 
     screen = FakeScreen()
@@ -86,7 +86,7 @@ def test_run_current_solver_fallback(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr(tools, "_run_simple_tool", fake_run_simple)
     monkeypatch.delenv("WM_PROJECT_DIR", raising=False)
-    monkeypatch.setenv("OF_TUI_USE_RUNFUNCTIONS", "0")
+    monkeypatch.setenv("OFTI_USE_RUNFUNCTIONS", "0")
     _reset_config()
     monkeypatch.setattr(tools, "read_entry", lambda *_args, **_kwargs: "simpleFoam;")
 

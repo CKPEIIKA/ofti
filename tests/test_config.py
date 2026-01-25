@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import of_tui.config as config
+from ofti.foam import config
 
 
 def _reset_config() -> None:
@@ -13,7 +13,7 @@ def _reset_config() -> None:
 
 def test_config_path_env_override(tmp_path: Path, monkeypatch) -> None:
     override = tmp_path / "cfg.toml"
-    monkeypatch.setenv("OF_TUI_CONFIG", str(override))
+    monkeypatch.setenv("OFTI_CONFIG", str(override))
     _reset_config()
 
     assert config.config_path() == override
@@ -28,12 +28,12 @@ def test_key_in_handles_basic_keys() -> None:
 def test_fzf_enabled_respects_env(tmp_path: Path, monkeypatch) -> None:
     cfg = tmp_path / "cfg.toml"
     cfg.write_text('fzf = "off"\n')
-    monkeypatch.setenv("OF_TUI_CONFIG", str(cfg))
+    monkeypatch.setenv("OFTI_CONFIG", str(cfg))
     _reset_config()
 
     assert config.fzf_enabled() is False
 
-    monkeypatch.setenv("OF_TUI_FZF", "on")
+    monkeypatch.setenv("OFTI_FZF", "on")
     _reset_config()
     assert config.fzf_enabled() in (True, False)
 
@@ -54,11 +54,11 @@ def test_load_config_from_file_and_env(tmp_path: Path, monkeypatch) -> None:
                 "[keys]",
                 'up = ["w"]',
                 'down = ["s"]',
-            ]
-        )
+            ],
+        ),
     )
-    monkeypatch.setenv("OF_TUI_CONFIG", str(cfg))
-    monkeypatch.setenv("OF_TUI_USE_CLEANFUNCTIONS", "0")
+    monkeypatch.setenv("OFTI_CONFIG", str(cfg))
+    monkeypatch.setenv("OFTI_USE_CLEANFUNCTIONS", "0")
     _reset_config()
 
     cfg_obj = config.get_config()

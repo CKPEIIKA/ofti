@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import of_tui.app as app
+from ofti.app import app
 
 
 class FakeScreen:
@@ -51,7 +51,8 @@ class FakeScreen:
 
 def test_no_foam_smoke_runs_without_terminal(monkeypatch, tmp_path: Path) -> None:
     case_dir = tmp_path / "case"
-    case_dir.mkdir()
+    (case_dir / "system").mkdir(parents=True)
+    (case_dir / "system" / "controlDict").write_text("application simpleFoam;")
     screen = FakeScreen(keys=[ord("q")])
 
     def fake_wrapper(func, *args, **kwargs):
@@ -59,6 +60,33 @@ def test_no_foam_smoke_runs_without_terminal(monkeypatch, tmp_path: Path) -> Non
 
     monkeypatch.setattr(app.curses, "wrapper", fake_wrapper)
     monkeypatch.setattr(app.curses, "start_color", lambda: None)
-    monkeypatch.setattr(app.curses, "init_pair", lambda *args, **kwargs: None)
+    def fake_init_pair(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(app.curses, "init_pair", fake_init_pair)
 
     app.run_tui(str(case_dir), debug=False, no_foam=True)
+
+
+def test_main_menu_navigates_config_manager(monkeypatch, tmp_path: Path) -> None:
+    case_dir = tmp_path / "case"
+    (case_dir / "system").mkdir(parents=True)
+    (case_dir / "system" / "controlDict").write_text("application simpleFoam;")
+
+    keys = [ord("j"), ord("j"), ord("j"), ord("j"), 10, ord("h")]
+    screen = FakeScreen(keys=keys)
+
+    monkeypatch.setattr(app, "fzf_enabled", lambda: False)
+    result = app._main_menu_screen(screen, case_dir, app.AppState(no_foam=True))
+    assert result == app.Screen.MAIN_MENU
+
+
+def test_select_case_directory_accepts_current(monkeypatch, tmp_path: Path) -> None:
+    case_dir = tmp_path / "case"
+    (case_dir / "system").mkdir(parents=True)
+    (case_dir / "system" / "controlDict").write_text("application simpleFoam;")
+
+    screen = FakeScreen(keys=[10])
+    monkeypatch.setattr(app.curses, "color_pair", lambda *_args: 0)
+    selected = app._select_case_directory(screen, case_dir)
+    assert selected == case_dir

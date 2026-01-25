@@ -4,7 +4,6 @@ import curses
 import itertools
 from typing import Any
 
-
 _SPINNER = itertools.cycle("|/-\\")
 
 
@@ -58,7 +57,7 @@ def case_banner_lines(meta: dict[str, str]) -> list[str]:
         (f"Env: {meta['foam_version']}", f"Case header version: {meta['case_header_version']}"),
         (f"Path: {meta['case_path']}", ""),
     ]
-    return foam_style_banner("of_tui", rows)
+    return foam_style_banner("ofti", rows)
 
 
 def foam_style_banner(label: str, rows: list[tuple[str, str]]) -> list[str]:

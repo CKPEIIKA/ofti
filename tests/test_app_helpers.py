@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import of_tui.app as app
-from of_tui import browser
-from of_tui.editor import autoformat_value
+from ofti.app import app
+from ofti.core.entries import autoformat_value
+from ofti.core.syntax import find_suspicious_lines
+from ofti.ui_curses import entry_browser as browser
 
 
 def test_color_from_name_defaults() -> None:
@@ -14,7 +15,7 @@ def test_color_from_name_defaults() -> None:
     assert app._color_from_name("unknown", 7) == 7
 
 
-def test_entry_browser_scroll_bounds(monkeypatch) -> None:
+def test_entry_browser_scroll_bounds(monkeypatch) -> None:  # noqa: ARG001
     class FakeScreen:
         def getmaxyx(self):
             return (10, 80)
@@ -29,7 +30,7 @@ def test_autoformat_value_trims() -> None:
     assert autoformat_value("line\n") == "line"
 
 
-def test_next_significant_line_skips_block(tmp_path: Path) -> None:
+def test_next_significant_line_skips_block(tmp_path: Path) -> None:  # noqa: ARG001
     content = "\n".join(["simpleCoeffs", "{", "value 1;", "}"])
-    warnings = app._find_suspicious_lines(content)
+    warnings = find_suspicious_lines(content)
     assert not warnings

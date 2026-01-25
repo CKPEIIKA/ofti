@@ -1,22 +1,35 @@
-# of_tui – OpenFOAM TUI
+# ofti – OpenFOAM Terminal Interface
 
-`of_tui` is a small curses-based TUI for browsing and editing OpenFOAM case dictionaries, with built-in tools and diagnostics.
+```
+  ____  ______ _______ _____
+ / __ \\ |  ___|__   __|_   _|
+| |  | | |__     | |    | |
+| |  | |  __|    | |    | |
+| |__| | |       | |   _| |_
+ \\____/|_|      |_|  |_____|
+```
+
+`ofti` (OpenFOAM Terminal Interface) is a small curses-based TUI for browsing and editing OpenFOAM case dictionaries, with built-in tools and diagnostics.
+
+License: GPL-3.0-or-later.
 
 ## Quick start
 
-1. Source your OpenFOAM environment so `foamDictionary` (and other foam* tools) are on `PATH`.
+1. Source your OpenFOAM environment so openfoam tools are on `PATH`.
 2. Run against a case:
 
    ```bash
-   python -m of_tui.cli /path/to/case
+   python -m ofti.app.cli /path/to/case
    ```
 
    Or install and use the console script:
 
    ```bash
    pip install .
-   of_tui /path/to/case
+   ofti /path/to/case
    ```
+
+   If the provided path is not an OpenFOAM case, `ofti` opens a simple folder picker to choose a valid case directory.
 
 3. Optional flags:
 
@@ -29,18 +42,20 @@
 - `l` or `Enter`: select
 - `h` or `q`: go back / quit (on the root menu, only `q` quits)
 - `/` in menus: fuzzy-pick an option with `fzf` (when available)
+- `s` in menus: config search (global `fzf` search over keys)
 - `:` in menus: open the command line (`:check`, `:tools`, `:diag`, `:run`, `:quit`)
 - `:nofoam` to toggle no-foam mode on/off
 - `:tool <name>` or `:<name>` to run any tool entry from the Tools menu
 - `Tab` in the command line auto-completes (cycles) matching commands
 
-Main menu entries:
+Main menu entries (grouped):
 
-- `Editor` – browse `system`, `constant`, and `0*` dictionaries and edit entries.
-- `Check syntax` – run a simple `foamDictionary`-based check over all discovered dictionaries.
-- `Tools` – run common solvers/utilities, job helpers, and view logs.
-- `Diagnostics` – run `foamSystemCheck`, `foamInstallationTest`, `checkMesh`.
-- `Global search` – (shown only when `fzf` is available) search across all keys with `fzf` and jump to the chosen entry.
+- `Pre-Processing (Mesh)` – blockMesh, checkMesh, decompose, reconstruct.
+- `Physics & Boundary Conditions` – config editor, check syntax, dictionary linter.
+- `Simulation (Run)` – run solver, safe stop, resume, foamJob helpers.
+- `Post-Processing` – reconstruct manager, time pruning, logs, postProcess/foamCalc.
+- `Config Manager` – config editor + config search.
+- `Tools / Diagnostics` – uncategorized tools and diagnostics.
 
 The header banner shows case info, solver, OpenFOAM version, case header version, latest time, mesh/parallel summary, and path.
 
@@ -79,12 +94,12 @@ Values are auto-formatted conservatively on save (e.g. trimming trailing newline
 
 - `Tools`
   - Built-in entries for `blockMesh`, `decomposePar`, `reconstructPar`, `foamListTimes`, `foamCheckJobs`, `foamPrintJobs`, and the `foamJob` / `foamEndJob` helpers.
-  - Extra commands can be added via `of_tui.tools`; optional post-processing commands live in `of_tui.postprocessing` and appear prefixed with `[post]`.
+  - Extra commands can be added via `ofti.tools`; optional post-processing commands live in `ofti.postprocessing` and appear prefixed with `[post]`.
   - `postProcess (prompt)` and `foamCalc (prompt)` capture arguments interactively, defaulting to `-latestTime` when it makes sense.
   - `Run current solver (runApplication)` sources `$WM_PROJECT_DIR/bin/tools/RunFunctions` and runs the solver declared in `system/controlDict`.
   - Cleanup helpers (`Remove all logs`, `Clean time directories`, `Clean case`) source `$WM_PROJECT_DIR/bin/tools/CleanFunctions`.
   - `Run .sh script` discovers shell scripts in the case directory; `foamDictionary (prompt)` offers an escape hatch for arbitrary queries.
-  - Any entry from `of_tui.tools`/`of_tui.postprocessing` can use the placeholder `{{latestTime}}` which expands to the numerically largest time directory.
+  - Any entry from `ofti.tools`/`ofti.postprocessing` can use the placeholder `{{latestTime}}` which expands to the numerically largest time directory.
 - `Diagnostics`:
   - `foamSystemCheck`, `foamInstallationTest`, `checkMesh`
   - `View logs` – pick a `log.*` file and either view the full log or just the last 100 lines
@@ -93,16 +108,14 @@ All tool runs show a summary with the command, exit status, stdout, and stderr i
 
 ## Repository layout
 
-- `of_tui/` – Python package that provides the CLI (`of_tui.cli:main`) and all runtime modules:
-  - `app.py` – curses entry point, menus, editor/browser glue.
-  - `editor.py` – entry editor UI and file viewer.
-  - `menus.py` – shared menu widgets (with `fzf` integration).
-  - `openfoam.py` – wrappers around `foamDictionary`, RunFunctions helpers, syntax checks.
-  - `tools.py` – tools/diagnostics implementations.
-  - `domain.py`, `validation.py` – supporting types and validators.
+- `ofti/` – Python package that provides the CLI (`ofti.app.cli:main`) and all runtime modules:
+  - `app/` – top-level app flow, screens, command handling.
+  - `ui_curses/` – curses UI widgets and screens.
+  - `core/` – parsing + case helpers, UI-agnostic logic.
+  - `foam/` – OpenFOAM environment and tool wrappers (run helpers, config, subprocess, tasks).
+  - `tools/` – tools/diagnostics implementations.
 - `tests/` – pytest suite (unit + optional integration).
 - `of_example/` – small example OpenFOAM case for experimentation.
-- `TODO.md` – roadmap of remaining P2/P3 items.
 
 ## Development
 
@@ -111,8 +124,8 @@ Requirements:
 - Python 3.11+ (tested with 3.11).
 - `pytest` for running tests.
 - A working OpenFOAM environment for runtime usage (for tests that touch OpenFOAM, see the optional integration test).
-- Coverage target: 60% minimum (pytest-cov).
-- Optional config file: `~/.config/of_tui/config.toml` (or `$OF_TUI_CONFIG`).
+- Coverage target: 70% minimum (pytest-cov).
+- Optional config file: `~/.config/ofti/config.toml` (or `$OFTI_CONFIG`).
 
 Run tests:
 
@@ -126,6 +139,9 @@ Example config:
 fzf = "auto" # auto | on | off
 use_runfunctions = true
 use_cleanfunctions = true
+enable_entry_cache = true
+enable_background_checks = true
+enable_background_entry_crawl = false
 
 [colors]
 focus_fg = "black"
@@ -141,10 +157,4 @@ command = [":"]
 search = ["/"]
 top = ["g"]
 bottom = ["G"]
-```
-
-You can work directly from a clone of this repository; no packaging step is required. Run the CLI via:
-
-```bash
-python -m of_tui.cli /path/to/case
 ```

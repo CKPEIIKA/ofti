@@ -1,0 +1,87 @@
+== ruff check ==
+All checks passed!
+All checks passed!
+
+== ty check ==
+All checks passed!
+
+== pytest ==
+============================= test session starts ==============================
+platform darwin -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0
+rootdir: /Users/s/Documents/Python/of-tui
+configfile: pyproject.toml
+plugins: cov-7.0.0
+collected 97 items
+
+tests/test_app_helpers.py ....                                           [  4%]
+tests/test_app_paths.py .                                                [  5%]
+tests/test_app_state_helpers.py .......                                  [ 12%]
+tests/test_autoformat_value.py ..                                        [ 14%]
+tests/test_boundary_matrix.py .                                          [ 15%]
+tests/test_case_header_version.py ...                                    [ 18%]
+tests/test_checkmesh_summary.py ...                                      [ 21%]
+tests/test_choose_validator.py .....                                     [ 26%]
+tests/test_cli_flags.py .                                                [ 27%]
+tests/test_config.py ....                                                [ 31%]
+tests/test_core_imports.py .                                             [ 32%]
+tests/test_entry_editor.py ...                                           [ 36%]
+tests/test_menu_commands.py .                                            [ 37%]
+tests/test_menu_display.py .                                             [ 38%]
+tests/test_menu_navigation.py ..                                         [ 40%]
+tests/test_mesh_header.py .                                              [ 41%]
+tests/test_openfoam_discovery.py .                                       [ 42%]
+tests/test_openfoam_helpers.py ...                                       [ 45%]
+tests/test_openfoam_wrapper_no_env.py ..............                     [ 59%]
+tests/test_optional_integration_foamdictionary.py s                      [ 60%]
+tests/test_smoke_cli.py ...                                              [ 63%]
+tests/test_suspicious_lines.py ......                                    [ 70%]
+tests/test_tasks.py ..                                                   [ 72%]
+tests/test_tools_cleaning.py ....                                        [ 76%]
+tests/test_tools_menu.py ........                                        [ 84%]
+tests/test_tools_workflows.py ..........                                 [ 94%]
+tests/test_validation.py .....                                           [100%]
+
+================================ tests coverage ================================
+_______________ coverage: platform darwin, python 3.14.2-final-0 _______________
+
+Name                                Stmts   Miss  Cover   Missing
+-----------------------------------------------------------------
+ofti/__init__.py                        0      0   100%
+ofti/app/__init__.py                    0      0   100%
+ofti/app/app.py                       933    650    30%   100, 107, 142-145, 148-153, 159-161, 174-178, 184-210, 251, 256-266, 275-322, 326-338, 345-358, 362-374, 378-387, 391-421, 427-446, 457-527, 531-544, 549-554, 558-564, 577, 580-583, 611-612, 625-626, 632, 634-635, 637-638, 640-641, 643-644, 646-650, 652-655, 661-675, 679-690, 694-753, 771-776, 787-792, 819, 824, 831-836, 861-888, 892-951, 968-971, 984-1014, 1023, 1025, 1056, 1062, 1087-1094, 1098-1125, 1129-1162, 1166-1202, 1208-1250, 1254-1275, 1279-1282, 1286-1320, 1334-1414, 1425-1434
+ofti/app/cli.py                        19      1    95%   56
+ofti/app/commands.py                  123     95    23%   57-173
+ofti/core/__init__.py                   5      0   100%
+ofti/core/boundary.py                 134     21    84%   35-36, 55-58, 64, 69, 71, 73-74, 81-82, 88, 91-92, 129-132, 170
+ofti/core/case.py                      79     33    58%   13, 17-18, 24-28, 34, 39-43, 50-58, 65-68, 90, 97, 101-104
+ofti/core/case_headers.py              78      8    90%   18-20, 33, 77, 80-81, 98
+ofti/core/checkmesh.py                 52     12    77%   7-20, 136, 141
+ofti/core/domain.py                    11      1    91%   19
+ofti/core/entries.py                   11      0   100%
+ofti/core/entry_meta.py               135     73    46%   29-66, 78-90, 97-119, 129, 154, 156, 158, 165-168, 177, 179, 181, 188, 200, 209
+ofti/core/events.py                    10     10     0%   1-17
+ofti/core/messages.py                  12     12     0%   1-21
+ofti/core/syntax.py                    84      5    94%   16, 51, 59, 61, 65
+ofti/core/times.py                     36     14    61%   9-18, 33-35, 40
+ofti/core/validation.py                44      0   100%
+ofti/foam/__init__.py                   0      0   100%
+ofti/foam/config.py                   142     19    87%   58, 67, 73, 76, 93, 113-114, 136, 140, 144, 147, 150, 177, 185, 189, 193, 196, 199-200
+ofti/foam/exceptions.py                 2      0   100%
+ofti/foam/openfoam.py                 272     62    77%   40-42, 51, 77-78, 93, 107-110, 121-124, 164-165, 173, 182, 203, 206, 216, 219, 228, 251, 255-256, 284, 291-292, 335-337, 360, 362-363, 368-369, 373, 384-386, 405-407, 409, 412, 425-430, 443-452
+ofti/foam/openfoam_env.py              67     19    72%   30-32, 37-40, 55, 58-59, 76-79, 86, 96-99
+ofti/foam/subprocess_utils.py          18      2    89%   11, 30
+ofti/foam/tasks.py                     56      9    84%   30-31, 37, 47-51, 64
+ofti/tools/__init__.py                975    632    35%   49, 54, 71-74, 78-82, 87, 105, 110, 113-114, 116-117, 136, 167-169, 258, 284-335, 354-356, 368-369, 386-496, 503-523, 530-577, 596, 608-610, 631-632, 638, 645-697, 713-729, 745-765, 780-795, 803-806, 836-837, 841-843, 847-848, 852-853, 879-880, 897, 903, 910-911, 925-926, 930-936, 940-953, 957-979, 983-1005, 1009, 1013-1025, 1032-1074, 1078-1079, 1098, 1102, 1114, 1128, 1136, 1145-1146, 1151-1152, 1154, 1179-1181, 1190-1238, 1245-1293, 1322, 1325-1326, 1338-1340, 1345-1346, 1366-1380, 1385, 1404-1422, 1426-1456, 1460-1470, 1474-1499, 1503-1570, 1576-1594
+ofti/tools/helpers.py                   3      0   100%
+ofti/ui_curses/__init__.py              4      0   100%
+ofti/ui_curses/boundary_matrix.py     160    132    18%   16-45, 56-72, 83-89, 101-105, 115-126, 139-148, 157-162, 166-174, 185-189, 199-221, 225-237, 241-247
+ofti/ui_curses/entry_browser.py       339    292    14%   45-184, 203-338, 346, 353, 365-382, 397-414, 423-438, 442-444, 458-470, 474-507, 513-540, 549-557
+ofti/ui_curses/entry_editor.py        209    120    43%   44-45, 52, 55, 58, 61, 64-65, 68-69, 77-79, 87-111, 114-183, 200, 203-204, 229, 231, 243-244, 253, 256-273, 276-284, 287-294
+ofti/ui_curses/layout.py               42      9    79%   18-28, 43-44
+ofti/ui_curses/menus.py               348    165    53%   15-16, 35-36, 45, 47-51, 53-56, 58-61, 90-121, 146, 166, 177-180, 182-185, 191, 193, 206-207, 231-232, 237-260, 263, 267-268, 270-271, 273-274, 276-277, 281, 283, 285, 287-288, 302, 307, 311, 315, 317-321, 323-326, 329-331, 335-336, 351, 363-404, 450-459, 461-465, 467-470, 473-475, 480
+ofti/ui_curses/openfoam_env.py        103     90    13%   19-25, 29-70, 74-83, 90-129
+ofti/ui_curses/viewer.py               80     46    42%   33-34, 40, 42-43, 46, 49-70, 74-87, 90-100
+-----------------------------------------------------------------
+TOTAL                                4586   2532    45%
+Required test coverage of 40% reached. Total coverage: 44.79%
+======================== 96 passed, 1 skipped in 0.39s =========================

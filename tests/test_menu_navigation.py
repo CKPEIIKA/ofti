@@ -1,6 +1,6 @@
 """Menu navigation behavior for back/quit keys."""
 
-from of_tui.menus import Menu, RootMenu
+from ofti.ui_curses.menus import Menu, RootMenu
 
 
 class FakeScreen:

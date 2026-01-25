@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from of_tui.openfoam import discover_case_files
+from ofti.foam.openfoam import discover_case_files
 
 
 def test_discover_case_files_basic(tmp_path: Path) -> None:

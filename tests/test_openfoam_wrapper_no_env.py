@@ -3,9 +3,8 @@ from unittest import mock
 
 import pytest
 
-from of_tui.openfoam import (
+from ofti.foam.openfoam import (
     OpenFOAMError,
-    ensure_environment,
     get_entry_comments,
     list_keywords,
     list_subkeys,
@@ -15,12 +14,15 @@ from of_tui.openfoam import (
     read_entry,
     verify_case,
 )
+from ofti.foam.openfoam_env import ensure_environment
 
 
 def test_ensure_environment_raises_when_missing() -> None:
-    with mock.patch("of_tui.openfoam.shutil.which", return_value=None):
-        with pytest.raises(OpenFOAMError):
-            ensure_environment()
+    with (
+        mock.patch("ofti.foam.openfoam_env.shutil.which", return_value=None),
+        pytest.raises(OpenFOAMError),
+    ):
+        ensure_environment()
 
 
 def test_list_keywords_parses_output(tmp_path: Path) -> None:
@@ -30,7 +32,7 @@ def test_list_keywords_parses_output(tmp_path: Path) -> None:
     completed = mock.Mock()
     completed.returncode = 0
     completed.stdout = "a\nb\n\n"
-    with mock.patch("of_tui.openfoam.run_foam_dictionary", return_value=completed):
+    with mock.patch("ofti.foam.openfoam.run_foam_dictionary", return_value=completed):
         result = list_keywords(fake_file)
         assert result == ["a", "b"]
 
@@ -42,7 +44,7 @@ def test_list_subkeys_handles_dictionary_entry(tmp_path: Path) -> None:
     completed = mock.Mock()
     completed.returncode = 0
     completed.stdout = "subA\nsubB\n"
-    with mock.patch("of_tui.openfoam.run_foam_dictionary", return_value=completed):
+    with mock.patch("ofti.foam.openfoam.run_foam_dictionary", return_value=completed):
         result = list_subkeys(fake_file, "parent")
         assert result == ["subA", "subB"]
 
@@ -54,7 +56,7 @@ def test_list_subkeys_non_dict_returns_empty(tmp_path: Path) -> None:
     completed = mock.Mock()
     completed.returncode = 1
     completed.stderr = "not a dictionary"
-    with mock.patch("of_tui.openfoam.run_foam_dictionary", return_value=completed):
+    with mock.patch("ofti.foam.openfoam.run_foam_dictionary", return_value=completed):
         result = list_subkeys(fake_file, "parent")
         assert result == []
 
@@ -67,7 +69,7 @@ def test_get_entry_comments_picks_preceding_comment_block(tmp_path: Path) -> Non
         "entry1 10;\n"
         "\n"
         "// other\n"
-        "entry2 20;\n"
+        "entry2 20;\n",
     )
 
     comments = get_entry_comments(case_file, "entry1")
@@ -82,9 +84,11 @@ def test_read_entry_error(tmp_path: Path) -> None:
     completed = mock.Mock()
     completed.returncode = 1
     completed.stderr = "bad"
-    with mock.patch("of_tui.openfoam.run_foam_dictionary", return_value=completed):
-        with pytest.raises(OpenFOAMError):
-            read_entry(fake_file, "key")
+    with (
+        mock.patch("ofti.foam.openfoam.run_foam_dictionary", return_value=completed),
+        pytest.raises(OpenFOAMError),
+    ):
+        read_entry(fake_file, "key")
 
 
 def test_read_entry_strips_leading_key_for_scalar(tmp_path: Path) -> None:
@@ -94,7 +98,7 @@ def test_read_entry_strips_leading_key_for_scalar(tmp_path: Path) -> None:
     completed = mock.Mock()
     completed.returncode = 0
     completed.stdout = "preMij 0.014;\n"
-    with mock.patch("of_tui.openfoam.run_foam_dictionary", return_value=completed):
+    with mock.patch("ofti.foam.openfoam.run_foam_dictionary", return_value=completed):
         value = read_entry(fake_file, "preMij")
 
     assert value == "0.014;"
@@ -111,11 +115,11 @@ def test_verify_case_collects_errors(tmp_path: Path) -> None:
 
     def fake_list_keywords(file_path: Path) -> list[str]:
         if file_path == f_bad:
-            raise OpenFOAMError("parse error")
+            raise OpenFOAMError("parse error")  # noqa: TRY003
         return []
 
     with mock.patch.multiple(
-        "of_tui.openfoam",
+        "ofti.foam.openfoam",
         list_keywords=mock.Mock(side_effect=fake_list_keywords),
         list_subkeys=mock.Mock(return_value=[]),
         get_entry_info=mock.Mock(return_value=[]),
@@ -135,19 +139,19 @@ def test_verify_case_detects_missing_required_entries(tmp_path: Path) -> None:
     control = system / "controlDict"
     control.write_text("application simpleFoam;")
 
-    def fake_list_keywords(file_path: Path) -> list[str]:
+    def fake_list_keywords(_file_path: Path) -> list[str]:
         return ["application"]
 
-    def fake_list_subkeys(file_path: Path, entry: str) -> list[str]:
+    def fake_list_subkeys(_file_path: Path, entry: str) -> list[str]:
         return ["type"] if entry == "application" else []
 
-    def fake_get_entry_info(file_path: Path, entry: str) -> list[str]:
+    def fake_get_entry_info(_file_path: Path, entry: str) -> list[str]:
         if entry == "application":
             return ["Required entries:", "- type", "- value"]
         return []
 
     with mock.patch.multiple(
-        "of_tui.openfoam",
+        "ofti.foam.openfoam",
         list_keywords=mock.Mock(side_effect=fake_list_keywords),
         list_subkeys=mock.Mock(side_effect=fake_list_subkeys),
         get_entry_info=mock.Mock(side_effect=fake_get_entry_info),
@@ -167,11 +171,11 @@ def test_verify_case_detects_invalid_enum_value(tmp_path: Path) -> None:
     control = system / "controlDict"
     control.write_text("application simpleFoam;")
 
-    def fake_list_keywords(file_path: Path) -> list[str]:
+    def fake_list_keywords(_file_path: Path) -> list[str]:
         return ["application"]
 
     with mock.patch.multiple(
-        "of_tui.openfoam",
+        "ofti.foam.openfoam",
         list_keywords=mock.Mock(side_effect=fake_list_keywords),
         list_subkeys=mock.Mock(return_value=[]),
         get_entry_info=mock.Mock(return_value=[]),
@@ -202,8 +206,8 @@ def test_missing_required_entries_reports_missing() -> None:
 
 
 def test_normalize_scalar_token_extracts_final_token() -> None:
-    token = normalize_scalar_token("application potentialFoam;  ")
-    assert token == "potentialFoam"
+    value = normalize_scalar_token("application potentialFoam;  ")
+    assert value == "potentialFoam"
 
 
 def test_verify_case_calls_progress_callback(tmp_path: Path) -> None:
@@ -215,14 +219,14 @@ def test_verify_case_calls_progress_callback(tmp_path: Path) -> None:
 
     called: list[Path] = []
 
-    def fake_list_keywords(file_path: Path) -> list[str]:
+    def fake_list_keywords(_file_path: Path) -> list[str]:
         return []
 
     def progress(path: Path) -> None:
         called.append(path)
 
     with mock.patch.multiple(
-        "of_tui.openfoam",
+        "ofti.foam.openfoam",
         list_keywords=mock.Mock(side_effect=fake_list_keywords),
         list_subkeys=mock.Mock(return_value=[]),
         get_entry_info=mock.Mock(return_value=[]),
