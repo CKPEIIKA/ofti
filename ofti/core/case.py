@@ -4,28 +4,43 @@ import re
 from pathlib import Path
 
 from ofti.core.entry_io import read_entry, write_entry
+from ofti.core.mesh_info import mesh_counts
 from ofti.foam.openfoam import OpenFOAMError
 
 
-def detect_mesh_stats(case_path: Path) -> str:  # noqa: PLR0911
+def detect_mesh_stats(case_path: Path) -> str:  # noqa: C901
     log_path = latest_checkmesh_log(case_path)
     if log_path is None:
         if has_mesh(case_path):
+            cells, faces, points = mesh_counts(case_path)
+            if cells or faces or points:
+                parts = []
+                if cells is not None:
+                    parts.append(f"{cells} cells")
+                if faces is not None:
+                    parts.append(f"faces={faces}")
+                if points is not None:
+                    parts.append(f"points={points}")
+                return ", ".join(parts)
             return "mesh (no checkMesh log)"
         return "unknown"
     try:
-        text = log_path.read_text(errors="ignore")
+        text = _read_log_snippet(log_path)
     except OSError:
         return "mesh (log unreadable)" if has_mesh(case_path) else "unknown"
 
     cells = parse_cells_count(text)
-    skew = parse_max_skewness(text)
-    if cells and skew:
-        return f"cells={cells}, skew={skew}"
+    skew = _format_float(parse_max_skewness(text))
+    non_orth = _format_float(parse_max_non_orth(text))
+    parts = []
     if cells:
-        return f"cells={cells}"
+        parts.append(f"{cells} cells")
     if skew:
-        return f"skew={skew}"
+        parts.append(f"skew={skew}")
+    if non_orth:
+        parts.append(f"nonOrth={non_orth}")
+    if parts:
+        return ", ".join(parts)
     return "mesh (unparsed)" if has_mesh(case_path) else "unknown"
 
 
@@ -117,6 +132,60 @@ def parse_max_skewness(text: str) -> str | None:
     if match:
         return match.group(1)
     return None
+
+
+def parse_max_non_orth(text: str) -> str | None:
+    patterns = [
+        r"(?i)max\s+non-orthogonality\s*=\s*([0-9eE.+-]+)",
+        r"(?i)non-orthogonality.*max\s*[:=]\s*([0-9eE.+-]+)",
+        r"(?i)non-orthogonality.*max\s+([0-9eE.+-]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _read_log_snippet(path: Path, limit: int = 20000) -> str:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return path.read_text(errors="ignore")
+    if size <= limit:
+        return path.read_text(errors="ignore")
+    with path.open("r", errors="ignore") as handle:
+        head = handle.read(limit)
+        try:
+            handle.seek(max(0, size - limit))
+        except OSError:
+            return head
+        tail = handle.read(limit)
+    return f"{head}\n{tail}"
+
+
+def preferred_log_name(case_path: Path) -> str:
+    solver = detect_solver(case_path)
+    if solver and solver != "unknown":
+        candidate = case_path / f"log.{solver}"
+        if candidate.is_file():
+            return candidate.name
+    try:
+        logs = sorted(case_path.glob("log.*"), key=lambda p: p.stat().st_mtime)
+    except OSError:
+        logs = []
+    if logs:
+        return logs[-1].name
+    return "none"
+
+
+def _format_float(value: str | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        return f"{float(value):.2f}"
+    except ValueError:
+        return value
 
 
 def read_optional_entry(file_path: Path, key: str) -> str | None:

@@ -98,15 +98,15 @@ def test_diagnostics_screen_runs_selected_tool(tmp_path: Path) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
 
-    # Select first diagnostics entry, then 'q' to exit viewer.
-    screen = FakeScreen(keys=[ord("\n"), ord("h")])
+    # Select first tool entry (skip case report + dictionary compare), then exit viewer.
+    screen = FakeScreen(keys=[ord("j"), ord("j"), ord("\n"), ord("h")])
 
     completed = mock.Mock()
     completed.returncode = 0
     completed.stdout = "ok\n"
     completed.stderr = ""
 
-    with mock.patch("ofti.tools.run_trusted", return_value=completed) as run:
+    with mock.patch("ofti.tools.screens.run_trusted", return_value=completed) as run:
         diagnostics_screen(screen, case_dir)
 
     # Ensure a diagnostics command was invoked.
@@ -117,8 +117,8 @@ def test_diagnostics_screen_runs_selected_tool(tmp_path: Path) -> None:
     assert "ok" in joined
 
 
-def test_run_current_solver_uses_runfunctions(tmp_path: Path, monkeypatch) -> None:
-    """Use RunFunctions to launch the solver when available."""
+def test_run_current_solver_uses_runfunctions(tmp_path: Path) -> None:
+    """Run solver directly when configured without RunFunctions."""
     case_dir = tmp_path / "case"
     control = case_dir / "system" / "controlDict"
     control.parent.mkdir(parents=True)
@@ -130,17 +130,14 @@ def test_run_current_solver_uses_runfunctions(tmp_path: Path, monkeypatch) -> No
     completed.stdout = "ok\n"
     completed.stderr = ""
 
-    monkeypatch.setenv("WM_PROJECT_DIR", "/WM")
     with (
-        mock.patch("ofti.tools.read_entry", return_value="simpleFoam;"),
-        mock.patch("ofti.tools.run_trusted", return_value=completed) as run,
+        mock.patch("ofti.tools.screens.read_entry", return_value="simpleFoam;"),
+        mock.patch("ofti.tools.runner.run_trusted", return_value=completed) as run,
     ):
         run_current_solver(screen, case_dir)
 
     assert run.called
-    shell_cmd = run.call_args[0][0][-1]
-    assert "RunFunctions" in shell_cmd
-    assert "runApplication simpleFoam" in shell_cmd
+    assert run.call_args[0][0][0] == "simpleFoam"
 
 
 def test_remove_all_logs_uses_cleanfunctions(tmp_path: Path, monkeypatch) -> None:
@@ -155,7 +152,7 @@ def test_remove_all_logs_uses_cleanfunctions(tmp_path: Path, monkeypatch) -> Non
     completed.stderr = ""
 
     monkeypatch.setenv("WM_PROJECT_DIR", "/WM")
-    with mock.patch("ofti.tools.run_trusted", return_value=completed) as run:
+    with mock.patch("ofti.tools.runner.run_trusted", return_value=completed) as run:
         remove_all_logs(screen, case_dir)
 
     assert run.called
@@ -176,7 +173,7 @@ def test_clean_time_directories(tmp_path: Path, monkeypatch) -> None:
     completed.stderr = ""
 
     monkeypatch.setenv("WM_PROJECT_DIR", "/WM")
-    with mock.patch("ofti.tools.run_trusted", return_value=completed) as run:
+    with mock.patch("ofti.tools.runner.run_trusted", return_value=completed) as run:
         clean_time_directories(screen, case_dir)
 
     assert run.called
@@ -197,7 +194,7 @@ def test_clean_case(tmp_path: Path, monkeypatch) -> None:
     completed.stderr = ""
 
     monkeypatch.setenv("WM_PROJECT_DIR", "/WM")
-    with mock.patch("ofti.tools.run_trusted", return_value=completed) as run:
+    with mock.patch("ofti.tools.runner.run_trusted", return_value=completed) as run:
         clean_case(screen, case_dir)
 
     assert run.called

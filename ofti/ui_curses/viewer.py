@@ -36,6 +36,8 @@ class Viewer:
             self.stdscr.refresh()
             key = self.stdscr.getch()
 
+            if key in (ord("q"), ord("h")):
+                return
             if key_in(key, get_config().keys.get("quit", [])):
                 return
             if key == ord("?"):

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ofti.tools import _parse_probe_series
+from ofti.tools import _parse_probe_line, _parse_probe_series
 
 
 def test_parse_probe_series_scalar() -> None:
@@ -24,3 +24,12 @@ def test_parse_probe_series_vector() -> None:
     assert values[0] == 1.0
     assert round(values[1], 6) == 5.0
     assert count == 2
+
+
+def test_parse_probe_line_vector_sample() -> None:
+    parsed = _parse_probe_line("0.1 (1 2 3)")
+    assert parsed is not None
+    time, values, count = parsed
+    assert time == 0.1
+    assert round(values[0], 6) == 3.741657
+    assert count == 1

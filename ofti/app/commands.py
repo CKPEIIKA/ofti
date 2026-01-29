@@ -18,7 +18,7 @@ class CommandCallbacks:
     check_syntax: Callable[[Any, Path, Any], None]
     tools_screen: Callable[[Any, Path], None]
     diagnostics_screen: Callable[[Any, Path], None]
-    run_current_solver: Callable[[Any, Path], None]
+    run_current_solver: Callable[[Any, Path, Any], None]
     show_message: Callable[[Any, str], None]
     tasks_screen: Callable[[Any, Any], None]
     openfoam_env_screen: Callable[[Any], None]
@@ -106,7 +106,7 @@ def handle_command(
         callbacks.show_message(stdscr, f"No running task named {task_name}.")
         return "handled"
     if action.kind == CommandKind.RUN_SOLVER:
-        callbacks.run_current_solver(stdscr, case_path)
+        callbacks.run_current_solver(stdscr, case_path, state)
         return "handled"
     if action.kind == CommandKind.RUN_TOOL:
         tool_name = action.args[0] if action.args else ""

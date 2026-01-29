@@ -12,6 +12,8 @@ def main_menu_help() -> list[str]:
 def preprocessing_help() -> list[str]:
     return [
         "Mesh construction & quality tools.",
+        "Pipeline uses Allrun with # OFTI-PIPELINE header.",
+        "Edit pipeline lets you add/reorder steps from tools.",
         "blockMesh helper previews vertices/blocks before running.",
         "snappy staged run toggles castellated/snap/layers in the dict.",
     ]
@@ -21,7 +23,6 @@ def physics_help() -> list[str]:
     return [
         "Edit case physics and boundary settings.",
         "Thermophysical wizard edits core thermo slots.",
-        "High-speed helper computes U and p0 and writes internalField.",
         "Boundary matrix lets you edit BCs in a grid.",
     ]
 
@@ -29,15 +30,22 @@ def physics_help() -> list[str]:
 def simulation_help() -> list[str]:
     return [
         "Run solvers and manage jobs.",
+        "Run current solver starts in background and logs to log.<solver>.",
         "Run solver (live) shows progress + last log lines.",
         "Foamlib parametric study creates cases for multiple values.",
+        "Parametric presets load ofti.parametric presets.",
     ]
 
 
 def postprocessing_help() -> list[str]:
     return [
         "Inspect logs and extract results.",
+        "Open ParaView creates a .foam file and launches paraview.",
         "Residual timeline reads log history (foamlib).",
+        "Log analysis summarizes Courant/residuals/exec time.",
+        "PostProcessing browser lists time/set outputs.",
+        "Field summary shows internalField stats for latest time.",
+        "Sampling & sets runs topoSet / sample / distribution if dicts exist.",
         "Probes viewer plots probe values as ASCII.",
     ]
 
@@ -45,7 +53,7 @@ def postprocessing_help() -> list[str]:
 def config_help() -> list[str]:
     return [
         "Browse and edit OpenFOAM dictionaries.",
-        "Create missing config generates minimal stubs.",
+        "Create missing config uses example templates when available.",
         "Search uses fzf when available.",
     ]
 
@@ -53,7 +61,10 @@ def config_help() -> list[str]:
 def tools_help() -> list[str]:
     return [
         "Run OpenFOAM tools or presets.",
+        "High-speed helper computes U/p0 from Mach + T + gamma.",
+        "yPlus estimator reports min/max/avg from yPlus output.",
         "First item re-runs the last tool with the same args.",
+        "topoSet/setFields prompts run common setup utilities.",
         "Use :tool <name> to run any tool from command mode.",
     ]
 
@@ -61,6 +72,7 @@ def tools_help() -> list[str]:
 def diagnostics_help() -> list[str]:
     return [
         "Environment and installation checks.",
+        "Dictionary compare highlights missing top-level keys.",
         "Parallel consistency compares decomposeParDict with processor dirs.",
     ]
 

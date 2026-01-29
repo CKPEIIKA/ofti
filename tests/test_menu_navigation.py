@@ -1,5 +1,6 @@
 """Menu navigation behavior for back/quit keys."""
 
+from ofti.foam.config import Config
 from ofti.ui_curses.menus import Menu, RootMenu
 
 
@@ -44,3 +45,18 @@ def test_root_menu_back_with_h_returns_minus_one() -> None:
     screen = FakeScreen(keys=[ord("h")])
     menu = RootMenu(screen, "Title", ["Only"])
     assert menu.navigate() == -1
+
+
+def test_menu_search_selects_option(monkeypatch) -> None:
+    screen = FakeScreen(keys=[ord("/"), ord("h")])
+    menu = Menu(screen, "Title", ["alpha", "beta"])
+    monkeypatch.setattr("ofti.ui_curses.menus._fzf_pick_option", lambda *_: 1)
+    assert menu.navigate() == -1
+    assert menu.current_option == 1
+
+
+def test_menu_global_search_invokes_command() -> None:
+    cfg = Config()
+    cfg.keys["global_search"] = ["s"]
+    menu = Menu(FakeScreen(keys=[]), "Title", ["alpha"])
+    assert menu._handle_navigation_key(ord("s"), cfg) == "global_search"

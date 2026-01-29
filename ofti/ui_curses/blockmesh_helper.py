@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import curses
+import os
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +20,7 @@ from ofti.core.versioning import get_dict_path
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
 from ofti.foam.openfoam import OpenFOAMError
-from ofti.ui_curses.viewer import Viewer
+from ofti.foam.subprocess_utils import resolve_executable, run_trusted
 
 
 def blockmesh_helper_screen(stdscr: Any, case_path: Path) -> None:
@@ -47,17 +50,106 @@ def blockmesh_helper_screen(stdscr: Any, case_path: Path) -> None:
         lines.append(f"{idx:>3}: {x:.6g} {y:.6g} {z:.6g}")
 
     if blocks:
-        lines += ["", "Blocks (type: indices)"]
+        lines += ["", "Blocks (type: indices -> vertices)"]
         for idx, (block_type, indices) in enumerate(blocks):
-            lines.append(f"{idx:>3}: {block_type} ({' '.join(str(i) for i in indices)})")
+            indices_text = " ".join(str(i) for i in indices)
+            lines.append(f"{idx:>3}: {block_type} ({indices_text})")
+            for vid in indices:
+                if 0 <= vid < len(vertices):
+                    x, y, z = vertices[vid]
+                    lines.append(f"      v{vid}: {x:.6g} {y:.6g} {z:.6g}")
 
     if boundaries:
         lines += ["", "Boundary patches"]
         for name in boundaries:
             lines.append(f"- {name}")
 
-    lines += ["", "Tip: open Config Manager to edit blockMeshDict."]
-    Viewer(stdscr, "\n".join(lines)).display()
+    lines += ["", "Press e to open blockMeshDict in $EDITOR."]
+    _blockmesh_viewer(stdscr, lines, dict_path)
+
+
+def _blockmesh_viewer(
+    stdscr: Any,
+    lines: list[str],
+    dict_path: Path,
+) -> None:
+    start_line = 0
+    while True:
+        stdscr.erase()
+        height, width = stdscr.getmaxyx()
+        back_hint = key_hint("back", "h")
+        header = f"Press {back_hint} or Enter to exit, e to edit, / to search."
+        with suppress(curses.error):
+            stdscr.addstr(header[: max(1, width - 1)] + "\n\n")
+        end_line = start_line + height - 3
+        for line in lines[start_line:end_line]:
+            text = line[: max(1, width - 1)]
+            try:
+                stdscr.addstr(text + "\n")
+            except curses.error:
+                break
+        stdscr.refresh()
+        key = stdscr.getch()
+        if key_in(key, get_config().keys.get("quit", [])):
+            return
+        if key == ord("e"):
+            _open_file_in_editor(stdscr, dict_path)
+            continue
+        if key == ord("/") or key_in(key, get_config().keys.get("search", [])):
+            start_line = _blockmesh_search(stdscr, lines, start_line)
+            continue
+        if key == curses.KEY_RESIZE:
+            continue
+        if key in (10, 13) or key_in(key, get_config().keys.get("back", [])):
+            return
+        start_line = _blockmesh_nav(start_line, key, end_line, height, len(lines))
+
+
+def _blockmesh_search(stdscr: Any, lines: list[str], start_line: int) -> int:
+    curses.echo()
+    stdscr.clear()
+    stdscr.addstr("Search: ")
+    stdscr.refresh()
+    query = stdscr.getstr().decode()
+    curses.noecho()
+    if not query:
+        return start_line
+    for i in range(start_line + 1, len(lines)):
+        if query in lines[i]:
+            return i
+    return start_line
+
+
+def _blockmesh_nav(
+    start_line: int,
+    key: int,
+    end_line: int,
+    height: int,
+    total: int,
+) -> int:
+    cfg = get_config()
+    if key_in(key, cfg.keys.get("top", [])):
+        return 0
+    if key_in(key, cfg.keys.get("bottom", [])):
+        return max(0, total - (height - 3))
+    if (key in (curses.KEY_DOWN,) or key_in(key, cfg.keys.get("down", []))) and end_line < total:
+        return start_line + 1
+    if (key in (curses.KEY_UP,) or key_in(key, cfg.keys.get("up", []))) and start_line > 0:
+        return start_line - 1
+    return start_line
+
+
+def _open_file_in_editor(stdscr: Any, file_path: Path) -> None:
+    editor = os.environ.get("EDITOR") or "vi"
+    curses.endwin()
+    try:
+        resolved = resolve_executable(editor)
+        run_trusted([resolved, str(file_path)], capture_output=False, check=False)
+    except OSError as exc:
+        _show_message(stdscr, f"Failed to run {editor}: {exc}")
+    finally:
+        stdscr.clear()
+        stdscr.refresh()
 
 
 def _load_blockmesh_details(

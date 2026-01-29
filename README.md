@@ -52,9 +52,9 @@ License: GPL-3.0-or-later.
 
 Main menu entries (grouped):
 
-- `Pre-Processing (Mesh)` – blockMesh, checkMesh, decompose, reconstruct.
+- `Mesh` – blockMesh, checkMesh, decompose, reconstruct.
 - `Physics & Boundary Conditions` – config editor, check syntax, dictionary linter.
-- `Simulation (Run)` – run solver, safe stop, resume, foamJob helpers.
+- `Simulation (Run)` – run solver, safe stop, resume.
 - `Post-Processing` – reconstruct manager, time pruning, logs, postProcess/foamCalc.
 - `Config Manager` – config editor + config search.
 - `Tools / Diagnostics` – uncategorized tools and diagnostics.
@@ -95,16 +95,17 @@ Values are auto-formatted conservatively on save (e.g. trimming trailing newline
 ## Tools and diagnostics
 
 - `Tools`
-  - Built-in entries for `blockMesh`, `decomposePar`, `reconstructPar`, `foamListTimes`, `foamCheckJobs`, `foamPrintJobs`, and the `foamJob` / `foamEndJob` helpers.
+  - Built-in entries for `blockMesh`, `decomposePar`, `reconstructPar`, `setFields`, `foamListTimes`, `foamCheckJobs`, and `foamPrintJobs`.
   - Extra commands can be added via `ofti.tools`; optional post-processing commands live in `ofti.postprocessing` and appear prefixed with `[post]`.
   - `postProcess (prompt)` and `foamCalc (prompt)` capture arguments interactively, defaulting to `-latestTime` when it makes sense.
   - `Run current solver (runApplication)` sources `$WM_PROJECT_DIR/bin/tools/RunFunctions` and runs the solver declared in `system/controlDict`.
   - Cleanup helpers (`Remove all logs`, `Clean time directories`, `Clean case`) source `$WM_PROJECT_DIR/bin/tools/CleanFunctions`.
+  - `topoSet (prompt)` and `setFields (prompt)` run common setup utilities.
   - `Run .sh script` discovers shell scripts in the case directory; `foamDictionary (prompt)` offers an escape hatch for arbitrary queries.
   - Any entry from `ofti.tools`/`ofti.postprocessing` can use the placeholder `{{latestTime}}` which expands to the numerically largest time directory.
 - `Diagnostics`:
   - `foamSystemCheck`, `foamInstallationTest`, `checkMesh`
-  - `View logs` – pick a `log.*` file and either view the full log or just the last 100 lines
+  - `View logs` – pick a `log.*` file and view the full log
 
 All tool runs show a summary with the command, exit status, stdout, and stderr in a scrollable viewer.
 

@@ -5,7 +5,7 @@ from contextlib import suppress
 from typing import Any
 
 
-def prompt_input(stdscr: Any, prompt: str) -> str | None:
+def prompt_input(stdscr: Any, prompt: str) -> str | None:  # noqa: C901
     """
     Read a single-line input. Returns None when ESC is pressed.
     """
