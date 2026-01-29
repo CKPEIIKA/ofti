@@ -42,3 +42,17 @@ def test_menu_display_truncates_long_options() -> None:
     # All printed lines should respect the screen width.
     for line in screen.lines:
         assert len(line.rstrip("\n")) <= screen.width
+
+
+def test_menu_display_uses_banner_provider() -> None:
+    screen = FakeScreen(width=40, height=10)
+    options = ["one", "two"]
+    called = {"count": 0}
+
+    def banner_provider():
+        called["count"] += 1
+        return ["Banner"]
+
+    menu = Menu(screen, "Title", options, banner_provider=banner_provider)
+    menu.display()
+    assert called["count"] == 1

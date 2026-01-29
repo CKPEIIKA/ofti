@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -304,7 +305,7 @@ def write_entry(file_path: Path, key: str, value: str) -> bool:
     return result.returncode == 0
 
 
-def discover_case_files(case_dir: Path) -> dict[str, list[Path]]:
+def discover_case_files(case_dir: Path) -> dict[str, list[Path]]:  # noqa: C901
     """
     Discover candidate dictionary files in an OpenFOAM case.
 
@@ -316,15 +317,11 @@ def discover_case_files(case_dir: Path) -> dict[str, list[Path]]:
 
     system_dir = case_dir / "system"
     if system_dir.is_dir():
-        sections["system"] = sorted(
-            p for p in system_dir.iterdir() if p.is_file()
-        )
+        sections["system"] = sorted(p for p in system_dir.iterdir() if p.is_file())
 
     constant_dir = case_dir / "constant"
     if constant_dir.is_dir():
-        sections["constant"] = sorted(
-            p for p in constant_dir.iterdir() if p.is_file()
-        )
+        sections["constant"] = sorted(p for p in constant_dir.iterdir() if p.is_file())
 
     zero_dirs: list[Path] = []
     for entry in case_dir.iterdir():
@@ -348,7 +345,17 @@ def discover_case_files(case_dir: Path) -> dict[str, list[Path]]:
         zero_files.extend(p for p in d.iterdir() if p.is_file())
     sections["0*"] = sorted(zero_files)
 
+    if foamlib_adapter.available() and os.environ.get("OFTI_STRICT_FOAMLIB") == "1":
+        sections = _filter_foamlib_files(sections)
+
     return sections
+
+
+def _filter_foamlib_files(sections: dict[str, list[Path]]) -> dict[str, list[Path]]:
+    filtered: dict[str, list[Path]] = {}
+    for key, files in sections.items():
+        filtered[key] = [path for path in files if foamlib_adapter.is_foam_file(path)]
+    return filtered
 
 
 @dataclass
@@ -435,6 +442,7 @@ def _check_boundary_field(
     patches = list_subkeys(file_path, "boundaryField")
     nested_keys = [f"boundaryField.{patch}" for patch in patches]
     _check_entries(file_path, result, nested_keys)
+    _check_boundary_patches(file_path, result, patches)
 
 
 def _check_entries(file_path: Path, result: FileCheckResult, keys: Sequence[str]) -> None:
@@ -489,6 +497,48 @@ def _required_entries_issues(file_path: Path, key: str) -> list[str]:
         if missing:
             return [f"{key}: missing required entries: {', '.join(missing)}"]
     return []
+
+
+def _find_case_root(file_path: Path) -> Path | None:
+    for parent in file_path.resolve().parents:
+        boundary_path = parent / "constant" / "polyMesh" / "boundary"
+        if boundary_path.exists():
+            return parent
+    return None
+
+
+def _check_boundary_patches(  # noqa: PLR0911
+    file_path: Path,
+    result: FileCheckResult,
+    boundary_keys: Sequence[str],
+) -> None:
+    if not foamlib_adapter.available():
+        return
+    case_root = _find_case_root(file_path)
+    if case_root is None:
+        return
+    boundary_file = case_root / "constant" / "polyMesh" / "boundary"
+    if not boundary_file.exists():
+        return
+    try:
+        patches, patch_types = foamlib_adapter.parse_boundary_file(boundary_file)
+    except Exception:
+        return
+    if not patches:
+        return
+    if ".*" in boundary_keys:
+        return
+    mesh_patches = [
+        patch
+        for patch in patches
+        if not patch.startswith("processor") and patch_types.get(patch) != "processor"
+    ]
+    if not mesh_patches:
+        return
+    missing = [patch for patch in mesh_patches if patch not in boundary_keys]
+    if missing:
+        missing_list = ", ".join(missing)
+        result.errors.append(f"boundaryField missing patches: {missing_list}")
 
 
 def _foamlib_quick_lint(file_path: Path, keys: Sequence[str]) -> list[str]:

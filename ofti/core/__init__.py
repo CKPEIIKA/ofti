@@ -15,7 +15,9 @@ from .case_headers import (
     parse_foamfile_block_version,
     parse_header_comment_version,
 )
+from .dict_compare import compare_case_dicts
 from .entries import Entry, autoformat_value
+from .mesh_info import mesh_counts
 from .times import latest_time, time_directories
 from .versioning import (
     OpenFOAMVersionInfo,
@@ -32,6 +34,7 @@ __all__ = [
     "OpenFOAMVersionInfo",
     "autoformat_value",
     "case_header_candidates",
+    "compare_case_dicts",
     "detect_case_header_version",
     "detect_mesh_stats",
     "detect_openfoam_fork",
@@ -44,6 +47,7 @@ __all__ = [
     "is_legacy_version",
     "latest_checkmesh_log",
     "latest_time",
+    "mesh_counts",
     "parse_cells_count",
     "parse_foamfile_block_version",
     "parse_header_comment_version",

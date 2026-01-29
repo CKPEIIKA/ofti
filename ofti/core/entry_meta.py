@@ -193,10 +193,22 @@ def _foamlib_type_info(file_path: Path, full_key: str) -> list[str]:
     return [f"foamlib type: {label}"] if label else []
 
 
+try:  # pragma: no cover - optional dependency for richer type labels
+    from foamlib._files.types import Dimensioned as FoamlibDimensioned
+    from foamlib._files.types import DimensionSet as FoamlibDimensionSet
+except Exception:  # pragma: no cover - foamlib missing or changed
+    FoamlibDimensionSet = None  # type: ignore[assignment]
+    FoamlibDimensioned = None  # type: ignore[assignment]
+
+
 def _foamlib_node_label(node: object) -> str | None:
     label: str | None
     if hasattr(node, "keys"):
         label = "dict"
+    elif FoamlibDimensionSet is not None and isinstance(node, FoamlibDimensionSet):
+        label = "dimensions"
+    elif FoamlibDimensioned is not None and isinstance(node, FoamlibDimensioned):
+        label = "dimensioned"
     elif isinstance(node, bool):
         label = "bool"
     elif isinstance(node, int):
@@ -236,6 +248,8 @@ def detect_type_with_foamlib(
         "int": as_int,
         "float": as_float,
         "word": non_empty,
+        "dimensions": non_empty,
+        "dimensioned": non_empty,
     }
     return mapping.get(label, validator), label
 

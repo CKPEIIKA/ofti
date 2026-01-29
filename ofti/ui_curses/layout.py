@@ -54,8 +54,8 @@ def case_banner_lines(meta: dict[str, str]) -> list[str]:
         (f"Case: {meta['case_name']}", f"Solver: {meta['solver']}"),
         (f"Status: {meta['status']}", f"Latest time: {meta['latest_time']}"),
         (f"Mesh: {meta['mesh']}", f"Parallel: {meta['parallel']}"),
-        (f"Env: {meta['foam_version']}", f"Case header version: {meta['case_header_version']}"),
-        (f"Path: {meta['case_path']}", ""),
+        (f"Env: {meta['foam_version']}", f"Case header: {meta['case_header_version']}"),
+        (f"Path: {meta['case_path']}", f"Log: {meta.get('log', 'none')}"),
     ]
     return foam_style_banner("ofti", rows)
 

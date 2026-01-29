@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import json
+import inspect
 import os
 import sys
-from dataclasses import dataclass
+import ast
 from pathlib import Path
 from typing import Any
+
+from fastmcp import FastMCP
 
 from ofti.core.boundary import build_boundary_matrix
 from ofti.foam import openfoam
@@ -13,51 +15,56 @@ from ofti.foamlib_adapter import available as foamlib_available
 from ofti.foamlib_adapter import read_entry as foamlib_read_entry
 from ofti.foamlib_adapter import write_entry as foamlib_write_entry
 
+DEV_FLAG = "OFTI_MCP_DEV"
+REFS_ROOT = Path("refs").resolve()
 
-@dataclass
-class MCPRequest:
-    id: str | int | None
-    method: str
-    params: dict[str, Any]
+mcp = FastMCP("ofti-foamlib-dev")
 
 
 def _is_case_dir(path: Path) -> bool:
     return (path / "system" / "controlDict").is_file()
 
 
-def _list_cases(root: Path) -> list[str]:
-    if not root.is_dir():
+def _resolve_refs_path(path: str) -> Path:
+    candidate = (REFS_ROOT / path).resolve()
+    if not str(candidate).startswith(str(REFS_ROOT)):
+        raise ValueError("Path must stay under refs/")  # noqa: TRY003
+    return candidate
+
+
+@mcp.tool
+def list_cases(root: str = "examples") -> list[str]:
+    base = Path(root).expanduser()
+    if not base.is_dir():
         return []
     cases: list[str] = []
-    for entry in root.iterdir():
-        if not entry.is_dir():
-            continue
-        if _is_case_dir(entry):
+    for entry in base.iterdir():
+        if entry.is_dir() and _is_case_dir(entry):
             cases.append(str(entry))
     return sorted(cases)
 
 
-def _read_entry(params: dict[str, Any]) -> str:
-    path = Path(params["path"]).expanduser()
-    key = params["key"]
+@mcp.tool
+def read_entry(path: str, key: str) -> str:
+    file_path = Path(path).expanduser()
     if not foamlib_available():
         raise RuntimeError("foamlib not available")  # noqa: TRY003
-    return foamlib_read_entry(path, key)
+    return foamlib_read_entry(file_path, key)
 
 
-def _write_entry(params: dict[str, Any]) -> bool:
-    path = Path(params["path"]).expanduser()
-    key = params["key"]
-    value = params["value"]
+@mcp.tool
+def write_entry(path: str, key: str, value: str) -> bool:
+    file_path = Path(path).expanduser()
     if not foamlib_available():
         raise RuntimeError("foamlib not available")  # noqa: TRY003
-    if foamlib_write_entry(path, key, str(value)):
+    if foamlib_write_entry(file_path, key, str(value)):
         return True
-    return openfoam.write_entry(path, key, str(value))
+    return openfoam.write_entry(file_path, key, str(value))
 
 
-def _boundary_matrix(params: dict[str, Any]) -> dict[str, Any]:
-    case_path = Path(params["case"]).expanduser()
+@mcp.tool
+def boundary_matrix(case: str) -> dict[str, Any]:
+    case_path = Path(case).expanduser()
     matrix = build_boundary_matrix(case_path)
     return {
         "fields": matrix.fields,
@@ -77,47 +84,157 @@ def _boundary_matrix(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def handle_request(payload: dict[str, Any]) -> dict[str, Any]:
-    request = MCPRequest(
-        id=payload.get("id"),
-        method=payload.get("method", ""),
-        params=payload.get("params", {}),
-    )
+@mcp.tool
+def refs_list_files(path: str = "") -> list[str]:
+    root = _resolve_refs_path(path)
+    if root.is_file():
+        return [str(root.relative_to(REFS_ROOT))]
+    if not root.exists():
+        return []
+    return sorted(str(p.relative_to(REFS_ROOT)) for p in root.rglob("*") if p.is_file())
 
+
+@mcp.tool
+def refs_read_file(path: str, max_bytes: int = 20000) -> str:
+    target = _resolve_refs_path(path)
+    if not target.is_file():
+        raise FileNotFoundError(str(target))
+    data = target.read_bytes()
+    if len(data) > max_bytes:
+        data = data[:max_bytes]
+    return data.decode(errors="ignore")
+
+
+@mcp.tool
+def refs_grep(pattern: str, path: str = "") -> list[str]:
+    root = _resolve_refs_path(path)
+    if not root.exists():
+        return []
+    matches: list[str] = []
+    files = [root] if root.is_file() else [p for p in root.rglob("*") if p.is_file()]
+    for file_path in files:
+        try:
+            for line_no, line in enumerate(
+                file_path.read_text(errors="ignore").splitlines(),
+                start=1,
+            ):
+                if pattern in line:
+                    rel = file_path.relative_to(REFS_ROOT)
+                    matches.append(f"{rel}:{line_no}:{line.strip()}")
+        except OSError:
+            continue
+    return matches
+
+
+@mcp.tool
+def refs_summarize_repo(
+    repo: str,
+    max_files: int = 200,
+    max_readme_lines: int = 200,
+) -> dict[str, Any]:
+    root = _resolve_refs_path(repo)
+    if not root.exists():
+        raise FileNotFoundError(str(root))
+    if root.is_file():
+        root = root.parent
+
+    py_files = sorted(p for p in root.rglob("*.py") if p.is_file())
+    if len(py_files) > max_files:
+        py_files = py_files[:max_files]
+
+    public_symbols: dict[str, list[str]] = {}
+    for file_path in py_files:
+        try:
+            tree = ast.parse(file_path.read_text(errors="ignore"))
+        except (OSError, SyntaxError):
+            continue
+        exports: list[str] = []
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and not node.name.startswith("_"):
+                exports.append(node.name)
+        if exports:
+            rel = str(file_path.relative_to(root))
+            public_symbols[rel] = exports[:50]
+
+    readme_hits: list[str] = []
+    for candidate in ("README.md", "readme.md", "README.rst", "readme.rst"):
+        readme_path = root / candidate
+        if readme_path.is_file():
+            lines = readme_path.read_text(errors="ignore").splitlines()
+            for line in lines:
+                lower = line.strip().lower()
+                if lower.startswith("#") and any(
+                    token in lower for token in ("feature", "usage", "overview", "install")
+                ):
+                    readme_hits.append(line.strip())
+                if len(readme_hits) >= max_readme_lines:
+                    break
+        if readme_hits:
+            break
+
+    return {
+        "repo": str(root.relative_to(REFS_ROOT)),
+        "python_files_scanned": len(py_files),
+        "public_symbols": public_symbols,
+        "readme_headings": readme_hits,
+    }
+
+
+@mcp.tool
+def foamlib_version() -> str:
     try:
-        if request.method == "list_cases":
-            root = Path(request.params.get("root", ".")).expanduser()
-            result = _list_cases(root)
-        elif request.method == "read_entry":
-            result = _read_entry(request.params)
-        elif request.method == "write_entry":
-            result = _write_entry(request.params)
-        elif request.method == "boundary_matrix":
-            result = _boundary_matrix(request.params)
-        else:
-            raise ValueError(f"Unknown method: {request.method}")  # noqa: TRY003, TRY301
-        return {"id": request.id, "result": result}  # noqa: TRY300
-    except Exception as exc:
-        return {"id": request.id, "error": str(exc)}
+        import foamlib  # local import for optional dependency
+    except Exception as exc:  # pragma: no cover - dev only
+        raise RuntimeError(f"foamlib import failed: {exc}")  # noqa: TRY003
+    return getattr(foamlib, "__version__", "unknown")
+
+
+@mcp.tool
+def foamlib_api_overview() -> dict[str, Any]:
+    import foamlib  # local import for optional dependency
+
+    def _public(obj: Any) -> list[str]:
+        return sorted(name for name in dir(obj) if not name.startswith("_"))
+
+    overview: dict[str, Any] = {"module": _public(foamlib)}
+    for name in ("FoamCase", "FoamFile", "FoamFieldFile"):
+        cls = getattr(foamlib, name, None)
+        if cls is None:
+            continue
+        overview[name] = _public(cls)
+    return overview
+
+
+@mcp.tool
+def foamlib_symbol(name: str) -> dict[str, Any]:
+    import foamlib  # local import for optional dependency
+
+    target = None
+    if "." in name:
+        root_name, attr = name.split(".", 1)
+        root = getattr(foamlib, root_name, None)
+        if root is not None:
+            target = getattr(root, attr, None)
+    else:
+        target = getattr(foamlib, name, None)
+    if target is None:
+        raise ValueError(f"Unknown foamlib symbol: {name}")  # noqa: TRY003
+    doc = inspect.getdoc(target) or ""
+    try:
+        sig = str(inspect.signature(target))
+    except Exception:
+        sig = ""
+    return {"name": name, "signature": sig, "doc": doc}
 
 
 def main() -> int:
-    if os.environ.get("OFTI_MCP_DEV") != "1":
-        sys.stderr.write("ofti-foamlib-mcp is development-only. Set OFTI_MCP_DEV=1 to run.\n")
+    if os.environ.get(DEV_FLAG) != "1":
+        sys.stderr.write(
+            "ofti-foamlib-mcp is development-only. "
+            f"Set {DEV_FLAG}=1 to run.\n",
+        )
         return 2
-    for line in sys.stdin:
-        raw = line.strip()
-        if not raw:
-            continue
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            sys.stdout.write(json.dumps({"id": None, "error": f"Invalid JSON: {exc}"}) + "\n")
-            sys.stdout.flush()
-            continue
-        response = handle_request(payload)
-        sys.stdout.write(json.dumps(response) + "\n")
-        sys.stdout.flush()
+    mcp.run()
     return 0
 
 

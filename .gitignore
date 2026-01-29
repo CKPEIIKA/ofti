@@ -17,7 +17,9 @@ env/
 .DS_Store
 *.egg-info/
 qa_output.txt
+scripts/foamlib_mcp.py
 examples/
 refs/
 quality.txt
 .vscode/settings.json
+.ofti/

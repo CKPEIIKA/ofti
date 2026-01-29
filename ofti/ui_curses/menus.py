@@ -129,6 +129,7 @@ class Menu:
         options: list[str],
         extra_lines: list[str] | None = None,
         banner_lines: list[str] | None = None,
+        banner_provider: Callable[[], list[str]] | None = None,
         initial_index: int | None = None,
         command_handler: Callable[[str], str | None] | None = None,
         command_suggestions: Callable[[], list[str]] | None = None,
@@ -147,6 +148,7 @@ class Menu:
             self.current_option = 0
         self.extra_lines = extra_lines or []
         self.banner_lines = banner_lines or ["=== Config Editor ==="]
+        self.banner_provider = banner_provider
         self.command_handler = command_handler
         self.command_suggestions = command_suggestions
         self.hint_provider = hint_provider
@@ -160,6 +162,9 @@ class Menu:
         height, width = self.stdscr.getmaxyx()
         row = 0
         show_status = self.hint_provider is not None or self.status_line is not None
+
+        if self.banner_provider is not None:
+            self.banner_lines = self.banner_provider()
 
         # Header
         try:
@@ -424,6 +429,7 @@ class RootMenu(Menu):
         options: list[str],
         extra_lines: list[str] | None = None,
         banner_lines: list[str] | None = None,
+        banner_provider: Callable[[], list[str]] | None = None,
         initial_index: int | None = None,
         command_handler: Callable[[str], str | None] | None = None,
         command_suggestions: Callable[[], list[str]] | None = None,
@@ -438,6 +444,7 @@ class RootMenu(Menu):
             options,
             extra_lines=extra_lines,
             banner_lines=banner_lines,
+            banner_provider=banner_provider,
             initial_index=initial_index,
             command_handler=command_handler,
             command_suggestions=command_suggestions,

@@ -59,20 +59,38 @@ def format_checkmesh_summary(output: str) -> str:
     quality = [
         (
             "Max non-orth",
-            match_first(output, [r"(?i)max\s+non-orthogonality\s*=\s*([0-9eE.+-]+)"])
+            match_first(
+                output,
+                [
+                    r"(?i)max\s+non-orthogonality\s*=\s*([0-9eE.+-]+)",
+                    r"(?i)non-orthogonality.*max\s*[:=]\s*([0-9eE.+-]+)",
+                    r"(?i)non-orthogonality.*max\s+([0-9eE.+-]+)",
+                ],
+            )
             or "n/a",
         ),
         (
             "Avg non-orth",
             match_first(
                 output,
-                [r"(?i)average\s+non-orthogonality\s*=\s*([0-9eE.+-]+)"],
+                [
+                    r"(?i)average\s+non-orthogonality\s*=\s*([0-9eE.+-]+)",
+                    r"(?i)non-orthogonality.*average\s*[:=]\s*([0-9eE.+-]+)",
+                    r"(?i)non-orthogonality.*average\s+([0-9eE.+-]+)",
+                ],
             )
             or "n/a",
         ),
         (
             "Max skewness",
-            match_first(output, [r"(?i)max\s+skewness\s*=\s*([0-9eE.+-]+)"])
+            match_first(
+                output,
+                [
+                    r"(?i)max\s+skewness\s*=\s*([0-9eE.+-]+)",
+                    r"(?i)skewness.*max\s*[:=]\s*([0-9eE.+-]+)",
+                    r"(?i)skewness.*max\s+([0-9eE.+-]+)",
+                ],
+            )
             or "n/a",
         ),
         (
@@ -110,11 +128,9 @@ def format_checkmesh_summary(output: str) -> str:
     ]
     quality = _filter_nonzero(quality)
 
-    warn_count = len(re.findall(r"(?i)warning", output))
     fatal_count = len(re.findall(r"(?i)fatal", output))
     notes = [
         f"Status: {status} | Errors: {errors}",
-        f"Warnings: {warn_count}" if warn_count else "Warnings: 0",
         f"Fatal: {fatal_count}" if fatal_count else "Fatal: 0",
         f"Failed checks: {failed}" if failed else "Failed checks: 0",
     ]
@@ -130,11 +146,6 @@ def format_checkmesh_summary(output: str) -> str:
         lines.append("Quality (non-zero):")
         lines.extend(format_kv_block(quality, pad="  "))
 
-    warnings = extract_warnings(output)
-    if warnings:
-        lines.append("")
-        lines.append("Warnings:")
-        lines.extend([f"  {line}" for line in warnings])
     return "\n".join(lines)
 
 
@@ -160,10 +171,6 @@ def match_first(text: str, patterns: list[str]) -> str | None:
         if match:
             return match.group(1)
     return None
-
-
-def extract_warnings(text: str) -> list[str]:
-    return [raw.strip() for raw in text.splitlines() if re.search(r"(?i)warning", raw)]
 
 
 def _filter_nonzero(rows: list[tuple[str, str]]) -> list[tuple[str, str]]:

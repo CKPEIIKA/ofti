@@ -83,7 +83,7 @@ def test_run_tool_by_name_dispatches_simple_tool(tmp_path: Path, monkeypatch) ->
     def fake_run_blockmesh(_stdscr, _case):
         called.append("blockMesh")
 
-    monkeypatch.setattr(tools, "run_blockmesh", fake_run_blockmesh)
+    monkeypatch.setattr("ofti.tools.screens.run_blockmesh", fake_run_blockmesh)
 
     assert tools.run_tool_by_name(screen, case_dir, "blockMesh") is True
     assert called == ["blockMesh"]
@@ -98,7 +98,7 @@ def test_rerun_last_tool_replays_shell(tmp_path: Path, monkeypatch) -> None:
     def fake_run_shell(_stdscr, _case, _name, shell_cmd):
         recorded.append(shell_cmd)
 
-    monkeypatch.setattr(tools, "_run_shell_tool", fake_run_shell)
+    monkeypatch.setattr("ofti.tools.screens._run_shell_tool", fake_run_shell)
 
     tools._record_last_tool("demo", "shell", "echo hi")
     tools.rerun_last_tool(screen, case_dir)
@@ -122,7 +122,7 @@ def test_post_process_prompt_runs_default_args(tmp_path: Path, monkeypatch) -> N
     def fake_run(*_args, **_kwargs):
         return completed
 
-    monkeypatch.setattr(tools, "run_trusted", fake_run)
+    monkeypatch.setattr("ofti.tools.screens.run_trusted", fake_run)
 
     tools.post_process_prompt(screen, case_dir)
 
@@ -146,7 +146,7 @@ def test_foam_calc_prompt_runs_args(tmp_path: Path, monkeypatch) -> None:
     def fake_run(*_args, **_kwargs):
         return completed
 
-    monkeypatch.setattr(tools, "run_trusted", fake_run)
+    monkeypatch.setattr("ofti.tools.screens.run_trusted", fake_run)
 
     tools.foam_calc_prompt(screen, case_dir)
 
@@ -170,7 +170,7 @@ def test_topo_set_prompt_runs_default(tmp_path: Path, monkeypatch) -> None:
     def fake_run(*_args, **_kwargs):
         return completed
 
-    monkeypatch.setattr(tools, "run_trusted", fake_run)
+    monkeypatch.setattr("ofti.tools.screens.run_trusted", fake_run)
 
     tools.topo_set_prompt(screen, case_dir)
 
@@ -191,12 +191,20 @@ def test_tool_dicts_screen_generates_and_opens(tmp_path: Path, monkeypatch) -> N
     def fake_run(*_args, **_kwargs):
         return completed
 
-    monkeypatch.setattr(tools, "run_trusted", fake_run)
+    monkeypatch.setattr("ofti.tools.screens.run_trusted", fake_run)
 
     tools.tool_dicts_screen(screen, case_dir)
 
     target = case_dir / "system" / "postProcessDict"
     assert target.is_file()
+
+
+def test_last_tool_status_line(monkeypatch) -> None:
+    tools._record_tool_status("blockMesh", "exit 0")
+    assert tools.last_tool_status_line() == "last tool: blockMesh exit 0"
+    base = tools.time.time()
+    monkeypatch.setattr(tools.time, "time", lambda: base + 20)
+    assert tools.last_tool_status_line() is None
 
 
 def test_latest_time_picks_max_directory(tmp_path: Path) -> None:

@@ -39,6 +39,8 @@ class AppState:
     check_results: dict[Path, FileCheckResult] | None = None
     check_thread: threading.Thread | None = None
     tasks: TaskRegistry = field(default_factory=TaskRegistry)
+    case_meta: dict[str, str] | None = None
+    case_meta_at: float | None = None
 
     def transition(self, screen: Screen, action: str | None = None) -> None:
         self.current_screen = screen

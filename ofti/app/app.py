@@ -3,6 +3,10 @@ from __future__ import annotations
 import curses
 import logging
 import os
+import shlex
+import shutil
+import subprocess
+import time
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
@@ -19,19 +23,26 @@ from ofti.app.helpers import (
     show_message,
 )
 from ofti.app.state import AppState, Screen
-from ofti.core.case import detect_mesh_stats, detect_parallel_settings, detect_solver
+from ofti.core.case import (
+    detect_mesh_stats,
+    detect_parallel_settings,
+    detect_solver,
+    preferred_log_name,
+    read_number_of_subdomains,
+)
 from ofti.core.case_headers import detect_case_header_version
 from ofti.core.domain import Case, DictionaryFile, EntryRef
 from ofti.core.entries import Entry, autoformat_value
 from ofti.core.entry_io import list_keywords, list_subkeys, read_entry, write_entry
 from ofti.core.entry_meta import choose_validator, detect_type_with_foamlib
 from ofti.core.syntax import find_suspicious_lines
+from ofti.core.templates import find_example_file, write_example_template
 from ofti.core.times import latest_time
 from ofti.core.versioning import get_dict_path
 from ofti.foam.config import fzf_enabled, get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
 from ofti.foam.openfoam import FileCheckResult, OpenFOAMError, discover_case_files, verify_case
-from ofti.foam.openfoam_env import detect_openfoam_version, ensure_environment
+from ofti.foam.openfoam_env import detect_openfoam_version, ensure_environment, with_bashrc
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
 from ofti.foam.tasks import Task
 from ofti.foamlib_adapter import available as foamlib_available
@@ -40,22 +51,29 @@ from ofti.tools import (
     clean_time_directories,
     clone_case,
     diagnostics_screen,
+    field_summary_screen,
     foamlib_parametric_study_screen,
-    log_tail_screen,
+    last_tool_status_line,
+    log_analysis_screen,
     logs_screen,
+    open_paraview_screen,
+    parametric_presets_screen,
+    pipeline_editor_screen,
+    pipeline_runner_screen,
+    postprocessing_browser_screen,
     probes_viewer_screen,
+    reconstruct_latest_once,
     reconstruct_manager_screen,
     remove_all_logs,
     residual_timeline_screen,
     run_checkmesh,
-    run_current_solver,
     run_current_solver_live,
     run_tool_by_name,
     safe_stop_screen,
+    sampling_sets_screen,
     solver_resurrection_screen,
     time_directory_pruner_screen,
     tools_screen,
-    yplus_screen,
 )
 from ofti.ui.adapter import CursesAdapter
 from ofti.ui.router import ScreenRouter
@@ -72,7 +90,6 @@ from ofti.ui_curses.help import (
     preprocessing_help,
     simulation_help,
 )
-from ofti.ui_curses.high_speed import high_speed_helper_screen
 from ofti.ui_curses.layout import (
     case_banner_lines,
     case_overview_lines,
@@ -222,7 +239,7 @@ def _main_menu_screen(
     has_fzf = fzf_enabled()
 
     categories = [
-        "Pre-Processing (Mesh)",
+        "Mesh",
         "Physics & Boundary Conditions",
         "Simulation (Run)",
         "Post-Processing",
@@ -234,9 +251,7 @@ def _main_menu_screen(
     quit_index = len(menu_options)
     menu_options.append("Quit")
 
-    case_meta = _case_metadata(case_path)
-    banner_lines = case_banner_lines(case_meta)
-    overview_lines = case_overview_lines(case_meta)
+    overview_lines = case_overview_lines(_case_metadata_cached(case_path, state))
     callbacks = _command_callbacks()
     initial_index = state.menu_selection.get("menu:root", 0)
     root_menu = RootMenu(
@@ -244,7 +259,7 @@ def _main_menu_screen(
         "Main menu",
         menu_options,
         extra_lines=overview_lines,
-        banner_lines=banner_lines,
+        banner_provider=lambda: case_banner_lines(_case_metadata_cached(case_path, state)),
         initial_index=initial_index,
         command_handler=lambda cmd: handle_command(
             stdscr, case_path, state, cmd, callbacks,
@@ -622,7 +637,7 @@ def _command_callbacks() -> CommandCallbacks:
         check_syntax=_check_syntax_screen,
         tools_screen=tools_screen,
         diagnostics_screen=diagnostics_screen,
-        run_current_solver=run_current_solver,
+        run_current_solver=_run_solver_background,
         show_message=show_message,
         tasks_screen=_tasks_screen,
         openfoam_env_screen=openfoam_env_screen,
@@ -662,6 +677,138 @@ def _mode_status(state: AppState) -> str:
     suffix = f" ({wm_dir})" if wm_dir else ""
     reason = f" [{state.no_foam_reason}]" if state.no_foam and state.no_foam_reason else ""
     return f"mode: {mode}{suffix}{reason}"
+
+
+def _run_solver_background(stdscr: Any, case_path: Path, state: AppState) -> None:
+    if state.no_foam:
+        show_message(stdscr, "OpenFOAM environment not found; solver run disabled.")
+        return
+    if _task_running(state, "solver"):
+        show_message(stdscr, "Solver already running in background.")
+        return
+    control_dict = case_path / "system" / "controlDict"
+    if not control_dict.is_file():
+        show_message(stdscr, "system/controlDict not found in case directory.")
+        return
+    try:
+        value = read_entry(control_dict, "application")
+    except OpenFOAMError as exc:
+        show_message(stdscr, f"Failed to read application: {exc}")
+        return
+    solver_line = value.strip()
+    if not solver_line:
+        show_message(stdscr, "application entry is empty.")
+        return
+    solver = solver_line.split()[0].rstrip(";")
+    if not solver:
+        show_message(stdscr, "Could not determine solver from application entry.")
+        return
+
+    log_path = case_path / f"log.{solver}"
+    mpi_cmd = _load_mpi_command(case_path)
+    if mpi_cmd is None:
+        mpi_cmd = _default_mpi_command(case_path)
+    cmd_parts = [*mpi_cmd, solver, "-parallel"] if mpi_cmd else [solver]
+    cmd = " ".join(shlex.quote(part) for part in cmd_parts)
+    shell_cmd = with_bashrc(cmd)
+
+    def worker(task: Task) -> None:
+        task.message = solver
+        env = os.environ.copy()
+        env.pop("BASH_ENV", None)
+        env.pop("ENV", None)
+        try:
+            with log_path.open("w") as log:
+                process = subprocess.Popen(
+                    ["bash", "--noprofile", "--norc", "-c", shell_cmd],
+                    cwd=case_path,
+                    stdout=log,
+                    stderr=log,
+                    text=True,
+                    env=env,
+                )
+            task.message = f"{solver} pid={process.pid}"
+            while True:
+                if task.cancel.is_set():
+                    process.terminate()
+                    task.status = "cancelling"
+                ret = process.poll()
+                if ret is None:
+                    last_time = _extract_last_time_from_log(log_path)
+                    if last_time:
+                        task.message = f"{solver} t={last_time} pid={process.pid}"
+                if ret is not None:
+                    break
+                time.sleep(0.2)
+            if ret != 0:
+                task.status = "error"
+                task.message = f"{solver} exit {ret}"
+            else:
+                task.status = "done"
+                task.message = f"{solver} finished"
+        except OSError as exc:
+            task.status = "error"
+            task.message = str(exc)
+
+    state.tasks.start("solver", worker, message=solver)
+    show_message(stdscr, f"Started {solver} in background. Log: {log_path.name}")
+
+
+def _load_mpi_command(case_path: Path) -> list[str] | None:
+    mpi_conf = case_path / "system" / "mpi.conf"
+    if not mpi_conf.is_file():
+        return None
+    try:
+        raw = mpi_conf.read_text().strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    return shlex.split(raw)
+
+
+def _default_mpi_command(case_path: Path) -> list[str] | None:
+    decompose_dict = case_path / "system" / "decomposeParDict"
+    if not decompose_dict.is_file():
+        return None
+    count = read_number_of_subdomains(decompose_dict)
+    if not count:
+        return None
+    if not _processor_count(case_path):
+        return None
+    if shutil.which("mpirun") is None:
+        return None
+    return ["mpirun", "-np", str(count)]
+
+
+def _processor_count(case_path: Path) -> int:
+    return sum(
+        1
+        for entry in case_path.iterdir()
+        if entry.is_dir() and entry.name.startswith("processor")
+    )
+
+
+def _extract_last_time_from_log(log_path: Path, limit: int = 20000) -> str | None:
+    try:
+        size = log_path.stat().st_size
+    except OSError:
+        return None
+    if size == 0:
+        return None
+    try:
+        with log_path.open("r", errors="ignore") as handle:
+            if size > limit:
+                handle.seek(max(0, size - limit))
+            tail = handle.read()
+    except OSError:
+        return None
+    for line in reversed(tail.splitlines()):
+        if "Time =" in line:
+            parts = line.split("Time =", 1)
+            if len(parts) == 2:
+                return parts[1].strip().split()[0]
+    return None
 
 
 def _start_check_thread(case_path: Path, state: AppState) -> None:
@@ -808,7 +955,7 @@ def _check_syntax_menu(stdscr: Any, case_path: Path, state: AppState) -> None:
                 if check is None or not check.checked:
                     show_message(stdscr, f"{rel} not checked yet.")
                     continue
-                if _show_check_result(stdscr, rel, check):
+                if _show_check_result(stdscr, file_path, rel, check):
                     _view_file_screen(stdscr, file_path, lint_warnings=check.warnings)
 
             scroll = menu_scroll(current, scroll, stdscr, len(labels), header_rows=3)
@@ -867,12 +1014,32 @@ def _draw_check_menu(
         line = f"{prefix}{labels[idx]}"
         check = checks[idx]
         is_checked = check.checked if check is not None else False
+        has_errors = bool(check and check.errors)
+        has_warnings = bool(check and check.warnings)
         try:
-            if is_checked:
+            if has_errors:
+                stdscr.attron(curses.color_pair(4))
                 stdscr.attron(curses.A_BOLD)
+            elif has_warnings:
+                stdscr.attron(curses.color_pair(3))
+                stdscr.attron(curses.A_BOLD)
+            elif is_checked:
+                stdscr.attron(curses.color_pair(2))
+                stdscr.attron(curses.A_BOLD)
+            else:
+                stdscr.attron(curses.A_DIM)
             stdscr.addstr(start_row + (idx - scroll), 0, line[: max(1, width - 1)])
-            if is_checked:
+            if has_errors:
                 stdscr.attroff(curses.A_BOLD)
+                stdscr.attroff(curses.color_pair(4))
+            elif has_warnings:
+                stdscr.attroff(curses.A_BOLD)
+                stdscr.attroff(curses.color_pair(3))
+            elif is_checked:
+                stdscr.attroff(curses.A_BOLD)
+                stdscr.attroff(curses.color_pair(2))
+            else:
+                stdscr.attroff(curses.A_DIM)
         except curses.error:
             break
 
@@ -892,6 +1059,8 @@ def _menu_choice(
     help_lines: list[str] | None = None,
 ) -> int:
     initial_index = state.menu_selection.get(menu_key, 0)
+    combined_status = _merge_status_lines(status_line, _running_tasks_status(state))
+    combined_status = _merge_status_lines(combined_status, last_tool_status_line())
     menu = Menu(
         stdscr,
         title,
@@ -900,7 +1069,7 @@ def _menu_choice(
         command_handler=command_handler,
         command_suggestions=command_suggestions,
         disabled_indices=disabled_indices,
-        status_line=status_line,
+        status_line=combined_status,
         help_lines=help_lines,
     )
     choice = menu.navigate()
@@ -915,11 +1084,71 @@ def _root_status_line(state: AppState) -> str | None:
         parts.append("Limited mode: OpenFOAM env not found (simple editor only)")
     if not foamlib_available():
         parts.append("foamlib: off")
+    running = _running_tasks_status(state)
+    if running:
+        parts.append(running)
+    last_tool = last_tool_status_line()
+    if last_tool:
+        parts.append(last_tool)
     return " | ".join(parts) if parts else None
+
+
+def _merge_status_lines(base: str | None, extra: str | None) -> str | None:
+    if base and extra:
+        return f"{base} | {extra}"
+    if extra:
+        return extra
+    return base
+
+
+def _running_tasks_status(state: AppState) -> str | None:
+    tasks = [
+        task
+        for task in state.tasks.list_tasks()
+        if task.status in ("running", "cancelling")
+    ]
+    if not tasks:
+        return None
+    labels = []
+    for task in tasks:
+        label = "case analysis" if task.name == "case_meta" else task.name
+        if task.message and task.name != "case_meta":
+            label = f"{label}({task.message})"
+        labels.append(label)
+    return f"running: {', '.join(labels)}"
+
+
+def _recent_task_summary(state: AppState) -> str | None:
+    now = time.time()
+    recent: Task | None = None
+    for task in state.tasks.list_tasks():
+        if task.name in ("case_meta",):
+            continue
+        if task.finished_at is None:
+            continue
+        if now - task.finished_at > 5.0:
+            continue
+        if recent is None or (task.finished_at and task.finished_at > recent.finished_at):
+            recent = task
+    if recent is None:
+        return None
+    note = f" ({recent.message})" if recent.message else ""
+    return f"last: {recent.name} {recent.status}{note}"
+
+
+def _task_running(state: AppState, name: str) -> bool:
+    task = state.tasks.get(name)
+    if not task:
+        return False
+    if task.thread and not task.thread.is_alive():
+        return False
+    return task.status in ("running", "cancelling")
 
 
 def _preprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
     options = [
+        "Edit case pipeline (Allrun)",
+        "Run case pipeline (Allrun)",
         "Run blockMesh",
         "blockMesh helper (vertices)",
         "Mesh quality (checkMesh)",
@@ -929,10 +1158,12 @@ def _preprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen
         "Back",
     ]
     disabled = set(range(len(options) - 1)) if state.no_foam else None
+    if not _has_processor_dirs(case_path):
+        disabled = (disabled or set()) | {7}
     while True:
         choice = _menu_choice(
             stdscr,
-            "Pre-Processing (Mesh)",
+            "Mesh",
             options,
             state,
             "menu:pre",
@@ -942,18 +1173,22 @@ def _preprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen
         if choice in (-1, len(options) - 1):
             return Screen.MAIN_MENU
         if choice == 0:
-            run_tool_by_name(stdscr, case_path, "blockMesh")
+            pipeline_editor_screen(stdscr, case_path)
         elif choice == 1:
-            blockmesh_helper_screen(stdscr, case_path)
+            pipeline_runner_screen(stdscr, case_path)
         elif choice == 2:
-            run_checkmesh(stdscr, case_path)
+            run_tool_by_name(stdscr, case_path, "blockMesh")
         elif choice == 3:
+            blockmesh_helper_screen(stdscr, case_path)
+        elif choice == 4:
+            run_checkmesh(stdscr, case_path)
+        elif choice == 5:
             run_snappy = snappy_staged_screen(stdscr, case_path)
             if run_snappy:
                 run_tool_by_name(stdscr, case_path, "snappyHexMesh")
-        elif choice == 4:
+        elif choice == 6:
             run_tool_by_name(stdscr, case_path, "decomposePar")
-        elif choice == 5:
+        elif choice == 7:
             reconstruct_manager_screen(stdscr, case_path)
 
 
@@ -962,13 +1197,12 @@ def _physics_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
         "Config Editor",
         "Boundary matrix",
         "Thermophysical wizard",
-        "High-speed initial conditions",
         "Check syntax",
         "Back",
     ]
     disabled = None
     if state.no_foam and not foamlib_available():
-        disabled = {1, 2, 3, 4}
+        disabled = {1, 2, 3}
     while True:
         choice = _menu_choice(
             stdscr,
@@ -988,24 +1222,27 @@ def _physics_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
         elif choice == 2:
             thermophysical_wizard_screen(stdscr, case_path)
         elif choice == 3:
-            high_speed_helper_screen(stdscr, case_path)
-        elif choice == 4:
             _check_syntax_screen(stdscr, case_path, state)
 
 
 def _simulation_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
     options = [
-        "Run current solver",
+        "Run current solver (background)",
         "Run solver (live)",
         "Safe stop (create stop file)",
         "Resume solver (latestTime)",
-        "foamJob (run job)",
-        "foamEndJob (stop job)",
         "Job status (poll)",
         "Foamlib parametric study",
+        "Parametric presets (ofti.parametric)",
         "Back",
     ]
-    disabled = set(range(len(options) - 1)) if state.no_foam else None
+    disabled: set[int] | None = None
+    if state.no_foam:
+        disabled = set(range(len(options) - 1))
+    else:
+        solver_running = _task_running(state, "solver")
+        if solver_running:
+            disabled = {0, 1, 3}
     while True:
         choice = _menu_choice(
             stdscr,
@@ -1019,7 +1256,7 @@ def _simulation_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
         if choice in (-1, len(options) - 1):
             return Screen.MAIN_MENU
         if choice == 0:
-            run_current_solver(stdscr, case_path)
+            _run_solver_background(stdscr, case_path, state)
         elif choice == 1:
             run_current_solver_live(stdscr, case_path)
         elif choice == 2:
@@ -1027,30 +1264,33 @@ def _simulation_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
         elif choice == 3:
             solver_resurrection_screen(stdscr, case_path)
         elif choice == 4:
-            run_tool_by_name(stdscr, case_path, "foamJob")
-        elif choice == 5:
-            run_tool_by_name(stdscr, case_path, "foamEndJob")
-        elif choice == 6:
             run_tool_by_name(stdscr, case_path, "jobStatus")
-        elif choice == 7:
+        elif choice == 5:
             foamlib_parametric_study_screen(stdscr, case_path)
+        elif choice == 6:
+            parametric_presets_screen(stdscr, case_path)
 
 
 def _postprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
     options = [
         "Reconstruct manager",
         "Time directory pruner",
-        "Tail log (highlight)",
         "View logs",
+        "Open ParaView (.foam)",
         "Residual timeline (foamlib)",
+        "Log analysis summary",
+        "PostProcessing browser",
+        "Field summary (latest time)",
+        "Sampling & sets",
         "Probes viewer",
-        "yPlus estimator",
         "postProcess (prompt)",
         "foamCalc (prompt)",
         "Run .sh script",
         "Back",
     ]
     disabled = set(range(len(options) - 1)) if state.no_foam else None
+    if not _has_processor_dirs(case_path):
+        disabled = (disabled or set()) | {0}
     while True:
         choice = _menu_choice(
             stdscr,
@@ -1068,20 +1308,26 @@ def _postprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Scree
         elif choice == 1:
             time_directory_pruner_screen(stdscr, case_path)
         elif choice == 2:
-            log_tail_screen(stdscr, case_path)
-        elif choice == 3:
             logs_screen(stdscr, case_path)
+        elif choice == 3:
+            open_paraview_screen(stdscr, case_path)
         elif choice == 4:
             residual_timeline_screen(stdscr, case_path)
         elif choice == 5:
-            probes_viewer_screen(stdscr, case_path)
+            log_analysis_screen(stdscr, case_path)
         elif choice == 6:
-            yplus_screen(stdscr, case_path)
+            postprocessing_browser_screen(stdscr, case_path)
         elif choice == 7:
-            run_tool_by_name(stdscr, case_path, "postProcess")
+            field_summary_screen(stdscr, case_path)
         elif choice == 8:
-            run_tool_by_name(stdscr, case_path, "foamCalc")
+            sampling_sets_screen(stdscr, case_path)
         elif choice == 9:
+            probes_viewer_screen(stdscr, case_path)
+        elif choice == 10:
+            run_tool_by_name(stdscr, case_path, "postProcess")
+        elif choice == 11:
+            run_tool_by_name(stdscr, case_path, "foamCalc")
+        elif choice == 12:
             run_tool_by_name(stdscr, case_path, "runScript")
 
 
@@ -1146,8 +1392,12 @@ def _create_missing_config_screen(stdscr: Any, case_path: Path) -> None:
     if choice == -1 or choice == len(labels):
         return
     label, path, object_name = items[choice]
-    _write_config_stub(path, object_name)
-    show_message(stdscr, f"Created {label} at {path.relative_to(case_path)}.")
+    source = _write_config_template(case_path, path, object_name)
+    suffix = "from example" if source == "example" else "stub"
+    show_message(
+        stdscr,
+        f"Created {label} at {path.relative_to(case_path)} ({suffix}).",
+    )
 
 
 def _missing_config_templates(case_path: Path) -> list[tuple[str, Path, str]]:
@@ -1173,7 +1423,10 @@ def _missing_config_templates(case_path: Path) -> list[tuple[str, Path, str]]:
     return missing
 
 
-def _write_config_stub(path: Path, object_name: str) -> None:
+def _write_config_template(case_path: Path, path: Path, object_name: str) -> str:
+    rel_path = path.relative_to(case_path)
+    if write_example_template(path, rel_path):
+        return "example"
     path.parent.mkdir(parents=True, exist_ok=True)
     template = [
         "/*--------------------------------*- C++ -*----------------------------------*\\",
@@ -1191,6 +1444,7 @@ def _write_config_stub(path: Path, object_name: str) -> None:
         "",
     ]
     path.write_text("\n".join(template))
+    return "stub"
 
 
 def _clean_case_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
@@ -1235,12 +1489,24 @@ def _show_progress(stdscr: Any, message: str) -> None:
 
 
 def _clean_all(stdscr: Any, case_path: Path) -> None:
-    remove_all_logs(stdscr, case_path)
-    clean_time_directories(stdscr, case_path)
-    reconstruct_manager_screen(stdscr, case_path)
+    status_message(stdscr, "Cleaning logs...")
+    remove_all_logs(stdscr, case_path, silent=True, use_cleanfunctions=False)
+    status_message(stdscr, "Cleaning time directories...")
+    clean_time_directories(stdscr, case_path, silent=True, use_cleanfunctions=False)
+    status_message(stdscr, "Reconstructing latest time...")
+    _ok, note = reconstruct_latest_once(case_path)
+    summary = "Clean all complete."
+    if note:
+        summary = f"{summary} {note}"
+    show_message(stdscr, summary)
 
 
-def _show_check_result(stdscr: Any, rel_path: Path, result: FileCheckResult) -> bool:
+def _show_check_result(
+    stdscr: Any,
+    file_path: Path,
+    rel_path: Path,
+    result: FileCheckResult,
+) -> bool:
     status = "OK"
     if not result.checked:
         status = "NOT CHECKED"
@@ -1249,30 +1515,100 @@ def _show_check_result(stdscr: Any, rel_path: Path, result: FileCheckResult) -> 
     elif result.warnings:
         status = "Warnings"
 
-    stdscr.clear()
-    line = f"{rel_path}: {status}"
-    try:
-        stdscr.addstr(line + "\n\n")
-        if not result.checked:
-            stdscr.addstr("Check interrupted before this file ran.\n\n")
-        elif result.errors:
-            stdscr.addstr("Detected issues:\n")
-            for item in result.errors:
-                stdscr.addstr(f"- {item}\n")
-            stdscr.addstr("\n")
-        elif result.warnings:
-            stdscr.addstr("Warnings are shown inline in the file view.\n\n")
-        else:
-            stdscr.addstr("No issues detected.\n\n")
-        view_hint = key_hint("view", "v")
-        back_hint = key_hint("back", "h")
-        stdscr.addstr(f"Press {view_hint} to view file or {back_hint} to return.\n")
-        stdscr.refresh()
-    except curses.error:
-        stdscr.refresh()
+    while True:
+        stdscr.clear()
+        line = f"{rel_path}: {status}"
+        try:
+            stdscr.addstr(line + "\n\n")
+            if not result.checked:
+                stdscr.addstr("Check interrupted before this file ran.\n\n")
+            elif result.errors:
+                stdscr.addstr("Detected issues:\n")
+                for item in result.errors:
+                    stdscr.addstr(f"- {item}\n")
+                stdscr.addstr("\n")
+            elif result.warnings:
+                stdscr.addstr("Warnings are shown inline in the file view.\n\n")
+            else:
+                stdscr.addstr("No issues detected.\n\n")
+            view_hint = key_hint("view", "v")
+            back_hint = key_hint("back", "h")
+            fix_hint = "f"
+            stdscr.addstr(
+                f"Press {view_hint} to view file, {fix_hint} to auto-fix, "
+                f"or {back_hint} to return.\n",
+            )
+            stdscr.refresh()
+        except curses.error:
+            stdscr.refresh()
 
-    ch = stdscr.getch()
-    return key_in(ch, get_config().keys.get("view", []))
+        ch = stdscr.getch()
+        if key_in(ch, get_config().keys.get("view", [])):
+            return True
+        if key_in(ch, get_config().keys.get("back", [])):
+            return False
+        if ch in (ord("f"), ord("F")):
+            _auto_fix_missing_required_entries(stdscr, file_path, rel_path, result)
+            return False
+
+
+def _auto_fix_missing_required_entries(
+    stdscr: Any,
+    file_path: Path,
+    rel_path: Path,
+    result: FileCheckResult,
+) -> None:
+    if not result.errors:
+        show_message(stdscr, "No missing required entries detected.")
+        return
+    missing_map: dict[str, list[str]] = {}
+    for item in result.errors:
+        if "missing required entries:" not in item:
+            continue
+        prefix, rest = item.split("missing required entries:", 1)
+        key = prefix.strip().rstrip(":")
+        missing = [part.strip() for part in rest.split(",") if part.strip()]
+        if missing:
+            missing_map[key] = missing
+    if not missing_map:
+        show_message(stdscr, "No missing required entries detected.")
+        return
+
+    example_path = find_example_file(rel_path)
+    if example_path is None:
+        show_message(stdscr, "No example template found to auto-fix this file.")
+        return
+
+    fixed: list[str] = []
+    skipped: list[str] = []
+    for key, missing_keys in missing_map.items():
+        for missing_key in missing_keys:
+            full_key = f"{key}.{missing_key}" if key else missing_key
+            try:
+                value = read_entry(example_path, full_key)
+            except OpenFOAMError:
+                skipped.append(full_key)
+                continue
+            ok = write_entry(file_path, full_key, value)
+            if ok:
+                fixed.append(full_key)
+            else:
+                skipped.append(full_key)
+
+    if fixed:
+        show_message(
+            stdscr,
+            "Inserted entries:\n" + "\n".join(f"- {item}" for item in fixed),
+        )
+        return
+    if skipped:
+        show_message(
+            stdscr,
+            "No entries inserted. Missing example values for:\n"
+            + "\n".join(f"- {item}" for item in skipped),
+        )
+        return
+    show_message(stdscr, "No entries inserted.")
 
 
 
@@ -1404,8 +1740,62 @@ def _case_metadata(case_path: Path) -> dict[str, str]:
         "status": status,
         "mesh": mesh,
         "parallel": parallel,
+        "log": preferred_log_name(case_path),
     }
+
+
+def _case_metadata_cached(case_path: Path, state: AppState) -> dict[str, str]:
+    now = time.time()
+    if state.case_meta is not None and state.case_meta_at is not None:
+        if now - state.case_meta_at < 30.0:
+            return state.case_meta
+        _start_case_meta_task(case_path, state)
+        return state.case_meta
+    _start_case_meta_task(case_path, state)
+    return _case_meta_placeholder(case_path)
+
+
+def _case_meta_placeholder(case_path: Path) -> dict[str, str]:
+    return _case_meta_quick(case_path)
+
+
+def _case_meta_quick(case_path: Path) -> dict[str, str]:
+    latest = latest_time(case_path)
+    status = "ran" if latest not in ("0", "0.0", "") else "clean"
+    return {
+        "case_name": case_path.name,
+        "case_path": str(case_path),
+        "solver": detect_solver(case_path),
+        "foam_version": "unknown",
+        "case_header_version": "unknown",
+        "latest_time": latest or "unknown",
+        "status": status,
+        "mesh": _detect_mesh_stats(case_path),
+        "parallel": detect_parallel_settings(case_path),
+        "log": preferred_log_name(case_path),
+    }
+
+
+def _start_case_meta_task(case_path: Path, state: AppState) -> None:
+    existing = state.tasks.get("case_meta")
+    if existing and existing.thread and existing.thread.is_alive():
+        return
+
+    def worker(task: Task) -> None:
+        task.message = "case analysis"
+        meta = _case_metadata(case_path)
+        state.case_meta = meta
+        state.case_meta_at = time.time()
+
+    state.tasks.start("case_meta", worker, message="case analysis")
 
 
 def _detect_mesh_stats(case_path: Path) -> str:
     return detect_mesh_stats(case_path)
+
+
+def _has_processor_dirs(case_path: Path) -> bool:
+    return any(
+        entry.is_dir() and entry.name.startswith("processor")
+        for entry in case_path.iterdir()
+    )
