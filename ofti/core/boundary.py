@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from ofti.foam.openfoam import OpenFOAMError, list_subkeys, read_entry
+from ofti import foamlib_adapter
+from ofti.core.entry_io import list_subkeys, read_entry
+from ofti.foam.openfoam import OpenFOAMError
 
 
 @dataclass
@@ -34,14 +37,23 @@ def build_boundary_matrix(case_path: Path) -> BoundaryMatrix:
             subkeys = list_subkeys(file_path, "boundaryField")
         except OpenFOAMError:
             subkeys = []
-        wildcard = ".*" in subkeys
+        wildcard_keys = [key for key in subkeys if key not in patches]
+        wildcard_key = ".*" if ".*" in subkeys else (wildcard_keys[0] if wildcard_keys else None)
         for patch in patches:
             if patch in subkeys:
                 bc_type = read_optional(file_path, f"boundaryField.{patch}.type")
                 bc_value = read_optional(file_path, f"boundaryField.{patch}.value")
                 data[patch][field] = BoundaryCell("OK", bc_type or "unknown", bc_value or "")
-            elif wildcard:
-                data[patch][field] = BoundaryCell("WILDCARD", "wildcard", "Inherited")
+            elif wildcard_key:
+                type_key = f"boundaryField.{wildcard_key}.type"
+                value_key = f"boundaryField.{wildcard_key}.value"
+                bc_type = read_optional(file_path, type_key)
+                bc_value = read_optional(file_path, value_key)
+                data[patch][field] = BoundaryCell(
+                    "WILDCARD",
+                    bc_type or "wildcard",
+                    bc_value or "Inherited",
+                )
             else:
                 data[patch][field] = BoundaryCell("MISSING", "missing", "")
 
@@ -86,6 +98,11 @@ def read_optional(file_path: Path, key: str) -> str | None:
 def parse_boundary_file(path: Path) -> tuple[list[str], dict[str, str]]:
     if not path.is_file():
         return [], {}
+    if foamlib_adapter.available():
+        try:
+            return foamlib_adapter.parse_boundary_file(path)
+        except Exception as exc:
+            logging.debug("foamlib boundary parse failed: %s", exc)
     try:
         text = path.read_text(errors="ignore")
     except OSError:

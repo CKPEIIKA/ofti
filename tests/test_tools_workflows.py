@@ -78,15 +78,15 @@ def test_run_tool_by_name_dispatches_simple_tool(tmp_path: Path, monkeypatch) ->
     case_dir = tmp_path / "case"
     case_dir.mkdir()
     screen = FakeScreen()
-    called: list[tuple[str, list[str]]] = []
+    called: list[str] = []
 
-    def fake_run_simple(_stdscr, _case, name, cmd):
-        called.append((name, cmd))
+    def fake_run_blockmesh(_stdscr, _case):
+        called.append("blockMesh")
 
-    monkeypatch.setattr(tools, "_run_simple_tool", fake_run_simple)
+    monkeypatch.setattr(tools, "run_blockmesh", fake_run_blockmesh)
 
     assert tools.run_tool_by_name(screen, case_dir, "blockMesh") is True
-    assert called and called[0][0] == "blockMesh"
+    assert called == ["blockMesh"]
 
 
 def test_rerun_last_tool_replays_shell(tmp_path: Path, monkeypatch) -> None:

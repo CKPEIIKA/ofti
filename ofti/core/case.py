@@ -3,7 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ofti.foam.openfoam import OpenFOAMError, read_entry
+from ofti.core.entry_io import read_entry, write_entry
+from ofti.foam.openfoam import OpenFOAMError
 
 
 def detect_mesh_stats(case_path: Path) -> str:  # noqa: PLR0911
@@ -41,6 +42,27 @@ def detect_solver(case_path: Path) -> str:
         return "unknown"
     solver = text.split()[0].rstrip(";")
     return solver or "unknown"
+
+
+def read_application(control_dict: Path) -> str:
+    return read_entry(control_dict, "application")
+
+
+def read_number_of_subdomains(decompose_dict: Path) -> int | None:
+    try:
+        number = read_entry(decompose_dict, "numberOfSubdomains").strip().rstrip(";")
+    except OpenFOAMError:
+        return None
+    try:
+        return int(number) if number else None
+    except ValueError:
+        return None
+
+
+def set_start_from_latest(control_dict: Path, latest: str) -> bool:
+    ok_start = write_entry(control_dict, "startFrom", "latestTime")
+    ok_time = write_entry(control_dict, "startTime", latest)
+    return ok_start and ok_time
 
 
 def detect_parallel_settings(case_path: Path) -> str:

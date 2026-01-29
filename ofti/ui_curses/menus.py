@@ -135,6 +135,7 @@ class Menu:
         hint_provider: Callable[[int], str | None] | None = None,
         status_line: str | None = None,
         disabled_indices: set[int] | None = None,
+        help_lines: list[str] | None = None,
     ) -> None:
         self.stdscr = stdscr
         self.title = title
@@ -151,6 +152,7 @@ class Menu:
         self.hint_provider = hint_provider
         self.status_line = status_line
         self.disabled_indices = disabled_indices or set()
+        self.help_lines = help_lines or []
         self._scroll = 0
 
     def display(self) -> None:  # noqa: C901, PLR0912
@@ -257,6 +259,10 @@ class Menu:
         lines.append("Commands:")
         lines.append("  :check  :tools  :diag  :run  :nofoam  :tasks")
         lines.append("  :foamenv  :clone  :tool <name>  :cancel <name>  :quit")
+        if self.help_lines:
+            lines.append("")
+            lines.append("About:")
+            lines.extend(self.help_lines)
         return lines
 
     def _show_help(self) -> None:
@@ -347,6 +353,7 @@ class Submenu(Menu):
         hint_provider: Callable[[int], str | None] | None = None,
         status_line: str | None = None,
         disabled_indices: set[int] | None = None,
+        help_lines: list[str] | None = None,
     ) -> None:
         super().__init__(
             stdscr,
@@ -357,6 +364,7 @@ class Submenu(Menu):
             hint_provider=hint_provider,
             status_line=status_line,
             disabled_indices=disabled_indices,
+            help_lines=help_lines,
         )
 
     def navigate(self) -> int:  # noqa: C901, PLR0912
@@ -422,6 +430,7 @@ class RootMenu(Menu):
         hint_provider: Callable[[int], str | None] | None = None,
         status_line: str | None = None,
         disabled_indices: set[int] | None = None,
+        help_lines: list[str] | None = None,
     ) -> None:
         super().__init__(
             stdscr,
@@ -435,6 +444,7 @@ class RootMenu(Menu):
             hint_provider=hint_provider,
             status_line=status_line,
             disabled_indices=disabled_indices,
+            help_lines=help_lines,
         )
 
     def navigate(self) -> int:  # noqa: C901, PLR0912

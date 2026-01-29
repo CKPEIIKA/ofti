@@ -119,44 +119,21 @@ All tool runs show a summary with the command, exit status, stdout, and stderr i
 - `tests/` – pytest suite (unit + optional integration).
 - `of_example/` – small example OpenFOAM case for experimentation.
 
+## Layering rules (keep it simple)
+
+- `core` is pure logic: no curses, no UI imports, no shell execution.
+- `foam` owns OpenFOAM env + subprocess calls; it must not import `ui` or `ui_curses`.
+- `ui` is a thin adapter/router; it must not import `ui_curses`.
+- `ui_curses` renders screens and calls into `core`/`foam` via small helpers.
+- Add new modules only when reused in 2+ places; prefer small helpers in existing files.
+
 ## Development
 
 Requirements:
 
 - Python 3.11+ (tested with 3.11).
+- `foamlib==1.5.5` for OpenFOAM dictionary parsing/writing.
 - `pytest` for running tests.
 - A working OpenFOAM environment for runtime usage (for tests that touch OpenFOAM, see the optional integration test).
 - Coverage target: 70% minimum (pytest-cov).
 - Optional config file: `~/.config/ofti/config.toml` (or `$OFTI_CONFIG`).
-
-Run tests:
-
-```bash
-pytest
-```
-
-Example config:
-
-```toml
-fzf = "auto" # auto | on | off
-use_runfunctions = true
-use_cleanfunctions = true
-enable_entry_cache = true
-enable_background_checks = true
-enable_background_entry_crawl = false
-
-[colors]
-focus_fg = "black"
-focus_bg = "cyan"
-
-[keys]
-up = ["k"]
-down = ["j"]
-select = ["l", "\n"]
-back = ["h", "q"]
-help = ["?"]
-command = [":"]
-search = ["/"]
-top = ["g"]
-bottom = ["G"]
-```
