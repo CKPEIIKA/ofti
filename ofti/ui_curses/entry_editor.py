@@ -57,8 +57,8 @@ class EntryEditor:
             if key == curses.KEY_RESIZE:
                 continue
 
-            if key_in(key, get_config().keys.get("back", [])):
-                return
+            if key == 27:  # ESC does nothing in editor
+                continue
 
             if key == ord("c"):
                 self._check_value()

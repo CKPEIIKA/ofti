@@ -2,74 +2,147 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.core import boundary as bm
+import pytest
+
+from ofti import foamlib_adapter
+from ofti.core.boundary import BoundaryCell, build_boundary_matrix
 
 
-def _write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content)
-
-
-def test_build_boundary_matrix_statuses(monkeypatch, tmp_path: Path) -> None:
-    boundary_text = """FoamFile
-{
-    version 2.0;
-    format ascii;
-    class polyBoundaryMesh;
-    location "constant/polyMesh";
-    object boundary;
-}
-4
-(
-inlet
-{
-    type patch;
-}
-outlet
-{
-    type patch;
-}
-wall
-{
-    type wall;
-}
-front
-{
-    type symmetryPlane;
-}
+@pytest.mark.skipif(
+    not foamlib_adapter.available(),
+    reason="foamlib required for boundary matrix tests",
 )
-"""
-    _write_text(tmp_path / "constant" / "polyMesh" / "boundary", boundary_text)
-    (tmp_path / "0").mkdir()
-    _write_text(tmp_path / "0" / "U", "dummy")
-    _write_text(tmp_path / "0" / "p", "dummy")
+def test_build_boundary_matrix_pitzdaily() -> None:
+    case_path = Path(__file__).parents[1] / "examples" / "pitzDaily"
+    matrix = build_boundary_matrix(case_path)
 
-    def fake_list_subkeys(file_path: Path, _entry: str) -> list[str]:
-        if file_path.name == "U":
-            return ["inlet", "outlet"]
-        if file_path.name == "p":
-            return ["outlet", ".*"]
-        return []
+    assert "inlet" in matrix.patches
+    assert "upperWall" in matrix.patches
+    assert matrix.patch_types.get("upperWall") == "wall"
+    assert matrix.patch_types.get("frontAndBack") == "empty"
+    assert "U" in matrix.fields
 
-    def fake_read_entry(file_path: Path, key: str) -> str:
-        if file_path.name == "U" and "inlet" in key and key.endswith(".type"):
-            return "fixedValue;"
-        if file_path.name == "U" and "inlet" in key and key.endswith(".value"):
-            return "uniform (1 0 0);"
-        if file_path.name == "U" and "outlet" in key and key.endswith(".type"):
-            return "zeroGradient;"
-        if file_path.name == "p" and "outlet" in key and key.endswith(".type"):
-            return "fixedValue;"
-        return ""
+    cell = matrix.data["inlet"]["U"]
+    assert isinstance(cell, BoundaryCell)
+    assert cell.status == "OK"
+    assert cell.bc_type == "fixedValue"
+    assert cell.value
 
-    monkeypatch.setattr(bm, "list_subkeys", fake_list_subkeys)
-    monkeypatch.setattr(bm, "read_entry", fake_read_entry)
 
-    matrix = bm.build_boundary_matrix(tmp_path)
+@pytest.mark.skipif(
+    not foamlib_adapter.available(),
+    reason="foamlib required for boundary matrix tests",
+)
+def test_build_boundary_matrix_missing_boundary_field(tmp_path: Path) -> None:
+    case_path = tmp_path / "case"
+    boundary_path = case_path / "constant" / "polyMesh"
+    zero_path = case_path / "0"
+    boundary_path.mkdir(parents=True)
+    zero_path.mkdir(parents=True)
 
-    assert matrix.fields == ["U", "p"]
-    assert matrix.patches == ["inlet", "outlet", "wall", "front"]
-    assert matrix.patch_types["wall"] == "wall"
+    (boundary_path / "boundary").write_text(
+        "FoamFile{version 2.0;format ascii;class polyBoundaryMesh;location \"constant/polyMesh\";object boundary;}\n"
+        "1\n(\n"
+        " inlet { type patch; nFaces 1; startFace 0; }\n"
+        ")\n",
+    )
+
+    (zero_path / "U").write_text(
+        "FoamFile{version 2.0;format ascii;class volVectorField;location \"0\";object U;}\n"
+        "dimensions [0 1 -1 0 0 0 0];\n"
+        "internalField uniform (0 0 0);\n"
+        "boundaryField{ inlet{ type fixedValue; value uniform (0 0 0); } }\n",
+    )
+    (zero_path / "p").write_text(
+        "FoamFile{version 2.0;format ascii;class volScalarField;location \"0\";object p;}\n"
+        "dimensions [0 2 -2 0 0 0 0];\n"
+        "internalField uniform 0;\n",
+    )
+
+    matrix = build_boundary_matrix(case_path)
     assert matrix.data["inlet"]["U"].status == "OK"
-    assert matrix.data["wall"]["U"].status == "MISSING"
-    assert matrix.data["wall"]["p"].status == "WILDCARD"
+    assert matrix.data["inlet"]["p"].status == "MISSING"
+
+
+@pytest.mark.skipif(
+    not foamlib_adapter.available(),
+    reason="foamlib required for boundary matrix tests",
+)
+def test_build_boundary_matrix_wildcard(tmp_path: Path) -> None:
+    case_path = tmp_path / "case"
+    boundary_path = case_path / "constant" / "polyMesh"
+    zero_path = case_path / "0"
+    boundary_path.mkdir(parents=True)
+    zero_path.mkdir(parents=True)
+
+    (boundary_path / "boundary").write_text(
+        "FoamFile{version 2.0;format ascii;class polyBoundaryMesh;location \"constant/polyMesh\";object boundary;}\n"
+        "2\n(\n"
+        " inlet { type patch; nFaces 1; startFace 0; }\n"
+        " outlet { type patch; nFaces 1; startFace 1; }\n"
+        ")\n",
+    )
+
+    (zero_path / "U").write_text(
+        "FoamFile{version 2.0;format ascii;class volVectorField;location \"0\";object U;}\n"
+        "dimensions [0 1 -1 0 0 0 0];\n"
+        "internalField uniform (0 0 0);\n"
+        "boundaryField\n"
+        "{\n"
+        "  \".*\"\n"
+        "  {\n"
+        "    type zeroGradient;\n"
+        "  }\n"
+        "}\n",
+    )
+
+    matrix = build_boundary_matrix(case_path)
+    assert matrix.data["inlet"]["U"].status == "WILDCARD"
+    assert matrix.data["outlet"]["U"].status == "WILDCARD"
+
+
+@pytest.mark.skipif(
+    not foamlib_adapter.available(),
+    reason="foamlib required for boundary matrix tests",
+)
+def test_boundary_matrix_writeback(tmp_path: Path) -> None:
+    case_path = tmp_path / "case"
+    boundary_path = case_path / "constant" / "polyMesh"
+    zero_path = case_path / "0"
+    boundary_path.mkdir(parents=True)
+    zero_path.mkdir(parents=True)
+
+    (boundary_path / "boundary").write_text(
+        "FoamFile{version 2.0;format ascii;class polyBoundaryMesh;location \"constant/polyMesh\";object boundary;}\n"
+        "1\n(\n"
+        " inlet { type patch; nFaces 1; startFace 0; }\n"
+        ")\n",
+    )
+
+    u_path = zero_path / "U"
+    u_path.write_text(
+        "FoamFile{version 2.0;format ascii;class volVectorField;location \"0\";object U;}\n"
+        "dimensions [0 1 -1 0 0 0 0];\n"
+        "internalField uniform (0 0 0);\n"
+        "boundaryField\n"
+        "{\n"
+        "  inlet\n"
+        "  {\n"
+        "    type fixedValue;\n"
+        "    value uniform (0 0 0);\n"
+        "  }\n"
+        "}\n",
+    )
+
+    matrix = build_boundary_matrix(case_path)
+    cell = matrix.data["inlet"]["U"]
+    assert cell.bc_type == "fixedValue"
+
+    assert foamlib_adapter.write_entry(
+        u_path, "boundaryField.inlet.type", "zeroGradient",
+    )
+
+    matrix = build_boundary_matrix(case_path)
+    cell = matrix.data["inlet"]["U"]
+    assert cell.status == "OK"
+    assert cell.bc_type == "zeroGradient"

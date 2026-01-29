@@ -17,17 +17,31 @@ from .case_headers import (
 )
 from .entries import Entry, autoformat_value
 from .times import latest_time, time_directories
+from .versioning import (
+    OpenFOAMVersionInfo,
+    detect_openfoam_fork,
+    detect_version_info,
+    get_dict_path,
+    is_legacy_version,
+    resolve_solver_alias,
+    solver_aliases,
+)
 
 __all__ = [
     "Entry",
+    "OpenFOAMVersionInfo",
     "autoformat_value",
     "case_header_candidates",
     "detect_case_header_version",
     "detect_mesh_stats",
+    "detect_openfoam_fork",
     "detect_parallel_settings",
     "detect_solver",
+    "detect_version_info",
     "extract_header_version",
+    "get_dict_path",
     "has_mesh",
+    "is_legacy_version",
     "latest_checkmesh_log",
     "latest_time",
     "parse_cells_count",
@@ -35,5 +49,7 @@ __all__ = [
     "parse_header_comment_version",
     "parse_max_skewness",
     "read_optional_entry",
+    "resolve_solver_alias",
+    "solver_aliases",
     "time_directories",
 ]

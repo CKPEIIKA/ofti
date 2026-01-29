@@ -3,110 +3,87 @@ from __future__ import annotations
 import curses
 import logging
 import os
-import threading
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from ofti.app.commands import CommandCallbacks, command_suggestions, handle_command
+from ofti.app.helpers import (
+    is_case_dir,
+    menu_scroll,
+    option_index,
+    prompt_command,
+    select_case_directory,
+    set_no_foam_mode,
+    show_message,
+)
+from ofti.app.state import AppState, Screen
 from ofti.core.case import detect_mesh_stats, detect_parallel_settings, detect_solver
 from ofti.core.case_headers import detect_case_header_version
 from ofti.core.domain import Case, DictionaryFile, EntryRef
 from ofti.core.entries import Entry, autoformat_value
-from ofti.core.entry_meta import choose_validator
+from ofti.core.entry_io import list_keywords, list_subkeys, read_entry, write_entry
+from ofti.core.entry_meta import choose_validator, detect_type_with_foamlib
 from ofti.core.syntax import find_suspicious_lines
 from ofti.core.times import latest_time
+from ofti.core.versioning import get_dict_path
 from ofti.foam.config import fzf_enabled, get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
-from ofti.foam.openfoam import (
-    FileCheckResult,
-    OpenFOAMError,
-    discover_case_files,
-    list_keywords,
-    list_subkeys,
-    read_entry,
-    verify_case,
-    write_entry,
-)
+from ofti.foam.openfoam import FileCheckResult, OpenFOAMError, discover_case_files, verify_case
 from ofti.foam.openfoam_env import detect_openfoam_version, ensure_environment
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
-from ofti.foam.tasks import Task, TaskRegistry
+from ofti.foam.tasks import Task
+from ofti.foamlib_adapter import available as foamlib_available
 from ofti.tools import (
+    clean_case,
+    clean_time_directories,
     clone_case,
     diagnostics_screen,
-    dictionary_linter_screen,
+    foamlib_parametric_study_screen,
     log_tail_screen,
     logs_screen,
+    probes_viewer_screen,
     reconstruct_manager_screen,
+    remove_all_logs,
+    residual_timeline_screen,
     run_checkmesh,
     run_current_solver,
+    run_current_solver_live,
     run_tool_by_name,
     safe_stop_screen,
     solver_resurrection_screen,
     time_directory_pruner_screen,
     tools_screen,
+    yplus_screen,
 )
+from ofti.ui.adapter import CursesAdapter
+from ofti.ui.router import ScreenRouter
+from ofti.ui_curses.blockmesh_helper import blockmesh_helper_screen
 from ofti.ui_curses.boundary_matrix import boundary_matrix_screen
 from ofti.ui_curses.entry_browser import BrowserCallbacks, entry_browser_screen
 from ofti.ui_curses.entry_editor import EntryEditor
+from ofti.ui_curses.help import (
+    clean_case_help,
+    config_help,
+    main_menu_help,
+    physics_help,
+    postprocessing_help,
+    preprocessing_help,
+    simulation_help,
+)
+from ofti.ui_curses.high_speed import high_speed_helper_screen
 from ofti.ui_curses.layout import (
     case_banner_lines,
     case_overview_lines,
     draw_status_bar,
-    next_spinner,
     status_message,
 )
 from ofti.ui_curses.menus import Menu, RootMenu, Submenu
 from ofti.ui_curses.openfoam_env import openfoam_env_screen
+from ofti.ui_curses.snappy_toggle import snappy_staged_screen
+from ofti.ui_curses.thermo_wizard import thermophysical_wizard_screen
 from ofti.ui_curses.viewer import Viewer
-
-
-class Screen(Enum):
-    MAIN_MENU = "main_menu"
-    EDITOR = "editor"
-    ENTRY_BROWSER = "entry_browser"
-    CHECK = "check"
-    TOOLS = "tools"
-    DIAGNOSTICS = "diagnostics"
-    SEARCH = "search"
-    VIEWER = "viewer"
-    NO_FOAM_FILE = "no_foam_file"
-
-
-@dataclass
-class AppState:
-    no_foam: bool = False
-    no_foam_reason: str | None = None
-    current_screen: Screen = Screen.MAIN_MENU
-    last_action: str | None = None
-    last_section: str | None = None
-    last_file: str | None = None
-    menu_selection: dict[str, int] = field(default_factory=dict)
-    check_lock: threading.Lock = field(default_factory=threading.Lock)
-    check_in_progress: bool = False
-    check_total: int = 0
-    check_done: int = 0
-    check_current: Path | None = None
-    check_results: dict[Path, FileCheckResult] | None = None
-    check_thread: threading.Thread | None = None
-    tasks: TaskRegistry = field(default_factory=TaskRegistry)
-
-    def transition(self, screen: Screen, action: str | None = None) -> None:
-        self.current_screen = screen
-        if action is not None:
-            self.last_action = action
-
-    def check_status_line(self) -> str:
-        with self.check_lock:
-            if self.check_in_progress:
-                current = f" {self.check_current.name}" if self.check_current else ""
-                return f"{next_spinner()} check: {self.check_done}/{self.check_total}{current}"
-        return ""
-
-
 
 
 def run_tui(case_dir: str, debug: bool = False, no_foam: bool = False) -> None:
@@ -124,10 +101,7 @@ def run_tui(case_dir: str, debug: bool = False, no_foam: bool = False) -> None:
     input_path = Path(case_dir).expanduser().resolve()
     start_path = input_path.parent if input_path.is_file() else input_path
     state = AppState(no_foam=no_foam)
-    if no_foam:
-        os.environ["OFTI_NO_FOAM"] = "1"
-    else:
-        os.environ.pop("OFTI_NO_FOAM", None)
+    set_no_foam_mode(state, no_foam)
     curses.wrapper(_main, start_path, debug, state)
 
 
@@ -137,9 +111,12 @@ def _main(stdscr: Any, case_path: Path, debug: bool, state: AppState) -> None:
     fg = _color_from_name(cfg.colors.get("focus_fg", "black"), curses.COLOR_BLACK)
     bg = _color_from_name(cfg.colors.get("focus_bg", "cyan"), curses.COLOR_CYAN)
     curses.init_pair(1, fg, bg)
+    curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+    curses.init_pair(4, curses.COLOR_RED, curses.COLOR_BLACK)
 
-    if not _is_case_dir(case_path):
-        selected = _select_case_directory(stdscr, case_path)
+    if not is_case_dir(case_path):
+        selected = select_case_directory(stdscr, case_path)
         if selected is None:
             return
         case_path = selected
@@ -148,9 +125,7 @@ def _main(stdscr: Any, case_path: Path, debug: bool, state: AppState) -> None:
         try:
             ensure_environment()
         except OpenFOAMError as exc:
-            state.no_foam = True
-            state.no_foam_reason = str(exc)
-            os.environ["OFTI_NO_FOAM"] = "1"
+            set_no_foam_mode(state, True, str(exc))
 
     try:
         _main_loop(stdscr, case_path, state)
@@ -163,7 +138,49 @@ def _main(stdscr: Any, case_path: Path, debug: bool, state: AppState) -> None:
         if debug:
             # Re-raise to get a full traceback in debug mode.
             raise
-        _show_message(stdscr, f"Unexpected error: {exc}")
+        show_message(stdscr, f"Unexpected error: {exc}")
+
+
+def _screen_check(stdscr: Any, case_path: Path, state: AppState) -> Screen:
+    state.transition(Screen.CHECK, action="check")
+    _check_syntax_screen(stdscr, case_path, state)
+    return Screen.MAIN_MENU
+
+
+def _screen_tools(stdscr: Any, case_path: Path, state: AppState) -> Screen:
+    state.transition(Screen.TOOLS, action="tools")
+    tools_screen(stdscr, case_path)
+    return Screen.MAIN_MENU
+
+
+def _screen_diagnostics(stdscr: Any, case_path: Path, state: AppState) -> Screen:
+    state.transition(Screen.DIAGNOSTICS, action="diagnostics")
+    diagnostics_screen(stdscr, case_path)
+    return Screen.MAIN_MENU
+
+
+def _screen_search(stdscr: Any, case_path: Path, state: AppState) -> Screen:
+    state.transition(Screen.SEARCH, action="search")
+    _global_search_screen(stdscr, case_path, state)
+    return Screen.MAIN_MENU
+
+
+def _screen_editor(stdscr: Any, case_path: Path, state: AppState) -> Screen:
+    state.transition(Screen.EDITOR, action="editor")
+    _editor_screen(stdscr, case_path, state)
+    return Screen.MAIN_MENU
+
+
+def _screen_main_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen | None:
+    return _main_menu_screen(stdscr, case_path, state)
+
+
+def _menu_scroll(current: int, scroll: int, stdscr: Any, total: int, header_rows: int) -> int:
+    return menu_scroll(current, scroll, stdscr, total, header_rows)
+
+
+def _select_case_directory(stdscr: Any, start_path: Path) -> Path | None:
+    return select_case_directory(stdscr, start_path)
 
 
 def _main_loop(stdscr: Any, case_path: Path, state: AppState) -> None:
@@ -177,37 +194,25 @@ def _main_loop(stdscr: Any, case_path: Path, state: AppState) -> None:
         stdscr.getch()
         return
 
+    adapter = CursesAdapter(stdscr)
+    router = ScreenRouter(
+        handlers={
+            Screen.MAIN_MENU: _screen_main_menu,
+            Screen.CHECK: _screen_check,
+            Screen.TOOLS: _screen_tools,
+            Screen.DIAGNOSTICS: _screen_diagnostics,
+            Screen.SEARCH: _screen_search,
+            Screen.EDITOR: _screen_editor,
+        },
+    )
     next_screen: Screen | None = Screen.MAIN_MENU
     while next_screen is not None:
-        if next_screen == Screen.MAIN_MENU:
-            next_screen = _main_menu_screen(stdscr, case_path, state)
-            continue
-        if next_screen == Screen.CHECK:
-            state.transition(Screen.CHECK, action="check")
-            _check_syntax_screen(stdscr, case_path, state)
-            next_screen = Screen.MAIN_MENU
-            continue
-        if next_screen == Screen.TOOLS:
-            state.transition(Screen.TOOLS, action="tools")
-            tools_screen(stdscr, case_path)
-            next_screen = Screen.MAIN_MENU
-            continue
-        if next_screen == Screen.DIAGNOSTICS:
-            state.transition(Screen.DIAGNOSTICS, action="diagnostics")
-            diagnostics_screen(stdscr, case_path)
-            next_screen = Screen.MAIN_MENU
-            continue
-        if next_screen == Screen.SEARCH:
-            state.transition(Screen.SEARCH, action="search")
-            _global_search_screen(stdscr, case_path, state)
-            next_screen = Screen.MAIN_MENU
-            continue
-        if next_screen == Screen.EDITOR:
-            state.transition(Screen.EDITOR, action="editor")
-            _editor_screen(stdscr, case_path, state)
-            next_screen = Screen.MAIN_MENU
-            continue
-        next_screen = Screen.MAIN_MENU
+        next_screen = router.dispatch(
+            next_screen,
+            adapter.stdscr,
+            case_path,
+            state,
+        )
 
 
 def _main_menu_screen(
@@ -221,8 +226,9 @@ def _main_menu_screen(
         "Physics & Boundary Conditions",
         "Simulation (Run)",
         "Post-Processing",
+        "Clean case",
         "Config Manager",
-        "Tools / Diagnostics",
+        "Tools",
     ]
     menu_options = list(categories)
     quit_index = len(menu_options)
@@ -244,7 +250,8 @@ def _main_menu_screen(
             stdscr, case_path, state, cmd, callbacks,
         ),
         command_suggestions=lambda: command_suggestions(case_path),
-        status_line=_menu_status_line(state),
+        status_line=_root_status_line(state),
+        help_lines=main_menu_help(),
     )
     choice = root_menu.navigate()
     if choice in (-1, quit_index):
@@ -260,9 +267,12 @@ def _main_menu_screen(
     if choice == 3:
         return _postprocessing_menu(stdscr, case_path, state)
     if choice == 4:
-        return _config_manager_menu(stdscr, case_path, state, has_fzf)
+        return _clean_case_menu(stdscr, case_path, state)
     if choice == 5:
-        return _tools_diag_menu(stdscr, case_path, state)
+        return _config_manager_menu(stdscr, case_path, state, has_fzf)
+    if choice == 6:
+        tools_screen(stdscr, case_path)
+        return Screen.MAIN_MENU
     return Screen.MAIN_MENU
 
 
@@ -274,9 +284,9 @@ def _select_case_file(
 ) -> Path | None:
     section_names = [name for name, files in sections.items() if files]
     if not section_names:
-        _show_message(stdscr, "No OpenFOAM case files found in this case.")
+        show_message(stdscr, "No OpenFOAM case files found in this case.")
         return None
-    section_index = _option_index(section_names, state.last_section)
+    section_index = option_index(section_names, state.last_section)
 
     while True:
         callbacks = _command_callbacks()
@@ -298,11 +308,11 @@ def _select_case_file(
         state.last_section = section
         files = sections.get(section, [])
         if not files:
-            _show_message(stdscr, f"No files found in section {section}.")
+            show_message(stdscr, f"No files found in section {section}.")
             continue
 
         file_labels = [f.relative_to(case_path).as_posix() for f in files]
-        file_index = _option_index(file_labels, state.last_file)
+        file_index = option_index(file_labels, state.last_file)
         while True:
             callbacks = _command_callbacks()
             file_menu = Menu(
@@ -435,7 +445,6 @@ def _no_foam_file_screen(
                 stdscr, case_path, state, cmd, cb,
             ),
             command_suggestions=lambda: command_suggestions(case_path),
-            status_line=_menu_status_line(state),
         )
         choice = menu.navigate()
         if choice == -1 or choice == len(options) - 1:
@@ -455,7 +464,7 @@ def _edit_entry_screen(
     base_entry: str | None = None,
 ) -> None:
     if not keywords:
-        _show_message(stdscr, "No entries found in file.")
+        show_message(stdscr, "No entries found in file.")
         return
 
     callbacks = _command_callbacks()
@@ -506,11 +515,17 @@ def _edit_entry_screen(
     try:
         value = read_entry(file_path, full_key)
     except OpenFOAMError as exc:
-        _show_message(stdscr, f"Failed to read entry: {exc}")
+        show_message(stdscr, f"Failed to read entry: {exc}")
         return
 
     entry = Entry(key=full_key, value=value)
     validator, type_label = choose_validator(full_key, value)
+    validator, type_label = detect_type_with_foamlib(
+        file_path,
+        full_key,
+        validator,
+        type_label,
+    )
 
     def on_save(new_value: str) -> bool:
         formatted = autoformat_value(new_value)
@@ -527,158 +542,68 @@ def _edit_entry_screen(
     editor.edit()
 
 
-def _view_file_screen(stdscr: Any, file_path: Path) -> None:
+def _annotate_content(content: str, extra_warnings: list[str] | None = None) -> str:
+    warnings = find_suspicious_lines(content)
+    if extra_warnings:
+        warnings.extend(extra_warnings)
+
+    if not warnings:
+        return content
+
+    lines = content.splitlines()
+    line_notes: dict[int, list[str]] = {}
+    general_notes: list[str] = []
+    for warning in warnings:
+        if warning.startswith("Line "):
+            try:
+                prefix, rest = warning.split(":", 1)
+                line_no = int(prefix.split()[1])
+                note = rest.strip()
+                if line_no >= 1:
+                    line_notes.setdefault(line_no, []).append(note)
+                    continue
+            except (ValueError, IndexError):
+                pass
+        general_notes.append(warning)
+
+    annotated_lines: list[str] = []
+    inserted_general = False
+    for idx, line in enumerate(lines, 1):
+        if not inserted_general and general_notes and line.strip():
+            annotated_lines.extend(f"// LINT: {note}" for note in general_notes)
+            inserted_general = True
+        notes = line_notes.get(idx)
+        if notes:
+            note_text = " | ".join(notes)
+            annotated_lines.append(f"{line}  // LINT: {note_text}")
+        else:
+            annotated_lines.append(line)
+
+    if general_notes and not inserted_general:
+        annotated_lines.extend(f"// LINT: {note}" for note in general_notes)
+
+    return "\n".join(annotated_lines)
+
+
+def _view_file_screen(
+    stdscr: Any, file_path: Path, lint_warnings: list[str] | None = None,
+) -> None:
     try:
         content = file_path.read_text()
     except OSError as exc:
-        _show_message(stdscr, f"Failed to read file: {exc}")
+        show_message(stdscr, f"Failed to read file: {exc}")
         return
 
-    warnings = find_suspicious_lines(content)
-    if warnings:
-        warning_text = "\n".join(["Suspicious lines detected:", *warnings, "", content])
-    else:
-        warning_text = content
-
-    viewer = Viewer(stdscr, warning_text)
+    annotated = _annotate_content(content, extra_warnings=lint_warnings)
+    viewer = Viewer(stdscr, annotated)
     viewer.display()
 
-
-
-def _option_index(options: list[str], selection: str | None) -> int:
-    if not selection:
-        return 0
-    try:
-        return options.index(selection)
-    except ValueError:
-        return 0
-
-
-def _show_message(stdscr: Any, message: str) -> None:
-    stdscr.clear()
-    stdscr.addstr(message + "\n")
-    stdscr.addstr("Press any key to continue.\n")
-    stdscr.refresh()
-    key = stdscr.getch()
-    if key_in(key, get_config().keys.get("quit", [])):
-        raise QuitAppError()
-
-
-def _is_case_dir(path: Path) -> bool:
-    return (path / "system" / "controlDict").is_file()
-
-
-def _list_dir_entries(path: Path) -> tuple[list[Path], list[Path]]:
-    dirs: list[Path] = []
-    files: list[Path] = []
-    try:
-        for entry in os.scandir(path):
-            if entry.name.startswith("."):
-                continue
-            if entry.is_dir():
-                dirs.append(Path(entry.path))
-            elif entry.is_file():
-                files.append(Path(entry.path))
-    except OSError:
-        return [], []
-    return sorted(dirs), sorted(files)
-
-
-def _select_case_directory(stdscr: Any, start_path: Path) -> Path | None:
-    current = start_path if start_path.is_dir() else start_path.parent
-    index = 0
-    scroll = 0
-    cfg = get_config()
-
-    while True:
-        dirs, files = _list_dir_entries(current)
-        entries: list[tuple[str, Path | None]] = [
-            ("[Use this folder]", None),
-            ("..", current.parent if current.parent != current else None),
-        ]
-        entries += [(f"{path.name}/", path) for path in dirs]
-        entries += [(path.name, path) for path in files]
-
-        labels = [label for label, _path in entries]
-        stdscr.clear()
-        height, width = stdscr.getmaxyx()
-        header = f"Select case folder: {current}"
-        back_hint = key_hint("back", "h")
-        hint = f"Enter: open/select  e: use this folder  {back_hint}: back"
-        try:
-            stdscr.addstr(0, 0, header[: max(1, width - 1)])
-            stdscr.addstr(1, 0, hint[: max(1, width - 1)])
-        except curses.error:
-            pass
-
-        scroll = _menu_scroll(index, scroll, stdscr, len(labels), header_rows=3)
-        visible = max(0, height - 3)
-        for row_idx, label_idx in enumerate(range(scroll, min(len(labels), scroll + visible))):
-            prefix = ">> " if label_idx == index else "   "
-            line = f"{prefix}{labels[label_idx]}"
-            try:
-                if label_idx == index:
-                    stdscr.attron(curses.color_pair(1))
-                stdscr.addstr(3 + row_idx, 0, line[: max(1, width - 1)])
-                if label_idx == index:
-                    stdscr.attroff(curses.color_pair(1))
-            except curses.error:
-                break
-
-        stdscr.refresh()
-        key = stdscr.getch()
-
-        if key_in(key, cfg.keys.get("quit", [])):
-            raise QuitAppError()
-        if key in (curses.KEY_UP,) or key_in(key, cfg.keys.get("up", [])):
-            index = (index - 1) % len(labels)
-            continue
-        if key in (curses.KEY_DOWN,) or key_in(key, cfg.keys.get("down", [])):
-            index = (index + 1) % len(labels)
-            continue
-        if key_in(key, cfg.keys.get("top", [])):
-            index = 0
-            continue
-        if key_in(key, cfg.keys.get("bottom", [])):
-            index = len(labels) - 1
-            continue
-        if key_in(key, cfg.keys.get("back", [])):
-            if current.parent != current:
-                current = current.parent
-                index = 0
-                scroll = 0
-            continue
-        if key == ord("e"):
-            if _is_case_dir(current):
-                return current
-            _show_message(stdscr, "Not an OpenFOAM case (missing system/controlDict).")
-            continue
-        if key in (curses.KEY_ENTER, 10, 13) or key_in(key, cfg.keys.get("select", [])):
-            label, path = entries[index]
-            if label == "[Use this folder]":
-                if _is_case_dir(current):
-                    return current
-                _show_message(stdscr, "Not an OpenFOAM case (missing system/controlDict).")
-                continue
-            if label == ".." and path is not None:
-                current = path
-                index = 0
-                scroll = 0
-                continue
-            if path is None:
-                continue
-            if path.is_dir():
-                current = path
-                index = 0
-                scroll = 0
-                continue
-            _show_message(stdscr, f"{path.name} is not a folder.")
 
 
 def _tasks_screen(stdscr: Any, state: AppState) -> None:
     tasks = state.tasks.list_tasks()
     if not tasks:
-        _show_message(stdscr, "No background tasks running.")
+        show_message(stdscr, "No background tasks running.")
         return
     lines = ["Background tasks:"]
     for task in sorted(tasks, key=lambda item: item.name):
@@ -690,67 +615,6 @@ def _tasks_screen(stdscr: Any, state: AppState) -> None:
     viewer.display()
 
 
-def _prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:
-    height, width = stdscr.getmaxyx()
-    buffer: list[str] = []
-    cursor = 0
-    last_matches: list[str] = []
-    match_index = 0
-    last_buffer = ""
-
-    def render() -> None:
-        try:
-            stdscr.move(height - 1, 0)
-            stdscr.clrtoeol()
-            display = ":" + "".join(buffer)
-            stdscr.addstr(height - 1, 0, display[: max(1, width - 1)])
-            stdscr.move(height - 1, min(width - 1, 1 + cursor))
-            stdscr.refresh()
-        except curses.error:
-            pass
-
-    render()
-    while True:
-        key = stdscr.getch()
-
-        if key in (curses.KEY_ENTER, 10, 13):
-            return "".join(buffer).strip()
-        if key in (27,):  # ESC
-            return ""
-        if key in (curses.KEY_BACKSPACE, 127, 8):
-            if cursor > 0:
-                buffer.pop(cursor - 1)
-                cursor -= 1
-            render()
-            continue
-        if key == curses.KEY_LEFT:
-            if cursor > 0:
-                cursor -= 1
-            render()
-            continue
-        if key == curses.KEY_RIGHT:
-            if cursor < len(buffer):
-                cursor += 1
-            render()
-            continue
-        if key == 9:  # TAB
-            pool = suggestions or []
-            current = "".join(buffer)
-            if current != last_buffer:
-                last_matches = [s for s in pool if s.startswith(current)]
-                match_index = 0
-                last_buffer = current
-            if last_matches:
-                completion = last_matches[match_index % len(last_matches)]
-                buffer = list(completion)
-                cursor = len(buffer)
-                match_index += 1
-                render()
-            continue
-        if 32 <= key <= 126:
-            buffer.insert(cursor, chr(key))
-            cursor += 1
-            render()
 
 
 def _command_callbacks() -> CommandCallbacks:
@@ -759,7 +623,7 @@ def _command_callbacks() -> CommandCallbacks:
         tools_screen=tools_screen,
         diagnostics_screen=diagnostics_screen,
         run_current_solver=run_current_solver,
-        show_message=_show_message,
+        show_message=show_message,
         tasks_screen=_tasks_screen,
         openfoam_env_screen=openfoam_env_screen,
         clone_case=clone_case,
@@ -774,9 +638,9 @@ def _browser_callbacks() -> BrowserCallbacks:
         return handle_command(stdscr, path, app_state, cmd, cmd_callbacks)
 
     return BrowserCallbacks(
-        show_message=_show_message,
+        show_message=show_message,
         view_file=_view_file_screen,
-        prompt_command=_prompt_command,
+        prompt_command=prompt_command,
         command_suggestions=command_suggestions,
         handle_command=handle_cmd,
         mode_status=_mode_status,
@@ -796,7 +660,8 @@ def _mode_status(state: AppState) -> str:
     mode = "no-foam" if state.no_foam else "foam"
     wm_dir = os.environ.get("WM_PROJECT_DIR")
     suffix = f" ({wm_dir})" if wm_dir else ""
-    return f"mode: {mode}{suffix}"
+    reason = f" [{state.no_foam_reason}]" if state.no_foam and state.no_foam_reason else ""
+    return f"mode: {mode}{suffix}{reason}"
 
 
 def _start_check_thread(case_path: Path, state: AppState) -> None:
@@ -895,7 +760,7 @@ def _check_syntax_menu(stdscr: Any, case_path: Path, state: AppState) -> None:
     for group in sections.values():
         files.extend(group)
     if not files:
-        _show_message(stdscr, "No case files found to check.")
+        show_message(stdscr, "No case files found to check.")
         return
 
     current = 0
@@ -922,7 +787,7 @@ def _check_syntax_menu(stdscr: Any, case_path: Path, state: AppState) -> None:
                 return
             elif key_in(key, cfg.keys.get("help", [])):
                 back_hint = key_hint("back", "h")
-                _show_message(
+                show_message(
                     stdscr,
                     "Check syntax menu\n\n"
                     f"Enter: view result, {back_hint}: back\n\n"
@@ -930,7 +795,7 @@ def _check_syntax_menu(stdscr: Any, case_path: Path, state: AppState) -> None:
                 )
             elif key_in(key, cfg.keys.get("command", [])):
                 callbacks = _command_callbacks()
-                command = _prompt_command(stdscr, command_suggestions(case_path))
+                command = prompt_command(stdscr, command_suggestions(case_path))
                 if (
                     command
                     and handle_command(stdscr, case_path, state, command, callbacks) == "quit"
@@ -941,12 +806,12 @@ def _check_syntax_menu(stdscr: Any, case_path: Path, state: AppState) -> None:
                 check = checks[current]
                 rel = file_path.relative_to(case_path)
                 if check is None or not check.checked:
-                    _show_message(stdscr, f"{rel} not checked yet.")
+                    show_message(stdscr, f"{rel} not checked yet.")
                     continue
                 if _show_check_result(stdscr, rel, check):
-                    _view_file_screen(stdscr, file_path)
+                    _view_file_screen(stdscr, file_path, lint_warnings=check.warnings)
 
-            scroll = _menu_scroll(current, scroll, stdscr, len(labels), header_rows=3)
+            scroll = menu_scroll(current, scroll, stdscr, len(labels), header_rows=3)
     finally:
         stdscr.timeout(-1)
 
@@ -1014,21 +879,6 @@ def _draw_check_menu(
     draw_status_bar(stdscr, status)
 
 
-def _menu_scroll(
-    current: int, scroll: int, stdscr: Any, total: int, header_rows: int,
-) -> int:
-    height, _ = stdscr.getmaxyx()
-    visible = max(0, height - header_rows - 1)
-    if visible <= 0:
-        return 0
-    if current < scroll:
-        scroll = current
-    elif current >= scroll + visible:
-        scroll = current - visible + 1
-    max_scroll = max(0, total - visible)
-    return min(scroll, max_scroll)
-
-
 def _menu_choice(
     stdscr: Any,
     title: str,
@@ -1039,6 +889,7 @@ def _menu_choice(
     command_suggestions: Callable[[], list[str]] | None = None,
     disabled_indices: set[int] | None = None,
     status_line: str | None = None,
+    help_lines: list[str] | None = None,
 ) -> int:
     initial_index = state.menu_selection.get(menu_key, 0)
     menu = Menu(
@@ -1050,6 +901,7 @@ def _menu_choice(
         command_suggestions=command_suggestions,
         disabled_indices=disabled_indices,
         status_line=status_line,
+        help_lines=help_lines,
     )
     choice = menu.navigate()
     if choice >= 0:
@@ -1057,16 +909,21 @@ def _menu_choice(
     return choice
 
 
-def _menu_status_line(state: AppState) -> str | None:
-    if not state.no_foam:
-        return None
-    return "Limited mode: OpenFOAM env not found (simple editor only)"
+def _root_status_line(state: AppState) -> str | None:
+    parts: list[str] = []
+    if state.no_foam:
+        parts.append("Limited mode: OpenFOAM env not found (simple editor only)")
+    if not foamlib_available():
+        parts.append("foamlib: off")
+    return " | ".join(parts) if parts else None
 
 
 def _preprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
     options = [
         "Run blockMesh",
+        "blockMesh helper (vertices)",
         "Mesh quality (checkMesh)",
+        "snappyHexMesh (staged run)",
         "Decompose (decomposePar)",
         "Reconstruct (manager)",
         "Back",
@@ -1080,17 +937,23 @@ def _preprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen
             state,
             "menu:pre",
             disabled_indices=disabled,
-            status_line=_menu_status_line(state),
+            help_lines=preprocessing_help(),
         )
         if choice in (-1, len(options) - 1):
             return Screen.MAIN_MENU
         if choice == 0:
             run_tool_by_name(stdscr, case_path, "blockMesh")
         elif choice == 1:
-            run_checkmesh(stdscr, case_path)
+            blockmesh_helper_screen(stdscr, case_path)
         elif choice == 2:
-            run_tool_by_name(stdscr, case_path, "decomposePar")
+            run_checkmesh(stdscr, case_path)
         elif choice == 3:
+            run_snappy = snappy_staged_screen(stdscr, case_path)
+            if run_snappy:
+                run_tool_by_name(stdscr, case_path, "snappyHexMesh")
+        elif choice == 4:
+            run_tool_by_name(stdscr, case_path, "decomposePar")
+        elif choice == 5:
             reconstruct_manager_screen(stdscr, case_path)
 
 
@@ -1098,11 +961,14 @@ def _physics_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
     options = [
         "Config Editor",
         "Boundary matrix",
+        "Thermophysical wizard",
+        "High-speed initial conditions",
         "Check syntax",
-        "Dictionary linter (required keys)",
         "Back",
     ]
-    disabled = {1, 2, 3} if state.no_foam else None
+    disabled = None
+    if state.no_foam and not foamlib_available():
+        disabled = {1, 2, 3, 4}
     while True:
         choice = _menu_choice(
             stdscr,
@@ -1111,7 +977,7 @@ def _physics_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
             state,
             "menu:physics",
             disabled_indices=disabled,
-            status_line=_menu_status_line(state),
+            help_lines=physics_help(),
         )
         if choice in (-1, len(options) - 1):
             return Screen.MAIN_MENU
@@ -1120,19 +986,23 @@ def _physics_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
         elif choice == 1:
             boundary_matrix_screen(stdscr, case_path)
         elif choice == 2:
-            _check_syntax_screen(stdscr, case_path, state)
+            thermophysical_wizard_screen(stdscr, case_path)
         elif choice == 3:
-            dictionary_linter_screen(stdscr, case_path)
+            high_speed_helper_screen(stdscr, case_path)
+        elif choice == 4:
+            _check_syntax_screen(stdscr, case_path, state)
 
 
 def _simulation_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
     options = [
         "Run current solver",
+        "Run solver (live)",
         "Safe stop (create stop file)",
         "Resume solver (latestTime)",
         "foamJob (run job)",
         "foamEndJob (stop job)",
         "Job status (poll)",
+        "Foamlib parametric study",
         "Back",
     ]
     disabled = set(range(len(options) - 1)) if state.no_foam else None
@@ -1144,22 +1014,26 @@ def _simulation_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
             state,
             "menu:sim",
             disabled_indices=disabled,
-            status_line=_menu_status_line(state),
+            help_lines=simulation_help(),
         )
         if choice in (-1, len(options) - 1):
             return Screen.MAIN_MENU
         if choice == 0:
             run_current_solver(stdscr, case_path)
         elif choice == 1:
-            safe_stop_screen(stdscr, case_path)
+            run_current_solver_live(stdscr, case_path)
         elif choice == 2:
-            solver_resurrection_screen(stdscr, case_path)
+            safe_stop_screen(stdscr, case_path)
         elif choice == 3:
-            run_tool_by_name(stdscr, case_path, "foamJob")
+            solver_resurrection_screen(stdscr, case_path)
         elif choice == 4:
-            run_tool_by_name(stdscr, case_path, "foamEndJob")
+            run_tool_by_name(stdscr, case_path, "foamJob")
         elif choice == 5:
+            run_tool_by_name(stdscr, case_path, "foamEndJob")
+        elif choice == 6:
             run_tool_by_name(stdscr, case_path, "jobStatus")
+        elif choice == 7:
+            foamlib_parametric_study_screen(stdscr, case_path)
 
 
 def _postprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
@@ -1168,6 +1042,9 @@ def _postprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Scree
         "Time directory pruner",
         "Tail log (highlight)",
         "View logs",
+        "Residual timeline (foamlib)",
+        "Probes viewer",
+        "yPlus estimator",
         "postProcess (prompt)",
         "foamCalc (prompt)",
         "Run .sh script",
@@ -1182,7 +1059,7 @@ def _postprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Scree
             state,
             "menu:post",
             disabled_indices=disabled,
-            status_line=_menu_status_line(state),
+            help_lines=postprocessing_help(),
         )
         if choice in (-1, len(options) - 1):
             return Screen.MAIN_MENU
@@ -1195,10 +1072,16 @@ def _postprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Scree
         elif choice == 3:
             logs_screen(stdscr, case_path)
         elif choice == 4:
-            run_tool_by_name(stdscr, case_path, "postProcess")
+            residual_timeline_screen(stdscr, case_path)
         elif choice == 5:
-            run_tool_by_name(stdscr, case_path, "foamCalc")
+            probes_viewer_screen(stdscr, case_path)
         elif choice == 6:
+            yplus_screen(stdscr, case_path)
+        elif choice == 7:
+            run_tool_by_name(stdscr, case_path, "postProcess")
+        elif choice == 8:
+            run_tool_by_name(stdscr, case_path, "foamCalc")
+        elif choice == 9:
             run_tool_by_name(stdscr, case_path, "runScript")
 
 
@@ -1207,9 +1090,9 @@ def _config_manager_menu(
 ) -> Screen:
     options = [
         "Config Editor",
+        "Create missing config",
         "OpenFOAM environment",
         "Check syntax",
-        "Dictionary linter (required keys)",
     ]
     if has_fzf:
         options.append("Search")
@@ -1222,7 +1105,9 @@ def _config_manager_menu(
         while True:
             disabled = None
             if state.no_foam:
-                disabled = {2, 3}
+                disabled = set()
+                if not foamlib_available():
+                    disabled.add(3)
                 if has_fzf:
                     disabled.add(4)
             choice = _menu_choice(
@@ -1232,47 +1117,114 @@ def _config_manager_menu(
                 state,
                 "menu:config",
                 disabled_indices=disabled,
-                status_line=_menu_status_line(state),
+                help_lines=config_help(),
             )
             if choice in (-1, len(options) - 1):
                 return Screen.MAIN_MENU
             if choice == 0:
                 _editor_screen(stdscr, case_path, state)
             elif choice == 1:
-                openfoam_env_screen(stdscr)
+                _create_missing_config_screen(stdscr, case_path)
             elif choice == 2:
-                _check_syntax_screen(stdscr, case_path, state)
+                openfoam_env_screen(stdscr)
             elif choice == 3:
-                dictionary_linter_screen(stdscr, case_path)
+                _check_syntax_screen(stdscr, case_path, state)
             elif has_fzf and choice == 4:
                 _global_search_screen(stdscr, case_path, state)
     finally:
         cfg.keys["search"] = original_search
 
 
-def _tools_diag_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
+def _create_missing_config_screen(stdscr: Any, case_path: Path) -> None:
+    items = _missing_config_templates(case_path)
+    if not items:
+        show_message(stdscr, "All common config files exist.")
+        return
+    labels = [f"{label}: {path.relative_to(case_path)}" for label, path, _ in items]
+    menu = Menu(stdscr, "Create missing config", [*labels, "Back"])
+    choice = menu.navigate()
+    if choice == -1 or choice == len(labels):
+        return
+    label, path, object_name = items[choice]
+    _write_config_stub(path, object_name)
+    show_message(stdscr, f"Created {label} at {path.relative_to(case_path)}.")
+
+
+def _missing_config_templates(case_path: Path) -> list[tuple[str, Path, str]]:
+    templates = [
+        ("controlDict", case_path / "system" / "controlDict", "controlDict"),
+        ("fvSchemes", case_path / "system" / "fvSchemes", "fvSchemes"),
+        ("fvSolution", case_path / "system" / "fvSolution", "fvSolution"),
+        ("decomposeParDict", case_path / "system" / "decomposeParDict", "decomposeParDict"),
+        ("blockMeshDict", case_path / "system" / "blockMeshDict", "blockMeshDict"),
+        ("snappyHexMeshDict", case_path / "system" / "snappyHexMeshDict", "snappyHexMeshDict"),
+        ("transportProperties", case_path / get_dict_path("transport"), "transportProperties"),
+        ("turbulenceProperties", case_path / get_dict_path("turbulence"), "turbulenceProperties"),
+        (
+            "thermophysicalProperties",
+            case_path / get_dict_path("thermophysical"),
+            "thermophysicalProperties",
+        ),
+    ]
+    missing: list[tuple[str, Path, str]] = []
+    for label, path, obj in templates:
+        if not path.is_file():
+            missing.append((label, path, obj))
+    return missing
+
+
+def _write_config_stub(path: Path, object_name: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    template = [
+        "/*--------------------------------*- C++ -*----------------------------------*\\",
+        f"| OpenFOAM {object_name} dictionary (stub)                        |",
+        "\\*---------------------------------------------------------------------------*/",
+        "FoamFile",
+        "{",
+        "    version     2.0;",
+        "    format      ascii;",
+        "    class       dictionary;",
+        f"    object      {object_name};",
+        "}",
+        "",
+        "// TODO: fill in configuration.",
+        "",
+    ]
+    path.write_text("\n".join(template))
+
+
+def _clean_case_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
     options = [
-        "Other tools",
-        "Other diagnostics",
+        "Remove all logs",
+        "Clean time directories",
+        "Clean case (logs + time dirs)",
+        "Clean all (logs + time dirs + reconstruct)",
+        "Time directory pruner",
         "Back",
     ]
-    disabled = {0, 1} if state.no_foam else None
+    disabled = set(range(len(options) - 1)) if state.no_foam else None
     while True:
         choice = _menu_choice(
             stdscr,
-            "Tools / Diagnostics",
+            "Clean case",
             options,
             state,
-            "menu:tools",
+            "menu:clean",
             disabled_indices=disabled,
-            status_line=_menu_status_line(state),
+            help_lines=clean_case_help(),
         )
         if choice in (-1, len(options) - 1):
             return Screen.MAIN_MENU
         if choice == 0:
-            tools_screen(stdscr, case_path)
+            remove_all_logs(stdscr, case_path)
         elif choice == 1:
-            diagnostics_screen(stdscr, case_path)
+            clean_time_directories(stdscr, case_path)
+        elif choice == 2:
+            clean_case(stdscr, case_path)
+        elif choice == 3:
+            _clean_all(stdscr, case_path)
+        elif choice == 4:
+            time_directory_pruner_screen(stdscr, case_path)
 
 
 def _show_progress(stdscr: Any, message: str) -> None:
@@ -1280,6 +1232,12 @@ def _show_progress(stdscr: Any, message: str) -> None:
     with suppress(curses.error):
         stdscr.addstr(message + "\n")
     stdscr.refresh()
+
+
+def _clean_all(stdscr: Any, case_path: Path) -> None:
+    remove_all_logs(stdscr, case_path)
+    clean_time_directories(stdscr, case_path)
+    reconstruct_manager_screen(stdscr, case_path)
 
 
 def _show_check_result(stdscr: Any, rel_path: Path, result: FileCheckResult) -> bool:
@@ -1303,10 +1261,7 @@ def _show_check_result(stdscr: Any, rel_path: Path, result: FileCheckResult) -> 
                 stdscr.addstr(f"- {item}\n")
             stdscr.addstr("\n")
         elif result.warnings:
-            stdscr.addstr("Warnings:\n")
-            for item in result.warnings:
-                stdscr.addstr(f"- {item}\n")
-            stdscr.addstr("\n")
+            stdscr.addstr("Warnings are shown inline in the file view.\n\n")
         else:
             stdscr.addstr("No issues detected.\n\n")
         view_hint = key_hint("view", "v")
@@ -1332,7 +1287,7 @@ def _global_search_screen(
     the chosen entry as if it was selected manually.
     """
     if not fzf_enabled():
-        _show_message(stdscr, "fzf not available (disabled or missing).")
+        show_message(stdscr, "fzf not available (disabled or missing).")
         return
 
     foam_case = Case(root=case_path)
@@ -1347,7 +1302,7 @@ def _global_search_screen(
                 keys = list_keywords(file_path)
             except OpenFOAMError as exc:
                 if state.no_foam:
-                    _show_message(
+                    show_message(
                         stdscr,
                         f"Global search failed: {exc} (no-foam mode may disable OpenFOAM tools)",
                     )
@@ -1356,7 +1311,7 @@ def _global_search_screen(
             entries.extend(EntryRef(dict_file, key) for key in keys)
 
     if not entries:
-        _show_message(stdscr, "No entries found for global search.")
+        show_message(stdscr, "No entries found for global search.")
         return
 
     # Prepare lines for fzf: rel_path<TAB>key
@@ -1375,7 +1330,7 @@ def _global_search_screen(
                 check=False,
             )
         except FileNotFoundError:
-            _show_message(stdscr, "fzf not found.")
+            show_message(stdscr, "fzf not found.")
             return
     finally:
         # Restore curses mode and refresh the screen.
@@ -1398,7 +1353,7 @@ def _global_search_screen(
     try:
         keys = list_keywords(file_path)
     except OpenFOAMError as exc:
-        _show_message(stdscr, f"Failed to load keys for {rel_str}: {exc}")
+        show_message(stdscr, f"Failed to load keys for {rel_str}: {exc}")
         return
 
     # Try to locate the key at top level.
@@ -1428,7 +1383,7 @@ def _open_file_in_editor(stdscr: Any, file_path: Path) -> None:
         resolved = resolve_executable(editor)
         run_trusted([resolved, str(file_path)], capture_output=False, check=False)
     except OSError as exc:
-        _show_message(stdscr, f"Failed to run {editor}: {exc}")
+        show_message(stdscr, f"Failed to run {editor}: {exc}")
     finally:
         stdscr.clear()
         stdscr.refresh()

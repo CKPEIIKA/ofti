@@ -19,3 +19,5 @@ env/
 qa_output.txt
 examples/
 refs/
+quality.txt
+.vscode/settings.json

@@ -2,32 +2,37 @@ from __future__ import annotations
 
 import curses
 import os
+import re
 import shlex
 import shutil
+import subprocess
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
+from math import log10, sqrt
 from pathlib import Path
 from typing import Any
 
+from ofti.core.case import read_number_of_subdomains, set_start_from_latest
 from ofti.core.checkmesh import extract_last_courant, format_checkmesh_summary
+from ofti.core.entry_io import read_entry as read_entry
 from ofti.core.times import latest_time, time_directories
+from ofti.core.tool_output import CommandResult, format_command_result, format_log_blob
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
-from ofti.foam.openfoam import (
-    OpenFOAMError,
-    discover_case_files,
-    lint_required_entries,
-    read_entry,
-    write_entry,
-)
-from ofti.foam.subprocess_utils import run_trusted
+from ofti.foam.openfoam import OpenFOAMError
+from ofti.foam.subprocess_utils import resolve_executable, run_trusted
+from ofti.foamlib_adapter import available as foamlib_available
+from ofti.foamlib_logs import parse_residuals
+from ofti.foamlib_parametric import build_parametric_cases
+from ofti.foamlib_runner import run_cases
 from ofti.tools.helpers import (
     auto_detect_bashrc_paths,
     resolve_openfoam_bashrc,
     with_bashrc,
     wm_project_dir_from_bashrc,
 )
+from ofti.ui_curses.help import diagnostics_help, tools_help
 from ofti.ui_curses.layout import status_message
 from ofti.ui_curses.menus import Menu
 from ofti.ui_curses.viewer import Viewer
@@ -149,6 +154,7 @@ def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, Callable[[], None]]
 
     base_tools = [
         ("blockMesh", ["blockMesh"]),
+        ("snappyHexMesh", ["snappyHexMesh"]),
         ("decomposePar", ["decomposePar"]),
         ("reconstructPar", ["reconstructPar"]),
         ("foamListTimes", ["foamListTimes"]),
@@ -182,9 +188,12 @@ def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, Callable[[], None]]
     add("tool_dicts", lambda: tool_dicts_screen(stdscr, case_path))
     add("tooldicts", lambda: tool_dicts_screen(stdscr, case_path))
     add("runcurrentsolver", lambda: run_current_solver(stdscr, case_path))
+    add("runlive", lambda: run_current_solver_live(stdscr, case_path))
     add("removelogs", lambda: remove_all_logs(stdscr, case_path))
     add("cleantimedirs", lambda: clean_time_directories(stdscr, case_path))
     add("cleancase", lambda: clean_case(stdscr, case_path))
+    add("blockmesh", lambda: run_blockmesh(stdscr, case_path))
+    add("decomposepar", lambda: run_decomposepar(stdscr, case_path))
     add("reconstruct_manager", lambda: reconstruct_manager_screen(stdscr, case_path))
     add("reconstructmanager", lambda: reconstruct_manager_screen(stdscr, case_path))
     add("timedir_pruner", lambda: time_directory_pruner_screen(stdscr, case_path))
@@ -192,6 +201,15 @@ def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, Callable[[], None]]
     add("safestop", lambda: safe_stop_screen(stdscr, case_path))
     add("solveresume", lambda: solver_resurrection_screen(stdscr, case_path))
     add("clone", lambda: clone_case(stdscr, case_path))
+    add("yplus", lambda: yplus_screen(stdscr, case_path))
+    add("checkmesh", lambda: run_checkmesh(stdscr, case_path))
+    add("logtail", lambda: log_tail_screen(stdscr, case_path))
+    add("logs", lambda: logs_screen(stdscr, case_path))
+    add("viewlogs", lambda: logs_screen(stdscr, case_path))
+    add("residuals", lambda: residual_timeline_screen(stdscr, case_path))
+    add("residual_timeline", lambda: residual_timeline_screen(stdscr, case_path))
+    add("probes", lambda: probes_viewer_screen(stdscr, case_path))
+    add("probesviewer", lambda: probes_viewer_screen(stdscr, case_path))
 
     return aliases
 
@@ -201,6 +219,7 @@ def _tool_alias_keys(case_path: Path) -> list[str]:
 
     base_tools = [
         ("blockMesh", ["blockMesh"]),
+        ("snappyHexMesh", ["snappyHexMesh"]),
         ("decomposePar", ["decomposePar"]),
         ("reconstructPar", ["reconstructPar"]),
         ("foamListTimes", ["foamListTimes"]),
@@ -220,6 +239,17 @@ def _tool_alias_keys(case_path: Path) -> list[str]:
         keys.append(_normalize_tool_name(f"post.{name}"))
         keys.append(_normalize_tool_name(f"post:{name}"))
 
+    keys += [
+        _normalize_tool_name("checkmesh"),
+        _normalize_tool_name("logtail"),
+        _normalize_tool_name("logs"),
+        _normalize_tool_name("viewlogs"),
+        _normalize_tool_name("residuals"),
+        _normalize_tool_name("residual_timeline"),
+        _normalize_tool_name("probes"),
+        _normalize_tool_name("probesviewer"),
+    ]
+
     keys.extend(
         [
             _normalize_tool_name("rerun"),
@@ -234,6 +264,7 @@ def _tool_alias_keys(case_path: Path) -> list[str]:
             _normalize_tool_name("tool_dicts"),
             _normalize_tool_name("toolDicts"),
             _normalize_tool_name("runCurrentSolver"),
+            _normalize_tool_name("runLive"),
             _normalize_tool_name("removeLogs"),
             _normalize_tool_name("cleanTimeDirs"),
             _normalize_tool_name("cleanCase"),
@@ -242,6 +273,7 @@ def _tool_alias_keys(case_path: Path) -> list[str]:
             _normalize_tool_name("safeStop"),
             _normalize_tool_name("solveResume"),
             _normalize_tool_name("clone"),
+            _normalize_tool_name("yPlus"),
         ],
     )
 
@@ -312,26 +344,13 @@ def _run_simple_tool(stdscr: Any, case_path: Path, name: str, cmd: list[str]) ->
         _show_message(stdscr, _with_no_foam_hint(f"Failed to run {name}: {exc}"))
         return
 
-    status = "OK" if result.returncode == 0 else "ERROR"
-    summary_lines = [
-        f"$ cd {case_path}",
-        f"$ {' '.join(cmd)}",
-        "",
-        f"status: {status} (exit code {result.returncode})",
-        "",
-    ]
     hint = _maybe_job_hint(name)
-    if hint:
-        summary_lines.append(hint)
-        summary_lines.append("")
-    summary_lines += [
-        "stdout:",
-        result.stdout or "(empty)",
-        "",
-        "stderr:",
-        result.stderr or "(empty)",
-    ]
-    viewer = Viewer(stdscr, "\n".join(summary_lines))
+    summary = format_command_result(
+        [f"$ cd {case_path}", f"$ {' '.join(cmd)}"],
+        CommandResult(result.returncode, result.stdout, result.stderr),
+        hint=hint,
+    )
+    viewer = Viewer(stdscr, summary)
     viewer.display()
 
 
@@ -355,30 +374,17 @@ def _run_shell_tool(stdscr: Any, case_path: Path, name: str, shell_cmd: str) -> 
         _show_message(stdscr, _with_no_foam_hint(f"Failed to run {name}: {exc}"))
         return
 
-    status = "OK" if result.returncode == 0 else "ERROR"
-    summary_lines = [
-        f"$ cd {case_path}",
-        f"$ bash --noprofile --norc -c {shell_cmd}",
-        "",
-        f"status: {status} (exit code {result.returncode})",
-        "",
-    ]
     hint = _maybe_job_hint(name)
-    if hint:
-        summary_lines.append(hint)
-        summary_lines.append("")
-    summary_lines += [
-        "stdout:",
-        result.stdout or "(empty)",
-        "",
-        "stderr:",
-        result.stderr or "(empty)",
-    ]
-    viewer = Viewer(stdscr, "\n".join(summary_lines))
+    summary = format_command_result(
+        [f"$ cd {case_path}", f"$ bash --noprofile --norc -c {shell_cmd}"],
+        CommandResult(result.returncode, result.stdout, result.stderr),
+        hint=hint,
+    )
+    viewer = Viewer(stdscr, summary)
     viewer.display()
 
 
-def tools_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912
+def tools_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901
     """
     Tools menu with common solvers/utilities, job helpers, logs, and
     optional shell scripts, all in a single flat list.
@@ -398,6 +404,7 @@ def tools_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912
     simple_tools = base_tools + extra_tools + job_tools + post_tools
 
     labels = ["Re-run last tool"] + [name for name, _ in simple_tools] + [
+        "Diagnostics",
         "Job status (poll)",
         "foamJob (run job)",
         "foamEndJob (stop job)",
@@ -405,9 +412,6 @@ def tools_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912
         "foamDictionary (prompt)",
         "topoSet (prompt)",
         "Tool dicts (postProcess/topoSet/foamCalc)",
-        "Remove all logs (CleanFunctions)",
-        "Clean time directories (CleanFunctions)",
-        "Clean case (CleanFunctions)",
         "Clone case",
     ]
 
@@ -426,6 +430,7 @@ def tools_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912
             return f"Run tool: {name} | {tool_status_mode()}"
         special = idx - 1 - len(simple_tools)
         hints = [
+            "Environment and installation checks",
             "Poll foamCheckJobs/foamPrintJobs output",
             "Run foamJob with custom args",
             "Stop job via foamEndJob",
@@ -433,9 +438,6 @@ def tools_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912
             "Run foamDictionary interactively",
             "Run topoSet with args (uses topoSetDict)",
             "Create/open tool dictionaries",
-            "Remove log.* files",
-            "Remove time directories",
-            "Clean case (logs + time dirs)",
             "Clone case directory and clean mesh/time/logs",
         ]
         if 0 <= special < len(hints):
@@ -455,6 +457,7 @@ def tools_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912
         hint_provider=hint_for,
         status_line=status_line,
         disabled_indices=disabled,
+        help_lines=tools_help(),
     )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels):
@@ -473,26 +476,22 @@ def tools_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912
     # Offsets into special actions.
     special_index = choice - 1 - len(simple_tools)
     if special_index == 0:
-        job_status_poll_screen(stdscr, case_path)
+        diagnostics_screen(stdscr, case_path)
     elif special_index == 1:
-        foam_job_prompt(stdscr, case_path)
+        job_status_poll_screen(stdscr, case_path)
     elif special_index == 2:
-        foam_end_job_prompt(stdscr, case_path)
+        foam_job_prompt(stdscr, case_path)
     elif special_index == 3:
-        run_shell_script_screen(stdscr, case_path)
+        foam_end_job_prompt(stdscr, case_path)
     elif special_index == 4:
-        foam_dictionary_prompt(stdscr, case_path)
+        run_shell_script_screen(stdscr, case_path)
     elif special_index == 5:
-        topo_set_prompt(stdscr, case_path)
+        foam_dictionary_prompt(stdscr, case_path)
     elif special_index == 6:
-        tool_dicts_screen(stdscr, case_path)
+        topo_set_prompt(stdscr, case_path)
     elif special_index == 7:
-        remove_all_logs(stdscr, case_path)
+        tool_dicts_screen(stdscr, case_path)
     elif special_index == 8:
-        clean_time_directories(stdscr, case_path)
-    elif special_index == 9:
-        clean_case(stdscr, case_path)
-    elif special_index == 10:
         clone_case(stdscr, case_path)
 
 
@@ -521,6 +520,187 @@ def logs_screen(stdscr: Any, case_path: Path) -> None:
 
         viewer = Viewer(stdscr, text)
         viewer.display()
+
+
+def residual_timeline_screen(stdscr: Any, case_path: Path) -> None:
+    """
+    Parse residuals from a selected log file and show a summary table + plot.
+    """
+    log_files = sorted(case_path.glob("log.*"))
+    if not log_files:
+        _show_message(stdscr, "No log.* files found in case directory.")
+        return
+    labels = [p.name for p in log_files]
+    menu = Menu(stdscr, "Select log file for residuals", [*labels, "Back"])
+    choice = menu.navigate()
+    if choice == -1 or choice == len(labels):
+        return
+    path = log_files[choice]
+    try:
+        text = path.read_text()
+    except OSError as exc:
+        _show_message(stdscr, f"Failed to read {path.name}: {exc}")
+        return
+
+    residuals = parse_residuals(text)
+    if not residuals:
+        _show_message(stdscr, f"No residuals found in {path.name}.")
+        return
+    _height, width = stdscr.getmaxyx()
+    plot_width = max(10, min(50, width - 28))
+    lines = ["Residuals summary", ""]
+    for field, values in sorted(residuals.items()):
+        if not values:
+            continue
+        last = values[-1]
+        min_val = min(values)
+        max_val = max(values)
+        plot = _sparkline(values, plot_width)
+        lines.append(
+            f"{field:>8} {plot} last={last:.3g} min={min_val:.3g} max={max_val:.3g}",
+        )
+    Viewer(stdscr, "\n".join(lines)).display()
+
+
+def _sparkline(values: list[float], width: int) -> str:
+    if not values or width <= 0:
+        return ""
+    if len(values) <= width:
+        sample = values
+    else:
+        step = len(values) / width
+        sample = [values[int(i * step)] for i in range(width)]
+
+    # Log-scale if range is large, but keep zeros safe.
+    safe = [val if val > 0 else 1e-16 for val in sample]
+    vmin = min(safe)
+    vmax = max(safe)
+    if vmax <= 0:
+        vmax = 1e-16
+    ratio = vmax / vmin if vmin > 0 else vmax
+    if ratio > 1e3:
+        scaled = [log10(val) for val in safe]
+        vmin = min(scaled)
+        vmax = max(scaled)
+    else:
+        scaled = safe
+
+    levels = " .:-=+*#%@"
+    span = vmax - vmin
+    if span <= 0:
+        return levels[-1] * len(sample)
+    chars = []
+    for val in scaled:
+        norm = (val - vmin) / span
+        idx = round(norm * (len(levels) - 1))
+        idx = max(0, min(len(levels) - 1, idx))
+        chars.append(levels[idx])
+    return "".join(chars)
+
+
+def probes_viewer_screen(stdscr: Any, case_path: Path) -> None:
+    probes_root = case_path / "postProcessing" / "probes"
+    if not probes_root.is_dir():
+        _show_message(stdscr, "postProcessing/probes not found in case directory.")
+        return
+
+    candidates = [
+        path
+        for path in probes_root.rglob("*")
+        if path.is_file() and path.name != "positions"
+    ]
+    if not candidates:
+        _show_message(stdscr, "No probe files found under postProcessing/probes.")
+        return
+
+    labels = [p.relative_to(case_path).as_posix() for p in candidates]
+    menu = Menu(stdscr, "Select probe file", [*labels, "Back"])
+    choice = menu.navigate()
+    if choice == -1 or choice == len(labels):
+        return
+
+    path = candidates[choice]
+    try:
+        text = path.read_text(errors="ignore")
+    except OSError as exc:
+        _show_message(stdscr, f"Failed to read {path.name}: {exc}")
+        return
+
+    times, values, count = _parse_probe_series(text)
+    if not values:
+        _show_message(stdscr, f"No probe data found in {path.name}.")
+        return
+
+    _height, width = stdscr.getmaxyx()
+    plot_width = max(10, min(50, width - 28))
+    plot = _sparkline(values, plot_width)
+    lines = [
+        "Probes viewer",
+        "",
+        f"File: {path.relative_to(case_path).as_posix()}",
+        f"Samples: {len(values)}",
+        f"Probes per sample: {count} (showing first)",
+        f"Time range: {times[0]:.3g} .. {times[-1]:.3g}" if times else "Time range: n/a",
+        "",
+        f"Value: {plot}",
+        f"last={values[-1]:.3g} min={min(values):.3g} max={max(values):.3g}",
+    ]
+    Viewer(stdscr, "\n".join(lines)).display()
+
+
+def _parse_probe_series(text: str) -> tuple[list[float], list[float], int]:
+    times: list[float] = []
+    values: list[float] = []
+    probe_count = 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("//", "#")):
+            continue
+        parsed = _parse_probe_line(line)
+        if parsed is None:
+            continue
+        time, sample_values, count = parsed
+        if not sample_values:
+            continue
+        times.append(time)
+        values.append(sample_values[0])
+        probe_count = count
+    return times, values, probe_count
+
+
+def _parse_probe_line(line: str) -> tuple[float, list[float], int] | None:
+    parts = line.split(maxsplit=1)
+    if not parts:
+        return None
+    try:
+        time = float(parts[0])
+    except ValueError:
+        return None
+    rest = parts[1] if len(parts) > 1 else ""
+    values, count = _parse_probe_values(rest)
+    if not values:
+        return None
+    return (time, values, count)
+
+
+def _parse_probe_values(rest: str) -> tuple[list[float], int]:
+    vectors = re.findall(r"\(([^)]+)\)", rest)
+    if vectors:
+        values_list: list[float] = []
+        for vec in vectors:
+            numbers = [float(val) for val in vec.split() if val]
+            if numbers:
+                magnitude = sqrt(sum(val * val for val in numbers))
+                values_list.append(magnitude)
+        return values_list, len(values_list)
+
+    floats: list[float] = []
+    for token in rest.split():
+        try:
+            floats.append(float(token))
+        except ValueError:
+            continue
+    return floats, len(floats)
 
 
 def job_status_poll_screen(stdscr: Any, case_path: Path) -> None:
@@ -609,20 +789,11 @@ def run_shell_script_screen(stdscr: Any, case_path: Path) -> None:
         _show_message(stdscr, f"Failed to run {path.name}: {exc}")
         return
 
-    status = "OK" if result.returncode == 0 else "ERROR"
-    lines = [
-        f"$ cd {case_path}",
-        f"$ sh {path.name}",
-        "",
-        f"status: {status} (exit code {result.returncode})",
-        "",
-        "stdout:",
-        result.stdout or "(empty)",
-        "",
-        "stderr:",
-        result.stderr or "(empty)",
-    ]
-    viewer = Viewer(stdscr, "\n".join(lines))
+    summary = format_command_result(
+        [f"$ cd {case_path}", f"$ sh {path.name}"],
+        CommandResult(result.returncode, result.stdout, result.stderr),
+    )
+    viewer = Viewer(stdscr, summary)
     viewer.display()
 
 
@@ -680,20 +851,11 @@ def foam_dictionary_prompt(stdscr: Any, case_path: Path) -> None:
         _show_message(stdscr, _with_no_foam_hint(f"Failed to run foamDictionary: {exc}"))
         return
 
-    status = "OK" if result.returncode == 0 else "ERROR"
-    lines = [
-        f"$ cd {case_path}",
-        f"$ {' '.join(cmd)}",
-        "",
-        f"status: {status} (exit code {result.returncode})",
-        "",
-        "stdout:",
-        result.stdout or "(empty)",
-        "",
-        "stderr:",
-        result.stderr or "(empty)",
-    ]
-    viewer = Viewer(stdscr, "\n".join(lines))
+    summary = format_command_result(
+        [f"$ cd {case_path}", f"$ {' '.join(cmd)}"],
+        CommandResult(result.returncode, result.stdout, result.stderr),
+    )
+    viewer = Viewer(stdscr, summary)
     viewer.display()
 
 
@@ -861,6 +1023,172 @@ def run_current_solver(stdscr: Any, case_path: Path) -> None:
     _run_simple_tool(stdscr, case_path, solver, [solver])
 
 
+def run_current_solver_live(stdscr: Any, case_path: Path) -> None:
+    """
+    Run the solver and tail its log file live with a split-screen view.
+    """
+    control_dict = case_path / "system" / "controlDict"
+    if not control_dict.is_file():
+        _show_message(stdscr, "system/controlDict not found in case directory.")
+        return
+
+    try:
+        value = read_entry(control_dict, "application")
+    except OpenFOAMError as exc:
+        _show_message(stdscr, _with_no_foam_hint(f"Failed to read application: {exc}"))
+        return
+
+    solver_line = value.strip()
+    if not solver_line:
+        _show_message(stdscr, "application entry is empty.")
+        return
+
+    solver = solver_line.split()[0].rstrip(";")
+    if not solver:
+        _show_message(stdscr, "Could not determine solver from application entry.")
+        return
+
+    wm_dir = _require_wm_project_dir(stdscr)
+    if wm_dir and get_config().use_runfunctions:
+        cmd_str = shlex.quote(solver)
+        shell_cmd = f'. "{wm_dir}/bin/tools/RunFunctions"; runApplication {cmd_str}'
+        _run_solver_live_shell(stdscr, case_path, solver, shell_cmd)
+        return
+
+    bashrc = resolve_openfoam_bashrc()
+    if bashrc:
+        shell_cmd = solver
+        _run_solver_live_shell(stdscr, case_path, solver, shell_cmd)
+        return
+
+    _run_solver_live_cmd(stdscr, case_path, solver, [solver])
+
+
+def _run_solver_live_shell(stdscr: Any, case_path: Path, solver: str, shell_cmd: str) -> None:
+    command = with_bashrc(_expand_shell_command(shell_cmd, case_path))
+    env = os.environ.copy()
+    env.pop("BASH_ENV", None)
+    env.pop("ENV", None)
+    log_path = case_path / f"log.{solver}"
+    with suppress(OSError):
+        log_path.write_text("")
+    with log_path.open("a", encoding="utf-8", errors="ignore") as handle:
+        try:
+            bash_path = resolve_executable("bash")
+        except FileNotFoundError as exc:
+            _show_message(stdscr, _with_no_foam_hint(f"Failed to run {solver}: {exc}"))
+            return
+        process = subprocess.Popen(  # noqa: S603
+            [bash_path, "--noprofile", "--norc", "-c", command],
+            cwd=case_path,
+            stdout=handle,
+            stderr=handle,
+            text=True,
+            env=env,
+        )
+        _tail_process_log(stdscr, solver, process, log_path)
+
+
+def _run_solver_live_cmd(
+    stdscr: Any,
+    case_path: Path,
+    solver: str,
+    cmd: list[str],
+) -> None:
+    log_path = case_path / f"log.{solver}"
+    with suppress(OSError):
+        log_path.write_text("")
+    with log_path.open("a", encoding="utf-8", errors="ignore") as handle:
+        process = subprocess.Popen(  # noqa: S603
+            cmd,
+            cwd=case_path,
+            stdout=handle,
+            stderr=handle,
+            text=True,
+        )
+        _tail_process_log(stdscr, solver, process, log_path)
+
+
+def _tail_process_log(  # noqa: C901, PLR0912
+    stdscr: Any,
+    solver: str,
+    process: subprocess.Popen[str],
+    log_path: Path,
+) -> None:
+    cfg = get_config()
+    patterns = ["FATAL", "bounding", "Courant", "nan", "SIGFPE", "floating point exception"]
+    stdscr.timeout(400)
+    try:
+        while True:
+            try:
+                text = log_path.read_text(errors="ignore")
+            except OSError:
+                text = ""
+            lines = text.splitlines()
+            tail = lines[-12:]
+            last_time = _extract_last_time(lines)
+            last_courant = extract_last_courant(lines)
+
+            stdscr.clear()
+            height, width = stdscr.getmaxyx()
+            back_hint = key_hint("back", "h")
+            status = "running" if process.poll() is None else "finished"
+            header = f"{solver} ({status})  {back_hint}: stop"
+            with suppress(curses.error):
+                stdscr.addstr(header[: max(1, width - 1)] + "\n")
+            summary = ""
+            if last_time is not None:
+                summary = f"Time = {last_time}"
+            if last_courant is not None:
+                if summary:
+                    summary = f"{summary} | Courant: {last_courant:g}"
+                else:
+                    summary = f"Courant: {last_courant:g}"
+            if summary:
+                with suppress(curses.error):
+                    stdscr.addstr(summary[: max(1, width - 1)] + "\n")
+            with suppress(curses.error):
+                stdscr.addstr("-" * max(1, width - 1) + "\n")
+
+            for line in tail:
+                if stdscr.getyx()[0] >= height - 1:
+                    break
+                mark = ""
+                if any(pat.lower() in line.lower() for pat in patterns):
+                    mark = "!! "
+                    with suppress(curses.error):
+                        stdscr.attron(curses.A_BOLD)
+                try:
+                    stdscr.addstr((mark + line)[: max(1, width - 1)] + "\n")
+                except curses.error:
+                    break
+                if mark:
+                    with suppress(curses.error):
+                        stdscr.attroff(curses.A_BOLD)
+
+            stdscr.refresh()
+            if process.poll() is not None:
+                stdscr.timeout(-1)
+                stdscr.getch()
+                return
+            key = stdscr.getch()
+            if key_in(key, cfg.keys.get("back", [])):
+                process.terminate()
+                process.wait(timeout=5)
+                return
+    finally:
+        stdscr.timeout(-1)
+
+
+def _extract_last_time(lines: list[str]) -> str | None:
+    for line in reversed(lines):
+        if "Time =" in line:
+            parts = line.split("Time =", 1)
+            if len(parts) == 2:
+                return parts[1].strip().split()[0]
+    return None
+
+
 def remove_all_logs(stdscr: Any, case_path: Path) -> None:
     """
     Remove log.* files using CleanFunctions helpers.
@@ -945,9 +1273,7 @@ def solver_resurrection_screen(stdscr: Any, case_path: Path) -> None:
     if latest in ("0", "0.0", ""):
         _show_message(stdscr, "No latest time found to resume from.")
         return
-    ok_start = write_entry(control_dict, "startFrom", "latestTime")
-    ok_time = write_entry(control_dict, "startTime", latest)
-    if ok_start and ok_time:
+    if set_start_from_latest(control_dict, latest):
         _show_message(stdscr, f"Set startFrom latestTime and startTime {latest}.")
         return
     _show_message(stdscr, "Failed to update controlDict (check OpenFOAM env).")
@@ -1072,6 +1398,116 @@ def time_directory_pruner_screen(stdscr: Any, case_path: Path) -> None:  # noqa:
             continue
 
     _show_message(stdscr, f"Removed {removed} time directories.")
+
+
+def yplus_screen(stdscr: Any, case_path: Path) -> None:
+    """
+    Run yPlus and show min/max/avg summary with optional raw output.
+    """
+    status_message(stdscr, "Running yPlus...")
+    stdout, stderr = _run_tool_capture(case_path, "yPlus")
+    _write_tool_log(case_path, "yPlus", stdout, stderr)
+    stats = _parse_yplus_stats("\n".join([stdout, stderr]))
+    if not stats:
+        _show_message(stdscr, "No yPlus stats found in output.")
+        return
+    summary = _ascii_kv_table(
+        "yPlus summary",
+        [
+            ("min", f"{stats.get('min', 'n/a')}"),
+            ("max", f"{stats.get('max', 'n/a')}"),
+            ("avg", f"{stats.get('avg', 'n/a')}"),
+        ],
+    )
+    stdscr.clear()
+    stdscr.addstr(summary + "\n")
+    back_hint = key_hint("back", "h")
+    stdscr.addstr(f"Press r for raw output, {back_hint} to return.\n")
+    stdscr.refresh()
+    ch = stdscr.getch()
+    if ch in (ord("r"), ord("R")):
+        Viewer(
+            stdscr,
+            "\n".join(["yPlus raw output", "", format_log_blob(stdout, stderr)]),
+        ).display()
+
+
+def _run_tool_capture(case_path: Path, name: str) -> tuple[str, str]:
+    wm_dir = os.environ.get("WM_PROJECT_DIR")
+    if wm_dir and get_config().use_runfunctions:
+        shell_cmd = f'. "{wm_dir}/bin/tools/RunFunctions"; {name}'
+        return _run_shell_capture(case_path, shell_cmd)
+
+    bashrc = resolve_openfoam_bashrc()
+    if bashrc:
+        return _run_shell_capture(case_path, name)
+
+    try:
+        result = run_trusted(
+            [name],
+            cwd=case_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        return ("", f"Failed to run {name}: {exc}")
+    return result.stdout, result.stderr
+
+
+def _run_shell_capture(case_path: Path, shell_cmd: str) -> tuple[str, str]:
+    command = with_bashrc(_expand_shell_command(shell_cmd, case_path))
+    env = os.environ.copy()
+    env.pop("BASH_ENV", None)
+    env.pop("ENV", None)
+    try:
+        result = run_trusted(
+            ["bash", "--noprofile", "--norc", "-c", command],
+            cwd=case_path,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+    except OSError as exc:
+        return ("", f"Failed to run command: {exc}")
+    return result.stdout, result.stderr
+
+
+def _parse_yplus_stats(text: str) -> dict[str, str]:
+    stats: dict[str, str] = {}
+    for line in text.splitlines():
+        lower = line.lower()
+        if "y+" not in lower and "yplus" not in lower:
+            continue
+        if "min" in lower and "min" not in stats:
+            value = _float_after("min", line) or _first_float(line)
+            if value is not None:
+                stats["min"] = value
+        if "max" in lower and "max" not in stats:
+            value = _float_after("max", line) or _first_float(line)
+            if value is not None:
+                stats["max"] = value
+        if ("avg" in lower or "average" in lower) and "avg" not in stats:
+            value = _float_after("avg", line) or _float_after("average", line) or _first_float(line)
+            if value is not None:
+                stats["avg"] = value
+    return stats
+
+
+def _first_float(line: str) -> str | None:
+    match = re.search(r"([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)", line)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _float_after(label: str, line: str) -> str | None:
+    pattern = rf"{label}\s*[:=]?\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)"
+    match = re.search(pattern, line, flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return None
 
 
 def _expand_command(cmd: list[str], case_path: Path) -> list[str]:
@@ -1215,26 +1651,13 @@ def foam_job_prompt(stdscr: Any, case_path: Path) -> None:
         _show_message(stdscr, _with_no_foam_hint(f"Failed to run foamJob: {exc}"))
         return
 
-    status = "OK" if result.returncode == 0 else "ERROR"
-    lines = [
-        f"$ cd {case_path}",
-        f"$ foamJob {' '.join(args)}",
-        "",
-        f"status: {status} (exit code {result.returncode})",
-        "",
-    ]
     hint = _maybe_job_hint("foamJob")
-    if hint:
-        lines.append(hint)
-        lines.append("")
-    lines += [
-        "stdout:",
-        result.stdout or "(empty)",
-        "",
-        "stderr:",
-        result.stderr or "(empty)",
-    ]
-    viewer = Viewer(stdscr, "\n".join(lines))
+    summary = format_command_result(
+        [f"$ cd {case_path}", f"$ foamJob {' '.join(args)}"],
+        CommandResult(result.returncode, result.stdout, result.stderr),
+        hint=hint,
+    )
+    viewer = Viewer(stdscr, summary)
     viewer.display()
 
 
@@ -1270,27 +1693,74 @@ def foam_end_job_prompt(stdscr: Any, case_path: Path) -> None:
         _show_message(stdscr, _with_no_foam_hint(f"Failed to run foamEndJob: {exc}"))
         return
 
-    status = "OK" if result.returncode == 0 else "ERROR"
-    lines = [
-        f"$ cd {case_path}",
-        f"$ foamEndJob {' '.join(args)}",
-        "",
-        f"status: {status} (exit code {result.returncode})",
-        "",
-    ]
     hint = _maybe_job_hint("foamEndJob")
-    if hint:
-        lines.append(hint)
-        lines.append("")
-    lines += [
-        "stdout:",
-        result.stdout or "(empty)",
-        "",
-        "stderr:",
-        result.stderr or "(empty)",
-    ]
-    viewer = Viewer(stdscr, "\n".join(lines))
+    summary = format_command_result(
+        [f"$ cd {case_path}", f"$ foamEndJob {' '.join(args)}"],
+        CommandResult(result.returncode, result.stdout, result.stderr),
+        hint=hint,
+    )
+    viewer = Viewer(stdscr, summary)
     viewer.display()
+
+
+def _prompt_line(stdscr: Any, prompt: str) -> str:
+    curses.echo()
+    stdscr.clear()
+    stdscr.addstr(prompt)
+    stdscr.refresh()
+    value = stdscr.getstr().decode().strip()
+    curses.noecho()
+    return value
+
+
+def foamlib_parametric_study_screen(stdscr: Any, case_path: Path) -> None:
+    if not foamlib_available():
+        _show_message(stdscr, "foamlib is not available.")
+        return
+
+    dict_input = _prompt_line(
+        stdscr,
+        "Dictionary path (default system/controlDict): ",
+    )
+    if not dict_input:
+        dict_input = "system/controlDict"
+    entry = _prompt_line(stdscr, "Entry key (e.g. application): ")
+    if not entry:
+        _show_message(stdscr, "Entry key is required.")
+        return
+    values_line = _prompt_line(stdscr, "Values (comma-separated): ")
+    values = [val.strip() for val in values_line.split(",") if val.strip()]
+    if not values:
+        _show_message(stdscr, "No values provided.")
+        return
+    run_line = _prompt_line(stdscr, "Run solver for each case? [y/N]: ")
+    run_solver = run_line.strip().lower().startswith("y")
+
+    try:
+        created = build_parametric_cases(
+            case_path,
+            Path(dict_input),
+            entry,
+            values,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        _show_message(stdscr, f"Parametric setup failed: {exc}")
+        return
+
+    failures: list[Path] = []
+    if run_solver:
+        failures = run_cases(created, check=False)
+
+    lines = [
+        f"Created {len(created)} case(s):",
+        *[f"- {path}" for path in created],
+    ]
+    if run_solver:
+        if failures:
+            lines += ["", "Failures:", *[f"- {path}" for path in failures]]
+        else:
+            lines += ["", "All cases completed."]
+    Viewer(stdscr, "\n".join(lines)).display()
 
 
 def diagnostics_screen(stdscr: Any, case_path: Path) -> None:
@@ -1316,6 +1786,7 @@ def diagnostics_screen(stdscr: Any, case_path: Path) -> None:
         [*labels, "Back"],
         status_line=status_line,
         disabled_indices=disabled,
+        help_lines=diagnostics_help(),
     )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels):
@@ -1345,20 +1816,11 @@ def diagnostics_screen(stdscr: Any, case_path: Path) -> None:
         _show_checkmesh_summary(stdscr, result.stdout, result.stderr)
         return
 
-    status = "OK" if result.returncode == 0 else "ERROR"
-    lines = [
-        f"$ cd {case_path}",
-        f"$ {' '.join(cmd)}",
-        "",
-        f"status: {status} (exit code {result.returncode})",
-        "",
-        "stdout:",
-        result.stdout or "(empty)",
-        "",
-        "stderr:",
-        result.stderr or "(empty)",
-    ]
-    viewer = Viewer(stdscr, "\n".join(lines))
+    summary = format_command_result(
+        [f"$ cd {case_path}", f"$ {' '.join(cmd)}"],
+        CommandResult(result.returncode, result.stdout, result.stderr),
+    )
+    viewer = Viewer(stdscr, summary)
     viewer.display()
 
 
@@ -1380,22 +1842,57 @@ def run_checkmesh(stdscr: Any, case_path: Path) -> None:
     _show_checkmesh_summary(stdscr, result.stdout, result.stderr)
 
 
+def run_blockmesh(stdscr: Any, case_path: Path) -> None:
+    status_message(stdscr, "Running blockMesh...")
+    cmd = ["blockMesh"]
+    try:
+        result = run_trusted(
+            cmd,
+            cwd=case_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        _show_message(stdscr, _with_no_foam_hint(f"Failed to run blockMesh: {exc}"))
+        return
+    _write_tool_log(case_path, "blockMesh", result.stdout, result.stderr)
+    Viewer(
+        stdscr,
+        "\n".join(["blockMesh output", "", format_log_blob(result.stdout, result.stderr)]),
+    ).display()
+
+
+def run_decomposepar(stdscr: Any, case_path: Path) -> None:
+    decompose_dict = case_path / "system" / "decomposeParDict"
+    if not decompose_dict.is_file():
+        _show_message(stdscr, "Missing system/decomposeParDict.")
+        return
+    status_message(stdscr, "Running decomposePar...")
+    cmd = ["decomposePar"]
+    try:
+        result = run_trusted(
+            cmd,
+            cwd=case_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        _show_message(stdscr, _with_no_foam_hint(f"Failed to run decomposePar: {exc}"))
+        return
+    _write_tool_log(case_path, "decomposePar", result.stdout, result.stderr)
+    Viewer(
+        stdscr,
+        "\n".join(["decomposePar output", "", format_log_blob(result.stdout, result.stderr)]),
+    ).display()
+
+
 def _write_tool_log(case_path: Path, name: str, stdout: str, stderr: str) -> None:
     if not stdout and not stderr:
         return
     log_path = case_path / f"log.{name}"
-    content = "\n".join(
-        [
-            f"tool: {name}",
-            "",
-            "stdout:",
-            stdout or "(empty)",
-            "",
-            "stderr:",
-            stderr or "(empty)",
-            "",
-        ],
-    )
+    content = "\n".join([f"tool: {name}", "", format_log_blob(stdout, stderr), ""])
     with suppress(OSError):
         log_path.write_text(content)
 
@@ -1410,16 +1907,10 @@ def _show_checkmesh_summary(stdscr: Any, stdout: str, stderr: str) -> None:
     stdscr.refresh()
     ch = stdscr.getch()
     if ch in (ord("r"), ord("R")):
-        lines = [
-            "checkMesh raw output",
-            "",
-            "stdout:",
-            stdout or "(empty)",
-            "",
-            "stderr:",
-            stderr or "(empty)",
-        ]
-        Viewer(stdscr, "\n".join(lines)).display()
+        Viewer(
+            stdscr,
+            "\n".join(["checkMesh raw output", "", format_log_blob(stdout, stderr)]),
+        ).display()
 
 
 def _parallel_consistency_report(case_path: Path) -> tuple[str, list[str]]:
@@ -1427,15 +1918,7 @@ def _parallel_consistency_report(case_path: Path) -> tuple[str, list[str]]:
     if not decompose_dict.is_file():
         return ("missing", ["system/decomposeParDict not found."])
 
-    try:
-        number = read_entry(decompose_dict, "numberOfSubdomains").strip().rstrip(";")
-    except OpenFOAMError:
-        number = None
-
-    try:
-        expected = int(number) if number else None
-    except ValueError:
-        expected = None
+    expected = read_number_of_subdomains(decompose_dict)
 
     processors = _decomposed_processors(case_path)
     actual = len(processors)
@@ -1468,35 +1951,6 @@ def parallel_consistency_screen(stdscr: Any, case_path: Path) -> None:
     else:
         message = [header, "", *lines, "", "OK: counts match."]
     Viewer(stdscr, "\n".join(message)).display()
-
-
-def dictionary_linter_screen(stdscr: Any, case_path: Path) -> None:
-    sections = discover_case_files(case_path)
-    files: list[Path] = []
-    for group in sections.values():
-        files.extend(group)
-    if not files:
-        _show_message(stdscr, "No case dictionary files found.")
-        return
-
-    labels = [p.relative_to(case_path).as_posix() for p in files]
-    menu = Menu(stdscr, "Dictionary linter (required keys)", [*labels, "Back"])
-    choice = menu.navigate()
-    if choice == -1 or choice == len(labels):
-        return
-
-    file_path = files[choice]
-    try:
-        issues = lint_required_entries(file_path)
-    except OpenFOAMError as exc:
-        _show_message(stdscr, f"Failed to read {file_path.name}: {exc}")
-        return
-
-    title = f"Linter results: {file_path.relative_to(case_path)}"
-    if not issues:
-        Viewer(stdscr, f"{title}\n\nNo missing required entries detected.").display()
-        return
-    Viewer(stdscr, "\n".join([title, "", *issues])).display()
 
 
 def log_tail_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912

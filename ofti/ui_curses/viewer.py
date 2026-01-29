@@ -45,7 +45,7 @@ class Viewer:
             if key == curses.KEY_RESIZE:
                 continue
 
-            if key_in(key, get_config().keys.get("search", [])):
+            if key == ord("/") or key_in(key, get_config().keys.get("search", [])):
                 curses.echo()
                 self.stdscr.clear()
                 self.stdscr.addstr("Search: ")

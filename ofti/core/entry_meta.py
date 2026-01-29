@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ofti import foamlib_adapter
+from ofti.core.entry_io import list_subkeys, read_entry
 from ofti.core.validation import Validator, as_float, as_int, bool_flag, non_empty, vector_values
 from ofti.foam.openfoam import (
     OpenFOAMError,
@@ -9,10 +11,8 @@ from ofti.foam.openfoam import (
     get_entry_enum_values,
     get_entry_info,
     is_scalar_value,
-    list_subkeys,
     looks_like_dict,
     normalize_scalar_token,
-    read_entry,
 )
 
 
@@ -37,10 +37,17 @@ def get_entry_metadata(
         value = "<error reading value>"
 
     validator, type_label = choose_validator(full_key, value)
+    validator, type_label = detect_type_with_foamlib(
+        file_path,
+        full_key,
+        validator,
+        type_label,
+    )
     subkeys = list_subkeys(file_path, full_key)
     comments = get_entry_comments(file_path, full_key)
     info_lines = get_entry_info(file_path, full_key)
     info_lines.extend(boundary_condition_info(file_path, full_key))
+    info_lines.extend(_foamlib_type_info(file_path, full_key))
     if subkeys or looks_like_dict(value):
         validator = non_empty
         type_label = "dict"
@@ -81,10 +88,17 @@ def refresh_entry_cache(
         return
 
     _validator, type_label = choose_validator(full_key, value)
+    _validator, type_label = detect_type_with_foamlib(
+        file_path,
+        full_key,
+        _validator,
+        type_label,
+    )
     subkeys = list_subkeys(file_path, full_key)
     comments = get_entry_comments(file_path, full_key)
     info_lines = get_entry_info(file_path, full_key)
     info_lines.extend(boundary_condition_info(file_path, full_key))
+    info_lines.extend(_foamlib_type_info(file_path, full_key))
     if subkeys or looks_like_dict(value):
         type_label = "dict"
     cache[full_key] = (value, type_label, subkeys, comments, info_lines)
@@ -166,6 +180,64 @@ def _read_optional_entry(file_path: Path, key: str) -> str | None:
         return read_entry(file_path, key).strip()
     except OpenFOAMError:
         return None
+
+
+def _foamlib_type_info(file_path: Path, full_key: str) -> list[str]:
+    if not (foamlib_adapter.available() and foamlib_adapter.is_foam_file(file_path)):
+        return []
+    try:
+        node = foamlib_adapter.read_entry_node(file_path, full_key)
+    except (KeyError, Exception):
+        return []
+    label = _foamlib_node_label(node)
+    return [f"foamlib type: {label}"] if label else []
+
+
+def _foamlib_node_label(node: object) -> str | None:
+    label: str | None
+    if hasattr(node, "keys"):
+        label = "dict"
+    elif isinstance(node, bool):
+        label = "bool"
+    elif isinstance(node, int):
+        label = "int"
+    elif isinstance(node, float):
+        label = "float"
+    elif isinstance(node, str):
+        label = "word"
+    elif hasattr(node, "shape"):
+        label = f"array {getattr(node, 'shape', '')}"
+    elif isinstance(node, (list, tuple)):
+        label = f"list ({len(node)})"
+    else:
+        label = type(node).__name__
+    return label
+
+
+def detect_type_with_foamlib(
+    file_path: Path,
+    full_key: str,
+    validator: Validator,
+    type_label: str,
+) -> tuple[Validator, str]:
+    if not (foamlib_adapter.available() and foamlib_adapter.is_foam_file(file_path)):
+        return validator, type_label
+    try:
+        node = foamlib_adapter.read_entry_node(file_path, full_key)
+    except (KeyError, Exception):
+        node = None
+
+    label = _foamlib_node_label(node) if node is not None else None
+    if not label:
+        return validator, type_label
+    mapping = {
+        "dict": non_empty,
+        "bool": bool_flag,
+        "int": as_int,
+        "float": as_float,
+        "word": non_empty,
+    }
+    return mapping.get(label, validator), label
 
 
 def _guess_validator(key: str) -> Validator:

@@ -16,7 +16,7 @@ def test_checkmesh_summary_parses_values() -> None:
     summary = format_checkmesh_summary(output)
     assert "CHECKMESH SUMMARY" in summary
     assert "Counts:" in summary
-    assert "Quality:" in summary
+    assert "Quality" in summary
     assert "12345" in summary
     assert "non-orth" in summary
     assert "62" in summary

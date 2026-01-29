@@ -108,6 +108,7 @@ def format_checkmesh_summary(output: str) -> str:
             or "n/a",
         ),
     ]
+    quality = _filter_nonzero(quality)
 
     warn_count = len(re.findall(r"(?i)warning", output))
     fatal_count = len(re.findall(r"(?i)fatal", output))
@@ -125,8 +126,15 @@ def format_checkmesh_summary(output: str) -> str:
     lines.append("Counts:")
     lines.extend(format_kv_block(counts, pad="  "))
     lines.append("")
-    lines.append("Quality:")
-    lines.extend(format_kv_block(quality, pad="  "))
+    if quality:
+        lines.append("Quality (non-zero):")
+        lines.extend(format_kv_block(quality, pad="  "))
+
+    warnings = extract_warnings(output)
+    if warnings:
+        lines.append("")
+        lines.append("Warnings:")
+        lines.extend([f"  {line}" for line in warnings])
     return "\n".join(lines)
 
 
@@ -152,3 +160,26 @@ def match_first(text: str, patterns: list[str]) -> str | None:
         if match:
             return match.group(1)
     return None
+
+
+def extract_warnings(text: str) -> list[str]:
+    return [raw.strip() for raw in text.splitlines() if re.search(r"(?i)warning", raw)]
+
+
+def _filter_nonzero(rows: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    kept: list[tuple[str, str]] = []
+    for label, value in rows:
+        parsed = _as_float(value)
+        if parsed is None:
+            continue
+        if parsed == 0:
+            continue
+        kept.append((label, value))
+    return kept
+
+
+def _as_float(value: str) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

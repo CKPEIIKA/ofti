@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 import subprocess
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ofti import foamlib_adapter
 from ofti.foam.subprocess_utils import run_trusted
 
 
@@ -21,6 +23,14 @@ class OpenFOAMError(RuntimeError):
     @classmethod
     def run_failed(cls, exc: OSError) -> OpenFOAMError:
         return cls(f"Failed to run foamDictionary: {exc}")
+
+    @classmethod
+    def foamlib_keywords_failed(cls, exc: Exception) -> OpenFOAMError:
+        return cls(f"foamlib failed to parse keywords: {exc}")
+
+    @classmethod
+    def foamlib_entry_failed(cls, exc: Exception) -> OpenFOAMError:
+        return cls(f"foamlib failed to parse entry: {exc}")
 
 
 def run_foam_dictionary(
@@ -42,10 +52,24 @@ def run_foam_dictionary(
     return result
 
 
+def _foamlib_candidate(file_path: Path) -> bool:
+    try:
+        head = file_path.read_text(errors="ignore")[:2048]
+    except OSError:
+        return False
+    return "FoamFile" in head
+
+
 def list_keywords(file_path: Path) -> list[str]:
     """
     List top-level keywords for a dictionary file.
     """
+    if foamlib_adapter.available() and _foamlib_candidate(file_path):
+        try:
+            return foamlib_adapter.list_keywords(file_path)
+        except Exception as exc:
+            logging.debug("foamlib list_keywords failed: %s", exc)
+            raise OpenFOAMError.foamlib_keywords_failed(exc) from exc
     result = run_foam_dictionary(file_path, ["-keywords"])
     if result.returncode != 0:
         raise OpenFOAMError(result.stderr.strip() or "Failed to list keywords.")
@@ -56,6 +80,12 @@ def list_subkeys(file_path: Path, entry: str) -> list[str]:
     """
     List sub-keys for a dictionary entry, if it is itself a dictionary.
     """
+    if foamlib_adapter.available() and _foamlib_candidate(file_path):
+        try:
+            return foamlib_adapter.list_subkeys(file_path, entry)
+        except Exception as exc:
+            logging.debug("foamlib list_subkeys failed: %s", exc)
+            return []
     result = run_foam_dictionary(file_path, ["-entry", entry, "-keywords"])
     if result.returncode != 0:
         # Treat non-dictionary (or missing) entries as having no subkeys.
@@ -104,6 +134,8 @@ def get_entry_info(file_path: Path, key: str) -> list[str]:
     Returns the output lines (if any), or an empty list when the
     command is not available or fails.
     """
+    if foamlib_adapter.available() or shutil.which("foamDictionary") is None:
+        return []
     result = run_foam_dictionary(file_path, ["-entry", key, "-info"])
     if result.returncode != 0:
         return []
@@ -118,6 +150,8 @@ def get_entry_enum_values(file_path: Path, key: str) -> list[str]:
     Returns the values (if any), or an empty list when the command
     fails or no values are reported.
     """
+    if foamlib_adapter.available() or shutil.which("foamDictionary") is None:
+        return []
     result = run_foam_dictionary(file_path, ["-entry", key, "-list"])
     if result.returncode != 0:
         return []
@@ -230,6 +264,14 @@ def looks_like_dict(value: str) -> bool:
 
 
 def read_entry(file_path: Path, key: str) -> str:
+    if foamlib_adapter.available() and _foamlib_candidate(file_path):
+        try:
+            return foamlib_adapter.read_entry(file_path, key)
+        except KeyError as exc:
+            raise OpenFOAMError(str(exc)) from exc
+        except Exception as exc:
+            logging.debug("foamlib read_entry failed: %s", exc)
+            raise OpenFOAMError.foamlib_entry_failed(exc) from exc
     result = run_foam_dictionary(file_path, ["-entry", key])
     if result.returncode != 0:
         raise OpenFOAMError(result.stderr.strip() or f"Failed to read entry {key}.")
@@ -252,6 +294,12 @@ def read_entry(file_path: Path, key: str) -> str:
 
 
 def write_entry(file_path: Path, key: str, value: str) -> bool:
+    if foamlib_adapter.available() and _foamlib_candidate(file_path):
+        try:
+            if foamlib_adapter.write_entry(file_path, key, value):
+                return True
+        except Exception as exc:
+            logging.debug("foamlib write_entry failed: %s", exc)
     result = run_foam_dictionary(file_path, ["-entry", key, "-set", value])
     return result.returncode == 0
 
@@ -362,6 +410,9 @@ def _check_file(
     except KeyboardInterrupt:
         return False
 
+    if foamlib_adapter.available() and _foamlib_candidate(file_path):
+        result.warnings.extend(_foamlib_quick_lint(file_path, top_level_keys))
+
     try:
         _check_entries(file_path, result, top_level_keys)
         _check_boundary_field(file_path, result, top_level_keys)
@@ -418,18 +469,6 @@ def _check_single_entry(file_path: Path, result: FileCheckResult, key: str) -> N
             )
 
 
-def lint_required_entries(file_path: Path, keys: Sequence[str] | None = None) -> list[str]:
-    """
-    Return linter issues for missing required entries in the given file.
-    """
-    if keys is None:
-        keys = list_keywords(file_path)
-    issues: list[str] = []
-    for key in keys:
-        issues.extend(_required_entries_issues(file_path, key))
-    return issues
-
-
 def _required_entries_issues(file_path: Path, key: str) -> list[str]:
     info_lines = get_entry_info(file_path, key)
     required = parse_required_entries(info_lines)
@@ -450,3 +489,18 @@ def _required_entries_issues(file_path: Path, key: str) -> list[str]:
         if missing:
             return [f"{key}: missing required entries: {', '.join(missing)}"]
     return []
+
+
+def _foamlib_quick_lint(file_path: Path, keys: Sequence[str]) -> list[str]:
+    warnings: list[str] = []
+    parts = file_path.parts
+    if ("0" in parts or "0.orig" in parts) and "boundaryField" not in keys:
+        warnings.append("boundaryField missing.")
+    name = file_path.name
+    if name == "controlDict" and "application" not in keys:
+        warnings.append("controlDict missing 'application'.")
+    if name == "fvSolution" and "solvers" not in keys:
+        warnings.append("fvSolution missing 'solvers'.")
+    if name == "fvSchemes" and "ddtSchemes" not in keys:
+        warnings.append("fvSchemes missing 'ddtSchemes'.")
+    return warnings

@@ -11,14 +11,16 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.entries import Entry, autoformat_value
+from ofti.core.entry_io import list_keywords, read_entry, write_entry
 from ofti.core.entry_meta import get_entry_metadata, refresh_entry_cache
 from ofti.core.validation import Validator
 from ofti.foam.config import fzf_enabled, get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
-from ofti.foam.openfoam import OpenFOAMError, list_keywords, read_entry, write_entry
+from ofti.foam.openfoam import OpenFOAMError
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
 from ofti.ui_curses.entry_editor import EntryEditor
 from ofti.ui_curses.layout import draw_status_bar, status_message
+from ofti.ui_curses.viewer import Viewer
 
 
 @dataclass(frozen=True)
@@ -175,6 +177,16 @@ def entry_browser_screen(
             continue
         elif key_in(key_code, cfg.keys.get("help", [])):
             _entry_browser_help(stdscr, callbacks)
+        elif key_code == ord("K"):
+            _entry_browser_context_help(
+                stdscr,
+                full_key,
+                type_label,
+                value,
+                comments,
+                info_lines,
+                subkeys,
+            )
         elif key_in(key_code, cfg.keys.get("command", [])):
             command = callbacks.prompt_command(stdscr, callbacks.command_suggestions(case_path))
             if not command:
@@ -226,9 +238,10 @@ def _draw_entry_browser(
         left_win.addstr(
             2,
             0,
-            f"j/k: move  l: edit  o: edit section  {view_hint}: view  {back_hint}: back"[
-                : max(1, left_width)
-            ],
+            (
+                f"j/k: move  l: edit  o: edit section  K: help  "
+                f"{view_hint}: view  {back_hint}: back"
+            )[: max(1, left_width)],
         )
     except curses.error:
         pass
@@ -444,9 +457,31 @@ def _entry_browser_help(stdscr: Any, callbacks: BrowserCallbacks) -> None:
     callbacks.show_message(
         stdscr,
         "Keys: j/k or arrows move, g/G top/bottom, l/e/Right/Enter edit, "
-        f"{back_hint}/Left back, {view_hint} view file, / search, : command line, ? help\n\n"
+        f"{back_hint}/Left back, {view_hint} view file, / search, : command line, "
+        "K entry help, ? help\n\n"
         "Commands:\n  :check  :tools  :diag  :run  :nofoam  :tool <name>  :quit",
     )
+
+
+def _entry_browser_context_help(
+    stdscr: Any,
+    full_key: str,
+    type_label: str,
+    value: str,
+    comments: list[str],
+    info_lines: list[str],
+    subkeys: list[str],
+) -> None:
+    lines = [f"Entry help: {full_key}", "", f"Type: {type_label}"]
+    if value:
+        lines += ["", "Current value:", value]
+    if comments:
+        lines += ["", "Comments:", *comments]
+    if info_lines:
+        lines += ["", "Info:", *info_lines]
+    if subkeys:
+        lines += ["", "Sub-keys:", *[f"- {sk}" for sk in subkeys]]
+    Viewer(stdscr, "\n".join(lines)).display()
 
 
 def _search_entries(
