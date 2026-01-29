@@ -11,7 +11,7 @@
 
 `ofti` (OpenFOAM Terminal Interface) is a small curses-based TUI for browsing and editing OpenFOAM case dictionaries, with built-in tools and diagnostics.
 
-Disclaimer: this is vibe-coded software! Use with care!
+Disclaimer: this is vibe-coded software! Under severe development!
 
 License: GPL-3.0-or-later.
 
