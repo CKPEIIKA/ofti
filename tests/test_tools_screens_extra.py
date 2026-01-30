@@ -19,6 +19,9 @@ class FakeScreen:
     def getmaxyx(self):
         return (24, 80)
 
+    def getyx(self):
+        return (0, 0)
+
     def addstr(self, *args, **kwargs) -> None:
         pass
 
@@ -29,6 +32,12 @@ class FakeScreen:
         pass
 
     def refresh(self) -> None:
+        pass
+
+    def move(self, *_args, **_kwargs) -> None:
+        pass
+
+    def clrtoeol(self) -> None:
         pass
 
     def getch(self) -> int:

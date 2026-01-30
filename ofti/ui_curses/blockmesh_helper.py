@@ -21,6 +21,7 @@ from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
 from ofti.foam.openfoam import OpenFOAMError
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
+from ofti.ui_curses.inputs import prompt_input
 
 
 def blockmesh_helper_screen(stdscr: Any, case_path: Path) -> None:
@@ -106,12 +107,11 @@ def _blockmesh_viewer(
 
 
 def _blockmesh_search(stdscr: Any, lines: list[str], start_line: int) -> int:
-    curses.echo()
     stdscr.clear()
-    stdscr.addstr("Search: ")
-    stdscr.refresh()
-    query = stdscr.getstr().decode()
-    curses.noecho()
+    query = prompt_input(stdscr, "Search: ")
+    if query is None:
+        return start_line
+    query = query.strip()
     if not query:
         return start_line
     for i in range(start_line + 1, len(lines)):

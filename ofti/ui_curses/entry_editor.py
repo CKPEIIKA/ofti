@@ -8,7 +8,7 @@ from curses import textpad
 from typing import Any
 
 from ofti.core.entries import Entry
-from ofti.foam.config import get_config, key_hint, key_in
+from ofti.foam.config import get_config, key_in
 from ofti.foam.exceptions import QuitAppError
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
 from ofti.ui_curses.viewer import Viewer
@@ -51,17 +51,10 @@ class EntryEditor:
             if key_in(key, get_config().keys.get("quit", [])):
                 raise QuitAppError()
 
-            if key in (3, ord("b")):
+            if key in (3, 27):
                 return
 
             if key == curses.KEY_RESIZE:
-                continue
-
-            if key == 27:  # ESC does nothing in editor
-                continue
-
-            if key == ord("c"):
-                self._check_value()
                 continue
 
             if key == ord("K"):
@@ -186,7 +179,6 @@ class EntryEditor:
         self.stdscr.clear()
         height, width = self.stdscr.getmaxyx()
         split_col = max(20, width // 2)
-        back_hint = key_hint("back", "h")
 
         left_width = split_col - 1
         header = "=== Config Editor ==="
@@ -218,7 +210,7 @@ class EntryEditor:
             self.stdscr.addstr(
                 2,
                 split_col,
-                f"Keys: Enter=save  c=check  {back_hint}=back"[: max(1, right_width)],
+                "Keys: Enter=save  Esc/Ctrl+C=back"[: max(1, right_width)],
             )
 
             self._cursor = max(self._cursor, 0)

@@ -6,6 +6,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from ofti.core.case import detect_solver
 from ofti.foam.subprocess_utils import run_trusted
 from ofti.tools.runner import _show_message, load_postprocessing_presets, load_tool_presets
 from ofti.ui_curses.layout import status_message
@@ -201,8 +202,12 @@ def _pipeline_tool_catalog(case_path: Path) -> list[tuple[str, list[str]]]:
         ("snappyHexMesh", ["snappyHexMesh"]),
         ("decomposePar", ["decomposePar"]),
         ("reconstructPar", ["reconstructPar"]),
+        ("postProcess -latestTime", ["postProcess", "-latestTime"]),
         ("foamCalc", ["foamCalc"]),
     ]
+    solver = detect_solver(case_path)
+    if solver and solver != "unknown":
+        base.append((f"runSolver ({solver})", [solver]))
     extra = load_tool_presets(case_path)
     post = [(f"[post] {name}", cmd) for name, cmd in load_postprocessing_presets(case_path)]
     return base + extra + post

@@ -19,6 +19,7 @@ from ofti.foam.exceptions import QuitAppError
 from ofti.foam.openfoam import OpenFOAMError
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
 from ofti.ui_curses.entry_editor import EntryEditor
+from ofti.ui_curses.inputs import prompt_input
 from ofti.ui_curses.layout import draw_status_bar, status_message
 from ofti.ui_curses.viewer import Viewer
 
@@ -168,6 +169,15 @@ def entry_browser_screen(
             last_meta = None
         elif key_code == curses.KEY_RESIZE:
             continue
+        elif key_code == ord("c"):
+            if validator is None:
+                callbacks.show_message(stdscr, "No validator available for this entry.")
+            else:
+                error = validator(value)
+                if error:
+                    callbacks.show_message(stdscr, f"Check failed: {error}")
+                else:
+                    callbacks.show_message(stdscr, "Check OK.")
         elif key_in(key_code, cfg.keys.get("search", [])):
             new_index = _entry_browser_search(
                 stdscr, keywords, index, callbacks,
@@ -239,7 +249,7 @@ def _draw_entry_browser(
             2,
             0,
             (
-                f"j/k: move  l: edit  o: edit section  K: help  "
+                f"j/k: move  l: edit  o: edit section  c: check  K: help  "
                 f"{view_hint}: view  {back_hint}: back"
             )[: max(1, left_width)],
         )
@@ -436,12 +446,11 @@ def _entry_browser_search(
     if fzf_enabled():
         return _fzf_pick_entry_in_file(stdscr, keywords)
 
-    curses.echo()
     stdscr.clear()
-    stdscr.addstr("Search (keys/values/comments): ")
-    stdscr.refresh()
-    query = stdscr.getstr().decode()
-    curses.noecho()
+    query = prompt_input(stdscr, "Search (keys/values/comments): ")
+    if query is None:
+        return None
+    query = query.strip()
     if not query:
         return None
 
@@ -457,7 +466,7 @@ def _entry_browser_help(stdscr: Any, callbacks: BrowserCallbacks) -> None:
     callbacks.show_message(
         stdscr,
         "Keys: j/k or arrows move, g/G top/bottom, l/e/Right/Enter edit, "
-        f"{back_hint}/Left back, {view_hint} view file, / search, : command line, "
+        f"{back_hint}/Left back, {view_hint} view file, c check, / search, : command line, "
         "K entry help, ? help\n\n"
         "Commands:\n  :check  :tools  :diag  :run  :nofoam  :tool <name>  :quit",
     )

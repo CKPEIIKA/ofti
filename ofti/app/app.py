@@ -12,6 +12,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from ofti import foamlib_adapter
 from ofti.app.commands import CommandCallbacks, command_suggestions, handle_command
 from ofti.app.helpers import (
     is_case_dir,
@@ -57,7 +58,6 @@ from ofti.tools import (
     log_analysis_screen,
     logs_screen,
     open_paraview_screen,
-    parametric_presets_screen,
     pipeline_editor_screen,
     pipeline_runner_screen,
     postprocessing_browser_screen,
@@ -705,6 +705,18 @@ def _run_solver_background(stdscr: Any, case_path: Path, state: AppState) -> Non
         return
 
     log_path = case_path / f"log.{solver}"
+    if log_path.exists():
+        stdscr.clear()
+        stdscr.addstr(f"Log {log_path.name} already exists. Rerun solver? [y/N]: ")
+        stdscr.refresh()
+        ch = stdscr.getch()
+        if ch not in (ord("y"), ord("Y")):
+            return
+        try:
+            log_path.unlink()
+        except OSError:
+            show_message(stdscr, f"Failed to remove {log_path.name}.")
+            return
     mpi_cmd = _load_mpi_command(case_path)
     if mpi_cmd is None:
         mpi_cmd = _default_mpi_command(case_path)
@@ -1147,8 +1159,6 @@ def _task_running(state: AppState, name: str) -> bool:
 
 def _preprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
     options = [
-        "Edit case pipeline (Allrun)",
-        "Run case pipeline (Allrun)",
         "Run blockMesh",
         "blockMesh helper (vertices)",
         "Mesh quality (checkMesh)",
@@ -1227,13 +1237,13 @@ def _physics_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
 
 def _simulation_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
     options = [
+        "Edit case pipeline (Allrun)",
+        "Run case pipeline (Allrun)",
         "Run current solver (background)",
         "Run solver (live)",
         "Safe stop (create stop file)",
         "Resume solver (latestTime)",
-        "Job status (poll)",
-        "Foamlib parametric study",
-        "Parametric presets (ofti.parametric)",
+        "Parametric wizard",
         "Back",
     ]
     disabled: set[int] | None = None
@@ -1242,7 +1252,7 @@ def _simulation_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
     else:
         solver_running = _task_running(state, "solver")
         if solver_running:
-            disabled = {0, 1, 3}
+            disabled = {2, 3, 5}
     while True:
         choice = _menu_choice(
             stdscr,
@@ -1256,19 +1266,19 @@ def _simulation_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
         if choice in (-1, len(options) - 1):
             return Screen.MAIN_MENU
         if choice == 0:
-            _run_solver_background(stdscr, case_path, state)
+            pipeline_editor_screen(stdscr, case_path)
         elif choice == 1:
-            run_current_solver_live(stdscr, case_path)
+            pipeline_runner_screen(stdscr, case_path)
         elif choice == 2:
-            safe_stop_screen(stdscr, case_path)
+            _run_solver_background(stdscr, case_path, state)
         elif choice == 3:
-            solver_resurrection_screen(stdscr, case_path)
+            run_current_solver_live(stdscr, case_path)
         elif choice == 4:
-            run_tool_by_name(stdscr, case_path, "jobStatus")
+            safe_stop_screen(stdscr, case_path)
         elif choice == 5:
-            foamlib_parametric_study_screen(stdscr, case_path)
+            solver_resurrection_screen(stdscr, case_path)
         elif choice == 6:
-            parametric_presets_screen(stdscr, case_path)
+            foamlib_parametric_study_screen(stdscr, case_path)
 
 
 def _postprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen:
@@ -1277,7 +1287,7 @@ def _postprocessing_menu(stdscr: Any, case_path: Path, state: AppState) -> Scree
         "Time directory pruner",
         "View logs",
         "Open ParaView (.foam)",
-        "Residual timeline (foamlib)",
+        "Residual timeline",
         "Log analysis summary",
         "PostProcessing browser",
         "Field summary (latest time)",
@@ -1635,7 +1645,12 @@ def _global_search_screen(
             status_message(stdscr, f"Indexing {file_path.relative_to(case_path)}...")
             dict_file = DictionaryFile(foam_case.root, file_path)
             try:
-                keys = list_keywords(file_path)
+                if foamlib_available() and foamlib_adapter.is_foam_file(file_path):
+                    keys = foamlib_adapter.list_keywords(file_path)
+                elif foamlib_available():
+                    continue
+                else:
+                    keys = list_keywords(file_path)
             except OpenFOAMError as exc:
                 if state.no_foam:
                     show_message(
