@@ -23,7 +23,7 @@ from ofti.core.case import (
 )
 from ofti.core.checkmesh import extract_last_courant, format_checkmesh_summary
 from ofti.core.dict_compare import compare_case_dicts
-from ofti.core.entry_io import read_entry
+from ofti.core.entry_io import list_subkeys, read_entry
 from ofti.core.mesh_info import mesh_counts
 from ofti.core.templates import write_example_template
 from ofti.core.times import latest_time, time_directories
@@ -67,6 +67,7 @@ from ofti.tools.runner import (
 )
 from ofti.ui_curses.help import diagnostics_help, tools_help
 from ofti.ui_curses.high_speed import high_speed_helper_screen
+from ofti.ui_curses.inputs import prompt_input
 from ofti.ui_curses.layout import status_message
 from ofti.ui_curses.menus import Menu
 from ofti.ui_curses.viewer import Viewer
@@ -100,13 +101,9 @@ def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, Callable[[], None]]
         ("foamListTimes", ["foamListTimes"]),
     ]
     extra_tools = load_tool_presets(case_path)
-    job_tools = [
-        ("foamCheckJobs", ["foamCheckJobs"]),
-        ("foamPrintJobs", ["foamPrintJobs"]),
-    ]
     post_tools = load_postprocessing_presets(case_path)
 
-    for name, cmd in base_tools + extra_tools + job_tools:
+    for name, cmd in base_tools + extra_tools:
         add(name, run_simple(name, cmd))
 
     for name, cmd in post_tools:
@@ -119,16 +116,9 @@ def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, Callable[[], None]]
     add("highspeed", lambda: high_speed_helper_screen(stdscr, case_path))
     add("high_speed", lambda: high_speed_helper_screen(stdscr, case_path))
     add("highspeedhelper", lambda: high_speed_helper_screen(stdscr, case_path))
-    add("jobstatus", lambda: job_status_poll_screen(stdscr, case_path))
-    add("job_status", lambda: job_status_poll_screen(stdscr, case_path))
     add("runscript", lambda: run_shell_script_screen(stdscr, case_path))
-    add("foamdictionary", lambda: foam_dictionary_prompt(stdscr, case_path))
     add("postprocess", lambda: post_process_prompt(stdscr, case_path))
     add("foamcalc", lambda: foam_calc_prompt(stdscr, case_path))
-    add("toposet", lambda: topo_set_prompt(stdscr, case_path))
-    add("setfields", lambda: set_fields_prompt(stdscr, case_path))
-    add("tool_dicts", lambda: tool_dicts_screen(stdscr, case_path))
-    add("tooldicts", lambda: tool_dicts_screen(stdscr, case_path))
     add("runcurrentsolver", lambda: run_current_solver(stdscr, case_path))
     add("runlive", lambda: run_current_solver_live(stdscr, case_path))
     add("removelogs", lambda: remove_all_logs(stdscr, case_path))
@@ -161,29 +151,19 @@ def tools_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912
     optional shell scripts, all in a single flat list.
     """
     base_tools = [
-        ("foamListTimes", ["foamListTimes"]),
     ]
     extra_tools = load_tool_presets(case_path)
-    job_tools = [
-        ("foamCheckJobs", ["foamCheckJobs"]),
-        ("foamPrintJobs", ["foamPrintJobs"]),
-    ]
     post_tools = [
         (f"[post] {name}", cmd) for name, cmd in load_postprocessing_presets(case_path)
     ]
 
-    simple_tools = base_tools + extra_tools + job_tools + post_tools
+    simple_tools = base_tools + extra_tools + post_tools
 
     labels = ["Re-run last tool"] + [name for name, _ in simple_tools] + [
         "Diagnostics",
         "High-speed initial conditions",
         "yPlus estimator",
-        "Job status (poll)",
         "Run .sh script",
-        "foamDictionary (prompt)",
-        "topoSet (prompt)",
-        "setFields (prompt)",
-        "Tool dicts (postProcess/topoSet/setFields/foamCalc)",
         "Clone case",
     ]
 
@@ -206,12 +186,7 @@ def tools_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912
             "Environment and installation checks",
             "Compute U/p0 from Mach + T + gamma",
             "Estimate yPlus from case mesh/logs",
-            "Poll foamCheckJobs/foamPrintJobs output",
             "Run a shell script from case folder",
-            "Run foamDictionary interactively",
-            "Run topoSet with args (uses topoSetDict)",
-            "Run setFields (uses setFieldsDict)",
-            "Create/open tool dictionaries",
             "Clone case directory and clean mesh/time/logs",
         ]
         if 0 <= special < len(hints):
@@ -319,7 +294,11 @@ def residual_timeline_screen(stdscr: Any, case_path: Path) -> None:
     """
     Parse residuals from a selected log file and show a summary table + plot.
     """
-    path = _select_log_file(case_path, stdscr, title="Select log file for residuals")
+    path = _select_solver_log_file(
+        case_path,
+        stdscr,
+        title="Select solver log for residuals",
+    )
     if path is None:
         return
     try:
@@ -363,7 +342,11 @@ def log_analysis_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901
     """
     Summarize common log metrics (time steps, Courant, execution time).
     """
-    path = _select_log_file(case_path, stdscr, title="Select log file for analysis")
+    path = _select_solver_log_file(
+        case_path,
+        stdscr,
+        title="Select solver log for analysis",
+    )
     if path is None:
         return
     try:
@@ -683,12 +666,31 @@ def _select_log_file(
     *,
     title: str = "Select log file",
 ) -> Path | None:
-    preferred = _preferred_log_file(case_path)
-    if preferred is not None:
-        return preferred
     log_files = sorted(case_path.glob("log.*"))
     if not log_files:
         _show_message(stdscr, "No log.* files found in case directory.")
+        return None
+    labels = [p.name for p in log_files]
+    menu = Menu(stdscr, title, [*labels, "Back"])
+    choice = menu.navigate()
+    if choice == -1 or choice == len(labels):
+        return None
+    return log_files[choice]
+
+
+def _select_solver_log_file(
+    case_path: Path,
+    stdscr: Any,
+    *,
+    title: str,
+) -> Path | None:
+    solver = detect_solver(case_path)
+    if not solver or solver == "unknown":
+        _show_message(stdscr, "Solver not detected; cannot pick solver logs.")
+        return None
+    log_files = sorted(case_path.glob(f"log.{solver}*"))
+    if not log_files:
+        _show_message(stdscr, f"No log.{solver}* files found in case directory.")
         return None
     labels = [p.name for p in log_files]
     menu = Menu(stdscr, title, [*labels, "Back"])
@@ -930,7 +932,7 @@ def _parse_probe_values(rest: str) -> tuple[list[float], int]:
     return floats, len(floats)
 
 
-def job_status_poll_screen(stdscr: Any, case_path: Path) -> None:
+def job_status_poll_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901
     """
     Poll foamCheckJobs/foamPrintJobs until the user quits.
     """
@@ -978,6 +980,10 @@ def job_status_poll_screen(stdscr: Any, case_path: Path) -> None:
 
             stdscr.refresh()
             key = stdscr.getch()
+            if key in (ord("q"), ord("h")):
+                return
+            if key_in(key, get_config().keys.get("quit", [])):
+                return
             if key_in(key, get_config().keys.get("back", [])):
                 return
     finally:
@@ -1039,24 +1045,26 @@ def foam_dictionary_prompt(stdscr: Any, case_path: Path) -> None:
     """
     Prompt for a dictionary file and optional arguments to pass to foamDictionary.
     """
-    curses.echo()
     stdscr.clear()
-    stdscr.addstr("Relative path to dictionary (default system/controlDict): ")
-    stdscr.refresh()
-    path_input = stdscr.getstr().decode().strip()
+    path_input = prompt_input(
+        stdscr,
+        "Relative path to dictionary (default system/controlDict): ",
+    )
+    if path_input is None:
+        return
+    path_input = path_input.strip()
     if not path_input:
         path_input = "system/controlDict"
 
     dictionary_path = (case_path / path_input).resolve()
     if not dictionary_path.is_file():
-        curses.noecho()
         _show_message(stdscr, f"{dictionary_path} not found.")
         return
 
-    stdscr.addstr("foamDictionary args (e.g. -entry application): ")
-    stdscr.refresh()
-    args_line = stdscr.getstr().decode().strip()
-    curses.noecho()
+    args_line = prompt_input(stdscr, "foamDictionary args (e.g. -entry application): ")
+    if args_line is None:
+        return
+    args_line = args_line.strip()
 
     try:
         args = shlex.split(args_line) if args_line else []
@@ -1085,7 +1093,7 @@ def foam_dictionary_prompt(stdscr: Any, case_path: Path) -> None:
     viewer.display()
 
 
-def post_process_prompt(stdscr: Any, case_path: Path) -> None:
+def post_process_prompt(stdscr: Any, case_path: Path) -> None:  # noqa: C901
     """
     Prompt for postProcess arguments, suggesting use of latestTime.
     """
@@ -1098,26 +1106,58 @@ def post_process_prompt(stdscr: Any, case_path: Path) -> None:
         ["postProcess", "-list"],
     ):
         return
-    curses.echo()
-    stdscr.clear()
-    stdscr.addstr("postProcess args (e.g. -latestTime -funcs '(mag(U))'):\n")
-    stdscr.addstr(f"Tip: latest time detected = {latest}\n")
-    stdscr.addstr("> ")
-    stdscr.refresh()
-    args_line = stdscr.getstr().decode().strip()
-    curses.noecho()
+    while True:
+        options = [
+            "Run with defaults (-latestTime)",
+            "Select function from postProcessDict",
+            "Enter args manually",
+            "Back",
+        ]
+        menu = Menu(
+            stdscr,
+            "postProcess",
+            options,
+            status_line=f"Latest time: {latest}",
+        )
+        choice = menu.navigate()
+        if choice in (-1, len(options) - 1):
+            return
+        if choice == 0:
+            _run_simple_tool(stdscr, case_path, "postProcess", ["postProcess", "-latestTime"])
+            return
+        if choice == 1:
+            dict_path = case_path / "system" / "postProcessDict"
+            funcs = list_subkeys(dict_path, "functions")
+            if not funcs:
+                _show_message(stdscr, "No functions found in postProcessDict.")
+                continue
+            func_menu = Menu(stdscr, "Select postProcess function", [*funcs, "Back"])
+            func_choice = func_menu.navigate()
+            if func_choice in (-1, len(funcs)):
+                continue
+            func = funcs[func_choice]
+            cmd = ["postProcess", "-latestTime", "-funcs", f"({func})"]
+            _run_simple_tool(stdscr, case_path, "postProcess", cmd)
+            return
+        if choice == 2:
+            stdscr.clear()
+            stdscr.addstr("postProcess args (e.g. -latestTime -funcs '(mag(U))'):\n")
+            stdscr.addstr(f"Tip: latest time detected = {latest}\n")
+            args_line = prompt_input(stdscr, "> ")
+            if args_line is None:
+                return
+            args_line = args_line.strip()
+            try:
+                args = shlex.split(args_line) if args_line else ["-latestTime"]
+            except ValueError as exc:
+                _show_message(stdscr, f"Invalid arguments: {exc}")
+                continue
+            cmd = ["postProcess", *args]
+            _run_simple_tool(stdscr, case_path, "postProcess", cmd)
+            return
 
-    try:
-        args = shlex.split(args_line) if args_line else ["-latestTime"]
-    except ValueError as exc:
-        _show_message(stdscr, f"Invalid arguments: {exc}")
-        return
 
-    cmd = ["postProcess", *args]
-    _run_simple_tool(stdscr, case_path, "postProcess", cmd)
-
-
-def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:
+def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912
     """
     Prompt for foamCalc arguments with helpers.
     """
@@ -1130,27 +1170,64 @@ def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:
         ["foamCalc", "-help"],
     ):
         return
-    curses.echo()
-    stdscr.clear()
-    stdscr.addstr("foamCalc args (e.g. components U -latestTime):\n")
-    stdscr.addstr(f"Tip: latest time detected = {latest}\n")
-    stdscr.addstr("> ")
-    stdscr.refresh()
-    args_line = stdscr.getstr().decode().strip()
-    curses.noecho()
-
-    if not args_line:
-        _show_message(stdscr, "No arguments provided for foamCalc.")
-        return
-
-    try:
-        args = shlex.split(args_line)
-    except ValueError as exc:
-        _show_message(stdscr, f"Invalid arguments: {exc}")
-        return
-
-    cmd = ["foamCalc", *args]
-    _run_simple_tool(stdscr, case_path, "foamCalc", cmd)
+    while True:
+        options = [
+            "Run with foamCalcDict",
+            "Common ops (mag/grad/div)",
+            "Enter args manually",
+            "Back",
+        ]
+        menu = Menu(
+            stdscr,
+            "foamCalc",
+            options,
+            status_line=f"Latest time: {latest}",
+        )
+        choice = menu.navigate()
+        if choice in (-1, len(options) - 1):
+            return
+        if choice == 0:
+            _run_simple_tool(stdscr, case_path, "foamCalc", ["foamCalc"])
+            return
+        if choice == 1:
+            ops = ["mag", "grad", "div", "Back"]
+            op_menu = Menu(stdscr, "foamCalc common ops", ops)
+            op_choice = op_menu.navigate()
+            if op_choice == -1 or op_choice == len(ops) - 1:
+                continue
+            op = ops[op_choice]
+            field = prompt_input(stdscr, f"{op} field (default U): ")
+            if field is None:
+                continue
+            field = field.strip() or "U"
+            cmd = ["foamCalc", op, field, "-latestTime"]
+            if op == "div":
+                flux = prompt_input(stdscr, "div flux field (default phi): ")
+                if flux is None:
+                    continue
+                flux = flux.strip() or "phi"
+                cmd = ["foamCalc", op, flux, field, "-latestTime"]
+            _run_simple_tool(stdscr, case_path, f"foamCalc {op}", cmd)
+            return
+        if choice == 2:
+            stdscr.clear()
+            stdscr.addstr("foamCalc args (e.g. components U -latestTime):\n")
+            stdscr.addstr(f"Tip: latest time detected = {latest}\n")
+            args_line = prompt_input(stdscr, "> ")
+            if args_line is None:
+                return
+            args_line = args_line.strip()
+            if not args_line:
+                _show_message(stdscr, "No arguments provided for foamCalc.")
+                continue
+            try:
+                args = shlex.split(args_line)
+            except ValueError as exc:
+                _show_message(stdscr, f"Invalid arguments: {exc}")
+                continue
+            cmd = ["foamCalc", *args]
+            _run_simple_tool(stdscr, case_path, "foamCalc", cmd)
+            return
 
 
 def topo_set_prompt(stdscr: Any, case_path: Path) -> None:
@@ -1165,13 +1242,12 @@ def topo_set_prompt(stdscr: Any, case_path: Path) -> None:
         ["topoSetDict"],
     ):
         return
-    curses.echo()
     stdscr.clear()
     stdscr.addstr("topoSet args (press Enter to run with defaults):\n")
-    stdscr.addstr("> ")
-    stdscr.refresh()
-    args_line = stdscr.getstr().decode().strip()
-    curses.noecho()
+    args_line = prompt_input(stdscr, "> ")
+    if args_line is None:
+        return
+    args_line = args_line.strip()
 
     try:
         args = shlex.split(args_line) if args_line else []
@@ -1195,13 +1271,12 @@ def set_fields_prompt(stdscr: Any, case_path: Path) -> None:
         None,
     ):
         return
-    curses.echo()
     stdscr.clear()
     stdscr.addstr("setFields args (press Enter to run with defaults):\n")
-    stdscr.addstr("> ")
-    stdscr.refresh()
-    args_line = stdscr.getstr().decode().strip()
-    curses.noecho()
+    args_line = prompt_input(stdscr, "> ")
+    if args_line is None:
+        return
+    args_line = args_line.strip()
 
     try:
         args = shlex.split(args_line) if args_line else []
@@ -1273,7 +1348,7 @@ def run_current_solver(stdscr: Any, case_path: Path) -> None:
     _run_simple_tool(stdscr, case_path, solver, [solver], allow_runfunctions=False)
 
 
-def run_current_solver_live(stdscr: Any, case_path: Path) -> None:
+def run_current_solver_live(stdscr: Any, case_path: Path) -> None:  # noqa: PLR0911
     """
     Run the solver and tail its log file live with a split-screen view.
     """
@@ -1297,6 +1372,17 @@ def run_current_solver_live(stdscr: Any, case_path: Path) -> None:
     if not solver:
         _show_message(stdscr, "Could not determine solver from application entry.")
         return
+
+    log_path = case_path / f"log.{solver}"
+    if log_path.exists():
+        stdscr.clear()
+        stdscr.addstr(f"Log {log_path.name} already exists. Rerun solver? [y/N]: ")
+        stdscr.refresh()
+        ch = stdscr.getch()
+        if ch not in (ord("y"), ord("Y")):
+            return
+        with suppress(OSError):
+            log_path.unlink()
 
     wm_dir = _require_wm_project_dir(stdscr)
     if wm_dir and get_config().use_runfunctions:
@@ -1572,12 +1658,10 @@ def _clean_clone(case_path: Path) -> None:  # noqa: C901
 def clone_case(stdscr: Any, case_path: Path, name: str | None = None) -> None:
     if not name:
         stdscr.clear()
-        stdscr.addstr("New case name (folder): ")
-        stdscr.refresh()
-        try:
-            name = stdscr.getstr().decode("utf-8").strip()
-        except OSError:
+        name = prompt_input(stdscr, "New case name (folder): ")
+        if name is None:
             return
+        name = name.strip()
     if not name:
         return
     dest = Path(name)
@@ -1645,12 +1729,10 @@ def time_directory_pruner_screen(stdscr: Any, case_path: Path) -> None:  # noqa:
         return
 
     stdscr.clear()
-    stdscr.addstr("Keep every Nth time directory (e.g. 10): ")
-    stdscr.refresh()
-    try:
-        raw = stdscr.getstr().decode("utf-8").strip()
-    except OSError:
+    raw = prompt_input(stdscr, "Keep every Nth time directory (e.g. 10): ")
+    if raw is None:
         return
+    raw = raw.strip()
     if not raw:
         return
     try:
@@ -1894,35 +1976,56 @@ def _open_dict_preview(stdscr: Any, path: Path) -> None:
 
 
 def _prompt_line(stdscr: Any, prompt: str) -> str:
-    curses.echo()
     stdscr.clear()
-    stdscr.addstr(prompt)
-    stdscr.refresh()
-    value = stdscr.getstr().decode().strip()
-    curses.noecho()
-    return value
+    value = prompt_input(stdscr, prompt)
+    if value is None:
+        return ""
+    return value.strip()
 
 
-def foamlib_parametric_study_screen(stdscr: Any, case_path: Path) -> None:
+def foamlib_parametric_study_screen(  # noqa: C901, PLR0912
+    stdscr: Any,
+    case_path: Path,
+) -> None:
     if not foamlib_available():
         _show_message(stdscr, "foamlib is not available.")
         return
 
-    dict_input = _prompt_line(
-        stdscr,
-        "Dictionary path (default system/controlDict): ",
-    )
-    if not dict_input:
-        dict_input = "system/controlDict"
-    entry = _prompt_line(stdscr, "Entry key (e.g. application): ")
-    if not entry:
-        _show_message(stdscr, "Entry key is required.")
-        return
-    values_line = _prompt_line(stdscr, "Values (comma-separated): ")
-    values = [val.strip() for val in values_line.split(",") if val.strip()]
-    if not values:
-        _show_message(stdscr, "No values provided.")
-        return
+    presets_path = case_path / "ofti.parametric"
+    preset: ParametricPreset | None = None
+    if presets_path.is_file():
+        presets, errors = _read_parametric_presets(presets_path)
+        if errors:
+            _show_message(stdscr, "Errors in ofti.parametric; falling back to manual input.")
+        elif presets:
+            labels = [preset_item.name for preset_item in presets]
+            menu = Menu(stdscr, "Parametric wizard", [*labels, "Manual entry", "Back"])
+            choice = menu.navigate()
+            if choice == -1 or choice == len(labels) + 1:
+                return
+            if choice < len(labels):
+                preset = presets[choice]
+
+    if preset is not None:
+        dict_input = preset.dict_path
+        entry = preset.entry
+        values = preset.values
+    else:
+        dict_input = _prompt_line(
+            stdscr,
+            "Dictionary path (default system/controlDict): ",
+        )
+        if not dict_input:
+            dict_input = "system/controlDict"
+        entry = _prompt_line(stdscr, "Entry key (e.g. application): ")
+        if not entry:
+            _show_message(stdscr, "Entry key is required.")
+            return
+        values_line = _prompt_line(stdscr, "Values (comma-separated): ")
+        values = [val.strip() for val in values_line.split(",") if val.strip()]
+        if not values:
+            _show_message(stdscr, "No values provided.")
+            return
     run_line = _prompt_line(stdscr, "Run solver for each case? [y/N]: ")
     run_solver = run_line.strip().lower().startswith("y")
 

@@ -8,6 +8,7 @@ from ofti.core.entry_io import write_entry
 from ofti.core.high_speed import HighSpeedInputError, compute_high_speed_fields
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
+from ofti.ui_curses.inputs import prompt_input
 
 
 def high_speed_helper_screen(stdscr: Any, case_path: Path) -> None:
@@ -84,12 +85,10 @@ def _confirm_apply(stdscr: Any, velocity: float, total_pressure: float) -> bool:
 
 
 def _prompt_float(stdscr: Any, label: str, *, default: float) -> float | None:
-    stdscr.addstr(f"{label} [{default}]: ")
-    stdscr.refresh()
-    try:
-        raw = stdscr.getstr().decode().strip()
-    except OSError:
+    raw = prompt_input(stdscr, f"{label} [{default}]: ")
+    if raw is None:
         return None
+    raw = raw.strip()
     if not raw:
         return default
     try:

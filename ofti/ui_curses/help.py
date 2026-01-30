@@ -12,8 +12,6 @@ def main_menu_help() -> list[str]:
 def preprocessing_help() -> list[str]:
     return [
         "Mesh construction & quality tools.",
-        "Pipeline uses Allrun with # OFTI-PIPELINE header.",
-        "Edit pipeline lets you add/reorder steps from tools.",
         "blockMesh helper previews vertices/blocks before running.",
         "snappy staged run toggles castellated/snap/layers in the dict.",
     ]
@@ -30,10 +28,11 @@ def physics_help() -> list[str]:
 def simulation_help() -> list[str]:
     return [
         "Run solvers and manage jobs.",
+        "Pipeline uses Allrun with # OFTI-PIPELINE header.",
+        "Edit pipeline lets you add/reorder steps from tools.",
         "Run current solver starts in background and logs to log.<solver>.",
         "Run solver (live) shows progress + last log lines.",
-        "Foamlib parametric study creates cases for multiple values.",
-        "Parametric presets load ofti.parametric presets.",
+        "Parametric wizard creates cases for multiple values.",
     ]
 
 

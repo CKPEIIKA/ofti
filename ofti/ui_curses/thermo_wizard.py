@@ -13,8 +13,99 @@ from ofti.foam.openfoam import OpenFOAMError
 from ofti.ui_curses.entry_editor import EntryEditor
 from ofti.ui_curses.menus import Menu
 
+THERMO_TEMPLATES: dict[str, list[tuple[str, str]]] = {
+    "thermoType": [
+        (
+            "hePsiThermo (perfectGas + sutherland)",
+            """{
+    type            hePsiThermo;
+    mixture         pureMixture;
+    transport       sutherland;
+    thermo          hConst;
+    equationOfState perfectGas;
+    specie          specie;
+    energy          sensibleEnthalpy;
+}""",
+        ),
+        (
+            "heRhoThermo (rhoConst + const)",
+            """{
+    type            heRhoThermo;
+    mixture         pureMixture;
+    transport       const;
+    thermo          hConst;
+    equationOfState rhoConst;
+    specie          specie;
+    energy          sensibleEnthalpy;
+}""",
+        ),
+    ],
+    "mixture": [
+        (
+            "pureMixture",
+            """{
+    specie
+    {
+        nMoles      1;
+        molWeight   28.96;
+    }
+}""",
+        ),
+        (
+            "multiComponentMixture",
+            """{
+    species (O2 N2);
+    defaultSpecie O2;
+    specie
+    {
+        nMoles      1;
+        molWeight   32;
+    }
+}""",
+        ),
+    ],
+    "transport": [
+        (
+            "sutherland",
+            """{
+    As          1.4792e-06;
+    Ts          116;
+}""",
+        ),
+        (
+            "const",
+            """{
+    mu          1.8e-05;
+    Pr          0.7;
+}""",
+        ),
+    ],
+    "equationOfState": [
+        (
+            "perfectGas",
+            """{
+    R           287;
+}""",
+        ),
+        (
+            "Boussinesq",
+            """{
+    rho0        1000;
+    T0          300;
+    beta        3e-03;
+}""",
+        ),
+        (
+            "rhoConst",
+            """{
+    rho         1000;
+}""",
+        ),
+    ],
+}
 
-def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:
+
+def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901
     dict_rel = get_dict_path("thermophysical")
     dict_path = case_path / dict_rel
     if not dict_path.is_file():
@@ -37,16 +128,50 @@ def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:
             return
 
         key = keys[choice]
-        entry = Entry(key=key, value=values[key])
-        editor = EntryEditor(
+        templates = THERMO_TEMPLATES.get(key, [])
+        action_labels = [
+            "Edit manually",
+            *[f"Use template: {name}" for name, _ in templates],
+            "Back",
+        ]
+
+        def hint_for(idx: int, template_list=templates) -> str | None:
+            if idx == 0:
+                return "Edit the raw dictionary block"
+            template_index = idx - 1
+            if 0 <= template_index < len(template_list):
+                return _template_hint(template_list[template_index][1])
+            return None
+
+        action_menu = Menu(
             stdscr,
-            entry,
-            on_save=lambda value, k=key: _write_value(dict_path, k, value),
-            validator=_thermo_validator,
-            type_label="dict",
+            f"{key} options",
+            action_labels,
+            hint_provider=hint_for,
         )
-        editor.edit()
-        values[key] = entry.value
+        action_choice = action_menu.navigate()
+        if action_choice in (-1, len(action_labels) - 1):
+            continue
+        if action_choice == 0:
+            entry = Entry(key=key, value=values[key])
+            editor = EntryEditor(
+                stdscr,
+                entry,
+                on_save=lambda value, k=key: _write_value(dict_path, k, value),
+                validator=_thermo_validator,
+                type_label="dict",
+            )
+            editor.edit()
+            values[key] = entry.value
+            continue
+        template_index = action_choice - 1
+        if 0 <= template_index < len(templates):
+            template_value = templates[template_index][1]
+            if _write_value(dict_path, key, template_value):
+                values[key] = template_value
+                _show_message(stdscr, f"Applied {key} template.")
+            else:
+                _show_message(stdscr, f"Failed to apply {key} template.")
 
 
 def _label_for(key: str, value: str) -> str:
@@ -77,6 +202,14 @@ def _thermo_validator(value: str) -> str | None:
         if len(numbers) < 7:
             return "Janaf/coeffs section looks too short (expected >= 7 numbers)."
     return None
+
+
+def _template_hint(value: str) -> str:
+    for line in value.splitlines():
+        stripped = line.strip().strip("{}")
+        if stripped:
+            return stripped[:60]
+    return "Template"
 
 
 def _show_message(stdscr: Any, message: str) -> None:

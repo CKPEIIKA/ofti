@@ -11,6 +11,7 @@ from ofti.core.boundary import BoundaryCell, BoundaryMatrix, build_boundary_matr
 from ofti.core.entry_io import write_entry
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
+from ofti.ui_curses.inputs import prompt_input
 from ofti.ui_curses.menus import Menu
 
 
@@ -460,12 +461,10 @@ def _prompt_value(
         stdscr.addstr(f"current: {current}\n")
     if default and not current:
         stdscr.addstr(f"default: {default}\n")
-    stdscr.addstr("> ")
-    stdscr.refresh()
-    try:
-        value = stdscr.getstr().decode().strip()
-    except OSError:
+    value = prompt_input(stdscr, "> ")
+    if value is None:
         return None
+    value = value.strip()
     if not value:
         return current or (default or "")
     return value
