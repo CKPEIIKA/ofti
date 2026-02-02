@@ -46,21 +46,6 @@ def test_parse_command_cancel_requires_name() -> None:
     assert action.error is not None
 
 
-def test_parse_command_no_foam_toggle() -> None:
-    action = parse_command(":nofoam on")
-    assert action is not None
-    assert action.kind == CommandKind.NO_FOAM
-    assert action.desired is True
-
-    action = parse_command(":nofoam off")
-    assert action is not None
-    assert action.desired is False
-
-    action = parse_command(":nofoam")
-    assert action is not None
-    assert action.desired is None
-
-
 def test_blocked_in_no_foam() -> None:
     check_action = parse_command(":check")
     assert check_action is not None

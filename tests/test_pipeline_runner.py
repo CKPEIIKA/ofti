@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ofti.tools import PIPELINE_HEADER, _read_pipeline_commands
+from ofti.tools.pipeline import PIPELINE_HEADER, _read_pipeline_commands
 
 
 def test_read_pipeline_commands_parses_lines(tmp_path: Path) -> None:

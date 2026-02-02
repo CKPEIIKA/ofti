@@ -24,7 +24,7 @@ dependencies = [
 ofti = "ofti.app.cli:main"
 
 [tool.pytest.ini_options]
-addopts = "--cov=ofti --cov-report=term-missing --cov-fail-under=40"
+addopts = "--cov=ofti --cov-report=term-missing --cov-fail-under=50"
 norecursedirs = ["refs"]
 
 [tool.coverage.run]

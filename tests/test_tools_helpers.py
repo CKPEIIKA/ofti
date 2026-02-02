@@ -2,14 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from ofti.tools import (
-    _directory_size,
-    _human_size,
-    _looks_like_time,
-    _sparkline,
-    _summarize_internal_field,
-    _tail_text,
-)
+from ofti.tools.diagnostics import _directory_size, _human_size
+from ofti.tools.logs_analysis import _sparkline
+from ofti.tools.logs_fields import _summarize_internal_field
+from ofti.tools.logs_select import _tail_text
+from ofti.tools.postprocessing import _looks_like_time
 
 
 def test_tail_text_limits_lines() -> None:

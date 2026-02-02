@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from ofti.core.case import preferred_log_name
-from ofti.tools import _collect_postprocessing_files, _postprocessing_summary
+from ofti.tools.postprocessing import _collect_postprocessing_files, _postprocessing_summary
 
 
 def test_postprocessing_summary_counts(tmp_path: Path) -> None:

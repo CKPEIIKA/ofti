@@ -4,31 +4,103 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from ofti.foam import openfoam
+from ofti.foamlib import adapter as foamlib_integration
 
 
 def list_keywords(file_path: Path) -> list[str]:
+    if foamlib_integration.available() and foamlib_integration.is_foam_file(file_path):
+        try:
+            return foamlib_integration.list_keywords(file_path)
+        except Exception:
+            pass
     return openfoam.list_keywords(file_path)
 
 
 def list_subkeys(file_path: Path, entry: str) -> list[str]:
+    if foamlib_integration.available() and foamlib_integration.is_foam_file(file_path):
+        try:
+            return foamlib_integration.list_subkeys(file_path, entry)
+        except Exception:
+            pass
     return openfoam.list_subkeys(file_path, entry)
 
 
 def read_entry(file_path: Path, key: str) -> str:
+    if foamlib_integration.available() and foamlib_integration.is_foam_file(file_path):
+        try:
+            return foamlib_integration.read_entry(file_path, key)
+        except Exception:
+            pass
+    return openfoam.read_entry(file_path, key)
+
+
+def read_field_entry(file_path: Path, key: str) -> str:
+    if (
+        foamlib_integration.available()
+        and foamlib_integration.is_field_file(file_path)
+    ):
+        try:
+            return foamlib_integration.read_field_entry(file_path, key)
+        except Exception:
+            pass
     return openfoam.read_entry(file_path, key)
 
 
 def write_entry(file_path: Path, key: str, value: str) -> bool:
     old_value: str | None = None
     try:
-        old_value = openfoam.read_entry(file_path, key)
+        old_value = read_entry(file_path, key)
     except Exception:
         old_value = None
 
-    ok = openfoam.write_entry(file_path, key, value)
+    if foamlib_integration.available() and foamlib_integration.is_foam_file(file_path):
+        try:
+            ok = foamlib_integration.write_entry(file_path, key, value)
+        except Exception:
+            ok = False
+    else:
+        ok = False
+    if not ok:
+        ok = openfoam.write_entry(file_path, key, value)
     if ok:
         _log_entry_edit(file_path, key, old_value, value)
     return ok
+
+
+def write_field_entry(file_path: Path, key: str, value: str) -> bool:
+    old_value: str | None = None
+    try:
+        old_value = read_field_entry(file_path, key)
+    except Exception:
+        old_value = None
+
+    if (
+        foamlib_integration.available()
+        and foamlib_integration.is_field_file(file_path)
+    ):
+        try:
+            ok = foamlib_integration.write_field_entry(file_path, key, value)
+        except Exception:
+            ok = False
+    else:
+        ok = False
+    if not ok:
+        ok = openfoam.write_entry(file_path, key, value)
+    if ok:
+        _log_entry_edit(file_path, key, old_value, value)
+    return ok
+
+
+def read_internal_field(file_path: Path) -> str:
+    return read_field_entry(file_path, "internalField")
+
+
+def read_boundary_field(file_path: Path) -> str:
+    return read_field_entry(file_path, "boundaryField")
+
+
+def read_dimensions(file_path: Path) -> str:
+    return read_field_entry(file_path, "dimensions")
 
 
 def _find_case_root(file_path: Path) -> Path | None:

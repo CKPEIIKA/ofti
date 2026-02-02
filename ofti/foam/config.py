@@ -39,6 +39,7 @@ class Config:
             "view": ["v"],
         },
     )
+    example_paths: list[str] = field(default_factory=list)
 
 
 _CONFIG: Config | None = None
@@ -165,6 +166,15 @@ def _apply_file_config(cfg: Config, raw: dict[str, Any]) -> None:
                 and all(isinstance(item, str) for item in value)
             ):
                 cfg.keys[key] = cast(list[str], value)
+    examples_value = raw.get("example_paths")
+    if isinstance(examples_value, list):
+        example_paths: list[str] = []
+        for item in examples_value:
+            if isinstance(item, str):
+                stripped = item.strip()
+                if stripped:
+                    example_paths.append(stripped)
+        cfg.example_paths = example_paths
 
 
 def _apply_env_overrides(cfg: Config) -> None:
@@ -198,3 +208,11 @@ def _apply_env_overrides(cfg: Config) -> None:
     if env_courant:
         with contextlib.suppress(ValueError):
             cfg.courant_limit = float(env_courant.strip())
+    env_examples = os.environ.get("OFTI_EXAMPLE_PATHS")
+    if env_examples is not None:
+        paths = [
+            item.strip()
+            for item in env_examples.split(os.pathsep)
+            if item.strip()
+        ]
+        cfg.example_paths = paths

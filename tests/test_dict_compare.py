@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from ofti import foamlib_adapter
 from ofti.core.dict_compare import compare_case_dicts
+from ofti.foamlib import adapter as foamlib_integration
 
 
 def _write_control_dict(path: Path, keys: dict[str, str]) -> None:
@@ -23,7 +23,7 @@ def _write_control_dict(path: Path, keys: dict[str, str]) -> None:
     path.write_text("\n".join(lines))
 
 
-@pytest.mark.skipif(not foamlib_adapter.available(), reason="foamlib required")
+@pytest.mark.skipif(not foamlib_integration.available(), reason="foamlib required")
 def test_compare_case_dicts_detects_missing_keys(tmp_path: Path) -> None:
     left = tmp_path / "case_left"
     right = tmp_path / "case_right"

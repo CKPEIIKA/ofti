@@ -2,19 +2,22 @@ from pathlib import Path
 
 import pytest
 
-from ofti import foamlib_adapter
 from ofti.foam.openfoam import verify_case
+from ofti.foamlib import adapter as foamlib_integration
 
 
-@pytest.mark.skipif(not foamlib_adapter.available(), reason="foamlib required")
+@pytest.mark.skipif(not foamlib_integration.available(), reason="foamlib required")
 def test_check_boundary_field_missing_patches(tmp_path: Path) -> None:
     case_root = tmp_path
-    boundary_src = Path("examples/pitzDaily/constant/polyMesh/boundary")
+    repo_root = Path(__file__).resolve().parents[1]
+    boundary_src = repo_root / "examples" / "pitzDaily" / "constant" / "polyMesh" / "boundary"
+    if not boundary_src.is_file():
+        pytest.skip("examples/pitzDaily not available")
     boundary_dst = case_root / "constant" / "polyMesh" / "boundary"
     boundary_dst.parent.mkdir(parents=True, exist_ok=True)
     boundary_dst.write_text(boundary_src.read_text())
 
-    patches, _types = foamlib_adapter.parse_boundary_file(boundary_dst)
+    patches, _types = foamlib_integration.parse_boundary_file(boundary_dst)
     assert patches
     keep = patches[:1]
 

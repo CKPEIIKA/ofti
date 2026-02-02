@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.app import app, commands
+from ofti.app import commands
+from ofti.app import status as app_status
+from ofti.app.helpers import menu_scroll
+from ofti.app.screens import check as check_screen
+from ofti.app.state import AppState
 from ofti.foam.openfoam import FileCheckResult
 
 
@@ -17,15 +21,15 @@ def test_command_suggestions_include_tools(monkeypatch) -> None:
 
 
 def test_mode_status_includes_env(monkeypatch) -> None:
-    state = app.AppState(no_foam=True)
+    state = AppState(no_foam=True)
     monkeypatch.setenv("WM_PROJECT_DIR", "/WM")
-    text = app._mode_status(state)
-    assert "no-foam" in text
+    text = app_status.mode_status(state)
+    assert "OpenFOAM env not found" in text
     assert "/WM" in text
 
 
-def test_check_status_line_when_running(monkeypatch) -> None:  # noqa: ARG001
-    state = app.AppState(no_foam=False)
+def test_check_status_line_when_running(monkeypatch) -> None:
+    state = AppState(no_foam=False)
     with state.check_lock:
         state.check_in_progress = True
         state.check_done = 2
@@ -40,7 +44,7 @@ def test_check_labels_defaults_not_checked(tmp_path: Path) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
     files = [case_dir / "system" / "controlDict"]
-    labels, checks = app._check_labels(case_dir, files, app.AppState())
+    labels, checks = check_screen.check_labels(case_dir, files, AppState())
     assert "Not checked" in labels[0]
     assert checks[0] is None
 
@@ -50,21 +54,21 @@ def test_check_labels_with_results(tmp_path: Path) -> None:
     case_dir.mkdir()
     path = case_dir / "system" / "controlDict"
     result = FileCheckResult(errors=["bad"], warnings=[], checked=True)
-    state = app.AppState()
+    state = AppState()
     state.check_results = {path: result}
-    labels, checks = app._check_labels(case_dir, [path], state)
+    labels, checks = check_screen.check_labels(case_dir, [path], state)
     assert "ERROR" in labels[0]
     assert checks[0] == result
 
 
-def test_menu_scroll_bounds(monkeypatch) -> None:  # noqa: ARG001
+def test_menu_scroll_bounds(monkeypatch) -> None:
     class FakeScreen:
         def getmaxyx(self):
             return (10, 80)
 
     screen = FakeScreen()
-    assert app._menu_scroll(0, 0, screen, 100, header_rows=3) == 0
-    assert app._menu_scroll(50, 0, screen, 100, header_rows=3) > 0
+    assert menu_scroll(0, 0, screen, 100, header_rows=3) == 0
+    assert menu_scroll(50, 0, screen, 100, header_rows=3) > 0
 
 
 def test_start_check_thread_updates_state(tmp_path: Path, monkeypatch) -> None:
@@ -72,7 +76,7 @@ def test_start_check_thread_updates_state(tmp_path: Path, monkeypatch) -> None:
     (case_dir / "system").mkdir(parents=True)
     path = case_dir / "system" / "controlDict"
     path.write_text("application simpleFoam;")
-    state = app.AppState()
+    state = AppState()
 
     def fake_verify(_case, progress=None, result_callback=None):
         if progress:
@@ -81,10 +85,10 @@ def test_start_check_thread_updates_state(tmp_path: Path, monkeypatch) -> None:
             result_callback(path, FileCheckResult(checked=True))
         return {path: FileCheckResult(checked=True)}
 
-    monkeypatch.setattr(app, "verify_case", fake_verify)
-    monkeypatch.setattr(app, "discover_case_files", lambda _case: {"system": [path]})
+    monkeypatch.setattr(check_screen, "verify_case", fake_verify)
+    monkeypatch.setattr(check_screen, "discover_case_files", lambda _case: {"system": [path]})
 
-    app._start_check_thread(case_dir, state)
+    check_screen.start_check_thread(case_dir, state)
     task = state.tasks.get("check_syntax")
     assert task is not None
     assert task.status in {"running", "done"}

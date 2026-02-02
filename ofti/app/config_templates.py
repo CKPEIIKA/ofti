@@ -1,0 +1,97 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from ofti.core.templates import write_example_template
+from ofti.core.versioning import get_dict_path
+from ofti.tools.runner import _show_message
+from ofti.ui_curses.help import menu_hint
+from ofti.ui_curses.menus import Menu
+
+
+def create_missing_config_screen(stdscr: Any, case_path: Path) -> None:
+    items = missing_config_templates(case_path)
+    if not items:
+        _show_message(stdscr, "All common config files exist.")
+        return
+    labels = [f"{label}: {path.relative_to(case_path)}" for label, path, _ in items]
+    menu = Menu(
+        stdscr,
+        "Create missing config",
+        [*labels, "Back"],
+        hint_provider=lambda idx: (
+            "Create selected template."
+            if 0 <= idx < len(labels)
+            else menu_hint("menu:config_templates", "Back")
+        ),
+    )
+    choice = menu.navigate()
+    if choice == -1 or choice == len(labels):
+        return
+    label, path, object_name = items[choice]
+    source = write_config_template(case_path, path, object_name)
+    suffix = "from example" if source == "example" else "stub"
+    _show_message(
+        stdscr,
+        f"Created {label} at {path.relative_to(case_path)} ({suffix}).",
+    )
+
+
+def missing_config_templates(case_path: Path) -> list[tuple[str, Path, str]]:
+    templates = [
+        ("controlDict", case_path / "system" / "controlDict", "controlDict"),
+        ("fvSchemes", case_path / "system" / "fvSchemes", "fvSchemes"),
+        ("fvSolution", case_path / "system" / "fvSolution", "fvSolution"),
+        ("fvOptions", case_path / "system" / "fvOptions", "fvOptions"),
+        ("decomposeParDict", case_path / "system" / "decomposeParDict", "decomposeParDict"),
+        ("blockMeshDict", case_path / "system" / "blockMeshDict", "blockMeshDict"),
+        ("snappyHexMeshDict", case_path / "system" / "snappyHexMeshDict", "snappyHexMeshDict"),
+        (
+            "surfaceFeatureExtractDict",
+            case_path / "system" / "surfaceFeatureExtractDict",
+            "surfaceFeatureExtractDict",
+        ),
+        ("topoSetDict", case_path / "system" / "topoSetDict", "topoSetDict"),
+        ("setFieldsDict", case_path / "system" / "setFieldsDict", "setFieldsDict"),
+        ("sampleDict", case_path / "system" / "sampleDict", "sampleDict"),
+        ("probes", case_path / "system" / "probes", "probes"),
+        ("meshQualityDict", case_path / "system" / "meshQualityDict", "meshQualityDict"),
+        ("transportProperties", case_path / get_dict_path("transport"), "transportProperties"),
+        ("turbulenceProperties", case_path / get_dict_path("turbulence"), "turbulenceProperties"),
+        (
+            "thermophysicalProperties",
+            case_path / get_dict_path("thermophysical"),
+            "thermophysicalProperties",
+        ),
+        ("g", case_path / "constant" / "g", "g"),
+    ]
+    missing: list[tuple[str, Path, str]] = []
+    for label, path, obj in templates:
+        if not path.is_file():
+            missing.append((label, path, obj))
+    return missing
+
+
+def write_config_template(case_path: Path, path: Path, object_name: str) -> str:
+    rel_path = path.relative_to(case_path)
+    if write_example_template(path, rel_path):
+        return "example"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    template = [
+        "/*--------------------------------*- C++ -*----------------------------------*\\",
+        f"| OpenFOAM {object_name} dictionary (stub)                        |",
+        "\\*---------------------------------------------------------------------------*/",
+        "FoamFile",
+        "{",
+        "    version     2.0;",
+        "    format      ascii;",
+        "    class       dictionary;",
+        f"    object      {object_name};",
+        "}",
+        "",
+        "// TODO: fill in configuration.",
+        "",
+    ]
+    path.write_text("\n".join(template))
+    return "stub"

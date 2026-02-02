@@ -36,7 +36,6 @@ License: GPL-3.0-or-later.
 3. Optional flags:
 
    - `--debug` – enable debug logging and let unexpected errors surface with a traceback.
-   - `--no-foam` – skip OpenFOAM tool usage (view-only mode; tools may fail with a hint).
 
 ## Navigation
 
@@ -46,7 +45,6 @@ License: GPL-3.0-or-later.
 - `/` in menus: fuzzy-pick an option with `fzf` (when available)
 - `s` in menus: config search (global `fzf` search over keys)
 - `:` in menus: open the command line (`:check`, `:tools`, `:diag`, `:run`, `:quit`)
-- `:nofoam` to toggle no-foam mode on/off
 - `:tool <name>` or `:<name>` to run any tool entry from the Tools menu
 - `Tab` in the command line auto-completes (cycles) matching commands
 
@@ -54,7 +52,8 @@ Main menu entries (grouped):
 
 - `Mesh` – blockMesh, checkMesh, decompose, reconstruct.
 - `Physics & Boundary Conditions` – config editor, check syntax, dictionary linter.
-- `Simulation (Run)` – run solver, safe stop, resume.
+- `Simulation` – run solver, safe stop, resume.
+  - Solver status shows whether the live runner is busy or last exit failed.
 - `Post-Processing` – reconstruct manager, time pruning, logs, postProcess/foamCalc.
 - `Config Manager` – config editor + config search.
 - `Tools / Diagnostics` – uncategorized tools and diagnostics.
@@ -66,7 +65,7 @@ The header banner shows case info, solver, OpenFOAM version, case header version
 - In the editor, pick a section (`system`, `constant`, `0*`), then a file, then an entry.
 - Left pane: list of keys; right pane: preview of the selected entry (key path, type, value, comments, info).
 - Status bar: shows case name, file, and full key path.
-- When browsing `boundaryField` entries, the preview automatically shows the detected boundary-condition type and value (queried via `foamDictionary`).
+- When browsing `boundaryField` entries, the preview shows the detected boundary-condition type and value (via foamlib).
 
 Keybindings in the entry browser:
 
@@ -77,10 +76,8 @@ Keybindings in the entry browser:
 - `o`: open the current entry in `$EDITOR` and write back on save
 - `/`: search entries with `fzf` (when available), otherwise simple in-file search
 - `:`: open the command line (`:check`, `:tools`, `:diag`, `:run`, `:quit`)
-- `:nofoam`: toggle no-foam mode on/off
 - `:tool <name>` or `:<name>` to run any tool entry from the Tools menu
 - `Tab` in the command line auto-completes (cycles) matching commands
-- In no-foam mode, file browsing offers "Open in $EDITOR" for quick edits without foamDictionary.
 
 Keybindings in the entry editor:
 
@@ -90,22 +87,27 @@ Keybindings in the entry editor:
 - `Ctrl+C` or `b`: cancel editing
 - `h`: run `foamHelp` with user-provided arguments and show the result in a viewer
 
-Values are auto-formatted conservatively on save (e.g. trimming trailing newlines and leading/trailing spaces on simple scalars) before being written back with `foamDictionary -set`. The editor also surfaces extra metadata gathered from `foamDictionary -info/-list` (enum values, required sub-entries) plus boundary-condition summaries for `boundaryField`.
+Values are auto-formatted conservatively on save (e.g. trimming trailing newlines and leading/trailing spaces on simple scalars) before being written back with foamlib. The editor also surfaces extra metadata and boundary-condition summaries where available.
 
 ## Tools and diagnostics
 
 - `Tools`
-  - Built-in entries for `blockMesh`, `decomposePar`, `reconstructPar`, `setFields`, `foamListTimes`, `foamCheckJobs`, and `foamPrintJobs`.
+  - Built-in entries for `blockMesh`, `decomposePar`, `reconstructPar`, `setFields`, and common utilities.
   - Extra commands can be added via `ofti.tools`; optional post-processing commands live in `ofti.postprocessing` and appear prefixed with `[post]`.
-  - `postProcess (prompt)` and `foamCalc (prompt)` capture arguments interactively, defaulting to `-latestTime` when it makes sense.
+  - `postProcess` and `foamCalc` capture arguments interactively, defaulting to `-latestTime` when it makes sense; they require `system/postProcessDict` and `system/foamCalcDict` and are disabled until those configs exist.
   - `Run current solver (runApplication)` sources `$WM_PROJECT_DIR/bin/tools/RunFunctions` and runs the solver declared in `system/controlDict`.
   - Cleanup helpers (`Remove all logs`, `Clean time directories`, `Clean case`) source `$WM_PROJECT_DIR/bin/tools/CleanFunctions`.
   - `topoSet (prompt)` and `setFields (prompt)` run common setup utilities.
-  - `Run .sh script` discovers shell scripts in the case directory; `foamDictionary (prompt)` offers an escape hatch for arbitrary queries.
+  - `Run shell script` discovers shell scripts in the case directory.
+  - Prefix either the `:tool <name>` command or the tool name itself with `-b` (e.g., `:tool blockMesh -b` or `blockMesh -b`) to start that tool as a background job; the `Job status` entry shows active jobs.
   - Any entry from `ofti.tools`/`ofti.postprocessing` can use the placeholder `{{latestTime}}` which expands to the numerically largest time directory.
 - `Diagnostics`:
   - `foamSystemCheck`, `foamInstallationTest`, `checkMesh`
   - `View logs` – pick a `log.*` file and view the full log
+
+## Case report
+
+`ofti.core.case_report.collect_case_report` gathers mesh counts, face/point totals, and boundary patch breakdowns without running OpenFOAM binaries. The data drives the dashboard header and gives a quick health check of the case (cells/faces/points, number of patches per type, etc.).
 
 All tool runs show a summary with the command, exit status, stdout, and stderr in a scrollable viewer.
 

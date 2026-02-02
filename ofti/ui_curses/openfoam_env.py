@@ -12,6 +12,7 @@ from ofti.foam.openfoam_env import (
     resolve_openfoam_bashrc,
     wm_project_dir_from_bashrc,
 )
+from ofti.ui_curses.help import menu_hint
 from ofti.ui_curses.menus import Menu
 
 
@@ -100,10 +101,18 @@ def openfoam_env_screen(stdscr: Any) -> None:
     manual_index = len(labels)
     clear_index = manual_index + 1
     back_index = clear_index + 1
+    tail_labels = ["Enter path manually", "Clear selection", "Back"]
     menu = Menu(
         stdscr,
         "Select OpenFOAM bashrc",
-        [*labels, "Enter path manually", "Clear selection", "Back"],
+        [*labels, *tail_labels],
+        hint_provider=lambda idx: (
+            "Use selected bashrc."
+            if 0 <= idx < len(labels)
+            else menu_hint("menu:openfoam_env", tail_labels[idx - len(labels)])
+            if 0 <= idx - len(labels) < len(tail_labels)
+            else ""
+        ),
     )
     choice = menu.navigate()
     if choice in (-1, back_index):

@@ -87,7 +87,7 @@ def extract_header_version(path: Path) -> str | None:
 
 def case_header_candidates(case_path: Path, max_files: int = 20) -> list[Path]:
     candidates: list[Path] = []
-    for rel in ("system", "constant", "0"):
+    for rel in ("system", "constant", "0", "0.orig"):
         folder = case_path / rel
         if not folder.is_dir():
             continue

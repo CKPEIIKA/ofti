@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ofti.core.boundary import parse_boundary_text
+from ofti.foamlib import adapter as foamlib_integration
+
 
 def mesh_counts(case_path: Path) -> tuple[int | None, int | None, int | None]:
     """
@@ -55,3 +58,29 @@ def _max_index(path: Path) -> int | None:
             return max_val
     except OSError:
         return None
+
+
+def boundary_summary(case_path: Path) -> dict[str, object]:
+    boundary = case_path / "constant" / "polyMesh" / "boundary"
+    if not boundary.is_file():
+        return {"patches": 0, "types": {}}
+    patches: list[str] = []
+    patch_types: dict[str, str] = {}
+    if foamlib_integration.available():
+        try:
+            patches, patch_types = foamlib_integration.parse_boundary_file(boundary)
+        except Exception:
+            patches = []
+            patch_types = {}
+    if not patches:
+        try:
+            text = boundary.read_text(errors="ignore")
+        except OSError:
+            text = ""
+        if text:
+            patches, patch_types = parse_boundary_text(text)
+    type_counts: dict[str, int] = {}
+    for patch in patches:
+        entry_type = patch_types.get(patch, "unknown")
+        type_counts[entry_type] = type_counts.get(entry_type, 0) + 1
+    return {"patches": len(patches), "types": type_counts}

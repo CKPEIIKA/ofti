@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ofti.tools import _parse_probe_line, _parse_probe_series
+from ofti.tools.logs_probes import _parse_probe_line, _parse_probe_series
 
 
 def test_parse_probe_series_scalar() -> None:

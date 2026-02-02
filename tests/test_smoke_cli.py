@@ -65,7 +65,7 @@ def test_no_foam_smoke_runs_without_terminal(monkeypatch, tmp_path: Path) -> Non
 
     monkeypatch.setattr(app.curses, "init_pair", fake_init_pair)
 
-    app.run_tui(str(case_dir), debug=False, no_foam=True)
+    app.run_tui(str(case_dir), debug=False)
 
 
 def test_main_menu_navigates_config_manager(monkeypatch, tmp_path: Path) -> None:
@@ -76,9 +76,21 @@ def test_main_menu_navigates_config_manager(monkeypatch, tmp_path: Path) -> None
     keys = [ord("j"), ord("j"), ord("j"), ord("j"), 10, ord("h")]
     screen = FakeScreen(keys=keys)
 
-    monkeypatch.setattr(app, "fzf_enabled", lambda: False)
-    result = app._main_menu_screen(screen, case_dir, app.AppState(no_foam=True))
-    assert result == app.Screen.MAIN_MENU
+    from ofti.app.screens import main as main_screen
+    from ofti.app.state import AppState, Screen
+
+    monkeypatch.setattr(main_screen, "fzf_enabled", lambda: False)
+    callbacks = app._command_callbacks()
+    result = main_screen.main_menu_screen(
+        screen,
+        case_dir,
+        AppState(no_foam=True),
+        command_callbacks=callbacks,
+        editor_screen=lambda *_args, **_kwargs: None,
+        check_syntax_screen=lambda *_args, **_kwargs: None,
+        global_search_screen=lambda *_args, **_kwargs: None,
+    )
+    assert result == Screen.MAIN_MENU
 
 
 def test_select_case_directory_accepts_current(monkeypatch, tmp_path: Path) -> None:
@@ -88,5 +100,5 @@ def test_select_case_directory_accepts_current(monkeypatch, tmp_path: Path) -> N
 
     screen = FakeScreen(keys=[10])
     monkeypatch.setattr(app.curses, "color_pair", lambda *_args: 0)
-    selected = app._select_case_directory(screen, case_dir)
+    selected = app.select_case_directory(screen, case_dir)
     assert selected == case_dir

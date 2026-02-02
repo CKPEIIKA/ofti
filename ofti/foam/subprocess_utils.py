@@ -11,7 +11,7 @@ def resolve_executable(cmd: str) -> str:
         return cmd
     resolved = shutil.which(cmd)
     if resolved is None:
-        raise FileNotFoundError(f"Executable not found: {cmd}")  # noqa: TRY003
+        raise FileNotFoundError(f"Executable not found: {cmd}")
     return resolved
 
 
@@ -27,7 +27,7 @@ def run_trusted(
 ) -> subprocess.CompletedProcess[str]:
     args_list = list(args)
     if not args_list:
-        raise ValueError("No command specified")  # noqa: TRY003
+        raise ValueError("No command specified")
     args_list[0] = resolve_executable(args_list[0])
     return subprocess.run(  # noqa: S603
         args_list,

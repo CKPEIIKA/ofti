@@ -19,6 +19,9 @@ class FakeInputScreen:
     def getyx(self):
         return (self._y, self._x)
 
+    def getmaxyx(self):
+        return (24, 80)
+
     def move(self, y: int, x: int) -> None:
         self._y = y
         self._x = x

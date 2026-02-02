@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti import tools
 from ofti.foam import config
+from ofti.tools.cleaning_ops import clean_time_directories, remove_all_logs
 
 
 class FakeScreen:
@@ -48,7 +48,7 @@ def test_remove_all_logs_fallback(tmp_path: Path, monkeypatch) -> None:
     _reset_config()
 
     screen = FakeScreen()
-    tools.remove_all_logs(screen, case_dir)
+    remove_all_logs(screen, case_dir)
 
     assert not list(case_dir.glob("log.*"))
 
@@ -66,9 +66,9 @@ def test_clean_time_directories_fallback(tmp_path: Path, monkeypatch) -> None:
     _reset_config()
 
     screen = FakeScreen()
-    tools.clean_time_directories(screen, case_dir)
+    clean_time_directories(screen, case_dir)
 
-    assert not (case_dir / "0").exists()
+    assert (case_dir / "0").exists()
     assert not (case_dir / "1.5").exists()
     assert (case_dir / "ignore").exists()
 
@@ -77,6 +77,10 @@ def test_run_current_solver_fallback(tmp_path: Path, monkeypatch) -> None:
     case_dir = tmp_path / "case"
     (case_dir / "system").mkdir(parents=True)
     (case_dir / "system" / "controlDict").write_text("application simpleFoam;\n")
+    zero_dir = case_dir / "0"
+    zero_dir.mkdir()
+    (zero_dir / "U").write_text("internalField uniform (0 0 0);\n")
+    (zero_dir / "p").write_text("internalField uniform 0;\n")
     screen = FakeScreen()
 
     called = []
@@ -84,13 +88,15 @@ def test_run_current_solver_fallback(tmp_path: Path, monkeypatch) -> None:
     def fake_run_simple(_stdscr, _case, name, cmd, **_kwargs):
         called.append((name, cmd))
 
-    monkeypatch.setattr("ofti.tools.screens._run_simple_tool", fake_run_simple)
+    monkeypatch.setattr("ofti.tools.solver._run_simple_tool", fake_run_simple)
     monkeypatch.delenv("WM_PROJECT_DIR", raising=False)
     monkeypatch.setenv("OFTI_USE_RUNFUNCTIONS", "0")
     _reset_config()
-    monkeypatch.setattr("ofti.tools.screens.read_entry", lambda *_args, **_kwargs: "simpleFoam;")
+    monkeypatch.setattr("ofti.tools.solver.read_entry", lambda *_args, **_kwargs: "simpleFoam;")
 
-    tools.run_current_solver(screen, case_dir)
+    from ofti.tools.solver import run_current_solver
+
+    run_current_solver(screen, case_dir)
 
     assert called and called[0][0] == "simpleFoam"
 
@@ -101,7 +107,9 @@ def test_ensure_tool_dict_decline(tmp_path: Path) -> None:
     screen = FakeScreen(keys=[ord("n")])
     target = case_dir / "system" / "postProcessDict"
 
-    ok = tools._ensure_tool_dict(
+    from ofti.tools.tool_dicts_utils import _ensure_tool_dict
+
+    ok = _ensure_tool_dict(
         screen,
         case_dir,
         "postProcess",

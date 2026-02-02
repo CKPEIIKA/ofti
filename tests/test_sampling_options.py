@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ofti.tools import _sampling_options
+from ofti.tools.postprocessing import _sampling_options
 
 
 def test_sampling_options_enabled(tmp_path: Path) -> None:

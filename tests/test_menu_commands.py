@@ -43,7 +43,7 @@ class FakeScreen:
 def test_menu_command_prompt_tab_completion_cycles() -> None:
     captured: list[str] = []
     screen = FakeScreen(keys=[ord(":"), ord("t"), ord("o"), 9, 10])
-    suggestions = ["tools", "tool blockMesh", "tool_dicts"]
+    suggestions = ["tools", "tool blockMesh"]
 
     def handler(cmd: str) -> str:
         captured.append(cmd)

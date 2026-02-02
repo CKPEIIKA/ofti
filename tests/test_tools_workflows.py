@@ -1,10 +1,22 @@
 """Tool workflow tests to raise coverage over tool helpers."""
 
+import curses
 from pathlib import Path
-from unittest import mock
+from typing import Any
 
-from ofti import tools
 from ofti.core.times import latest_time
+from ofti.tools.menus import run_tool_by_name
+from ofti.tools.runner import (
+    _normalize_tool_name,
+    _record_last_tool,
+    _record_tool_status,
+    last_tool_status_line,
+    list_tool_commands,
+    time,
+)
+from ofti.tools.shell_tools import rerun_last_tool
+from ofti.tools.tool_dicts_foamcalc import foam_calc_prompt
+from ofti.tools.tool_dicts_postprocess import post_process_prompt
 
 
 class FakeScreen:
@@ -57,8 +69,8 @@ class FakeScreen:
 
 
 def test_normalize_tool_name() -> None:
-    assert tools._normalize_tool_name("  FoamCalc  ") == "foamcalc"
-    assert tools._normalize_tool_name("post:sample") == "post:sample"
+    assert _normalize_tool_name("  FoamCalc  ") == "foamcalc"
+    assert _normalize_tool_name("post:sample") == "post:sample"
 
 
 def test_list_tool_commands_includes_presets(tmp_path: Path) -> None:
@@ -67,7 +79,7 @@ def test_list_tool_commands_includes_presets(tmp_path: Path) -> None:
     (case_dir / "ofti.tools").write_text("custom: echo ok\n")
     (case_dir / "ofti.postprocessing").write_text("postA: postProcess -funcs\n")
 
-    commands = tools.list_tool_commands(case_dir)
+    commands = list_tool_commands(case_dir)
 
     assert "custom" in commands
     assert "posta" in commands
@@ -83,9 +95,9 @@ def test_run_tool_by_name_dispatches_simple_tool(tmp_path: Path, monkeypatch) ->
     def fake_run_blockmesh(_stdscr, _case):
         called.append("blockMesh")
 
-    monkeypatch.setattr("ofti.tools.screens.run_blockmesh", fake_run_blockmesh)
+    monkeypatch.setattr("ofti.tools.run.run_blockmesh", fake_run_blockmesh)
 
-    assert tools.run_tool_by_name(screen, case_dir, "blockMesh") is True
+    assert run_tool_by_name(screen, case_dir, "blockMesh") is True
     assert called == ["blockMesh"]
 
 
@@ -98,10 +110,10 @@ def test_rerun_last_tool_replays_shell(tmp_path: Path, monkeypatch) -> None:
     def fake_run_shell(_stdscr, _case, _name, shell_cmd):
         recorded.append(shell_cmd)
 
-    monkeypatch.setattr("ofti.tools.screens._run_shell_tool", fake_run_shell)
+    monkeypatch.setattr("ofti.tools.shell_tools._run_shell_tool", fake_run_shell)
 
-    tools._record_last_tool("demo", "shell", "echo hi")
-    tools.rerun_last_tool(screen, case_dir)
+    _record_last_tool("demo", "shell", "echo hi")
+    rerun_last_tool(screen, case_dir)
 
     assert recorded == ["echo hi"]
 
@@ -111,20 +123,15 @@ def test_post_process_prompt_runs_default_args(tmp_path: Path, monkeypatch) -> N
     case_dir.mkdir()
     screen = FakeScreen(keys=[ord("h")], string_inputs=[""])
 
-    completed = mock.Mock()
-    completed.returncode = 0
-    completed.stdout = "ok\n"
-    completed.stderr = ""
+    monkeypatch.setattr(curses, "echo", lambda: None)
+    monkeypatch.setattr(curses, "noecho", lambda: None)
 
-    monkeypatch.setattr(tools.curses, "echo", lambda: None)
-    monkeypatch.setattr(tools.curses, "noecho", lambda: None)
+    def fake_run_simple(_stdscr, _case, name, _cmd):
+        screen.addstr(name)
 
-    def fake_run(*_args, **_kwargs):
-        return completed
+    monkeypatch.setattr("ofti.tools.tool_dicts_postprocess._run_simple_tool", fake_run_simple)
 
-    monkeypatch.setattr("ofti.tools.screens.run_trusted", fake_run)
-
-    tools.post_process_prompt(screen, case_dir)
+    post_process_prompt(screen, case_dir)
 
     joined = "\n".join(screen.lines)
     assert "postProcess" in joined
@@ -135,76 +142,26 @@ def test_foam_calc_prompt_runs_args(tmp_path: Path, monkeypatch) -> None:
     case_dir.mkdir()
     screen = FakeScreen(keys=[ord("h")], string_inputs=["components U -latestTime"])
 
-    completed = mock.Mock()
-    completed.returncode = 0
-    completed.stdout = "ok\n"
-    completed.stderr = ""
+    monkeypatch.setattr(curses, "echo", lambda: None)
+    monkeypatch.setattr(curses, "noecho", lambda: None)
 
-    monkeypatch.setattr(tools.curses, "echo", lambda: None)
-    monkeypatch.setattr(tools.curses, "noecho", lambda: None)
+    def fake_run_simple(_stdscr, _case, name, _cmd):
+        screen.addstr(name)
 
-    def fake_run(*_args, **_kwargs):
-        return completed
+    monkeypatch.setattr("ofti.tools.tool_dicts_foamcalc._run_simple_tool", fake_run_simple)
 
-    monkeypatch.setattr("ofti.tools.screens.run_trusted", fake_run)
-
-    tools.foam_calc_prompt(screen, case_dir)
+    foam_calc_prompt(screen, case_dir)
 
     joined = "\n".join(screen.lines)
     assert "foamCalc" in joined
 
 
-def test_topo_set_prompt_runs_default(tmp_path: Path, monkeypatch) -> None:
-    case_dir = tmp_path / "case"
-    case_dir.mkdir()
-    screen = FakeScreen(keys=[ord("h")], string_inputs=[""])
-
-    completed = mock.Mock()
-    completed.returncode = 0
-    completed.stdout = "ok\n"
-    completed.stderr = ""
-
-    monkeypatch.setattr(tools.curses, "echo", lambda: None)
-    monkeypatch.setattr(tools.curses, "noecho", lambda: None)
-
-    def fake_run(*_args, **_kwargs):
-        return completed
-
-    monkeypatch.setattr("ofti.tools.screens.run_trusted", fake_run)
-
-    tools.topo_set_prompt(screen, case_dir)
-
-    joined = "\n".join(screen.lines)
-    assert "topoSet" in joined
-
-
-def test_tool_dicts_screen_generates_and_opens(tmp_path: Path, monkeypatch) -> None:
-    case_dir = tmp_path / "case"
-    case_dir.mkdir()
-    screen = FakeScreen(keys=[ord("\n"), ord("y"), ord("h")])
-
-    completed = mock.Mock()
-    completed.returncode = 0
-    completed.stdout = "FoamFile\n{\n}\n"
-    completed.stderr = ""
-
-    def fake_run(*_args, **_kwargs):
-        return completed
-
-    monkeypatch.setattr("ofti.tools.screens.run_trusted", fake_run)
-
-    tools.tool_dicts_screen(screen, case_dir)
-
-    target = case_dir / "system" / "postProcessDict"
-    assert target.is_file()
-
-
 def test_last_tool_status_line(monkeypatch) -> None:
-    tools._record_tool_status("blockMesh", "exit 0")
-    assert tools.last_tool_status_line() == "last tool: blockMesh exit 0"
-    base = tools.time.time()
-    monkeypatch.setattr(tools.time, "time", lambda: base + 20)
-    assert tools.last_tool_status_line() is None
+    _record_tool_status("blockMesh", "exit 0")
+    assert last_tool_status_line() == "last tool: blockMesh exit 0"
+    base = time.time()
+    monkeypatch.setattr(time, "time", lambda: base + 20)
+    assert last_tool_status_line() is None
 
 
 def test_latest_time_picks_max_directory(tmp_path: Path) -> None:
@@ -218,7 +175,27 @@ def test_latest_time_picks_max_directory(tmp_path: Path) -> None:
 
 def test_write_stub_dict_creates_file(tmp_path: Path) -> None:
     path = tmp_path / "topoSetDict"
-    tools._write_stub_dict(path, "topoSet")
+    from ofti.tools.tool_dicts_utils import _write_stub_dict
+
+    _write_stub_dict(path, "topoSet")
 
     text = path.read_text()
     assert "FoamFile" in text
+
+
+def test_run_tool_by_name_background_uses_job_registry(tmp_path: Path, monkeypatch) -> None:
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    screen = FakeScreen()
+    started: list[tuple[str, list[str]]] = []
+
+    def fake_background(stdscr: Any, path: Path, name: str, cmd: list[str]) -> None:
+        started.append((name, list(cmd)))
+
+    monkeypatch.setattr(
+        "ofti.tools.job_control.start_tool_background",
+        fake_background,
+    )
+
+    assert run_tool_by_name(screen, case_dir, "blockMesh", background=True) is True
+    assert started == [("blockmesh", ["blockMesh"])]

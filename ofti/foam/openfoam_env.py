@@ -13,12 +13,17 @@ def ensure_environment() -> None:
     """
     Ensure OpenFOAM utilities are available.
 
-    This checks for `foamDictionary` on PATH and raises a clear
+    This checks for `foamVersion` on PATH and raises a clear
     error if it is missing. The caller can catch this and show
     a user-friendly message in the TUI.
     """
-    if shutil.which("foamDictionary") is None:
-        raise OpenFOAMError.missing_foamdictionary()
+    if os.environ.get("WM_PROJECT_DIR"):
+        return
+    if os.environ.get("WM_PROJECT_VERSION") or os.environ.get("FOAM_VERSION"):
+        return
+    if shutil.which("foamVersion") is not None:
+        return
+    raise OpenFOAMError.missing_openfoam_tools()
 
 
 def resolve_openfoam_bashrc() -> Path | None:

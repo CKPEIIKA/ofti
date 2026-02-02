@@ -1,11 +1,15 @@
 from pathlib import Path
 
-from ofti.foamlib_adapter import read_entry
-from ofti.foamlib_parametric import build_parametric_cases
+import pytest
+
+from ofti.foamlib.adapter import read_entry
+from ofti.foamlib.parametric import build_parametric_cases
 
 
 def test_build_parametric_cases(tmp_path: Path) -> None:
     case_path = Path("examples/pitzDaily")
+    if not case_path.is_dir():
+        pytest.skip("examples/pitzDaily not available")
     created = build_parametric_cases(
         case_path,
         Path("system/controlDict"),
