@@ -41,6 +41,8 @@ class AppState:
     tasks: TaskRegistry = field(default_factory=TaskRegistry)
     case_meta: dict[str, str] | None = None
     case_meta_at: float | None = None
+    case_metadata_path: Path | None = None
+    case_metadata: dict[str, str] | None = None
 
     def transition(self, screen: Screen, action: str | None = None) -> None:
         self.current_screen = screen

@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from ofti import foamlib_adapter
 from ofti.core.entry_io import write_entry
+from ofti.foamlib import adapter as foamlib_integration
 
 
 def _write_control_dict(path: Path, entries: dict[str, str]) -> None:
@@ -23,7 +23,7 @@ def _write_control_dict(path: Path, entries: dict[str, str]) -> None:
     path.write_text("\n".join(lines))
 
 
-@pytest.mark.skipif(not foamlib_adapter.available(), reason="foamlib required")
+@pytest.mark.skipif(not foamlib_integration.available(), reason="foamlib required")
 def test_write_entry_logs_edit(tmp_path: Path) -> None:
     case_root = tmp_path / "case"
     control = case_root / "system" / "controlDict"

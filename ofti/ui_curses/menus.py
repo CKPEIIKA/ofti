@@ -1,19 +1,35 @@
 from __future__ import annotations
 
 import curses
+import os
+import subprocess
 from collections.abc import Callable
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
 from ofti.foam.config import fzf_enabled, get_config, key_in
 from ofti.foam.exceptions import QuitAppError
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
+from ofti.ui_curses.help.manager import help_registry
 from ofti.ui_curses.viewer import Viewer
 
 
 def _show_help(stdscr: Any, title: str, lines: list[str]) -> None:
     text = "\n".join([title, "", *lines])
     Viewer(stdscr, text).display()
+
+
+def _default_hint_provider(has_command: bool) -> Callable[[int], str]:
+    def hint(_idx: int) -> str:
+        parts = ["Enter: select", "h/esc: back", "?: help", "! term"]
+        if has_command:
+            parts.append(": cmd")
+        if fzf_enabled():
+            parts.append("/ search")
+        return " | ".join(parts)
+
+    return hint
 
 
 def _prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:  # noqa: C901, PLR0912
@@ -137,6 +153,8 @@ class Menu:
         status_line: str | None = None,
         disabled_indices: set[int] | None = None,
         help_lines: list[str] | None = None,
+        disabled_reasons: dict[int, str] | None = None,
+        disabled_helpers: dict[int, str] | None = None,
     ) -> None:
         self.stdscr = stdscr
         self.title = title
@@ -147,18 +165,25 @@ class Menu:
         else:
             self.current_option = 0
         self.extra_lines = extra_lines or []
-        self.banner_lines = banner_lines or ["=== Config Editor ==="]
+        self.banner_lines = banner_lines or ["=== OFTI ==="]
         self.banner_provider = banner_provider
         self.command_handler = command_handler
         self.command_suggestions = command_suggestions
-        self.hint_provider = hint_provider
+        self.hint_provider = hint_provider or _default_hint_provider(
+            command_handler is not None,
+        )
         self.status_line = status_line
         self.disabled_indices = disabled_indices or set()
+        self.disabled_reasons = disabled_reasons or {}
+        self.disabled_helpers = disabled_helpers or {}
         self.help_lines = help_lines or []
         self._scroll = 0
 
     def display(self) -> None:  # noqa: C901, PLR0912
-        self.stdscr.clear()
+        if hasattr(self.stdscr, "erase"):
+            self.stdscr.erase()
+        else:
+            self.stdscr.clear()
         height, width = self.stdscr.getmaxyx()
         row = 0
         show_status = self.hint_provider is not None or self.status_line is not None
@@ -238,7 +263,49 @@ class Menu:
             except curses.error:
                 pass
 
-        self.stdscr.refresh()
+        try:
+            if hasattr(self.stdscr, "noutrefresh"):
+                self.stdscr.noutrefresh()
+                curses.doupdate()
+            else:
+                self.stdscr.refresh()
+        except curses.error:
+            self.stdscr.refresh()
+
+    def _show_disabled_info(self, idx: int) -> None:
+        lines: list[str] = []
+        reason = self.disabled_reasons.get(idx)
+        if reason:
+            lines.append(reason)
+        helper = self.disabled_helpers.get(idx)
+        helper_lines = help_registry.context(helper) if helper else []
+        if helper_lines:
+            if lines:
+                lines.append("")
+            lines.append("Suggested action:")
+            lines.extend(helper_lines)
+        if not lines:
+            lines = ["This option is currently unavailable."]
+        _show_help(self.stdscr, "Option unavailable", lines)
+
+
+    def _run_terminal_fallback(self) -> None:
+        case_path = os.environ.get("OFTI_CASE_PATH") or str(Path.cwd())
+        curses.def_prog_mode()
+        curses.endwin()
+        env = os.environ.copy()
+        env.pop("BASH_ENV", None)
+        env.pop("ENV", None)
+        try:
+            shell = env.get("SHELL") or "bash"
+            subprocess.run([shell], cwd=case_path, env=env)  # noqa: S603
+        except KeyboardInterrupt:
+            pass
+        finally:
+            curses.reset_prog_mode()
+            self.stdscr.clear()
+            self.stdscr.refresh()
+
 
     def _help_lines(self) -> list[str]:
         lines = [
@@ -254,6 +321,7 @@ class Menu:
             lines.append("  q              : quit")
         else:
             lines.append("  h or q          : go back")
+        lines.append("  !              : terminal")
         if self.command_handler is not None:
             lines.append("  :              : command line (Tab completes)")
         if fzf_enabled():
@@ -262,8 +330,9 @@ class Menu:
         lines.append("  ?              : this help")
         lines.append("")
         lines.append("Commands:")
-        lines.append("  :check  :tools  :diag  :run  :nofoam  :tasks")
+        lines.append("  :check  :tools  :diag  :run  :tasks  :clean-all")
         lines.append("  :foamenv  :clone  :tool <name>  :cancel <name>  :quit")
+        lines.append("  :config-editor  :config-create  :config-search  :config-check")
         if self.help_lines:
             lines.append("")
             lines.append("About:")
@@ -288,6 +357,8 @@ class Menu:
             return "continue"
         if key_in(key, cfg.keys.get("command", [])):
             return "command"
+        if key == ord("!"):
+            return "terminal"
         if key_in(key, cfg.keys.get("search", [])):
             return "search"
         if key_in(key, cfg.keys.get("global_search", [])):
@@ -324,6 +395,14 @@ class Menu:
                 if result == "quit":
                     return -1
                 continue
+            if action == "terminal":
+                if self.command_handler is not None:
+                    result = self.command_handler("term")
+                    if result == "quit":
+                        return -1
+                else:
+                    self._run_terminal_fallback()
+                continue
             if action == "global_search":
                 if self.command_handler is not None:
                     result = self.command_handler("search")
@@ -336,9 +415,12 @@ class Menu:
                     self.current_option = idx
                 continue
             if action == "select":
+                if self.current_option == len(self.options) - 1:
+                    return -1
                 if self.current_option in self.disabled_indices:
                     with suppress(curses.error):
                         curses.beep()
+                    self._show_disabled_info(self.current_option)
                     continue
                 return self.current_option
             if action == "back":
@@ -359,6 +441,8 @@ class Submenu(Menu):
         status_line: str | None = None,
         disabled_indices: set[int] | None = None,
         help_lines: list[str] | None = None,
+        disabled_reasons: dict[int, str] | None = None,
+        disabled_helpers: dict[int, str] | None = None,
     ) -> None:
         super().__init__(
             stdscr,
@@ -370,6 +454,8 @@ class Submenu(Menu):
             status_line=status_line,
             disabled_indices=disabled_indices,
             help_lines=help_lines,
+            disabled_reasons=disabled_reasons,
+            disabled_helpers=disabled_helpers,
         )
 
     def navigate(self) -> int:  # noqa: C901, PLR0912
@@ -392,6 +478,14 @@ class Submenu(Menu):
                 if result == "quit":
                     return -1
                 continue
+            if action == "terminal":
+                if self.command_handler is not None:
+                    result = self.command_handler("term")
+                    if result == "quit":
+                        return -1
+                else:
+                    self._run_terminal_fallback()
+                continue
             if action == "global_search":
                 if self.command_handler is not None:
                     result = self.command_handler("search")
@@ -409,6 +503,7 @@ class Submenu(Menu):
                 if self.current_option in self.disabled_indices:
                     with suppress(curses.error):
                         curses.beep()
+                    self._show_disabled_info(self.current_option)
                     continue
                 return self.current_option
             if action == "back":
@@ -436,6 +531,8 @@ class RootMenu(Menu):
         hint_provider: Callable[[int], str | None] | None = None,
         status_line: str | None = None,
         disabled_indices: set[int] | None = None,
+        disabled_reasons: dict[int, str] | None = None,
+        disabled_helpers: dict[int, str] | None = None,
         help_lines: list[str] | None = None,
     ) -> None:
         super().__init__(
@@ -451,6 +548,8 @@ class RootMenu(Menu):
             hint_provider=hint_provider,
             status_line=status_line,
             disabled_indices=disabled_indices,
+            disabled_reasons=disabled_reasons,
+            disabled_helpers=disabled_helpers,
             help_lines=help_lines,
         )
 
@@ -474,6 +573,14 @@ class RootMenu(Menu):
                 if result == "quit":
                     return -1
                 continue
+            if action == "terminal":
+                if self.command_handler is not None:
+                    result = self.command_handler("term")
+                    if result == "quit":
+                        return -1
+                else:
+                    self._run_terminal_fallback()
+                continue
             if action == "global_search":
                 if self.command_handler is not None:
                     result = self.command_handler("search")
@@ -486,9 +593,12 @@ class RootMenu(Menu):
                     self.current_option = idx
                 continue
             if action == "select":
+                if self.current_option == len(self.options) - 1:
+                    return -1
                 if self.current_option in self.disabled_indices:
                     with suppress(curses.error):
                         curses.beep()
+                    self._show_disabled_info(self.current_option)
                     continue
                 return self.current_option
             if action == "back":

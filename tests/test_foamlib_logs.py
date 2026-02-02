@@ -1,4 +1,4 @@
-from ofti.foamlib_logs import (
+from ofti.foamlib.logs import (
     execution_time_deltas,
     parse_courant_numbers,
     parse_execution_times,

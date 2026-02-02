@@ -7,16 +7,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ofti.core.boundary import BoundaryCell, BoundaryMatrix, build_boundary_matrix, zero_dir
+from ofti.core.boundary import (
+    BoundaryCell,
+    BoundaryMatrix,
+    build_boundary_matrix,
+    change_patch_type,
+    rename_boundary_patch,
+    zero_dir,
+)
 from ofti.core.entry_io import write_entry
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
+from ofti.ui_curses.help import show_tool_help
 from ofti.ui_curses.inputs import prompt_input
 from ofti.ui_curses.menus import Menu
 
 
 def boundary_matrix_screen(stdscr: Any, case_path: Path) -> None:
-    matrix = build_boundary_matrix(case_path)
+    matrix = _load_boundary_matrix(stdscr, case_path)
     if not matrix.patches or not matrix.fields:
         _show_message(stdscr, "Boundary matrix requires patches and 0/* fields.")
         return
@@ -50,6 +58,10 @@ def boundary_matrix_screen(stdscr: Any, case_path: Path) -> None:
         )
         if action == "back":
             return
+        if action == "reload":
+            matrix = _load_boundary_matrix(stdscr, case_path, "Reloading boundary matrix...")
+            state = _normalize_state(state, _visible_patches(matrix, state.hide_special))
+            continue
         state = action
 
 
@@ -142,9 +154,13 @@ def _handle_boundary_key(
     key: int,
     state: _MatrixState,
 ) -> _MatrixState | str:
-    if key_in(key, get_config().keys.get("quit", [])):
+    cfg = get_config()
+    if key_in(key, cfg.keys.get("quit", [])):
         raise QuitAppError()
-    if key_in(key, get_config().keys.get("back", [])) and key != ord("h"):
+    if key_in(key, cfg.keys.get("help", [])):
+        show_tool_help(stdscr, "Boundary Matrix Help", "boundaryMatrix")
+        return state
+    if key_in(key, cfg.keys.get("back", [])) and key != ord("h"):
         return "back"
     action = _handle_boundary_action_key(
         stdscr,
@@ -216,6 +232,27 @@ def _handle_boundary_action_key(
             matrix.fields[state.col],
         )
         return state
+    if key in (ord("a"), ord("A")):
+        _apply_field_all(stdscr, case_path, matrix, matrix.fields[state.col])
+        return state
+    if key in (ord("t"), ord("T")):
+        patch = patches[state.row]
+        new_type = _prompt_value(stdscr, f"{patch} type", "")
+        if not new_type:
+            return state
+        ok, message = change_patch_type(case_path, patch, new_type)
+        if not ok:
+            _show_message(stdscr, message)
+        return "reload" if ok else state
+    if key in (ord("r"), ord("R")):
+        patch = patches[state.row]
+        new_name = _prompt_value(stdscr, f"Rename {patch} to", "")
+        if not new_name:
+            return state
+        ok, message = rename_boundary_patch(case_path, patch, new_name)
+        if not ok:
+            _show_message(stdscr, message)
+        return "reload" if ok else state
     return None
 
 
@@ -249,11 +286,31 @@ class _BoundaryLayout:
 
 
 def _boundary_matrix_layout(width: int) -> _BoundaryLayout:
-    patch_col = 20
-    type_col = 12
-    col_width = 14
-    visible_cols = max(1, (width - patch_col - type_col - 2) // col_width)
+    patch_col = max(10, min(18, width // 5))
+    type_col = max(8, min(14, width // 8))
+    remaining = max(12, width - patch_col - type_col - 2)
+    col_width = max(6, min(12, remaining // 4))
+    visible_cols = max(1, remaining // col_width)
     return _BoundaryLayout(patch_col, type_col, col_width, visible_cols)
+
+
+def _load_boundary_matrix(
+    stdscr: Any,
+    case_path: Path,
+    message: str = "Loading boundary matrix...",
+) -> BoundaryMatrix:
+    _show_loading_status(stdscr, message)
+    return build_boundary_matrix(case_path)
+
+
+def _show_loading_status(stdscr: Any, message: str) -> None:
+    stdscr.clear()
+    height, width = stdscr.getmaxyx()
+    y = max(0, height // 2)
+    x = max(0, (width - len(message)) // 2)
+    with suppress(curses.error):
+        stdscr.addstr(y, x, message)
+    stdscr.refresh()
 
 
 def _draw_boundary_header(
@@ -266,7 +323,10 @@ def _draw_boundary_header(
 ) -> list[str]:
     back_hint = key_hint("back", "h")
     filter_hint = "F: show all" if hide_special else "F: filter"
-    header = f"Boundary Matrix (Enter: edit  P: paste  G: group  {filter_hint}  {back_hint}: back)"
+    header = (
+        "Boundary Matrix (Enter: edit  P: paste  G: group  A: all  "
+        f"T: type  R: rename  {filter_hint}  {back_hint}: back)"
+    )
     with suppress(curses.error):
         stdscr.addstr(0, 0, header[: max(1, width - 1)])
 
@@ -578,6 +638,28 @@ def _apply_patch_group(
             default=_default_value(field, bc_type, ""),
         ) or ""
     for patch in patches:
+        if not _apply_boundary_cell(stdscr, case_path, matrix, patch, field, bc_type, bc_value):
+            break
+
+
+def _apply_field_all(
+    stdscr: Any,
+    case_path: Path,
+    matrix: BoundaryMatrix,
+    field: str,
+) -> None:
+    bc_type = _prompt_bc_type(stdscr, field, "")
+    if bc_type is None:
+        return
+    bc_value = ""
+    if _type_requires_value(bc_type):
+        bc_value = _prompt_value(
+            stdscr,
+            f"{field} value",
+            "",
+            default=_default_value(field, bc_type, ""),
+        ) or ""
+    for patch in matrix.patches:
         if not _apply_boundary_cell(stdscr, case_path, matrix, patch, field, bc_type, bc_value):
             break
 

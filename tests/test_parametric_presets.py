@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ofti.tools import _read_parametric_presets
+from ofti.tools.postprocessing import _read_parametric_presets
 
 
 def test_read_parametric_presets_pipe_format(tmp_path: Path) -> None:

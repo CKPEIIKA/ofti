@@ -23,6 +23,7 @@ class EntryEditor:
         validator: Callable[[str], str | None] | None = None,
         type_label: str | None = None,
         subkeys: list[str] | None = None,
+        case_label: str | None = None,
     ) -> None:
         self.stdscr = stdscr
         self.entry = entry
@@ -34,6 +35,7 @@ class EntryEditor:
         self._buffer = entry.value
         self._cursor = len(self._buffer)
         self._scroll = 0
+        self.case_label = case_label
 
     def edit(self) -> None:  # noqa: C901, PLR0912
         use_textbox = (
@@ -109,7 +111,7 @@ class EntryEditor:
         split_col = max(20, width // 2)
 
         left_width = split_col - 1
-        header = "=== Config Editor ==="
+        header = _entry_editor_header(self.case_label)
         try:
             self.stdscr.addstr(0, 0, header[: max(1, left_width)])
             self.stdscr.addstr(2, 0, f"Key: {self.entry.key}"[: max(1, left_width)])
@@ -181,7 +183,7 @@ class EntryEditor:
         split_col = max(20, width // 2)
 
         left_width = split_col - 1
-        header = "=== Config Editor ==="
+        header = _entry_editor_header(self.case_label)
         try:
             self.stdscr.addstr(0, 0, header[: max(1, left_width)])
             self.stdscr.addstr(2, 0, f"Key: {self.entry.key}"[: max(1, left_width)])
@@ -284,3 +286,9 @@ class EntryEditor:
             self._show_message(f"Check failed: {error}")
         else:
             self._show_message("Check OK.")
+
+
+def _entry_editor_header(case_label: str | None) -> str:
+    if case_label:
+        return f"=== OFTI ({case_label}) ==="
+    return "=== OFTI ==="

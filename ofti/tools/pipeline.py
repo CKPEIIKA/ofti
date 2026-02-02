@@ -9,6 +9,8 @@ from typing import Any
 from ofti.core.case import detect_solver
 from ofti.foam.subprocess_utils import run_trusted
 from ofti.tools.runner import _show_message, load_postprocessing_presets, load_tool_presets
+from ofti.ui_curses.help import menu_hint
+from ofti.ui_curses.inputs import prompt_input
 from ofti.ui_curses.layout import status_message
 from ofti.ui_curses.menus import Menu
 from ofti.ui_curses.viewer import Viewer
@@ -86,6 +88,24 @@ def pipeline_editor_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901,
                 cursor = insert_at
                 _write_pipeline_file(pipeline_path, commands)
             continue
+        if key in (ord("e"),):
+            if not commands:
+                continue
+            current = " ".join(shlex.quote(part) for part in commands[cursor])
+            edited = prompt_input(stdscr, f"Edit command: {current}\n> ")
+            if edited is None:
+                continue
+            edited = edited.strip()
+            if not edited:
+                continue
+            try:
+                parts = shlex.split(edited)
+            except ValueError:
+                _show_message(stdscr, "Invalid command line.")
+                continue
+            commands[cursor] = parts
+            _write_pipeline_file(pipeline_path, commands)
+            continue
         if key in (ord("d"),):
             if commands:
                 commands.pop(cursor)
@@ -125,6 +145,7 @@ def _run_pipeline_commands(
                 cwd=case_path,
                 capture_output=True,
                 text=True,
+                stdin="",
                 check=False,
             )
         except OSError as exc:
@@ -202,6 +223,9 @@ def _pipeline_tool_catalog(case_path: Path) -> list[tuple[str, list[str]]]:
         ("snappyHexMesh", ["snappyHexMesh"]),
         ("decomposePar", ["decomposePar"]),
         ("reconstructPar", ["reconstructPar"]),
+        ("reconstructPar -latestTime", ["reconstructPar", "-latestTime"]),
+        ("renumberMesh", ["renumberMesh"]),
+        ("transformPoints", ["transformPoints"]),
         ("postProcess -latestTime", ["postProcess", "-latestTime"]),
         ("foamCalc", ["foamCalc"]),
     ]
@@ -210,18 +234,60 @@ def _pipeline_tool_catalog(case_path: Path) -> list[tuple[str, list[str]]]:
         base.append((f"runSolver ({solver})", [solver]))
     extra = load_tool_presets(case_path)
     post = [(f"[post] {name}", cmd) for name, cmd in load_postprocessing_presets(case_path)]
-    return base + extra + post
+    custom = [
+        ("[custom] echo", ["echo"]),
+        ("[custom] command", []),
+    ]
+    return base + extra + post + custom
 
 
-def _pipeline_pick_tool(stdscr: Any, case_path: Path) -> list[str] | None:
+def _pipeline_pick_tool(stdscr: Any, case_path: Path) -> list[str] | None:  # noqa: C901, PLR0911
     options = _pipeline_tool_catalog(case_path)
     labels = [name for name, _cmd in options] + ["Back"]
-    menu = Menu(stdscr, "Add pipeline step", labels)
+    menu = Menu(
+        stdscr,
+        "Add pipeline step",
+        labels,
+        hint_provider=lambda idx: (
+            "Add selected step."
+            if 0 <= idx < len(options)
+            else menu_hint("menu:pipeline_add", "Back")
+        ),
+    )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels) - 1:
         return None
-    _name, cmd = options[choice]
-    return list(cmd)
+    name, cmd = options[choice]
+    if name == "[custom] echo":
+        text = prompt_input(stdscr, "Echo text: ")
+        if text is None:
+            return None
+        text = text.strip()
+        return ["echo", text] if text else ["echo"]
+    if name == "[custom] command":
+        line = prompt_input(stdscr, "Command line: ")
+        if line is None:
+            return None
+        line = line.strip()
+        if not line:
+            return None
+        try:
+            return shlex.split(line)
+        except ValueError:
+            _show_message(stdscr, "Invalid command line.")
+            return None
+
+    cmd = list(cmd)
+    extra_args = prompt_input(stdscr, "Extra args (optional): ")
+    if extra_args is None:
+        return cmd
+    extra_args = extra_args.strip()
+    if extra_args:
+        try:
+            cmd.extend(shlex.split(extra_args))
+        except ValueError:
+            _show_message(stdscr, "Invalid args; using base command.")
+    return cmd
 
 
 def _render_pipeline_editor(
@@ -230,7 +296,7 @@ def _render_pipeline_editor(
     stdscr.clear()
     height, width = stdscr.getmaxyx()
     header = f"Pipeline editor ({PIPELINE_FILENAME})"
-    controls = "a:add  d:delete  u:up  n:down  r:run  h/esc:back"
+    controls = "a:add  e:edit  d:delete  u:up  n:down  r:run  h/esc:back"
     try:
         stdscr.addstr(0, 0, header[: max(1, width - 1)])
         stdscr.addstr(1, 0, PIPELINE_HEADER[: max(1, width - 1)])

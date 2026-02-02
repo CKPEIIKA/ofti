@@ -15,6 +15,7 @@ from .case_headers import (
     parse_foamfile_block_version,
     parse_header_comment_version,
 )
+from .case_snapshot import build_case_snapshot, write_case_snapshot
 from .dict_compare import compare_case_dicts
 from .entries import Entry, autoformat_value
 from .mesh_info import mesh_counts
@@ -33,6 +34,7 @@ __all__ = [
     "Entry",
     "OpenFOAMVersionInfo",
     "autoformat_value",
+    "build_case_snapshot",
     "case_header_candidates",
     "compare_case_dicts",
     "detect_case_header_version",
@@ -56,4 +58,5 @@ __all__ = [
     "resolve_solver_alias",
     "solver_aliases",
     "time_directories",
+    "write_case_snapshot",
 ]

@@ -6,9 +6,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from ofti import foamlib_adapter
 from ofti.core.entry_io import list_subkeys, read_entry
 from ofti.foam.openfoam import OpenFOAMError
+from ofti.foamlib import adapter as foamlib_integration
 
 
 @dataclass
@@ -98,9 +98,9 @@ def read_optional(file_path: Path, key: str) -> str | None:
 def parse_boundary_file(path: Path) -> tuple[list[str], dict[str, str]]:
     if not path.is_file():
         return [], {}
-    if foamlib_adapter.available():
+    if foamlib_integration.available():
         try:
-            return foamlib_adapter.parse_boundary_file(path)
+            return foamlib_integration.parse_boundary_file(path)
         except Exception as exc:
             logging.debug("foamlib boundary parse failed: %s", exc)
     try:
@@ -108,6 +108,44 @@ def parse_boundary_file(path: Path) -> tuple[list[str], dict[str, str]]:
     except OSError:
         return [], {}
     return parse_boundary_text(text)
+
+
+def rename_boundary_patch(case_path: Path, old: str, new: str) -> tuple[bool, str]:
+    if old == new:
+        return False, "New patch name matches the existing name."
+    boundary_path = case_path / "constant" / "polyMesh" / "boundary"
+    if not boundary_path.is_file():
+        return False, "Boundary file not found."
+    if not foamlib_integration.available():
+        return False, "Rename requires foamlib."
+    try:
+        ok = foamlib_integration.rename_boundary_patch(boundary_path, old, new)
+    except Exception as exc:
+        return False, f"Failed to rename patch: {exc}"
+    if not ok:
+        return False, "Patch not found in boundary file."
+    for field in list_field_files(case_path):
+        file_path = zero_dir(case_path) / field
+        try:
+            foamlib_integration.rename_boundary_field_patch(file_path, old, new)
+        except Exception:
+            continue
+    return True, ""
+
+
+def change_patch_type(case_path: Path, patch: str, new_type: str) -> tuple[bool, str]:
+    boundary_path = case_path / "constant" / "polyMesh" / "boundary"
+    if not boundary_path.is_file():
+        return False, "Boundary file not found."
+    if not foamlib_integration.available():
+        return False, "Patch type update requires foamlib."
+    try:
+        ok = foamlib_integration.change_boundary_patch_type(boundary_path, patch, new_type)
+    except Exception as exc:
+        return False, f"Failed to update patch type: {exc}"
+    if not ok:
+        return False, "Patch not found in boundary file."
+    return True, ""
 
 
 @dataclass

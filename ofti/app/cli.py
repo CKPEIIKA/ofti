@@ -26,11 +26,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable debug logging and more verbose error reporting",
     )
-    parser.add_argument(
-        "--no-foam",
-        action="store_true",
-        help="Run without OpenFOAM tools (view-only mode)",
-    )
     return parser
 
 
@@ -45,7 +40,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     try:
-        run_tui(str(args.case_dir), debug=args.debug, no_foam=args.no_foam)
+        run_tui(str(args.case_dir), debug=args.debug)
     except (OpenFOAMError, OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
         if args.debug:
             raise

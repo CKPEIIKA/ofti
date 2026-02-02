@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from ofti.core.case_headers import detect_case_header_version
 
 
@@ -45,3 +47,20 @@ def test_detect_case_header_returns_unknown_when_missing(tmp_path: Path) -> None
     )
     case = _write_control_dict(tmp_path, text)
     assert detect_case_header_version(case) == "unknown"
+
+
+@pytest.fixture(scope="module")
+def pitzdaily_path() -> Path:
+    return Path(__file__).parent.parent / "examples" / "pitzDaily"
+
+
+@pytest.fixture(scope="module")
+def shocktube_path() -> Path:
+    return Path(__file__).parent.parent / "examples" / "shockTube"
+
+
+def test_detect_case_header_examples(pitzdaily_path: Path, shocktube_path: Path) -> None:
+    if not pitzdaily_path.exists() or not shocktube_path.exists():
+        pytest.skip("example cases not available")
+    assert detect_case_header_version(pitzdaily_path) == "v2512"
+    assert detect_case_header_version(shocktube_path) == "v2512"

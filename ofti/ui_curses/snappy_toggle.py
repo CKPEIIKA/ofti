@@ -6,6 +6,7 @@ from typing import Any
 from ofti.core.entry_io import read_entry, write_entry
 from ofti.foam.config import key_hint
 from ofti.foam.openfoam import OpenFOAMError
+from ofti.ui_curses.help import menu_hint
 from ofti.ui_curses.menus import Menu
 from ofti.ui_curses.viewer import Viewer
 
@@ -30,7 +31,18 @@ def snappy_staged_screen(stdscr: Any, case_path: Path) -> bool:
             "Run snappyHexMesh",
             "Back",
         ]
-        menu = Menu(stdscr, "snappyHexMesh staged run", labels)
+        menu = Menu(
+            stdscr,
+            "snappyHexMesh staged run",
+            labels,
+            hint_provider=lambda idx: (
+                "Toggle option."
+                if idx in (0, 1, 2)
+                else menu_hint("menu:snappy_staged", labels[idx])
+                if 0 <= idx < len(labels)
+                else ""
+            ),
+        )
         choice = menu.navigate()
         if choice in (-1, len(labels) - 1):
             return False

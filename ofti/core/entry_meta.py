@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti import foamlib_adapter
 from ofti.core.entry_io import list_subkeys, read_entry
 from ofti.core.validation import Validator, as_float, as_int, bool_flag, non_empty, vector_values
 from ofti.foam.openfoam import (
@@ -14,6 +13,7 @@ from ofti.foam.openfoam import (
     looks_like_dict,
     normalize_scalar_token,
 )
+from ofti.foamlib import adapter as foamlib_integration
 
 
 def get_entry_metadata(
@@ -23,7 +23,7 @@ def get_entry_metadata(
 ) -> tuple[str, str, list[str], list[str], list[str], Validator]:
     """
     Load entry metadata (value, type label, subkeys, comments, info_lines, validator),
-    using a simple cache to avoid repeated foamDictionary calls while
+    using a simple cache to avoid repeated foamlib calls while
     navigating.
     """
     if full_key in cache:
@@ -52,7 +52,7 @@ def get_entry_metadata(
         validator = non_empty
         type_label = "dict"
 
-    # If foamDictionary reports an explicit list of allowed values via
+    # If foamlib reports an explicit list of allowed values via
     # `-list`, prefer an enum-style validator over heuristics.
     enum_values = get_entry_enum_values(file_path, full_key)
     if enum_values:
@@ -183,7 +183,7 @@ def _read_optional_entry(file_path: Path, key: str) -> str | None:
 
 
 def _foamlib_type_info(file_path: Path, _full_key: str) -> list[str]:
-    if not (foamlib_adapter.available() and foamlib_adapter.is_foam_file(file_path)):
+    if not (foamlib_integration.available() and foamlib_integration.is_foam_file(file_path)):
         return []
     return []
 
@@ -227,10 +227,10 @@ def detect_type_with_foamlib(
     validator: Validator,
     type_label: str,
 ) -> tuple[Validator, str]:
-    if not (foamlib_adapter.available() and foamlib_adapter.is_foam_file(file_path)):
+    if not (foamlib_integration.available() and foamlib_integration.is_foam_file(file_path)):
         return validator, type_label
     try:
-        node = foamlib_adapter.read_entry_node(file_path, full_key)
+        node = foamlib_integration.read_entry_node(file_path, full_key)
     except (KeyError, Exception):
         node = None
 

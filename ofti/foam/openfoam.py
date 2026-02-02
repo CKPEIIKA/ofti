@@ -3,27 +3,20 @@ from __future__ import annotations
 import logging
 import os
 import re
-import shutil
-import subprocess
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ofti import foamlib_adapter
-from ofti.foam.subprocess_utils import run_trusted
+from ofti.foamlib import adapter as foamlib_integration
 
 
 class OpenFOAMError(RuntimeError):
     @classmethod
-    def missing_foamdictionary(cls) -> OpenFOAMError:
+    def missing_openfoam_tools(cls) -> OpenFOAMError:
         return cls(
-            "foamDictionary not found on PATH. "
+            "OpenFOAM tools not found on PATH. "
             "Please source your OpenFOAM bashrc before running ofti.",
         )
-
-    @classmethod
-    def run_failed(cls, exc: OSError) -> OpenFOAMError:
-        return cls(f"Failed to run foamDictionary: {exc}")
 
     @classmethod
     def foamlib_keywords_failed(cls, exc: Exception) -> OpenFOAMError:
@@ -32,26 +25,6 @@ class OpenFOAMError(RuntimeError):
     @classmethod
     def foamlib_entry_failed(cls, exc: Exception) -> OpenFOAMError:
         return cls(f"foamlib failed to parse entry: {exc}")
-
-
-def run_foam_dictionary(
-    file_path: Path, args: Iterable[str],
-) -> subprocess.CompletedProcess[str]:
-    cmd = ["foamDictionary", str(file_path), *args]
-    logging.debug("Running command: %s", " ".join(cmd))
-    try:
-        result = run_trusted(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError as exc:
-        raise OpenFOAMError.run_failed(exc) from exc
-    if result.returncode != 0:
-        logging.debug("Command failed with code %s: %s", result.returncode, result.stderr.strip())
-    return result
-
 
 def _foamlib_candidate(file_path: Path) -> bool:
     try:
@@ -65,33 +38,25 @@ def list_keywords(file_path: Path) -> list[str]:
     """
     List top-level keywords for a dictionary file.
     """
-    if foamlib_adapter.available() and _foamlib_candidate(file_path):
+    if _foamlib_candidate(file_path):
         try:
-            return foamlib_adapter.list_keywords(file_path)
+            return foamlib_integration.list_keywords(file_path)
         except Exception as exc:
             logging.debug("foamlib list_keywords failed: %s", exc)
-            raise OpenFOAMError.foamlib_keywords_failed(exc) from exc
-    result = run_foam_dictionary(file_path, ["-keywords"])
-    if result.returncode != 0:
-        raise OpenFOAMError(result.stderr.strip() or "Failed to list keywords.")
-    return [line for line in result.stdout.splitlines() if line.strip()]
+    raise OpenFOAMError("Failed to list keywords.")
 
 
 def list_subkeys(file_path: Path, entry: str) -> list[str]:
     """
     List sub-keys for a dictionary entry, if it is itself a dictionary.
     """
-    if foamlib_adapter.available() and _foamlib_candidate(file_path):
+    if _foamlib_candidate(file_path):
         try:
-            return foamlib_adapter.list_subkeys(file_path, entry)
+            return foamlib_integration.list_subkeys(file_path, entry)
         except Exception as exc:
             logging.debug("foamlib list_subkeys failed: %s", exc)
-            return []
-    result = run_foam_dictionary(file_path, ["-entry", entry, "-keywords"])
-    if result.returncode != 0:
-        # Treat non-dictionary (or missing) entries as having no subkeys.
         return []
-    return [line for line in result.stdout.splitlines() if line.strip()]
+    return []
 
 
 def get_entry_comments(file_path: Path, key: str) -> list[str]:
@@ -129,39 +94,27 @@ def get_entry_comments(file_path: Path, key: str) -> list[str]:
 
 def get_entry_info(file_path: Path, key: str) -> list[str]:
     """
-    Try to obtain additional information about an entry using
-    `foamDictionary -entry <key> -info`.
+    Try to obtain additional information about an entry using foamlib.
 
     Returns the output lines (if any), or an empty list when the
     command is not available or fails.
     """
-    if foamlib_adapter.available() or shutil.which("foamDictionary") is None:
-        return []
-    result = run_foam_dictionary(file_path, ["-entry", key, "-info"])
-    if result.returncode != 0:
-        return []
-    return [line for line in result.stdout.splitlines() if line.strip()]
+    return []
 
 
 def get_entry_enum_values(file_path: Path, key: str) -> list[str]:
     """
-    Try to obtain a set of allowed values for an entry using
-    `foamDictionary -entry <key> -list`.
+    Try to obtain a set of allowed values for an entry.
 
     Returns the values (if any), or an empty list when the command
     fails or no values are reported.
     """
-    if foamlib_adapter.available() or shutil.which("foamDictionary") is None:
-        return []
-    result = run_foam_dictionary(file_path, ["-entry", key, "-list"])
-    if result.returncode != 0:
-        return []
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return []
 
 
 def parse_required_entries(info_lines: Sequence[str]) -> list[str]:
     """
-    Parse `foamDictionary -info` output looking for required entry hints.
+    Parse required entry hints from foamlib info output.
 
     Several OpenFOAM dictionaries emit lines such as
 
@@ -228,10 +181,10 @@ def normalize_scalar_token(value: str) -> str:
     """
     Extract the final scalar token from an entry for comparison against enums.
 
-    `foamDictionary -list` often reports plain tokens without trailing
-    semicolons. This helper mirrors the heuristic used by the editor for
-    determining scalar types so that enum validation is consistent across
-    the TUI and automated checks.
+    Enum lists often report plain tokens without trailing semicolons.
+    This helper mirrors the heuristic used by the editor for determining
+    scalar types so that enum validation is consistent across the TUI and
+    automated checks.
     """
 
     if not value:
@@ -265,44 +218,23 @@ def looks_like_dict(value: str) -> bool:
 
 
 def read_entry(file_path: Path, key: str) -> str:
-    if foamlib_adapter.available() and _foamlib_candidate(file_path):
+    if _foamlib_candidate(file_path):
         try:
-            return foamlib_adapter.read_entry(file_path, key)
+            return foamlib_integration.read_entry(file_path, key)
         except KeyError as exc:
             raise OpenFOAMError(str(exc)) from exc
         except Exception as exc:
             logging.debug("foamlib read_entry failed: %s", exc)
-            raise OpenFOAMError.foamlib_entry_failed(exc) from exc
-    result = run_foam_dictionary(file_path, ["-entry", key])
-    if result.returncode != 0:
-        raise OpenFOAMError(result.stderr.strip() or f"Failed to read entry {key}.")
-    text = result.stdout.strip()
-
-    # Heuristic: for simple scalar entries foamDictionary may echo
-    # `key value;`. In that case we only want the value part for
-    # editing and for -set operations. For multi-line entries or
-    # dictionaries we return the raw text.
-    lines = text.splitlines()
-    if len(lines) == 1:
-        line = lines[0].strip()
-        if line:
-            # Compare with last component of key (in case of dotted paths).
-            key_token = key.split(".")[-1]
-            parts = line.split(None, 1)
-            if parts and parts[0] == key_token and len(parts) == 2:
-                return parts[1].strip()
-    return text
+    raise OpenFOAMError(f"Failed to read entry {key}.")
 
 
 def write_entry(file_path: Path, key: str, value: str) -> bool:
-    if foamlib_adapter.available() and _foamlib_candidate(file_path):
+    if _foamlib_candidate(file_path):
         try:
-            if foamlib_adapter.write_entry(file_path, key, value):
-                return True
+            return foamlib_integration.write_entry(file_path, key, value)
         except Exception as exc:
             logging.debug("foamlib write_entry failed: %s", exc)
-    result = run_foam_dictionary(file_path, ["-entry", key, "-set", value])
-    return result.returncode == 0
+    return False
 
 
 def discover_case_files(case_dir: Path) -> dict[str, list[Path]]:  # noqa: C901
@@ -345,7 +277,7 @@ def discover_case_files(case_dir: Path) -> dict[str, list[Path]]:  # noqa: C901
         zero_files.extend(p for p in d.iterdir() if p.is_file())
     sections["0*"] = sorted(zero_files)
 
-    if foamlib_adapter.available() and os.environ.get("OFTI_STRICT_FOAMLIB") == "1":
+    if os.environ.get("OFTI_STRICT_FOAMLIB") == "1":
         sections = _filter_foamlib_files(sections)
 
     return sections
@@ -354,7 +286,7 @@ def discover_case_files(case_dir: Path) -> dict[str, list[Path]]:  # noqa: C901
 def _filter_foamlib_files(sections: dict[str, list[Path]]) -> dict[str, list[Path]]:
     filtered: dict[str, list[Path]] = {}
     for key, files in sections.items():
-        filtered[key] = [path for path in files if foamlib_adapter.is_foam_file(path)]
+        filtered[key] = [path for path in files if foamlib_integration.is_foam_file(path)]
     return filtered
 
 
@@ -373,10 +305,8 @@ def verify_case(
     """
     Run a correctness check over all discovered dictionary files.
 
-    Beyond ensuring the files parse with `foamDictionary -keywords`,
-    this inspects each entry recursively to detect missing required
-    sub-entries (as hinted by `foamDictionary -info`) and invalid
-    enum values (compared against `foamDictionary -list`).
+    Beyond ensuring the files parse, this inspects each entry recursively
+    to detect missing required sub-entries and invalid enum values.
     """
 
     all_files = _collect_case_files(case_dir)
@@ -417,7 +347,7 @@ def _check_file(
     except KeyboardInterrupt:
         return False
 
-    if foamlib_adapter.available() and _foamlib_candidate(file_path):
+    if _foamlib_candidate(file_path):
         result.warnings.extend(_foamlib_quick_lint(file_path, top_level_keys))
 
     try:
@@ -507,13 +437,11 @@ def _find_case_root(file_path: Path) -> Path | None:
     return None
 
 
-def _check_boundary_patches(  # noqa: PLR0911
+def _check_boundary_patches(
     file_path: Path,
     result: FileCheckResult,
     boundary_keys: Sequence[str],
 ) -> None:
-    if not foamlib_adapter.available():
-        return
     case_root = _find_case_root(file_path)
     if case_root is None:
         return
@@ -521,7 +449,7 @@ def _check_boundary_patches(  # noqa: PLR0911
     if not boundary_file.exists():
         return
     try:
-        patches, patch_types = foamlib_adapter.parse_boundary_file(boundary_file)
+        patches, patch_types = foamlib_integration.parse_boundary_file(boundary_file)
     except Exception:
         return
     if not patches:

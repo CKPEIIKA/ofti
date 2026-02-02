@@ -17,7 +17,19 @@ from ofti.foam.openfoam import (
 from ofti.foam.openfoam_env import ensure_environment
 
 
-def test_ensure_environment_raises_when_missing() -> None:
+def _write_foamfile(path: Path) -> None:
+    path.write_text(
+        "FoamFile\n"
+        "{\n"
+        "    version 2.0;\n"
+        "}\n",
+    )
+
+
+def test_ensure_environment_raises_when_missing(monkeypatch) -> None:
+    monkeypatch.delenv("WM_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("WM_PROJECT_VERSION", raising=False)
+    monkeypatch.delenv("FOAM_VERSION", raising=False)
     with (
         mock.patch("ofti.foam.openfoam_env.shutil.which", return_value=None),
         pytest.raises(OpenFOAMError),
@@ -27,36 +39,36 @@ def test_ensure_environment_raises_when_missing() -> None:
 
 def test_list_keywords_parses_output(tmp_path: Path) -> None:
     fake_file = tmp_path / "dict"
-    fake_file.write_text("dummy;")
+    _write_foamfile(fake_file)
 
-    completed = mock.Mock()
-    completed.returncode = 0
-    completed.stdout = "a\nb\n\n"
-    with mock.patch("ofti.foam.openfoam.run_foam_dictionary", return_value=completed):
+    with mock.patch(
+        "ofti.foam.openfoam.foamlib_integration.list_keywords",
+        return_value=["a", "b"],
+    ):
         result = list_keywords(fake_file)
         assert result == ["a", "b"]
 
 
 def test_list_subkeys_handles_dictionary_entry(tmp_path: Path) -> None:
     fake_file = tmp_path / "dict"
-    fake_file.write_text("dummy;")
+    _write_foamfile(fake_file)
 
-    completed = mock.Mock()
-    completed.returncode = 0
-    completed.stdout = "subA\nsubB\n"
-    with mock.patch("ofti.foam.openfoam.run_foam_dictionary", return_value=completed):
+    with mock.patch(
+        "ofti.foam.openfoam.foamlib_integration.list_subkeys",
+        return_value=["subA", "subB"],
+    ):
         result = list_subkeys(fake_file, "parent")
         assert result == ["subA", "subB"]
 
 
 def test_list_subkeys_non_dict_returns_empty(tmp_path: Path) -> None:
     fake_file = tmp_path / "dict"
-    fake_file.write_text("dummy;")
+    _write_foamfile(fake_file)
 
-    completed = mock.Mock()
-    completed.returncode = 1
-    completed.stderr = "not a dictionary"
-    with mock.patch("ofti.foam.openfoam.run_foam_dictionary", return_value=completed):
+    with mock.patch(
+        "ofti.foam.openfoam.foamlib_integration.list_subkeys",
+        side_effect=ValueError("not a dict"),
+    ):
         result = list_subkeys(fake_file, "parent")
         assert result == []
 
@@ -79,13 +91,13 @@ def test_get_entry_comments_picks_preceding_comment_block(tmp_path: Path) -> Non
 
 def test_read_entry_error(tmp_path: Path) -> None:
     fake_file = tmp_path / "dict"
-    fake_file.write_text("dummy;")
+    _write_foamfile(fake_file)
 
-    completed = mock.Mock()
-    completed.returncode = 1
-    completed.stderr = "bad"
     with (
-        mock.patch("ofti.foam.openfoam.run_foam_dictionary", return_value=completed),
+        mock.patch(
+            "ofti.foam.openfoam.foamlib_integration.read_entry",
+            side_effect=KeyError("bad"),
+        ),
         pytest.raises(OpenFOAMError),
     ):
         read_entry(fake_file, "key")
@@ -93,12 +105,12 @@ def test_read_entry_error(tmp_path: Path) -> None:
 
 def test_read_entry_strips_leading_key_for_scalar(tmp_path: Path) -> None:
     fake_file = tmp_path / "dict"
-    fake_file.write_text("dummy;")
+    _write_foamfile(fake_file)
 
-    completed = mock.Mock()
-    completed.returncode = 0
-    completed.stdout = "preMij 0.014;\n"
-    with mock.patch("ofti.foam.openfoam.run_foam_dictionary", return_value=completed):
+    with mock.patch(
+        "ofti.foam.openfoam.foamlib_integration.read_entry",
+        return_value="0.014;",
+    ):
         value = read_entry(fake_file, "preMij")
 
     assert value == "0.014;"
@@ -115,7 +127,7 @@ def test_verify_case_collects_errors(tmp_path: Path) -> None:
 
     def fake_list_keywords(file_path: Path) -> list[str]:
         if file_path == f_bad:
-            raise OpenFOAMError("parse error")  # noqa: TRY003
+            raise OpenFOAMError("parse error")
         return []
 
     with mock.patch.multiple(

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-from ofti.foamlib_adapter import FoamlibUnavailableError, available
+from ofti.foamlib.adapter import FoamlibUnavailableError, available
 
 try:  # pragma: no cover - optional dependency
     from foamlib import FoamCase

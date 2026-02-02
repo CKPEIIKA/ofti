@@ -38,6 +38,43 @@ class DummyCallbacks:
     def search_screen(self, *_args):
         self._record("search")
 
+    def terminal(self, *_args):
+        command = "" if not _args else (_args[-1] or "")
+        self._record(f"terminal:{command}")
+
+    def mesh_menu(self, *_args):
+        self._record("mesh")
+
+    def physics_menu(self, *_args):
+        self._record("physics")
+
+    def simulation_menu(self, *_args):
+        self._record("simulation")
+
+    def postprocessing_menu(self, *_args):
+        self._record("post")
+
+    def clean_menu(self, *_args):
+        self._record("clean")
+
+    def clean_all(self, *_args):
+        self._record("clean_all")
+
+    def config_menu(self, *_args):
+        self._record("config")
+
+    def config_editor(self, *_args):
+        self._record("config_editor")
+
+    def config_create(self, *_args):
+        self._record("config_create")
+
+    def config_search(self, *_args):
+        self._record("config_search")
+
+    def config_check(self, *_args):
+        self._record("config_check")
+
 
 def _callbacks() -> tuple[CommandCallbacks, DummyCallbacks]:
     cb = DummyCallbacks()
@@ -51,6 +88,18 @@ def _callbacks() -> tuple[CommandCallbacks, DummyCallbacks]:
         openfoam_env_screen=cb.openfoam_env_screen,
         clone_case=cb.clone_case,
         search_screen=cb.search_screen,
+        terminal=cb.terminal,
+        mesh_menu=cb.mesh_menu,
+        physics_menu=cb.physics_menu,
+        simulation_menu=cb.simulation_menu,
+        postprocessing_menu=cb.postprocessing_menu,
+        clean_menu=cb.clean_menu,
+        clean_all=cb.clean_all,
+        config_menu=cb.config_menu,
+        config_editor=cb.config_editor,
+        config_create=cb.config_create,
+        config_search=cb.config_search,
+        config_check=cb.config_check,
     ), cb
 
 
@@ -67,7 +116,7 @@ def test_handle_command_branches(monkeypatch, tmp_path: Path) -> None:
     case_path = tmp_path
 
     monkeypatch.setattr("ofti.app.commands.list_tool_commands", lambda _: ["toolA"])
-    monkeypatch.setattr("ofti.app.commands.run_tool_by_name", lambda *_: True)
+    monkeypatch.setattr("ofti.app.commands.run_tool_by_name", lambda *_a, **_k: True)
 
     assert handle_command(None, case_path, state, "check", cb) == "handled"
     assert handle_command(None, case_path, state, "tools", cb) == "handled"
@@ -79,6 +128,11 @@ def test_handle_command_branches(monkeypatch, tmp_path: Path) -> None:
     assert handle_command(None, case_path, state, "tasks", cb) == "handled"
     assert handle_command(None, case_path, state, "tool toolA", cb) == "handled"
     assert handle_command(None, case_path, state, "help", cb) == "handled"
+    assert handle_command(None, case_path, state, "config-editor", cb) == "handled"
+    assert handle_command(None, case_path, state, "config-create", cb) == "handled"
+    assert handle_command(None, case_path, state, "config-search", cb) == "handled"
+    assert handle_command(None, case_path, state, "config-check", cb) == "handled"
+    assert handle_command(None, case_path, state, "clean-all", cb) == "handled"
 
     assert "check" in record.called
     assert "tools" in record.called
@@ -88,18 +142,25 @@ def test_handle_command_branches(monkeypatch, tmp_path: Path) -> None:
     assert "foamenv" in record.called
     assert "clone:mycase" in record.called
     assert "tasks" in record.called
+    assert "config_editor" in record.called
+    assert "config_create" in record.called
+    assert "config_search" in record.called
+    assert "config_check" in record.called
+    assert "clean_all" in record.called
 
 
-def test_handle_command_no_foam(monkeypatch, tmp_path: Path) -> None:
+def test_handle_command_terminal(monkeypatch, tmp_path: Path) -> None:
     cb, record = _callbacks()
-    state = AppState(no_foam=True)
+    state = AppState()
     case_path = tmp_path
 
     monkeypatch.setattr("ofti.app.commands.list_tool_commands", lambda _: [])
-    monkeypatch.setattr("ofti.app.commands.ensure_environment", lambda: None)
-
-    assert handle_command(None, case_path, state, "nofoam", cb) == "handled"
-    assert "msg:Mode set to foam." in record.called
+    assert handle_command(None, case_path, state, "term", cb) == "handled"
+    assert handle_command(None, case_path, state, "terminal ls -l", cb) == "handled"
+    assert handle_command(None, case_path, state, ":!echo hi", cb) == "handled"
+    assert "terminal:" in record.called
+    assert "terminal:ls -l" in record.called
+    assert "terminal:echo hi" in record.called
 
 
 def test_handle_command_cancel(monkeypatch, tmp_path: Path) -> None:

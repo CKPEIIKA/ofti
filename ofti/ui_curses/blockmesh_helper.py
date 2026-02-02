@@ -6,7 +6,6 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
-from ofti import foamlib_adapter
 from ofti.core.blockmesh import (
     parse_blocks_node,
     parse_blocks_text,
@@ -21,6 +20,7 @@ from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
 from ofti.foam.openfoam import OpenFOAMError
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
+from ofti.foamlib import adapter as foamlib_integration
 from ofti.ui_curses.inputs import prompt_input
 
 
@@ -155,7 +155,7 @@ def _open_file_in_editor(stdscr: Any, file_path: Path) -> None:
 def _load_blockmesh_details(
     path: Path,
 ) -> tuple[list[tuple[float, float, float]], list[tuple[str, list[int]]], list[str], int]:
-    if foamlib_adapter.available() and foamlib_adapter.is_foam_file(path):
+    if foamlib_integration.available() and foamlib_integration.is_foam_file(path):
         return _load_blockmesh_details_foamlib(path)
     return _load_blockmesh_details_text(path)
 
@@ -164,22 +164,22 @@ def _load_blockmesh_details_foamlib(
     path: Path,
 ) -> tuple[list[tuple[float, float, float]], list[tuple[str, list[int]]], list[str], int]:
     try:
-        node = foamlib_adapter.read_entry_node(path, "vertices")
+        node = foamlib_integration.read_entry_node(path, "vertices")
     except Exception:
         node = None
     vertices = parse_vertices_node(node) if node is not None else []
     try:
-        blocks_node = foamlib_adapter.read_entry_node(path, "blocks")
+        blocks_node = foamlib_integration.read_entry_node(path, "blocks")
     except Exception:
         blocks_node = None
     blocks = parse_blocks_node(blocks_node)
     try:
-        boundary_node = foamlib_adapter.read_entry_node(path, "boundary")
+        boundary_node = foamlib_integration.read_entry_node(path, "boundary")
     except Exception:
         boundary_node = None
     boundaries = parse_boundary_names_node(boundary_node)
     try:
-        edges_node = foamlib_adapter.read_entry_node(path, "edges")
+        edges_node = foamlib_integration.read_entry_node(path, "edges")
     except Exception:
         edges_node = None
     edges = len(edges_node) if isinstance(edges_node, (list, tuple)) else 0

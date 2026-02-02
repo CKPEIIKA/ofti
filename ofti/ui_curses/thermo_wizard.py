@@ -106,14 +106,12 @@ THERMO_TEMPLATES: dict[str, list[tuple[str, str]]] = {
 
 
 def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901
-    dict_rel = get_dict_path("thermophysical")
-    dict_path = case_path / dict_rel
-    if not dict_path.is_file():
-        _show_message(stdscr, f"Missing {dict_rel}.")
-        return
-
     keys = ["thermoType", "mixture", "transport", "equationOfState"]
-    values = {key: _read_value(dict_path, key) for key in keys}
+    paths = {key: _dict_path_for(key, case_path) for key in keys}
+    values = {
+        key: _read_value(paths[key], key) if paths[key].is_file() else ""
+        for key in keys
+    }
 
     while True:
         labels = [_label_for(key, values[key]) for key in keys] + ["Back"]
@@ -122,6 +120,7 @@ def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:  # noqa:
             "Thermophysical properties wizard",
             labels,
             status_line="Edit core thermophysical slots",
+            help_lines=_wizard_help_lines(),
         )
         choice = menu.navigate()
         if choice in (-1, len(labels) - 1):
@@ -134,10 +133,11 @@ def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:  # noqa:
             *[f"Use template: {name}" for name, _ in templates],
             "Back",
         ]
+        dict_path = paths[key]
 
         def hint_for(idx: int, template_list=templates) -> str | None:
             if idx == 0:
-                return "Edit the raw dictionary block"
+                return "Edit the raw dictionary block (or use Config Manager for missing files)"
             template_index = idx - 1
             if 0 <= template_index < len(template_list):
                 return _template_hint(template_list[template_index][1])
@@ -148,11 +148,21 @@ def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:  # noqa:
             f"{key} options",
             action_labels,
             hint_provider=hint_for,
+            status_line="Manual edits open Config Manager if file missing.",
         )
         action_choice = action_menu.navigate()
         if action_choice in (-1, len(action_labels) - 1):
             continue
         if action_choice == 0:
+            if not dict_path.is_file():
+                _show_message(
+                    stdscr,
+                    (
+                        f"Missing {dict_path.relative_to(case_path)}; "
+                        "use Config Manager -> Config Editor to create it."
+                    ),
+                )
+                continue
             entry = Entry(key=key, value=values[key])
             editor = EntryEditor(
                 stdscr,
@@ -160,6 +170,7 @@ def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:  # noqa:
                 on_save=lambda value, k=key: _write_value(dict_path, k, value),
                 validator=_thermo_validator,
                 type_label="dict",
+                case_label=case_path.name,
             )
             editor.edit()
             values[key] = entry.value
@@ -167,6 +178,12 @@ def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:  # noqa:
         template_index = action_choice - 1
         if 0 <= template_index < len(templates):
             template_value = templates[template_index][1]
+            if not dict_path.is_file():
+                _show_message(
+                    stdscr,
+                    f"Missing {dict_path.relative_to(case_path)}; template cannot be applied.",
+                )
+                continue
             if _write_value(dict_path, key, template_value):
                 values[key] = template_value
                 _show_message(stdscr, f"Applied {key} template.")
@@ -212,6 +229,20 @@ def _template_hint(value: str) -> str:
     return "Template"
 
 
+def _wizard_help_lines() -> list[str]:
+    return [
+        (
+            "Thermophysical slots come from thermophysicalProperties "
+            "(transport from transportProperties)."
+        ),
+        "Use templates to insert complete dictionary blocks quickly.",
+        (
+            "Manual edits delegate to Config Manager when files are absent "
+            "or require broader context."
+        ),
+    ]
+
+
 def _show_message(stdscr: Any, message: str) -> None:
     stdscr.clear()
     stdscr.addstr(message + "\n")
@@ -221,3 +252,11 @@ def _show_message(stdscr: Any, message: str) -> None:
     key = stdscr.getch()
     if key_in(key, get_config().keys.get("quit", [])):
         raise QuitAppError()
+
+
+def _dict_path_for(key: str, case_path: Path) -> Path:
+    lookup = {
+        "transport": "transport",
+    }
+    dict_key = lookup.get(key.lower(), "thermophysical")
+    return case_path / get_dict_path(dict_key)

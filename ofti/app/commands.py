@@ -5,25 +5,34 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ofti.app.helpers import set_no_foam_mode
 from ofti.core.commands import CommandKind, is_blocked_in_no_foam, parse_command
-from ofti.foam.openfoam import OpenFOAMError
-from ofti.foam.openfoam_env import ensure_environment
-from ofti.foamlib_adapter import available as foamlib_available
-from ofti.tools import list_tool_commands, run_tool_by_name
+from ofti.tools.menus import run_tool_by_name
+from ofti.tools.runner import list_tool_commands
 
 
 @dataclass(frozen=True)
 class CommandCallbacks:
     check_syntax: Callable[[Any, Path, Any], None]
-    tools_screen: Callable[[Any, Path], None]
-    diagnostics_screen: Callable[[Any, Path], None]
+    tools_screen: Callable[[Any, Path, Any], None]
+    diagnostics_screen: Callable[[Any, Path, Any], None]
     run_current_solver: Callable[[Any, Path, Any], None]
     show_message: Callable[[Any, str], None]
     tasks_screen: Callable[[Any, Any], None]
     openfoam_env_screen: Callable[[Any], None]
     clone_case: Callable[[Any, Path, str | None], None]
     search_screen: Callable[[Any, Path, Any], None]
+    terminal: Callable[[Any, Path, str | None], None]
+    mesh_menu: Callable[[Any, Path, Any], None]
+    physics_menu: Callable[[Any, Path, Any], None]
+    simulation_menu: Callable[[Any, Path, Any], None]
+    postprocessing_menu: Callable[[Any, Path, Any], None]
+    clean_menu: Callable[[Any, Path, Any], None]
+    clean_all: Callable[[Any, Path], None]
+    config_menu: Callable[[Any, Path, Any], None]
+    config_editor: Callable[[Any, Path, Any], None]
+    config_create: Callable[[Any, Path], None]
+    config_search: Callable[[Any, Path, Any], None]
+    config_check: Callable[[Any, Path, Any], None]
 
 
 def command_suggestions(case_path: Path) -> list[str]:
@@ -32,8 +41,6 @@ def command_suggestions(case_path: Path) -> list[str]:
         "tools",
         "diag",
         "run",
-        "nofoam",
-        "no-foam",
         "tasks",
         "cancel",
         "search",
@@ -41,10 +48,28 @@ def command_suggestions(case_path: Path) -> list[str]:
         "clone",
         "quit",
         "help",
+        "term",
+        "terminal",
+        "mesh",
+        "physics",
+        "sim",
+        "simulation",
+        "post",
+        "postprocessing",
+        "clean",
+        "clean-all",
+        "config",
+        "config-editor",
+        "config-create",
+        "config-search",
+        "config-check",
+        "config-env",
     ]
     tool_names = list_tool_commands(case_path)
     base += [f"tool {name}" for name in tool_names]
+    base += [f"tool {name} -b" for name in tool_names]
     base += [f"run {name}" for name in tool_names]
+    base += [f"{name} -b" for name in tool_names]
     base += tool_names
     return sorted(set(base))
 
@@ -60,25 +85,26 @@ def handle_command(
     if action is None:
         return None
 
-    if getattr(state, "no_foam", False) and is_blocked_in_no_foam(action):
-        if action.kind == CommandKind.CHECK and foamlib_available():
-            pass
-        else:
-            callbacks.show_message(
-                stdscr,
-                "OpenFOAM environment not found; tool commands are disabled in limited mode.",
-            )
-            return "handled"
+    if (
+        getattr(state, "no_foam", False)
+        and is_blocked_in_no_foam(action)
+        and action.kind != CommandKind.CHECK
+    ):
+        callbacks.show_message(
+            stdscr,
+            "OpenFOAM environment not found; tool commands are disabled in limited mode.",
+        )
+        return "handled"
     if action.kind == CommandKind.QUIT:
         return "quit"
     if action.kind == CommandKind.CHECK:
         callbacks.check_syntax(stdscr, case_path, state)
         return "handled"
     if action.kind == CommandKind.TOOLS:
-        callbacks.tools_screen(stdscr, case_path)
+        callbacks.tools_screen(stdscr, case_path, state)
         return "handled"
     if action.kind == CommandKind.DIAGNOSTICS:
-        callbacks.diagnostics_screen(stdscr, case_path)
+        callbacks.diagnostics_screen(stdscr, case_path, state)
         return "handled"
     if action.kind == CommandKind.SEARCH:
         callbacks.search_screen(stdscr, case_path, state)
@@ -110,29 +136,60 @@ def handle_command(
         return "handled"
     if action.kind == CommandKind.RUN_TOOL:
         tool_name = action.args[0] if action.args else ""
-        if run_tool_by_name(stdscr, case_path, tool_name):
+        if run_tool_by_name(
+            stdscr,
+            case_path,
+            tool_name,
+            background=action.background,
+        ):
             return "handled"
         callbacks.show_message(stdscr, f"Unknown tool: {tool_name}")
         return "handled"
-    if action.kind == CommandKind.NO_FOAM:
-        desired = action.desired
-        if desired is None:
-            desired = not state.no_foam
-        if not desired:
-            try:
-                ensure_environment()
-            except OpenFOAMError as exc:
-                callbacks.show_message(stdscr, f"Cannot enable foam mode: {exc}")
-                set_no_foam_mode(state, True, reason=str(exc))
-                return "handled"
-        set_no_foam_mode(state, desired, reason=None)
-        mode_label = "no-foam" if state.no_foam else "foam"
-        callbacks.show_message(stdscr, f"Mode set to {mode_label}.")
+    if action.kind == CommandKind.TERMINAL:
+        command_text = action.args[0] if action.args else ""
+        callbacks.terminal(stdscr, case_path, command_text or None)
+        return "handled"
+    if action.kind == CommandKind.MESH:
+        callbacks.mesh_menu(stdscr, case_path, state)
+        return "handled"
+    if action.kind == CommandKind.PHYSICS:
+        callbacks.physics_menu(stdscr, case_path, state)
+        return "handled"
+    if action.kind == CommandKind.SIMULATION:
+        callbacks.simulation_menu(stdscr, case_path, state)
+        return "handled"
+    if action.kind == CommandKind.POSTPROCESSING:
+        callbacks.postprocessing_menu(stdscr, case_path, state)
+        return "handled"
+    if action.kind == CommandKind.CLEAN:
+        callbacks.clean_menu(stdscr, case_path, state)
+        return "handled"
+    if action.kind == CommandKind.CLEAN_ALL:
+        callbacks.clean_all(stdscr, case_path)
+        return "handled"
+    if action.kind == CommandKind.CONFIG:
+        callbacks.config_menu(stdscr, case_path, state)
+        return "handled"
+    if action.kind == CommandKind.CONFIG_EDITOR:
+        callbacks.config_editor(stdscr, case_path, state)
+        return "handled"
+    if action.kind == CommandKind.CONFIG_CREATE:
+        callbacks.config_create(stdscr, case_path)
+        return "handled"
+    if action.kind == CommandKind.CONFIG_SEARCH:
+        callbacks.config_search(stdscr, case_path, state)
+        return "handled"
+    if action.kind == CommandKind.CONFIG_CHECK:
+        callbacks.config_check(stdscr, case_path, state)
+        return "handled"
+    if action.kind == CommandKind.TERMINAL:
+        command_text = action.args[0] if action.args else ""
+        callbacks.terminal(stdscr, case_path, command_text or None)
         return "handled"
     if action.kind == CommandKind.HELP:
         callbacks.show_message(
             stdscr,
-            "Commands: :check, :tools, :diag, :run, :nofoam, :tasks, "
+            "Commands: :check, :tools, :diag, :run, :tasks, "
             ":search, :cancel <name>, :foamenv, :clone <name>, :tool <name>, :quit",
         )
         return "handled"

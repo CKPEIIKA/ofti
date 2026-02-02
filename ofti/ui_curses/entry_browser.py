@@ -156,6 +156,7 @@ def entry_browser_screen(
             _entry_browser_inline_edit(
                 stdscr,
                 file_path,
+                case_path,
                 cache,
                 full_key,
                 value,
@@ -408,6 +409,7 @@ def _entry_browser_external_edit(
 def _entry_browser_inline_edit(
     stdscr: Any,
     file_path: Path,
+    case_path: Path,
     cache: dict[str, tuple[str, str, list[str], list[str], list[str]]],
     full_key: str,
     value: str,
@@ -431,6 +433,7 @@ def _entry_browser_inline_edit(
         validator=validator,
         type_label=type_label,
         subkeys=subkeys,
+        case_label=case_path.name,
     )
     editor.edit()
     if use_cache:
@@ -468,7 +471,7 @@ def _entry_browser_help(stdscr: Any, callbacks: BrowserCallbacks) -> None:
         "Keys: j/k or arrows move, g/G top/bottom, l/e/Right/Enter edit, "
         f"{back_hint}/Left back, {view_hint} view file, c check, / search, : command line, "
         "K entry help, ? help\n\n"
-        "Commands:\n  :check  :tools  :diag  :run  :nofoam  :tool <name>  :quit",
+        "Commands:\n  :check  :tools  :diag  :run  :tool <name>  :quit",
     )
 
 

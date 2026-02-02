@@ -37,7 +37,7 @@ def _no_foam_active() -> bool:
 
 def _no_foam_hint() -> str:
     if _no_foam_active():
-        return " (no-foam mode may prevent OpenFOAM tools from running)"
+        return " (OpenFOAM env not found)"
     return ""
 
 
@@ -70,7 +70,7 @@ def last_tool_status_line() -> str | None:
 
 
 def tool_status_mode() -> str:
-    mode = "no-foam" if os.environ.get("OFTI_NO_FOAM") == "1" else "foam"
+    mode = "limited" if os.environ.get("OFTI_NO_FOAM") == "1" else "foam"
     wm_dir = os.environ.get("WM_PROJECT_DIR")
     suffix = f" ({wm_dir})" if wm_dir else ""
     return f"mode: {mode}{suffix}"
@@ -135,20 +135,14 @@ def _tool_alias_keys(case_path: Path) -> list[str]:
 
     base_tools = [
         ("blockMesh", ["blockMesh"]),
-        ("setFields", ["setFields"]),
         ("snappyHexMesh", ["snappyHexMesh"]),
         ("decomposePar", ["decomposePar"]),
         ("reconstructPar", ["reconstructPar"]),
-        ("foamListTimes", ["foamListTimes"]),
     ]
     extra_tools = load_tool_presets(case_path)
-    job_tools = [
-        ("foamCheckJobs", ["foamCheckJobs"]),
-        ("foamPrintJobs", ["foamPrintJobs"]),
-    ]
     post_tools = load_postprocessing_presets(case_path)
 
-    for name, _ in base_tools + extra_tools + job_tools:
+    for name, _ in base_tools + extra_tools:
         keys.append(_normalize_tool_name(name))
 
     for name, _ in post_tools:
@@ -158,6 +152,8 @@ def _tool_alias_keys(case_path: Path) -> list[str]:
 
     keys += [
         _normalize_tool_name("checkmesh"),
+        _normalize_tool_name("meshquality"),
+        _normalize_tool_name("mesh-quality"),
         _normalize_tool_name("logs"),
         _normalize_tool_name("viewlogs"),
         _normalize_tool_name("residuals"),
@@ -167,6 +163,32 @@ def _tool_alias_keys(case_path: Path) -> list[str]:
         _normalize_tool_name("highspeed"),
         _normalize_tool_name("high_speed"),
         _normalize_tool_name("highspeedhelper"),
+        _normalize_tool_name("physicshelpers"),
+        _normalize_tool_name("physics-helpers"),
+        _normalize_tool_name("boundarymatrix"),
+        _normalize_tool_name("boundary-matrix"),
+        _normalize_tool_name("initialconditions"),
+        _normalize_tool_name("initial-conditions"),
+        _normalize_tool_name("thermowizard"),
+        _normalize_tool_name("thermo-wizard"),
+        _normalize_tool_name("blockmeshhelper"),
+        _normalize_tool_name("blockmesh-helper"),
+        _normalize_tool_name("snappystaged"),
+        _normalize_tool_name("snappy-staged"),
+        _normalize_tool_name("pipelineedit"),
+        _normalize_tool_name("pipeline-edit"),
+        _normalize_tool_name("pipelinerun"),
+        _normalize_tool_name("pipeline-run"),
+        _normalize_tool_name("parametricwizard"),
+        _normalize_tool_name("parametric-wizard"),
+        _normalize_tool_name("fieldsummary"),
+        _normalize_tool_name("field-summary"),
+        _normalize_tool_name("postprocessingbrowser"),
+        _normalize_tool_name("postprocessing-browser"),
+        _normalize_tool_name("samplingsets"),
+        _normalize_tool_name("sampling-sets"),
+        _normalize_tool_name("runparallel"),
+        _normalize_tool_name("run-parallel"),
     ]
 
     keys.extend(
@@ -174,15 +196,11 @@ def _tool_alias_keys(case_path: Path) -> list[str]:
             _normalize_tool_name("rerun"),
             _normalize_tool_name("last"),
             _normalize_tool_name("runScript"),
-            _normalize_tool_name("foamDictionary"),
             _normalize_tool_name("postProcess"),
             _normalize_tool_name("foamCalc"),
-            _normalize_tool_name("topoSet"),
-            _normalize_tool_name("setFields"),
-            _normalize_tool_name("tool_dicts"),
-            _normalize_tool_name("toolDicts"),
             _normalize_tool_name("runCurrentSolver"),
             _normalize_tool_name("runLive"),
+            _normalize_tool_name("runParallel"),
             _normalize_tool_name("removeLogs"),
             _normalize_tool_name("cleanTimeDirs"),
             _normalize_tool_name("cleanCase"),
@@ -192,6 +210,13 @@ def _tool_alias_keys(case_path: Path) -> list[str]:
             _normalize_tool_name("solveResume"),
             _normalize_tool_name("clone"),
             _normalize_tool_name("yPlus"),
+            _normalize_tool_name("jobStatus"),
+            _normalize_tool_name("caseDoctor"),
+            _normalize_tool_name("renumberMesh"),
+            _normalize_tool_name("transformPoints"),
+            _normalize_tool_name("cfMesh"),
+            _normalize_tool_name("jobStart"),
+            _normalize_tool_name("jobStop"),
         ],
     )
 

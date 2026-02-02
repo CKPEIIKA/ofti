@@ -50,11 +50,21 @@ def case_overview_lines(_meta: dict[str, str]) -> list[str]:
 
 
 def case_banner_lines(meta: dict[str, str]) -> list[str]:
+    env_label = f"Env: {meta['foam_version']}"
+    header_version = meta.get("case_header_version", "unknown")
+    if (
+        header_version
+        and header_version != "unknown"
+        and header_version != meta.get("foam_version")
+    ):
+        env_label = f"{env_label} (header v {header_version})"
     rows = [
         (f"Case: {meta['case_name']}", f"Solver: {meta['solver']}"),
         (f"Status: {meta['status']}", f"Latest time: {meta['latest_time']}"),
         (f"Mesh: {meta['mesh']}", f"Parallel: {meta['parallel']}"),
-        (f"Env: {meta['foam_version']}", f"Case header: {meta['case_header_version']}"),
+        (f"Faces: {meta.get('faces', 'n/a')} Points: {meta.get('points', 'n/a')}",
+         f"Disk: {meta.get('disk', 'n/a')}"),
+        (env_label, ""),
         (f"Path: {meta['case_path']}", f"Log: {meta.get('log', 'none')}"),
     ]
     return foam_style_banner("ofti", rows)

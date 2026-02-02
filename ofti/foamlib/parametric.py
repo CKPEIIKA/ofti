@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from ofti.foam import openfoam
-from ofti.foamlib_adapter import write_entry
+from ofti.foamlib.adapter import write_entry
 
 
 class ParametricWriteError(RuntimeError):
