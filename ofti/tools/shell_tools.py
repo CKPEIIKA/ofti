@@ -9,10 +9,9 @@ from ofti.core.tool_output import CommandResult, format_command_result
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.subprocess_utils import run_trusted
 from ofti.tools.job_registry import refresh_jobs
+from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _run_shell_tool, _run_simple_tool, _show_message, get_last_tool_run
-from ofti.ui_curses.help import menu_hint
 from ofti.ui_curses.layout import status_message
-from ofti.ui_curses.menus import Menu
 from ofti.ui_curses.viewer import Viewer
 
 
@@ -66,15 +65,12 @@ def run_shell_script_screen(stdscr: Any, case_path: Path) -> None:
         return
 
     labels = [p.name for p in scripts]
-    menu = Menu(
+    menu = build_menu(
         stdscr,
         "Select script to run",
         [*labels, "Back"],
-        hint_provider=lambda idx: (
-            "Run selected script."
-            if 0 <= idx < len(labels)
-            else menu_hint("menu:script_select", "Back")
-        ),
+        menu_key="menu:script_select",
+        item_hint="Run selected script.",
     )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels):

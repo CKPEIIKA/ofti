@@ -353,3 +353,59 @@ def _write_tool_log(case_path: Path, name: str, stdout: str, stderr: str) -> Non
     content = "\n".join([f"tool: {name}", "", format_log_blob(stdout, stderr), ""])
     with suppress(OSError):
         log_path.write_text(content)
+
+
+def run_tool_command(
+    stdscr: Any,
+    case_path: Path,
+    name: str,
+    cmd: list[str],
+    *,
+    status: str | None = None,
+) -> None:
+    if status:
+        status_message(stdscr, status)
+    try:
+        result = run_trusted(
+            cmd,
+            cwd=case_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        _show_message(stdscr, _with_no_foam_hint(f"Failed to run {name}: {exc}"))
+        return
+    _write_tool_log(case_path, name, result.stdout, result.stderr)
+    _record_tool_status(name, f"exit {result.returncode}")
+    summary = format_command_result(
+        [f"$ cd {case_path}", f"$ {' '.join(cmd)}"],
+        CommandResult(result.returncode, result.stdout, result.stderr),
+    )
+    Viewer(stdscr, summary).display()
+
+
+def run_tool_command_capture(
+    stdscr: Any,
+    case_path: Path,
+    name: str,
+    cmd: list[str],
+    *,
+    status: str | None = None,
+) -> CommandResult | None:
+    if status:
+        status_message(stdscr, status)
+    try:
+        result = run_trusted(
+            cmd,
+            cwd=case_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        _show_message(stdscr, _with_no_foam_hint(f"Failed to run {name}: {exc}"))
+        return None
+    _write_tool_log(case_path, name, result.stdout, result.stderr)
+    _record_tool_status(name, f"exit {result.returncode}")
+    return CommandResult(result.returncode, result.stdout, result.stderr)

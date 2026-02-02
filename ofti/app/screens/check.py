@@ -9,8 +9,9 @@ from ofti.app.helpers import menu_scroll, prompt_command, show_message
 from ofti.app.screens.editor import view_file_screen
 from ofti.app.state import AppState
 from ofti.app.status import mode_status, status_with_check
-from ofti.core.entry_io import read_entry, write_entry
+from ofti.core.entry_io import read_entry
 from ofti.core.templates import find_example_file
+from ofti.core.tool_dicts_service import apply_assignment_or_write
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.openfoam import FileCheckResult, OpenFOAMError, discover_case_files, verify_case
 from ofti.foam.tasks import Task
@@ -341,7 +342,7 @@ def auto_fix_missing_required_entries(
             except OpenFOAMError:
                 skipped.append(full_key)
                 continue
-            ok = write_entry(file_path, full_key, value)
+            ok = apply_assignment_or_write(case_path, file_path, full_key.split("."), value)
             if ok:
                 fixed.append(full_key)
             else:

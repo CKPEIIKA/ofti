@@ -3,7 +3,11 @@ from __future__ import annotations
 import contextlib
 import os
 import shutil
-import tomllib
+
+try:
+    import tomllib
+except ImportError:  # pragma: no cover - Python <3.11 fallback
+    import tomli as tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast

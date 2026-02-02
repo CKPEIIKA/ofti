@@ -74,7 +74,7 @@ def test_pipeline_runner_screen_runs_commands(tmp_path: Path, monkeypatch) -> No
         seen.update(kwargs)
         return completed
 
-    monkeypatch.setattr("ofti.tools.pipeline.run_trusted", fake_run)
+    monkeypatch.setattr("ofti.core.pipeline.run_trusted", fake_run)
     pipeline_runner_screen(screen, case_dir)
     assert seen.get("stdin") == ""
 

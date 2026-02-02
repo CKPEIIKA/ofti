@@ -17,6 +17,14 @@ except Exception:  # pragma: no cover - optional fallback
     FoamFieldFile = None  # type: ignore[assignment]
     FOAMLIB_AVAILABLE = False
 
+try:  # pragma: no cover - optional preprocessing extras
+    from foamlib.preprocessing.of_dict import FoamDictAssignment, FoamDictInstruction
+    FOAMLIB_PREPROCESSING = True
+except Exception:  # pragma: no cover - optional fallback
+    FoamDictAssignment = None  # type: ignore[assignment]
+    FoamDictInstruction = None  # type: ignore[assignment]
+    FOAMLIB_PREPROCESSING = False
+
 
 def available() -> bool:
     return FOAMLIB_AVAILABLE
@@ -101,6 +109,15 @@ def read_field_entry(file_path: Path, key: str) -> str:
     return _dump_entry_value(key_name, node)
 
 
+def read_field_entry_node(file_path: Path, key: str) -> object:
+    field_file = _foam_field_file(file_path)
+    key_parts = _split_key(key)
+    node = field_file.getone(key_parts if key_parts else None)
+    if node is None:
+        raise KeyError(key)
+    return node
+
+
 def _foamlib_can_write(value: str) -> bool:
     value = value.strip()
     if not value:
@@ -134,6 +151,10 @@ def _parse_uniform_value(value: str) -> object | None:
 
 
 def write_entry(file_path: Path, key: str, value: str) -> bool:
+    if FOAMLIB_PREPROCESSING:
+        ok = _write_entry_with_assignment(file_path, key, value)
+        if ok:
+            return True
     foam_file = _foam_file(file_path)
     key_parts = _split_key(key)
     cleaned = value.strip()
@@ -172,6 +193,29 @@ def write_field_entry(file_path: Path, key: str, value: str) -> bool:
         return False
     with field_file:
         field_file[key_parts if key_parts else None] = parsed
+    return True
+
+
+def _write_entry_with_assignment(file_path: Path, key: str, value: str) -> bool:
+    if not FOAMLIB_PREPROCESSING or FoamDictAssignment is None or FoamDictInstruction is None:
+        return False
+    cleaned = value.strip()
+    if cleaned.endswith(";"):
+        cleaned = cleaned[:-1].strip()
+    parsed = _parse_uniform_value(cleaned)
+    payload: object
+    if parsed is not None:
+        payload = parsed
+    else:
+        if not _foamlib_can_write(cleaned):
+            return False
+        payload = cleaned
+    try:
+        instruction = FoamDictInstruction(file_name=file_path, keys=list(_split_key(key)))
+        assignment = FoamDictAssignment(instruction=instruction, value=payload)
+        assignment.set_value()
+    except Exception:
+        return False
     return True
 
 

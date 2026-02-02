@@ -8,6 +8,17 @@ from pathlib import Path
 from ofti.foam import openfoam
 from ofti.foamlib.adapter import write_entry
 
+try:  # pragma: no cover - optional preprocessing extras
+    from foamlib.preprocessing.case_modifier import CaseModifier, CaseParameter
+    from foamlib.preprocessing.of_dict import FoamDictAssignment, FoamDictInstruction
+    FOAMLIB_PREPROCESSING = True
+except Exception:  # pragma: no cover - optional fallback
+    CaseModifier = None  # type: ignore[assignment]
+    CaseParameter = None  # type: ignore[assignment]
+    FoamDictAssignment = None  # type: ignore[assignment]
+    FoamDictInstruction = None  # type: ignore[assignment]
+    FOAMLIB_PREPROCESSING = False
+
 
 class ParametricWriteError(RuntimeError):
     def __init__(self, entry: str, target: Path) -> None:
@@ -34,6 +45,17 @@ def build_parametric_cases(
     *,
     output_root: Path | None = None,
 ) -> list[Path]:
+    if FOAMLIB_PREPROCESSING:
+        created = _build_parametric_cases_preprocessing(
+            case_path,
+            dict_path,
+            entry,
+            values,
+            output_root=output_root,
+        )
+        if created:
+            return created
+
     output_root = output_root or case_path.parent
     created: list[Path] = []
 
@@ -55,4 +77,52 @@ def build_parametric_cases(
             raise ParametricWriteError(entry, target_dict)
         created.append(dest)
 
+    return created
+
+
+def _build_parametric_cases_preprocessing(
+    case_path: Path,
+    dict_path: Path,
+    entry: str,
+    values: Iterable[str],
+    *,
+    output_root: Path | None = None,
+) -> list[Path]:
+    if not FOAMLIB_PREPROCESSING:
+        return []
+    if (
+        CaseModifier is None
+        or FoamDictAssignment is None
+        or FoamDictInstruction is None
+        or CaseParameter is None
+    ):
+        return []
+    output_root = output_root or case_path.parent
+    created: list[Path] = []
+
+    for raw_value in values:
+        value = raw_value.strip()
+        if not value:
+            continue
+        suffix = _sanitize_value(value)
+        dest = output_root / f"{case_path.name}_{entry.replace('.', '_')}_{suffix}"
+        if dest.exists():
+            raise FileExistsError(dest)
+        instruction = FoamDictInstruction(
+            file_name=dict_path,
+            keys=[part for part in entry.split(".") if part],
+        )
+        assignment = FoamDictAssignment(instruction=instruction, value=value)
+        case_mod = CaseModifier(
+            template_case=case_path,
+            output_case=dest,
+            key_value_pairs=[assignment],
+            case_parameters=[
+                CaseParameter(category="entry", name=entry),
+                CaseParameter(category="value", name=value),
+            ],
+        )
+        case_mod.create_case()
+        case_mod.modify_case()
+        created.append(dest)
     return created

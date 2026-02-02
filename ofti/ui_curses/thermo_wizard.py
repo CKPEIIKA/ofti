@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.entries import Entry, autoformat_value
-from ofti.core.entry_io import read_entry, write_entry
+from ofti.core.entry_io import read_entry
+from ofti.core.tool_dicts_service import apply_assignment_or_write
 from ofti.core.versioning import get_dict_path
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
@@ -207,7 +208,8 @@ def _write_value(path: Path, key: str, value: str) -> bool:
     cleaned = autoformat_value(value)
     if not cleaned.strip():
         return False
-    return write_entry(path, key, cleaned)
+    case_path = path.parent.parent
+    return apply_assignment_or_write(case_path, path, key.split("."), cleaned)
 
 
 def _thermo_validator(value: str) -> str | None:

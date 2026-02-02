@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.times import time_directories
+from ofti.tools.input_prompts import prompt_line
 from ofti.tools.runner import _show_message
-from ofti.ui_curses.inputs import prompt_input
 
 
 def time_directory_pruner_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901
@@ -15,10 +15,9 @@ def time_directory_pruner_screen(stdscr: Any, case_path: Path) -> None:  # noqa:
         return
 
     stdscr.clear()
-    raw = prompt_input(stdscr, "Keep every Nth time directory (e.g. 10): ")
+    raw = prompt_line(stdscr, "Keep every Nth time directory (e.g. 10): ")
     if raw is None:
         return
-    raw = raw.strip()
     if not raw:
         return
     try:

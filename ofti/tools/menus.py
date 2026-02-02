@@ -29,6 +29,7 @@ from ofti.tools import (
     tool_dicts_postprocess,
     yplus,
 )
+from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import (
     _no_foam_active,
     _normalize_tool_name,
@@ -45,7 +46,6 @@ from ofti.ui_curses.boundary_matrix import boundary_matrix_screen
 from ofti.ui_curses.help import menu_hint, tools_help, tools_physics_help
 from ofti.ui_curses.high_speed import high_speed_helper_screen
 from ofti.ui_curses.initial_conditions import initial_conditions_screen
-from ofti.ui_curses.menus import Menu
 from ofti.ui_curses.snappy_toggle import snappy_staged_screen
 from ofti.ui_curses.thermo_wizard import thermophysical_wizard_screen
 
@@ -322,10 +322,11 @@ def tools_screen(  # noqa: C901
             if status_line and last_status
             else last_status or status_line
         )
-        menu = Menu(
+        menu = build_menu(
             stdscr,
             "Tools",
             [*labels, "Back"],
+            menu_key="menu:tools",
             hint_provider=hint_for,
             status_line=status,
             disabled_indices=disabled,
@@ -384,16 +385,14 @@ def physics_tools_screen(
     ]
     disabled = {1} if _no_foam_active() else set()
     while True:
-        menu = Menu(
+        menu = build_menu(
             stdscr,
             "Tools: Physics",
             options,
-            disabled_indices=disabled,
+            menu_key="menu:tools_physics",
             command_handler=command_handler,
             command_suggestions=command_suggestions,
-            hint_provider=lambda idx: menu_hint("menu:tools_physics", options[idx])
-            if 0 <= idx < len(options)
-            else "",
+            disabled_indices=disabled,
             help_lines=tools_physics_help(),
         )
         choice = menu.navigate()

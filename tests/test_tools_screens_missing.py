@@ -82,7 +82,8 @@ def test_run_checkmesh_and_decompose(monkeypatch, tmp_path: Path) -> None:
     (case_dir / "system").mkdir(parents=True)
     (case_dir / "system" / "decomposeParDict").write_text("numberOfSubdomains 2;\n")
     completed = types.SimpleNamespace(returncode=0, stdout="Mesh OK", stderr="")
-    monkeypatch.setattr("ofti.tools.run.run_trusted", lambda *_a, **_k: completed)
+    monkeypatch.setattr("ofti.tools.run.run_tool_command_capture", lambda *_a, **_k: completed)
+    monkeypatch.setattr("ofti.tools.run.run_tool_command", lambda *_a, **_k: None)
     monkeypatch.setattr(Viewer, "display", lambda *_: None)
     run_checkmesh(FakeScreen(keys=[ord("h")]), case_dir)
     run_decomposepar(FakeScreen(), case_dir)
@@ -165,13 +166,13 @@ def test_time_pruner_and_setfields(monkeypatch, tmp_path: Path) -> None:
     (case_dir / "0").mkdir(parents=True)
     (case_dir / "1").mkdir(parents=True)
     (case_dir / "2").mkdir(parents=True)
-    monkeypatch.setattr("ofti.tools.time_pruner.prompt_input", lambda *_: "2")
+    monkeypatch.setattr("ofti.tools.time_pruner.prompt_line", lambda *_: "2")
     time_directory_pruner_screen(FakeScreen(), case_dir)
 
     (case_dir / "system").mkdir(exist_ok=True)
     (case_dir / "system" / "setFieldsDict").write_text("defaultFieldValues();\n")
     monkeypatch.setattr("ofti.tools.tool_dicts_prompts._run_simple_tool", lambda *_: None)
-    monkeypatch.setattr("ofti.tools.tool_dicts_prompts.prompt_input", lambda *_: "")
+    monkeypatch.setattr("ofti.tools.tool_dicts_prompts.prompt_args_line", lambda *_: [])
     set_fields_prompt(FakeScreen(), case_dir)
 
 
@@ -211,7 +212,7 @@ def test_pipeline_editor_and_sampling(monkeypatch, tmp_path: Path) -> None:
     (case_dir / "system").mkdir()
     (case_dir / "system" / "topoSetDict").write_text("actions();\n")
     monkeypatch.setattr("ofti.ui_curses.menus.Menu.navigate", lambda *_: 0)
-    monkeypatch.setattr("ofti.tools.postprocessing.run_trusted", lambda *_a, **_k: types.SimpleNamespace(returncode=0, stdout="", stderr=""))
+    monkeypatch.setattr("ofti.tools.postprocessing.run_tool_command", lambda *_a, **_k: None)
     postprocessing.sampling_sets_screen(FakeScreen(), case_dir)
 
 
@@ -223,7 +224,7 @@ def test_parametric_presets_screen(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr("ofti.tools.postprocessing.build_parametric_cases", lambda *_a, **_k: [case_dir])
     monkeypatch.setattr("ofti.tools.postprocessing.run_cases", lambda *_a, **_k: [])
     monkeypatch.setattr("ofti.ui_curses.menus.Menu.navigate", lambda *_: 0)
-    monkeypatch.setattr("ofti.tools.postprocessing.prompt_input", lambda *_: "n")
+    monkeypatch.setattr("ofti.tools.postprocessing.prompt_line", lambda *_: "n")
     monkeypatch.setattr("ofti.ui_curses.viewer.Viewer.display", lambda *_: None)
     postprocessing.parametric_presets_screen(FakeScreen(), case_dir)
 
@@ -237,8 +238,9 @@ def test_parametric_study_screen(monkeypatch, tmp_path: Path) -> None:
     case_dir.mkdir()
     monkeypatch.setattr("ofti.tools.parametric.build_parametric_cases", lambda *_a, **_k: [case_dir])
     monkeypatch.setattr("ofti.tools.parametric.run_cases", lambda *_a, **_k: [])
-    monkeypatch.setattr("ofti.tools.parametric.prompt_input", lambda *_: "application")
+    monkeypatch.setattr("ofti.tools.parametric.prompt_line", lambda *_: "application")
     monkeypatch.setattr("ofti.ui_curses.viewer.Viewer.display", lambda *_: None)
+    monkeypatch.setattr("ofti.ui_curses.menus.fzf_enabled", lambda: False)
     from ofti.tools.parametric import foamlib_parametric_study_screen
     screen = FakeScreen(inputs=["system/controlDict", "application", "simpleFoam", "n"])
     foamlib_parametric_study_screen(screen, case_dir)

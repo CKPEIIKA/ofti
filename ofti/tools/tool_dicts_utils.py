@@ -3,10 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ofti.foam.subprocess_utils import run_trusted
+from ofti.core.tool_dicts_service import ensure_dict
 from ofti.foamlib import adapter as foamlib_integration
 from ofti.tools.runner import _show_message
-from ofti.ui_curses.inputs import prompt_input
 from ofti.ui_curses.viewer import Viewer
 
 
@@ -29,57 +28,16 @@ def _ensure_tool_dict(
     if ch not in (ord("y"), ord("Y")):
         return False
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    generated = _generate_tool_dict_with_helper(case_path, helper_cmd, path)
-    if not generated:
-        _write_stub_dict(path, name)
+    result = ensure_dict(
+        case_path,
+        name,
+        path,
+        helper_cmd,
+        generate=True,
+    )
+    if not result.created:
+        return False
     return True
-
-
-def _generate_tool_dict_with_helper(
-    case_path: Path,
-    helper_cmd: list[str] | None,
-    path: Path,
-) -> bool:
-    if not helper_cmd:
-        return False
-    try:
-        result = run_trusted(
-            helper_cmd,
-            cwd=case_path,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
-        return False
-    output = (result.stdout or "").strip()
-    if result.returncode == 0 and output and "FoamFile" in output:
-        try:
-            path.write_text(output + "\n")
-        except OSError:
-            return False
-        return True
-    return False
-
-
-def _write_stub_dict(path: Path, tool_name: str) -> None:
-    template = [
-        "/*--------------------------------*- C++ -*----------------------------------*\\",
-        f"| OpenFOAM {tool_name} dictionary (stub)                           |",
-        "\\*---------------------------------------------------------------------------*/",
-        "FoamFile",
-        "{",
-        "    version     2.0;",
-        "    format      ascii;",
-        "    class       dictionary;",
-        f"    object      {path.name};",
-        "}",
-        "",
-        "// TODO: fill in tool configuration.",
-        "",
-    ]
-    path.write_text("\n".join(template))
 
 
 def _open_dict_preview(stdscr: Any, path: Path) -> None:
@@ -102,11 +60,3 @@ def _open_dict_preview(stdscr: Any, path: Path) -> None:
             header_lines = []
     viewer = Viewer(stdscr, "\n".join(header_lines) + content)
     viewer.display()
-
-
-def _prompt_line(stdscr: Any, prompt: str) -> str:
-    stdscr.clear()
-    value = prompt_input(stdscr, prompt)
-    if value is None:
-        return ""
-    return value.strip()

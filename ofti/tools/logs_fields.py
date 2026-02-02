@@ -6,9 +6,8 @@ from typing import Any, cast
 
 from ofti.core.times import latest_time
 from ofti.foamlib import adapter as foamlib_integration
+from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
-from ofti.ui_curses.help import menu_hint
-from ofti.ui_curses.menus import Menu
 from ofti.ui_curses.viewer import Viewer
 
 
@@ -22,15 +21,12 @@ def field_summary_screen(stdscr: Any, case_path: Path) -> None:
         _show_message(stdscr, f"No field files found in {time_dir}.")
         return
     labels = [p.name for p in files]
-    menu = Menu(
+    menu = build_menu(
         stdscr,
         f"Select field ({time_dir.name})",
         [*labels, "Back"],
-        hint_provider=lambda idx: (
-            "Select field file for summary."
-            if 0 <= idx < len(labels)
-            else menu_hint("menu:field_select", "Back")
-        ),
+        menu_key="menu:field_select",
+        item_hint="Select field file for summary.",
     )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels):

@@ -3,7 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 
 from ofti.core.entry_io import list_subkeys, read_entry
-from ofti.core.validation import Validator, as_float, as_int, bool_flag, non_empty, vector_values
+from ofti.core.validation import (
+    Validator,
+    as_float,
+    as_int,
+    bool_flag,
+    dimension_set_values,
+    dimensioned_value,
+    field_value,
+    non_empty,
+    vector_values,
+)
 from ofti.foam.openfoam import (
     OpenFOAMError,
     get_entry_comments,
@@ -142,6 +152,19 @@ def choose_validator(key: str, value: str) -> tuple[Validator, str]:
     if looks_like_dict(value):
         return non_empty, "dict"
 
+    key_lower = key.lower()
+
+    if key_lower.endswith("dimensions") or key_lower.endswith("dimension"):
+        return dimension_set_values, "dimensions"
+
+    if key_lower.endswith("internalfield") or (
+        "boundaryfield" in key_lower and key_lower.endswith("value")
+    ):
+        return field_value, "field"
+
+    if value.strip().startswith("[") and "]" in value:
+        return dimensioned_value, "dimensioned"
+
     # Prefer vector validation when the value looks like a vector.
     # Only treat as vector if it actually parses as a vector; otherwise
     # fall back to scalar / key-based heuristics (e.g. schemes like
@@ -189,36 +212,64 @@ def _foamlib_type_info(file_path: Path, _full_key: str) -> list[str]:
 
 
 try:  # pragma: no cover - optional dependency for richer type labels
-    from foamlib._files.types import Dimensioned as FoamlibDimensioned
-    from foamlib._files.types import DimensionSet as FoamlibDimensionSet
+    from foamlib.typing import Dimensioned as FoamlibDimensioned
+    from foamlib.typing import DimensionSet as FoamlibDimensionSet
+    from foamlib.typing import Field as FoamlibField
 except Exception:  # pragma: no cover - foamlib missing or changed
     FoamlibDimensionSet = None  # type: ignore[assignment]
     FoamlibDimensioned = None  # type: ignore[assignment]
+    FoamlibField = None  # type: ignore[assignment]
 
 
-def _foamlib_node_label(node: object) -> str | None:
-    label: str | None
+def _foamlib_node_label(node: object) -> str | None:  # noqa: C901
     if hasattr(node, "keys"):
-        label = "dict"
-    elif FoamlibDimensionSet is not None and isinstance(node, FoamlibDimensionSet):
-        label = "dimensions"
-    elif FoamlibDimensioned is not None and isinstance(node, FoamlibDimensioned):
-        label = "dimensioned"
-    elif isinstance(node, bool):
-        label = "bool"
-    elif isinstance(node, int):
-        label = "int"
-    elif isinstance(node, float):
-        label = "float"
-    elif isinstance(node, str):
-        label = "word"
-    elif hasattr(node, "shape"):
-        label = f"array {getattr(node, 'shape', '')}"
-    elif isinstance(node, (list, tuple)):
-        label = f"list ({len(node)})"
-    else:
-        label = type(node).__name__
-    return label
+        return "dict"
+    if FoamlibDimensionSet is not None and isinstance(node, FoamlibDimensionSet):
+        return "dimensions"
+    if FoamlibDimensioned is not None and isinstance(node, FoamlibDimensioned):
+        return "dimensioned"
+    if FoamlibField is not None:
+        try:
+            if isinstance(node, FoamlibField):
+                return "field"
+        except TypeError:
+            pass
+    if isinstance(node, bool):
+        return "bool"
+    if isinstance(node, int):
+        return "int"
+    if isinstance(node, float):
+        return "float"
+    if isinstance(node, str):
+        return "word"
+    if hasattr(node, "shape"):
+        return f"array {getattr(node, 'shape', '')}"
+    if isinstance(node, (list, tuple)):
+        numeric = _numeric_list_info(node)
+        if numeric == "vector":
+            return "vector"
+        if numeric == "dimensions":
+            return "dimensions"
+        return f"list ({len(node)})"
+    return type(node).__name__
+
+
+def _numeric_list_info(values: object) -> str | None:
+    if not isinstance(values, (list, tuple)) or not values:
+        return None
+    floats: list[float] = []
+    for item in values:
+        if isinstance(item, bool):
+            return None
+        if isinstance(item, (int, float)):
+            floats.append(float(item))
+            continue
+        return None
+    if len(values) in (2, 3):
+        return "vector"
+    if len(values) == 7 and all(float(v).is_integer() for v in floats):
+        return "dimensions"
+    return None
 
 
 def detect_type_with_foamlib(
@@ -230,7 +281,10 @@ def detect_type_with_foamlib(
     if not (foamlib_integration.available() and foamlib_integration.is_foam_file(file_path)):
         return validator, type_label
     try:
-        node = foamlib_integration.read_entry_node(file_path, full_key)
+        if foamlib_integration.is_field_file(file_path):
+            node = foamlib_integration.read_field_entry_node(file_path, full_key)
+        else:
+            node = foamlib_integration.read_entry_node(file_path, full_key)
     except (KeyError, Exception):
         node = None
 
@@ -243,8 +297,10 @@ def detect_type_with_foamlib(
         "int": as_int,
         "float": as_float,
         "word": non_empty,
-        "dimensions": non_empty,
-        "dimensioned": non_empty,
+        "vector": vector_values,
+        "dimensions": dimension_set_values,
+        "dimensioned": dimensioned_value,
+        "field": field_value,
     }
     return mapping.get(label, validator), label
 

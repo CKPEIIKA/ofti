@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import shlex
 from pathlib import Path
 from typing import Any
 
 from ofti.core.times import latest_time
+from ofti.tools.input_prompts import prompt_args_line, prompt_line
+from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _run_simple_tool, _show_message
 from ofti.tools.tool_dicts_utils import _ensure_tool_dict
-from ofti.ui_curses.help import menu_hint
-from ofti.ui_curses.inputs import prompt_input
-from ofti.ui_curses.menus import Menu
 
 
-def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912
+def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:  # noqa: C901
     """Prompt for foamCalc arguments with helpers."""
     latest = latest_time(case_path)
     if not _ensure_tool_dict(
@@ -30,14 +28,12 @@ def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR09
             "Enter args manually",
             "Back",
         ]
-        menu = Menu(
+        menu = build_menu(
             stdscr,
             "foamCalc",
             options,
+            menu_key="menu:foamcalc_menu",
             status_line=f"Latest time: {latest}",
-            hint_provider=lambda idx: menu_hint("menu:foamcalc_menu", options[idx])
-            if 0 <= idx < len(options)
-            else "",
         )
         choice = menu.navigate()
         if choice in (-1, len(options) - 1):
@@ -47,30 +43,27 @@ def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR09
             return
         if choice == 1:
             ops = ["mag", "grad", "div", "Back"]
-            op_menu = Menu(
+            op_menu = build_menu(
                 stdscr,
                 "foamCalc common ops",
                 ops,
-                hint_provider=lambda idx: (
-                    "Select operator."
-                    if 0 <= idx < len(ops) - 1
-                    else menu_hint("menu:foamcalc_ops", "Back")
-                ),
+                menu_key="menu:foamcalc_ops",
+                item_hint="Select operator.",
             )
             op_choice = op_menu.navigate()
             if op_choice == -1 or op_choice == len(ops) - 1:
                 continue
             op = ops[op_choice]
-            field = prompt_input(stdscr, f"{op} field (default U): ")
+            field = prompt_line(stdscr, f"{op} field (default U): ")
             if field is None:
                 continue
-            field = field.strip() or "U"
+            field = field or "U"
             cmd = ["foamCalc", op, field, "-latestTime"]
             if op == "div":
-                flux = prompt_input(stdscr, "div flux field (default phi): ")
+                flux = prompt_line(stdscr, "div flux field (default phi): ")
                 if flux is None:
                     continue
-                flux = flux.strip() or "phi"
+                flux = flux or "phi"
                 cmd = ["foamCalc", op, flux, field, "-latestTime"]
             _run_simple_tool(stdscr, case_path, f"foamCalc {op}", cmd)
             return
@@ -78,17 +71,11 @@ def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR09
             stdscr.clear()
             stdscr.addstr("foamCalc args (e.g. components U -latestTime):\n")
             stdscr.addstr(f"Tip: latest time detected = {latest}\n")
-            args_line = prompt_input(stdscr, "> ")
-            if args_line is None:
+            args = prompt_args_line(stdscr, "> ")
+            if args is None:
                 return
-            args_line = args_line.strip()
-            if not args_line:
+            if not args:
                 _show_message(stdscr, "No arguments provided for foamCalc.")
-                continue
-            try:
-                args = shlex.split(args_line)
-            except ValueError as exc:
-                _show_message(stdscr, f"Invalid arguments: {exc}")
                 continue
             cmd = ["foamCalc", *args]
             _run_simple_tool(stdscr, case_path, "foamCalc", cmd)

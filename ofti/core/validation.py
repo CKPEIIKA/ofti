@@ -64,4 +64,68 @@ def vector_values(value: str) -> str | None:
     return None
 
 
+def dimension_set_values(value: str) -> str | None:
+    """
+    Validate OpenFOAM dimensions entry: seven integers in brackets.
+    Example: [0 1 -2 0 0 0 0]
+    """
+    text = value.strip().rstrip(";")
+    if "[" in text and "]" in text:
+        inner = text[text.find("[") + 1 : text.rfind("]")]
+    else:
+        return "Dimensions must be in brackets, e.g. [0 1 -2 0 0 0 0]."
+    parts = [p for p in inner.replace(",", " ").split() if p]
+    if len(parts) != 7:
+        return "Dimensions must contain exactly 7 integers."
+    for part in parts:
+        try:
+            int(part)
+        except ValueError:
+            return "Dimensions entries must be integers."
+    return None
+
+
+def dimensioned_value(value: str) -> str | None:
+    """
+    Validate dimensioned scalar/vector entries:
+      [0 2 -2 0 0 0 0] 1e-05
+    """
+    text = value.strip().rstrip(";")
+    if not text.startswith("["):
+        return "Dimensioned value must start with dimensions, e.g. [0 1 -2 0 0 0 0] 1e-05."
+    if "]" not in text:
+        return "Dimensioned value missing closing bracket."
+    dims, rest = text.split("]", 1)
+    dims = dims + "]"
+    dims_err = dimension_set_values(dims)
+    if dims_err:
+        return dims_err
+    if not rest.strip():
+        return "Dimensioned value missing numeric value."
+    return None
+
+
+def field_value(value: str) -> str | None:
+    """
+    Validate OpenFOAM field values such as:
+      uniform 0
+      uniform (1 0 0)
+      nonuniform List<scalar> ...
+    """
+    text = value.strip().rstrip(";")
+    if not text:
+        return "Value must not be empty."
+    lower = text.lower()
+    if lower.startswith("uniform"):
+        parts = text.split(None, 1)
+        if len(parts) < 2 or not parts[1].strip():
+            return "Uniform field requires a value."
+        return None
+    if lower.startswith("nonuniform"):
+        if "list" in lower or "(" in text or "{" in text:
+            return None
+        return "Nonuniform field should include list data."
+    return "Field value should start with 'uniform' or 'nonuniform'."
+
+
 Validator = Callable[[str], str | None]

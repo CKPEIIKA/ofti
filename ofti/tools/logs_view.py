@@ -8,6 +8,7 @@ from typing import Any
 from ofti.core.checkmesh import extract_last_courant
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.tools.logs_select import _select_log_file
+from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
 from ofti.ui_curses.viewer import Viewer
 
@@ -35,18 +36,12 @@ def log_tail_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR091
         return
 
     labels = [p.name for p in log_files]
-    from ofti.ui_curses.help import menu_hint
-    from ofti.ui_curses.menus import Menu
-
-    menu = Menu(
+    menu = build_menu(
         stdscr,
         "Select log to tail",
         [*labels, "Back"],
-        hint_provider=lambda idx: (
-            "Select log to tail."
-            if 0 <= idx < len(labels)
-            else menu_hint("menu:log_tail_select", "Back")
-        ),
+        menu_key="menu:log_tail_select",
+        item_hint="Select log to tail.",
     )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels):

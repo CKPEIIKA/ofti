@@ -11,8 +11,9 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.entries import Entry, autoformat_value
-from ofti.core.entry_io import list_keywords, read_entry, write_entry
+from ofti.core.entry_io import list_keywords, read_entry
 from ofti.core.entry_meta import get_entry_metadata, refresh_entry_cache
+from ofti.core.tool_dicts_service import apply_assignment_or_write
 from ofti.core.validation import Validator
 from ofti.foam.config import fzf_enabled, get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
@@ -397,7 +398,7 @@ def _entry_browser_external_edit(
         return False
 
     formatted = autoformat_value(edited_value)
-    if not write_entry(file_path, full_key, formatted):
+    if not apply_assignment_or_write(case_path, file_path, full_key.split("."), formatted):
         callbacks.show_message(stdscr, "Failed to save value from editor.")
         return False
 
@@ -424,7 +425,7 @@ def _entry_browser_inline_edit(
 
     def on_save(new_value: str) -> bool:
         formatted = autoformat_value(new_value)
-        return write_entry(file_path, full_key, formatted)
+        return apply_assignment_or_write(case_path, file_path, full_key.split("."), formatted)
 
     editor = EntryEditor(
         stdscr,

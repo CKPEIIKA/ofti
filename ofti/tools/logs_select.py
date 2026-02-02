@@ -4,9 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.case import detect_solver
+from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
-from ofti.ui_curses.help import menu_hint
-from ofti.ui_curses.menus import Menu
 
 
 def _tail_text(text: str, max_lines: int = 20) -> str:
@@ -40,15 +39,12 @@ def _select_log_file(
         _show_message(stdscr, "No log.* files found in case directory.")
         return None
     labels = [p.name for p in log_files]
-    menu = Menu(
+    menu = build_menu(
         stdscr,
         title,
         [*labels, "Back"],
-        hint_provider=lambda idx: (
-            "Select log file."
-            if 0 <= idx < len(labels)
-            else menu_hint("menu:logs_select", "Back")
-        ),
+        menu_key="menu:logs_select",
+        item_hint="Select log file.",
     )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels):
@@ -71,15 +67,12 @@ def _select_solver_log_file(
         _show_message(stdscr, f"No log.{solver}* files found in case directory.")
         return None
     labels = [p.name for p in log_files]
-    menu = Menu(
+    menu = build_menu(
         stdscr,
         title,
         [*labels, "Back"],
-        hint_provider=lambda idx: (
-            "Select solver log."
-            if 0 <= idx < len(labels)
-            else menu_hint("menu:logs_select_solver", "Back")
-        ),
+        menu_key="menu:logs_select_solver",
+        item_hint="Select solver log.",
     )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels):

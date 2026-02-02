@@ -9,9 +9,10 @@ from ofti.app.commands import CommandCallbacks, command_suggestions, handle_comm
 from ofti.app.helpers import option_index, show_message
 from ofti.app.state import AppState, Screen
 from ofti.core.entries import Entry, autoformat_value
-from ofti.core.entry_io import list_keywords, list_subkeys, read_entry, write_entry
+from ofti.core.entry_io import list_keywords, list_subkeys, read_entry
 from ofti.core.entry_meta import choose_validator, detect_type_with_foamlib
 from ofti.core.syntax import find_suspicious_lines
+from ofti.core.tool_dicts_service import apply_assignment_or_write
 from ofti.foam.config import key_hint
 from ofti.foam.openfoam import OpenFOAMError
 from ofti.ui_curses.entry_browser import BrowserCallbacks, entry_browser_screen
@@ -292,7 +293,7 @@ def edit_entry_screen(
 
     def on_save(new_value: str) -> bool:
         formatted = autoformat_value(new_value)
-        return write_entry(file_path, full_key, formatted)
+        return apply_assignment_or_write(case_path, file_path, full_key.split("."), formatted)
 
     editor = EntryEditor(
         stdscr,

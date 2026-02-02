@@ -15,7 +15,7 @@ from ofti.core.boundary import (
     rename_boundary_patch,
     zero_dir,
 )
-from ofti.core.entry_io import write_entry
+from ofti.core.tool_dicts_service import apply_edit_plan, build_edit_plan
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
 from ofti.ui_curses.help import show_tool_help
@@ -567,12 +567,13 @@ def _apply_boundary_cell(
     file_path = zero_dir(case_path) / field
     type_key = f"boundaryField.{patch}.type"
     value_key = f"boundaryField.{patch}.value"
-    ok_type = write_entry(file_path, type_key, bc_type)
+    edits: list[tuple[Path, list[str], str]] = [
+        (file_path, type_key.split("."), bc_type),
+    ]
     if _type_requires_value(bc_type) and bc_value:
-        ok_value = write_entry(file_path, value_key, bc_value)
-    else:
-        ok_value = True
-    if not ok_type or not ok_value:
+        edits.append((file_path, value_key.split("."), bc_value))
+    failures = apply_edit_plan(case_path, build_edit_plan(edits))
+    if failures:
         _show_message(stdscr, "Failed to update boundary entry. No changes were applied.")
         return False
     matrix.data.setdefault(patch, {})[field] = BoundaryCell(

@@ -6,13 +6,13 @@ from typing import Any
 from ofti.foamlib.parametric import build_parametric_cases
 from ofti.foamlib.runner import run_cases
 from ofti.tools import postprocessing as post_tools
+from ofti.tools.input_prompts import prompt_line
+from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
-from ofti.ui_curses.inputs import prompt_input
-from ofti.ui_curses.menus import Menu
 from ofti.ui_curses.viewer import Viewer
 
 
-def foamlib_parametric_study_screen(  # noqa: C901, PLR0912
+def foamlib_parametric_study_screen(  # noqa: C901
     stdscr: Any,
     case_path: Path,
 ) -> None:
@@ -24,35 +24,27 @@ def foamlib_parametric_study_screen(  # noqa: C901, PLR0912
             _show_message(stdscr, "Errors in ofti.parametric; falling back to manual input.")
         elif presets:
             labels = [preset_item.name for preset_item in presets]
-            menu = Menu(stdscr, "Parametric wizard", [*labels, "Manual entry", "Back"])
+            menu = build_menu(
+                stdscr,
+                "Parametric wizard",
+                [*labels, "Manual entry", "Back"],
+                menu_key="menu:parametric_wizard",
+            )
             choice = menu.navigate()
             if choice == -1 or choice == len(labels) + 1:
                 return
             if choice < len(labels):
                 preset = presets[choice]
 
-    if preset is not None:
-        dict_input = preset.dict_path
-        entry = preset.entry
-        values = preset.values
-    else:
-        dict_input = _prompt_line(
-            stdscr,
-            "Dictionary path (default system/controlDict): ",
-        )
-        if not dict_input:
-            dict_input = "system/controlDict"
-        entry = _prompt_line(stdscr, "Entry key (e.g. application): ")
-        if not entry:
-            _show_message(stdscr, "Entry key is required.")
-            return
-        values_line = _prompt_line(stdscr, "Values (comma-separated): ")
-        values = [val.strip() for val in values_line.split(",") if val.strip()]
-        if not values:
-            _show_message(stdscr, "No values provided.")
-            return
-    run_line = _prompt_line(stdscr, "Run solver for each case? [y/N]: ")
-    run_solver = run_line.strip().lower().startswith("y")
+    dict_input = preset.dict_path if preset else "system/controlDict"
+    entry = preset.entry if preset else ""
+    values = preset.values if preset else []
+    run_solver = False
+
+    form = _parametric_form(stdscr, dict_input, entry, values, run_solver)
+    if form is None:
+        return
+    dict_input, entry, values, run_solver = form
 
     try:
         created = build_parametric_cases(
@@ -83,7 +75,60 @@ def foamlib_parametric_study_screen(  # noqa: C901, PLR0912
 
 def _prompt_line(stdscr: Any, prompt: str) -> str:
     stdscr.clear()
-    value = prompt_input(stdscr, prompt)
+    value = prompt_line(stdscr, prompt)
     if value is None:
         return ""
     return value.strip()
+
+
+def _parametric_form(
+    stdscr: Any,
+    dict_path: str,
+    entry: str,
+    values: list[str],
+    run_solver: bool,
+) -> tuple[str, str, list[str], bool] | None:
+    while True:
+        values_text = ", ".join(values) if values else "<none>"
+        options = [
+            f"Dictionary: {dict_path or 'system/controlDict'}",
+            f"Entry: {entry or '<required>'}",
+            f"Values: {values_text}",
+            f"Run solver: {'yes' if run_solver else 'no'}",
+            "Run",
+            "Back",
+        ]
+        menu = build_menu(
+            stdscr,
+            "Parametric wizard",
+            options,
+            menu_key="menu:parametric_form",
+            item_hint="Edit field or run.",
+        )
+        choice = menu.navigate()
+        if choice in (-1, len(options) - 1):
+            return None
+        if choice == 0:
+            updated = _prompt_line(
+                stdscr,
+                "Dictionary path (default system/controlDict): ",
+            )
+            dict_path = updated or "system/controlDict"
+        elif choice == 1:
+            updated = _prompt_line(stdscr, "Entry key (e.g. application): ")
+            if updated:
+                entry = updated
+        elif choice == 2:
+            updated = _prompt_line(stdscr, "Values (comma-separated): ")
+            if updated:
+                values = [val.strip() for val in updated.split(",") if val.strip()]
+        elif choice == 3:
+            run_solver = not run_solver
+        elif choice == 4:
+            if not entry:
+                _show_message(stdscr, "Entry key is required.")
+                continue
+            if not values:
+                _show_message(stdscr, "Provide at least one value.")
+                continue
+            return dict_path or "system/controlDict", entry, values, run_solver
