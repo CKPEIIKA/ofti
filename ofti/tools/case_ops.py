@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from ofti.foam.subprocess_utils import run_trusted
+from ofti.tools.input_prompts import prompt_line
 from ofti.tools.runner import _show_message
-from ofti.ui_curses.inputs import prompt_input
 from ofti.ui_curses.viewer import Viewer
 
 
@@ -37,12 +37,11 @@ def open_paraview_screen(stdscr: Any, case_path: Path) -> None:
 def clone_case(stdscr: Any, case_path: Path, name: str | None = None) -> None:
     if not name:
         stdscr.clear()
-        name = prompt_input(stdscr, "New case name (folder): ")
+        name = prompt_line(stdscr, "New case name (folder): ")
         if name is None:
             return
-        name = name.strip()
-    if not name:
-        return
+        if not name:
+            return
     dest = Path(name)
     if not dest.is_absolute():
         dest = case_path.parent / dest

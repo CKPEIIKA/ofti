@@ -6,9 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from ofti.tools.logs_analysis import _sparkline
+from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
-from ofti.ui_curses.help import menu_hint
-from ofti.ui_curses.menus import Menu
 from ofti.ui_curses.viewer import Viewer
 
 
@@ -28,15 +27,12 @@ def probes_viewer_screen(stdscr: Any, case_path: Path) -> None:
         return
 
     labels = [p.relative_to(case_path).as_posix() for p in candidates]
-    menu = Menu(
+    menu = build_menu(
         stdscr,
         "Select probe file",
         [*labels, "Back"],
-        hint_provider=lambda idx: (
-            "Select probe data file."
-            if 0 <= idx < len(labels)
-            else menu_hint("menu:probes_select", "Back")
-        ),
+        menu_key="menu:probes_select",
+        item_hint="Select probe data file.",
     )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels):

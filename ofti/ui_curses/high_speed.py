@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.boundary import zero_dir
-from ofti.core.entry_io import write_entry
 from ofti.core.high_speed import HighSpeedInputError, compute_high_speed_fields
+from ofti.core.tool_dicts_service import apply_edit_plan, build_edit_plan
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
 from ofti.ui_curses.inputs import prompt_input
@@ -41,9 +41,14 @@ def high_speed_helper_screen(stdscr: Any, case_path: Path) -> None:
 
     u_value = f"uniform ({velocity:.6g} 0 0)"
     p_value = f"uniform {total_pressure:.6g}"
-    ok_u = write_entry(u_path, "internalField", u_value)
-    ok_p = write_entry(p_path, "internalField", p_value)
-    if ok_u and ok_p:
+    plan = build_edit_plan(
+        [
+            (u_path, ["internalField"], u_value),
+            (p_path, ["internalField"], p_value),
+        ],
+    )
+    failures = apply_edit_plan(case_path, plan)
+    if not failures:
         _show_message(stdscr, "Updated internalField for U and p.")
         return
     _show_message(stdscr, "Failed to update one or more fields.")

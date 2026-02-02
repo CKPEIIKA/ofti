@@ -6,59 +6,33 @@ from typing import Any
 from ofti.core.case import read_number_of_subdomains
 from ofti.core.checkmesh import format_checkmesh_summary
 from ofti.core.templates import write_example_template
-from ofti.core.tool_output import CommandResult, format_command_result, format_log_blob
+from ofti.core.tool_output import format_log_blob
 from ofti.foam.config import key_hint
-from ofti.foam.subprocess_utils import run_trusted
-from ofti.tools.runner import (
-    _record_tool_status,
-    _show_message,
-    _with_no_foam_hint,
-    _write_tool_log,
-)
-from ofti.ui_curses.layout import status_message
+from ofti.tools.runner import _show_message, run_tool_command, run_tool_command_capture
 from ofti.ui_curses.viewer import Viewer
 
 
 def run_checkmesh(stdscr: Any, case_path: Path) -> None:
-    status_message(stdscr, "Running checkMesh...")
-    cmd = ["checkMesh"]
-    try:
-        result = run_trusted(
-            cmd,
-            cwd=case_path,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError as exc:
-        _show_message(stdscr, _with_no_foam_hint(f"Failed to run checkMesh: {exc}"))
+    result = run_tool_command_capture(
+        stdscr,
+        case_path,
+        "checkMesh",
+        ["checkMesh"],
+        status="Running checkMesh...",
+    )
+    if result is None:
         return
-    _write_tool_log(case_path, "checkMesh", result.stdout, result.stderr)
-    _record_tool_status("checkMesh", f"exit {result.returncode}")
     _show_checkmesh_summary(stdscr, result.stdout, result.stderr)
 
 
 def run_blockmesh(stdscr: Any, case_path: Path) -> None:
-    status_message(stdscr, "Running blockMesh...")
-    cmd = ["blockMesh"]
-    try:
-        result = run_trusted(
-            cmd,
-            cwd=case_path,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError as exc:
-        _show_message(stdscr, _with_no_foam_hint(f"Failed to run blockMesh: {exc}"))
-        return
-    _write_tool_log(case_path, "blockMesh", result.stdout, result.stderr)
-    _record_tool_status("blockMesh", f"exit {result.returncode}")
-    summary = format_command_result(
-        [f"$ cd {case_path}", "$ blockMesh"],
-        CommandResult(result.returncode, result.stdout, result.stderr),
+    run_tool_command(
+        stdscr,
+        case_path,
+        "blockMesh",
+        ["blockMesh"],
+        status="Running blockMesh...",
     )
-    Viewer(stdscr, summary).display()
 
 
 def run_decomposepar(stdscr: Any, case_path: Path) -> None:
@@ -77,26 +51,13 @@ def run_decomposepar(stdscr: Any, case_path: Path) -> None:
             else:
                 _show_message(stdscr, "No example template found for decomposeParDict.")
         return
-    status_message(stdscr, "Running decomposePar...")
-    cmd = ["decomposePar"]
-    try:
-        result = run_trusted(
-            cmd,
-            cwd=case_path,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError as exc:
-        _show_message(stdscr, _with_no_foam_hint(f"Failed to run decomposePar: {exc}"))
-        return
-    _write_tool_log(case_path, "decomposePar", result.stdout, result.stderr)
-    _record_tool_status("decomposePar", f"exit {result.returncode}")
-    summary = format_command_result(
-        [f"$ cd {case_path}", "$ decomposePar"],
-        CommandResult(result.returncode, result.stdout, result.stderr),
+    run_tool_command(
+        stdscr,
+        case_path,
+        "decomposePar",
+        ["decomposePar"],
+        status="Running decomposePar...",
     )
-    Viewer(stdscr, summary).display()
 
 
 def _show_checkmesh_summary(stdscr: Any, stdout: str, stderr: str) -> None:

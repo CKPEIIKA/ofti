@@ -9,7 +9,7 @@ description = "Curses-based OpenFOAM case editor"
 readme = "README.md"
 authors = [{name = "OpenFOAM TUI maintainers"}]
 license = {file = "LICENSE"}
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 keywords = ["OpenFOAM", "TUI", "curses"]
 classifiers = [
     "Programming Language :: Python :: 3",

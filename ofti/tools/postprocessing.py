@@ -4,15 +4,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ofti.core.tool_output import CommandResult, format_command_result
-from ofti.foam.subprocess_utils import run_trusted
 from ofti.foamlib.parametric import build_parametric_cases
 from ofti.foamlib.runner import run_cases
-from ofti.tools.runner import _show_message, _with_no_foam_hint
-from ofti.ui_curses.help import menu_hint
-from ofti.ui_curses.inputs import prompt_input
-from ofti.ui_curses.layout import status_message
-from ofti.ui_curses.menus import Menu
+from ofti.tools.input_prompts import prompt_line
+from ofti.tools.menu_helpers import build_menu
+from ofti.tools.runner import _show_message, run_tool_command
 from ofti.ui_curses.viewer import Viewer
 
 
@@ -26,15 +22,12 @@ def postprocessing_browser_screen(stdscr: Any, case_path: Path) -> None:
         _show_message(stdscr, "No postProcessing files found.")
         return
     labels = ["Summary"] + [p.relative_to(case_path).as_posix() for p in files] + ["Back"]
-    menu = Menu(
+    menu = build_menu(
         stdscr,
         "PostProcessing browser",
         labels,
-        hint_provider=lambda idx: (
-            "Open selected output."
-            if 0 <= idx < len(labels) - 1
-            else menu_hint("menu:postprocessing_browser", "Back")
-        ),
+        menu_key="menu:postprocessing_browser",
+        item_hint="Open selected output.",
     )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels) - 1:
@@ -56,16 +49,13 @@ def sampling_sets_screen(stdscr: Any, case_path: Path) -> None:
     options = _sampling_options(case_path)
     labels = [opt.label for opt in options] + ["Back"]
     disabled = {idx for idx, opt in enumerate(options) if not opt.enabled}
-    menu = Menu(
+    menu = build_menu(
         stdscr,
         "Sampling & sets",
         labels,
+        menu_key="menu:sampling_sets",
+        item_hint="Run selected sampling tool.",
         disabled_indices=disabled,
-        hint_provider=lambda idx: (
-            "Run selected sampling tool."
-            if 0 <= idx < len(options)
-            else menu_hint("menu:sampling_sets", "Back")
-        ),
     )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels) - 1:
@@ -74,23 +64,13 @@ def sampling_sets_screen(stdscr: Any, case_path: Path) -> None:
     if not opt.enabled:
         _show_message(stdscr, f"Missing {opt.required_path}.")
         return
-    status_message(stdscr, f"Running {opt.label}...")
-    try:
-        result = run_trusted(
-            opt.command,
-            cwd=case_path,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError as exc:
-        _show_message(stdscr, _with_no_foam_hint(f"Failed to run {opt.label}: {exc}"))
-        return
-    summary = format_command_result(
-        [f"$ cd {case_path}", f"$ {' '.join(opt.command)}"],
-        CommandResult(result.returncode, result.stdout, result.stderr),
+    run_tool_command(
+        stdscr,
+        case_path,
+        opt.label,
+        opt.command,
+        status=f"Running {opt.label}...",
     )
-    Viewer(stdscr, summary).display()
 
 
 def parametric_presets_screen(stdscr: Any, case_path: Path) -> None:
@@ -107,15 +87,12 @@ def parametric_presets_screen(stdscr: Any, case_path: Path) -> None:
         _show_message(stdscr, "No presets found in ofti.parametric.")
         return
     labels = [preset.name for preset in presets] + ["Back"]
-    menu = Menu(
+    menu = build_menu(
         stdscr,
         "Parametric presets",
         labels,
-        hint_provider=lambda idx: (
-            "Run selected preset."
-            if 0 <= idx < len(presets)
-            else menu_hint("menu:parametric_presets", "Back")
-        ),
+        menu_key="menu:parametric_presets",
+        item_hint="Run selected preset.",
     )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels) - 1:
@@ -251,7 +228,7 @@ def _sampling_options(case_path: Path) -> list[SamplingOption]:
 
 def _prompt_line(stdscr: Any, prompt: str) -> str:
     stdscr.clear()
-    value = prompt_input(stdscr, prompt)
+    value = prompt_line(stdscr, prompt)
     if value is None:
         return ""
-    return value.strip()
+    return value

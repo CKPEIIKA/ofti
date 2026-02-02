@@ -20,7 +20,7 @@ def case_metadata(case_path: Path) -> dict[str, str]:
     status = "ran" if latest not in ("0", "0.0", "") else "clean"
     parallel = detect_parallel_settings(case_path)
     mesh = detect_mesh_stats(case_path)
-    _cells, faces, points = mesh_counts(case_path)
+    cells, faces, points = mesh_counts(case_path)
     header_version = detect_case_header_version(case_path)
     foam_version = detect_openfoam_version()
     if foam_version == "unknown" and header_version != "unknown":
@@ -34,6 +34,7 @@ def case_metadata(case_path: Path) -> dict[str, str]:
         "latest_time": latest,
         "status": status,
         "mesh": mesh,
+        "cells": str(cells) if cells is not None else "n/a",
         "faces": str(faces) if faces is not None else "n/a",
         "points": str(points) if points is not None else "n/a",
         "disk": _format_bytes(_directory_size(case_path)),
@@ -45,7 +46,7 @@ def case_metadata(case_path: Path) -> dict[str, str]:
 def case_metadata_quick(case_path: Path) -> dict[str, str]:
     latest = latest_time(case_path)
     status = "ran" if latest not in ("0", "0.0", "") else "clean"
-    _cells, faces, points = mesh_counts(case_path)
+    cells, faces, points = mesh_counts(case_path)
     header_version = detect_case_header_version(case_path)
     foam_version = detect_openfoam_version()
     if foam_version == "unknown" and header_version != "unknown":
@@ -59,6 +60,7 @@ def case_metadata_quick(case_path: Path) -> dict[str, str]:
         "latest_time": latest or "unknown",
         "status": status,
         "mesh": detect_mesh_stats(case_path),
+        "cells": str(cells) if cells is not None else "n/a",
         "faces": str(faces) if faces is not None else "n/a",
         "points": str(points) if points is not None else "n/a",
         "disk": _format_bytes(_directory_size(case_path)),

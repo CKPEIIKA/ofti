@@ -3,8 +3,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ofti.core.entry_io import read_entry, write_entry
+from ofti.core.entry_io import read_entry
 from ofti.core.mesh_info import mesh_counts
+from ofti.core.tool_dicts_service import apply_assignment_or_write
 from ofti.foam.openfoam import OpenFOAMError
 
 
@@ -75,8 +76,9 @@ def read_number_of_subdomains(decompose_dict: Path) -> int | None:
 
 
 def set_start_from_latest(control_dict: Path, latest: str) -> bool:
-    ok_start = write_entry(control_dict, "startFrom", "latestTime")
-    ok_time = write_entry(control_dict, "startTime", latest)
+    case_path = control_dict.parent.parent
+    ok_start = apply_assignment_or_write(case_path, control_dict, ["startFrom"], "latestTime")
+    ok_time = apply_assignment_or_write(case_path, control_dict, ["startTime"], latest)
     return ok_start and ok_time
 
 

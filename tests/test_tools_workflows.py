@@ -175,7 +175,7 @@ def test_latest_time_picks_max_directory(tmp_path: Path) -> None:
 
 def test_write_stub_dict_creates_file(tmp_path: Path) -> None:
     path = tmp_path / "topoSetDict"
-    from ofti.tools.tool_dicts_utils import _write_stub_dict
+    from ofti.core.tool_dicts_service import _write_stub_dict
 
     _write_stub_dict(path, "topoSet")
 

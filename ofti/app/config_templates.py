@@ -5,9 +5,8 @@ from typing import Any
 
 from ofti.core.templates import write_example_template
 from ofti.core.versioning import get_dict_path
+from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
-from ofti.ui_curses.help import menu_hint
-from ofti.ui_curses.menus import Menu
 
 
 def create_missing_config_screen(stdscr: Any, case_path: Path) -> None:
@@ -16,15 +15,12 @@ def create_missing_config_screen(stdscr: Any, case_path: Path) -> None:
         _show_message(stdscr, "All common config files exist.")
         return
     labels = [f"{label}: {path.relative_to(case_path)}" for label, path, _ in items]
-    menu = Menu(
+    menu = build_menu(
         stdscr,
         "Create missing config",
         [*labels, "Back"],
-        hint_provider=lambda idx: (
-            "Create selected template."
-            if 0 <= idx < len(labels)
-            else menu_hint("menu:config_templates", "Back")
-        ),
+        menu_key="menu:config_templates",
+        item_hint="Create selected template.",
     )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels):

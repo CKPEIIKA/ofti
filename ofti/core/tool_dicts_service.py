@@ -1,0 +1,138 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from ofti.core import entry_io
+from ofti.core.templates import write_example_template
+from ofti.foam.subprocess_utils import run_trusted
+from ofti.foamlib import adapter as foamlib_integration
+
+
+@dataclass(frozen=True)
+class DictCreationResult:
+    created: bool
+    source: str | None
+
+
+def ensure_dict(
+    case_path: Path,
+    name: str,
+    path: Path,
+    helper_cmd: list[str] | None,
+    *,
+    generate: bool,
+) -> DictCreationResult:
+    if path.is_file():
+        return DictCreationResult(True, None)
+    if not generate:
+        return DictCreationResult(False, None)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    generated = _generate_with_helper(case_path, helper_cmd, path)
+    if not generated:
+        _write_stub_dict(path, name)
+        return DictCreationResult(True, "stub")
+    return DictCreationResult(True, "example")
+
+
+def apply_assignment(
+    case_path: Path,
+    file_path: Path,
+    key_path: list[str],
+    value: str,
+) -> bool:
+    if not (foamlib_integration.available() and foamlib_integration.is_foam_file(file_path)):
+        return False
+    target = case_path / file_path if not file_path.is_absolute() else file_path
+    if not target.exists():
+        return False
+    key = ".".join(key_path)
+    return foamlib_integration.write_entry(target, key, value)
+
+
+def build_edit_plan(
+    edits: list[tuple[Path, list[str], str]],
+) -> list[tuple[Path, list[str], str]]:
+    """
+    Build a deterministic edit plan for applying config changes.
+    Currently returns the input list to preserve ordering; future
+    versions can normalize or coalesce edits.
+    """
+    return list(edits)
+
+
+def apply_assignment_or_write(
+    case_path: Path,
+    file_path: Path,
+    key_path: list[str],
+    value: str,
+) -> bool:
+    if apply_assignment(case_path, file_path, key_path, value):
+        return True
+    return entry_io.write_entry(file_path, ".".join(key_path), value)
+
+
+def apply_edit_plan(
+    case_path: Path,
+    edits: list[tuple[Path, list[str], str]],
+) -> list[tuple[Path, list[str], str]]:
+    """
+    Apply a list of (file_path, key_path, value) edits.
+    Returns a list of edits that failed.
+    """
+    failures: list[tuple[Path, list[str], str]] = []
+    for file_path, key_path, value in edits:
+        if not apply_assignment_or_write(case_path, file_path, key_path, value):
+            failures.append((file_path, key_path, value))
+    return failures
+
+
+def _generate_with_helper(
+    case_path: Path,
+    helper_cmd: list[str] | None,
+    path: Path,
+) -> bool:
+    if not helper_cmd:
+        return False
+    # Prefer example templates first; they are usually more complete than tool output.
+    rel_path = path.relative_to(case_path)
+    if write_example_template(path, rel_path):
+        return True
+    try:
+        result = run_trusted(
+            helper_cmd,
+            cwd=case_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return False
+    output = (result.stdout or "").strip()
+    if result.returncode == 0 and output and "FoamFile" in output:
+        try:
+            path.write_text(output + "\n")
+        except OSError:
+            return False
+        return True
+    return False
+
+
+def _write_stub_dict(path: Path, tool_name: str) -> None:
+    template = [
+        "/*--------------------------------*- C++ -*----------------------------------*\\",
+        f"| OpenFOAM {tool_name} dictionary (stub)                           |",
+        "\\*---------------------------------------------------------------------------*/",
+        "FoamFile",
+        "{",
+        "    version     2.0;",
+        "    format      ascii;",
+        "    class       dictionary;",
+        f"    object      {path.name};",
+        "}",
+        "",
+        "// TODO: fill in tool configuration.",
+        "",
+    ]
+    path.write_text("\n".join(template))

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from ofti.core import pipeline as pipeline_service
 from ofti.tools import pipeline
 
 
@@ -19,7 +20,7 @@ def test_read_pipeline_commands_parses_lines(tmp_path: Path) -> None:
     path = tmp_path / "Allrun"
     path.write_text("#!/bin/bash\n# OFTI-PIPELINE\n\nblockMesh\n# comment\nsnappyHexMesh\n")
 
-    commands, errors = pipeline._read_pipeline_commands(path)
+    commands, errors = pipeline_service.read_pipeline_commands(path)
 
     assert not errors
     assert commands == [["blockMesh"], ["snappyHexMesh"]]

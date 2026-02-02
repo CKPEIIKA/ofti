@@ -8,8 +8,9 @@ from typing import Any
 
 from ofti.core.boundary import list_field_files, zero_dir
 from ofti.core.entries import Entry
-from ofti.core.entry_io import read_entry, write_entry
+from ofti.core.entry_io import read_entry
 from ofti.core.entry_meta import choose_validator, detect_type_with_foamlib
+from ofti.core.tool_dicts_service import apply_assignment_or_write
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
 from ofti.foam.openfoam import OpenFOAMError
@@ -280,7 +281,7 @@ def _edit_initial_field(
     entry = Entry(key="internalField", value=value)
 
     def on_save(new_value: str) -> bool:
-        return write_entry(file_path, "internalField", new_value)
+        return apply_assignment_or_write(case_path, file_path, ["internalField"], new_value)
 
     editor = EntryEditor(
         stdscr,

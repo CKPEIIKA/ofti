@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import shlex
 import signal
 import subprocess
 from pathlib import Path
@@ -9,38 +8,34 @@ from typing import Any
 
 from ofti.foam.config import get_config
 from ofti.tools.helpers import resolve_openfoam_bashrc, with_bashrc
+from ofti.tools.input_prompts import prompt_command_line
 from ofti.tools.job_registry import finish_job, refresh_jobs, register_job
+from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import (
     _expand_command,
     _expand_shell_command,
     _show_message,
     _with_no_foam_hint,
-    load_postprocessing_presets,
-    load_tool_presets,
 )
-from ofti.ui_curses.inputs import prompt_input
-from ofti.ui_curses.menus import Menu
+from ofti.tools.tool_catalog import tool_catalog
 
 
 def run_tool_background_screen(stdscr: Any, case_path: Path) -> None:
     options = _background_tool_catalog(case_path)
     labels = [name for name, _cmd in options] + ["Back"]
-    menu = Menu(stdscr, "Run tool in background", labels)
+    menu = build_menu(
+        stdscr,
+        "Run tool in background",
+        labels,
+        menu_key="menu:job_start",
+    )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels) - 1:
         return
     name, cmd = options[choice]
     if name == "[custom] command":
-        line = prompt_input(stdscr, "Command line: ")
-        if line is None:
-            return
-        line = line.strip()
-        if not line:
-            return
-        try:
-            cmd = shlex.split(line)
-        except ValueError:
-            _show_message(stdscr, "Invalid command line.")
+        cmd = prompt_command_line(stdscr, "Command line: ")
+        if cmd is None:
             return
         name = cmd[0]
     _start_background_command(stdscr, case_path, name, cmd)
@@ -54,7 +49,12 @@ def stop_job_screen(stdscr: Any, case_path: Path) -> None:
     labels = [f"{job.get('name','job')} pid={job.get('pid','?')}" for job in jobs] + [
         "Back",
     ]
-    menu = Menu(stdscr, "Stop job", labels)
+    menu = build_menu(
+        stdscr,
+        "Stop job",
+        labels,
+        menu_key="menu:job_stop",
+    )
     choice = menu.navigate()
     if choice == -1 or choice == len(labels) - 1:
         return
@@ -74,19 +74,9 @@ def stop_job_screen(stdscr: Any, case_path: Path) -> None:
 
 
 def _background_tool_catalog(case_path: Path) -> list[tuple[str, list[str]]]:
-    base = [
-        ("blockMesh", ["blockMesh"]),
-        ("checkMesh", ["checkMesh"]),
-        ("snappyHexMesh", ["snappyHexMesh"]),
-        ("decomposePar", ["decomposePar"]),
-        ("reconstructPar", ["reconstructPar"]),
-        ("renumberMesh", ["renumberMesh"]),
-        ("transformPoints", ["transformPoints"]),
-    ]
-    extra = load_tool_presets(case_path)
-    post = [(f"[post] {name}", cmd) for name, cmd in load_postprocessing_presets(case_path)]
+    base = tool_catalog(case_path)
     custom = [("[custom] command", [])]
-    return base + extra + post + custom
+    return base + custom
 
 
 def _start_background_command(
