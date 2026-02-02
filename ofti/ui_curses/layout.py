@@ -61,10 +61,13 @@ def case_banner_lines(meta: dict[str, str]) -> list[str]:
     rows = [
         (f"Case: {meta['case_name']}", f"Solver: {meta['solver']}"),
         (f"Status: {meta['status']}", f"Latest time: {meta['latest_time']}"),
-        (f"Mesh: {meta['mesh']}", f"Parallel: {meta['parallel']}"),
+        (
+            f"Mesh: {meta['mesh']} Cells: {meta.get('cells', 'n/a')}",
+            f"Parallel: {meta['parallel']}",
+        ),
         (f"Faces: {meta.get('faces', 'n/a')} Points: {meta.get('points', 'n/a')}",
          f"Disk: {meta.get('disk', 'n/a')}"),
-        (env_label, ""),
+        (env_label, "Keys: ? help / search : cmd"),
         (f"Path: {meta['case_path']}", f"Log: {meta.get('log', 'none')}"),
     ]
     return foam_style_banner("ofti", rows)

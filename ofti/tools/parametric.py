@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ofti.core import postprocessing as postprocessing_core
 from ofti.foamlib.parametric import build_parametric_cases
 from ofti.foamlib.runner import run_cases
-from ofti.tools import postprocessing as post_tools
 from ofti.tools.input_prompts import prompt_line
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
@@ -17,9 +17,9 @@ def foamlib_parametric_study_screen(  # noqa: C901
     case_path: Path,
 ) -> None:
     presets_path = case_path / "ofti.parametric"
-    preset: post_tools.ParametricPreset | None = None
+    preset: postprocessing_core.ParametricPreset | None = None
     if presets_path.is_file():
-        presets, errors = post_tools._read_parametric_presets(presets_path)
+        presets, errors = postprocessing_core.read_parametric_presets(presets_path)
         if errors:
             _show_message(stdscr, "Errors in ofti.parametric; falling back to manual input.")
         elif presets:
@@ -108,27 +108,85 @@ def _parametric_form(
         choice = menu.navigate()
         if choice in (-1, len(options) - 1):
             return None
-        if choice == 0:
-            updated = _prompt_line(
-                stdscr,
-                "Dictionary path (default system/controlDict): ",
+        handlers = {
+            0: _update_parametric_dict,
+            1: _update_parametric_entry,
+            2: _update_parametric_values,
+            3: _toggle_parametric_run,
+        }
+        if choice in handlers:
+            dict_path, entry, values, run_solver = handlers[choice](
+                stdscr, dict_path, entry, values, run_solver,
             )
-            dict_path = updated or "system/controlDict"
-        elif choice == 1:
-            updated = _prompt_line(stdscr, "Entry key (e.g. application): ")
-            if updated:
-                entry = updated
-        elif choice == 2:
-            updated = _prompt_line(stdscr, "Values (comma-separated): ")
-            if updated:
-                values = [val.strip() for val in updated.split(",") if val.strip()]
-        elif choice == 3:
-            run_solver = not run_solver
-        elif choice == 4:
-            if not entry:
-                _show_message(stdscr, "Entry key is required.")
-                continue
-            if not values:
-                _show_message(stdscr, "Provide at least one value.")
-                continue
-            return dict_path or "system/controlDict", entry, values, run_solver
+            continue
+        if choice == 4:
+            result = _finalize_parametric(
+                stdscr, dict_path, entry, values, run_solver,
+            )
+            if result is not None:
+                return result
+
+
+def _update_parametric_dict(
+    stdscr: Any,
+    dict_path: str,
+    entry: str,
+    values: list[str],
+    run_solver: bool,
+) -> tuple[str, str, list[str], bool]:
+    updated = _prompt_line(
+        stdscr,
+        "Dictionary path (default system/controlDict): ",
+    )
+    return updated or "system/controlDict", entry, values, run_solver
+
+
+def _update_parametric_entry(
+    stdscr: Any,
+    dict_path: str,
+    entry: str,
+    values: list[str],
+    run_solver: bool,
+) -> tuple[str, str, list[str], bool]:
+    updated = _prompt_line(stdscr, "Entry key (e.g. application): ")
+    return dict_path, (updated or entry), values, run_solver
+
+
+def _update_parametric_values(
+    stdscr: Any,
+    dict_path: str,
+    entry: str,
+    values: list[str],
+    run_solver: bool,
+) -> tuple[str, str, list[str], bool]:
+    updated = _prompt_line(stdscr, "Values (comma-separated): ")
+    if updated:
+        values = [val.strip() for val in updated.split(",") if val.strip()]
+    return dict_path, entry, values, run_solver
+
+
+def _toggle_parametric_run(
+    stdscr: Any,
+    dict_path: str,
+    entry: str,
+    values: list[str],
+    run_solver: bool,
+) -> tuple[str, str, list[str], bool]:
+    _ = stdscr
+    return dict_path, entry, values, (not run_solver)
+
+
+def _finalize_parametric(
+    stdscr: Any,
+    dict_path: str,
+    entry: str,
+    values: list[str],
+    run_solver: bool,
+) -> tuple[str, str, list[str], bool] | None:
+    if not entry:
+        _show_message(stdscr, "Entry key is required.")
+        return None
+    if not values:
+        _show_message(stdscr, "Provide at least one value.")
+        return None
+    return dict_path or "system/controlDict", entry, values, run_solver

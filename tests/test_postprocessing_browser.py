@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from ofti.core.case import preferred_log_name
-from ofti.tools.postprocessing import _collect_postprocessing_files, _postprocessing_summary
+from ofti.core.postprocessing import collect_postprocessing_files, postprocessing_summary
 
 
 def test_postprocessing_summary_counts(tmp_path: Path) -> None:
@@ -11,7 +11,7 @@ def test_postprocessing_summary_counts(tmp_path: Path) -> None:
     (root / "forces" / "0.1").mkdir(parents=True)
     (root / "forces" / "0.1" / "forces.dat").write_text("0 1\n")
 
-    summary = _postprocessing_summary(root)
+    summary = postprocessing_summary(root)
     joined = "\n".join(summary)
     assert "probes: times=1 files=1" in joined
     assert "forces: times=1 files=1" in joined
@@ -23,7 +23,7 @@ def test_collect_postprocessing_files(tmp_path: Path) -> None:
     file_path = root / "probes" / "0" / "U"
     file_path.write_text("0 0 0\n")
 
-    files = _collect_postprocessing_files(root)
+    files = collect_postprocessing_files(root)
     assert files == [file_path]
 
 

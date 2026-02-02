@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from ofti.core.entry_io import list_subkeys, read_entry
@@ -153,49 +154,67 @@ def choose_validator(key: str, value: str) -> tuple[Validator, str]:
         return non_empty, "dict"
 
     key_lower = key.lower()
-
-    if key_lower.endswith("dimensions") or key_lower.endswith("dimension"):
-        return dimension_set_values, "dimensions"
-
-    if key_lower.endswith("internalfield") or (
-        "boundaryfield" in key_lower and key_lower.endswith("value")
-    ):
-        return field_value, "field"
-
-    if value.strip().startswith("[") and "]" in value:
-        return dimensioned_value, "dimensioned"
-
-    # Prefer vector validation when the value looks like a vector.
-    # Only treat as vector if it actually parses as a vector; otherwise
-    # fall back to scalar / key-based heuristics (e.g. schemes like
-    # "div(tauMC) Gauss linear" are not vectors even though they have
-    # parentheses in the name).
-    if "(" in value and ")" in value:
-        vec_error = vector_values(value)
-        if vec_error is None:
-            return vector_values, "vector"
-
-    # Try to infer scalar type from the value itself: check the last token
-    # for a numeric literal before falling back to key-based heuristics.
-    scalar_choice = _infer_scalar_choice(value)
-    if scalar_choice is not None:
-        return scalar_choice
-
-    numeric_choice = _infer_numeric_choice(value)
-    if numeric_choice is not None:
-        return numeric_choice
+    detectors = (
+        _validator_for_dimensions,
+        _validator_for_field,
+        _validator_for_dimensioned,
+        _validator_for_vector,
+        _validator_for_scalar,
+        _validator_for_numeric,
+    )
+    for detector in detectors:
+        result = detector(key_lower, value)
+        if result is not None:
+            return result
 
     validator = _guess_validator(key)
-    # Simple label based on which validator was chosen.
+    return validator, _label_for_validator(validator)
+
+
+def _validator_for_dimensions(key_lower: str, _value: str) -> tuple[Validator, str] | None:
+    if key_lower.endswith(("dimensions", "dimension")):
+        return dimension_set_values, "dimensions"
+    return None
+
+
+def _validator_for_field(key_lower: str, _value: str) -> tuple[Validator, str] | None:
+    if key_lower.endswith("internalfield"):
+        return field_value, "field"
+    if "boundaryfield" in key_lower and key_lower.endswith("value"):
+        return field_value, "field"
+    return None
+
+
+def _validator_for_dimensioned(_key_lower: str, value: str) -> tuple[Validator, str] | None:
+    if value.strip().startswith("[") and "]" in value:
+        return dimensioned_value, "dimensioned"
+    return None
+
+
+def _validator_for_vector(_key_lower: str, value: str) -> tuple[Validator, str] | None:
+    if "(" not in value or ")" not in value:
+        return None
+    if vector_values(value) is None:
+        return vector_values, "vector"
+    return None
+
+
+def _validator_for_scalar(_key_lower: str, value: str) -> tuple[Validator, str] | None:
+    return _infer_scalar_choice(value)
+
+
+def _validator_for_numeric(_key_lower: str, value: str) -> tuple[Validator, str] | None:
+    return _infer_numeric_choice(value)
+
+
+def _label_for_validator(validator: Validator) -> str:
     if validator is bool_flag:
-        label = "boolean-like"
-    elif validator is as_int:
-        label = "integer"
-    elif validator is as_float:
-        label = "float"
-    else:
-        label = "text"
-    return validator, label
+        return "boolean-like"
+    if validator is as_int:
+        return "integer"
+    if validator is as_float:
+        return "float"
+    return "text"
 
 
 def _read_optional_entry(file_path: Path, key: str) -> str | None:
@@ -221,29 +240,12 @@ except Exception:  # pragma: no cover - foamlib missing or changed
     FoamlibField = None  # type: ignore[assignment]
 
 
-def _foamlib_node_label(node: object) -> str | None:  # noqa: C901
-    if hasattr(node, "keys"):
-        return "dict"
-    if FoamlibDimensionSet is not None and isinstance(node, FoamlibDimensionSet):
-        return "dimensions"
-    if FoamlibDimensioned is not None and isinstance(node, FoamlibDimensioned):
-        return "dimensioned"
-    if FoamlibField is not None:
-        try:
-            if isinstance(node, FoamlibField):
-                return "field"
-        except TypeError:
-            pass
-    if isinstance(node, bool):
-        return "bool"
-    if isinstance(node, int):
-        return "int"
-    if isinstance(node, float):
-        return "float"
-    if isinstance(node, str):
-        return "word"
-    if hasattr(node, "shape"):
-        return f"array {getattr(node, 'shape', '')}"
+def _foamlib_node_label(node: object) -> str | None:
+    for predicate, label in _foamlib_label_predicates():
+        if predicate(node):
+            if label == "array":
+                return f"array {getattr(node, 'shape', '')}"
+            return label
     if isinstance(node, (list, tuple)):
         numeric = _numeric_list_info(node)
         if numeric == "vector":
@@ -252,6 +254,38 @@ def _foamlib_node_label(node: object) -> str | None:  # noqa: C901
             return "dimensions"
         return f"list ({len(node)})"
     return type(node).__name__
+
+
+def _foamlib_label_predicates() -> list[tuple[Callable[[object], bool], str]]:
+    predicates: list[tuple[Callable[[object], bool], str]] = [
+        (lambda node: hasattr(node, "keys"), "dict"),
+        (_is_dimension_set, "dimensions"),
+        (_is_dimensioned, "dimensioned"),
+        (_is_foamlib_field, "field"),
+        (lambda node: isinstance(node, bool), "bool"),
+        (lambda node: isinstance(node, int), "int"),
+        (lambda node: isinstance(node, float), "float"),
+        (lambda node: isinstance(node, str), "word"),
+        (lambda node: hasattr(node, "shape"), "array"),
+    ]
+    return predicates
+
+
+def _is_dimension_set(node: object) -> bool:
+    return FoamlibDimensionSet is not None and isinstance(node, FoamlibDimensionSet)
+
+
+def _is_dimensioned(node: object) -> bool:
+    return FoamlibDimensioned is not None and isinstance(node, FoamlibDimensioned)
+
+
+def _is_foamlib_field(node: object) -> bool:
+    if FoamlibField is None:
+        return False
+    try:
+        return isinstance(node, FoamlibField)
+    except TypeError:
+        return False
 
 
 def _numeric_list_info(values: object) -> str | None:

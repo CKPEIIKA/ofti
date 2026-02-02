@@ -5,21 +5,29 @@ import os
 import shutil
 import subprocess
 from contextlib import suppress
-from math import log10
 from pathlib import Path
 from typing import Any
 
-from ofti.core.boundary import list_field_files
 from ofti.core.case import read_number_of_subdomains
-from ofti.core.checkmesh import extract_last_courant
-from ofti.core.entry_io import read_entry
+from ofti.core.solver_checks import (
+    remove_empty_log,
+    resolve_solver_name,
+    truncate_log,
+    validate_initial_fields,
+)
+from ofti.core.solver_status import (
+    fatal_log_line,
+    last_courant_value,
+    last_solver_time,
+    latest_solver_job,
+    residual_spark_lines,
+    solver_status_text,
+)
 from ofti.foam.config import get_config, key_hint, key_in
-from ofti.foam.openfoam import OpenFOAMError
 from ofti.foam.subprocess_utils import resolve_executable
-from ofti.foamlib.logs import parse_residuals
 from ofti.tools.cleaning_utils import _require_wm_project_dir
 from ofti.tools.helpers import resolve_openfoam_bashrc, with_bashrc
-from ofti.tools.job_registry import finish_job, refresh_jobs, register_job
+from ofti.tools.job_registry import finish_job, register_job
 from ofti.tools.runner import (
     _expand_shell_command,
     _run_simple_tool,
@@ -31,13 +39,13 @@ require_wm_project_dir = _require_wm_project_dir
 
 
 def run_current_solver(stdscr: Any, case_path: Path) -> None:
-    solver, error = _resolve_solver_name(case_path)
+    solver, error = resolve_solver_name(case_path)
     if error:
         _show_message(stdscr, _with_no_foam_hint(error))
         return
     if not _ensure_zero_dir(stdscr, case_path):
         return
-    errors = _validate_initial_fields(case_path)
+    errors = validate_initial_fields(case_path)
     if errors:
         _show_message(stdscr, "\n".join(["Cannot run solver:", *errors]))
         return
@@ -51,7 +59,7 @@ def run_current_solver(stdscr: Any, case_path: Path) -> None:
         ch = stdscr.getch()
         if ch not in (ord("y"), ord("Y")):
             return
-        _truncate_log(log_path)
+        truncate_log(log_path)
     _run_simple_tool(
         stdscr,
         case_path,
@@ -63,20 +71,20 @@ def run_current_solver(stdscr: Any, case_path: Path) -> None:
 
 def run_current_solver_live(stdscr: Any, case_path: Path) -> None:
     """Run the solver and tail its log file live with a split-screen view."""
-    solver, error = _resolve_solver_name(case_path)
+    solver, error = resolve_solver_name(case_path)
     if error:
         _show_message(stdscr, _with_no_foam_hint(error))
         return
     if not _ensure_zero_dir(stdscr, case_path):
         return
-    errors = _validate_initial_fields(case_path)
+    errors = validate_initial_fields(case_path)
     if errors:
         _show_message(stdscr, "\n".join(["Cannot run solver:", *errors]))
         return
 
     log_path = case_path / f"log.{solver}"
     if log_path.exists():
-        if _remove_empty_log(log_path):
+        if remove_empty_log(log_path):
             pass
         else:
             stdscr.clear()
@@ -87,7 +95,7 @@ def run_current_solver_live(stdscr: Any, case_path: Path) -> None:
             ch = stdscr.getch()
             if ch not in (ord("y"), ord("Y")):
                 return
-            _truncate_log(log_path)
+            truncate_log(log_path)
 
     bashrc = resolve_openfoam_bashrc()
     if bashrc:
@@ -104,7 +112,7 @@ def run_current_solver_parallel(stdscr: Any, case_path: Path) -> None:
         return
     solver, subdomains = setup
     log_path = case_path / f"log.{solver}"
-    if log_path.exists() and not _remove_empty_log(log_path):
+    if log_path.exists() and not remove_empty_log(log_path):
         stdscr.clear()
         stdscr.addstr(
             f"Log {log_path.name} already exists. Rerun solver and overwrite log? [y/N]: ",
@@ -113,7 +121,7 @@ def run_current_solver_parallel(stdscr: Any, case_path: Path) -> None:
         ch = stdscr.getch()
         if ch not in (ord("y"), ord("Y")):
             return
-        _truncate_log(log_path)
+        truncate_log(log_path)
     mpi_exec = _resolve_mpi_launcher(stdscr)
     if not mpi_exec:
         return
@@ -167,54 +175,21 @@ def _run_solver_live_cmd(
 
 
 def solver_status_line(case_path: Path) -> str | None:
-    solver, _ = _resolve_solver_name(case_path)
+    solver, _ = resolve_solver_name(case_path)
     if not solver:
         return None
-    jobs = refresh_jobs(case_path)
-    solver_jobs = [job for job in jobs if job.get("name") == solver]
-    if not solver_jobs:
+    summary = latest_solver_job(case_path, solver)
+    if summary is None:
         return None
-    last = max(solver_jobs, key=lambda job: job.get("started_at") or 0)
-    status = last.get("status", "unknown")
-    if status == "running":
-        return f"{solver} running"
-    if status == "finished":
-        rc = last.get("returncode")
-        if rc is None:
-            text = f"{solver} finished"
-        elif rc == 0:
-            text = f"{solver} last exit 0"
-        else:
-            text = f"{solver} failed (exit {rc})"
-        return text
-    return f"{solver} {status}"
+    return solver_status_text(summary)
 
 
 def solver_job_running(case_path: Path) -> bool:
-    solver, _ = _resolve_solver_name(case_path)
+    solver, _ = resolve_solver_name(case_path)
     if not solver:
         return False
-    jobs = refresh_jobs(case_path)
-    return any(
-        job.get("name") == solver and job.get("status") == "running" for job in jobs
-    )
-
-
-def _resolve_solver_name(case_path: Path) -> tuple[str | None, str | None]:
-    control_dict = case_path / "system" / "controlDict"
-    if not control_dict.is_file():
-        return None, "system/controlDict not found in case directory."
-    try:
-        value = read_entry(control_dict, "application")
-    except OpenFOAMError as exc:
-        return None, f"Failed to read application: {exc}"
-    solver_line = value.strip()
-    if not solver_line:
-        return None, "application entry is empty."
-    solver = solver_line.split()[0].rstrip(";")
-    if not solver:
-        return None, "Could not determine solver from application entry."
-    return solver, None
+    summary = latest_solver_job(case_path, solver)
+    return summary is not None and summary.status == "running"
 
 
 def _ensure_zero_dir(stdscr: Any, case_path: Path) -> bool:
@@ -239,28 +214,6 @@ def _ensure_zero_dir(stdscr: Any, case_path: Path) -> bool:
     return True
 
 
-def _validate_initial_fields(case_path: Path) -> list[str]:
-    errors: list[str] = []
-    zero_dir = case_path / "0"
-    zero_orig = case_path / "0.orig"
-    if not zero_dir.is_dir():
-        if zero_orig.is_dir():
-            errors.append("0/ directory missing (only 0.orig present). Copy 0.orig -> 0 first.")
-        else:
-            errors.append("Missing 0/ initial conditions directory.")
-            return errors
-    fields = list_field_files(case_path)
-    if not fields:
-        errors.append("No field files detected in 0/ (or 0.orig).")
-        return errors
-    required = {"U", "p"}
-    missing = sorted(required - set(fields))
-    if missing:
-        folder_name = "0" if zero_dir.is_dir() else "0.orig"
-        errors.append(f"Missing fields in {folder_name}: {', '.join(missing)}")
-    return errors
-
-
 def _tail_process_log(  # noqa: C901, PLR0912
     stdscr: Any,
     case_path: Path,
@@ -280,8 +233,8 @@ def _tail_process_log(  # noqa: C901, PLR0912
                 text = ""
             lines = text.splitlines()
             tail = lines[-12:]
-            last_time = _extract_last_time(lines)
-            last_courant = extract_last_courant(lines)
+            last_time = last_solver_time(lines)
+            last_courant = last_courant_value(lines)
 
             stdscr.clear()
             height, width = stdscr.getmaxyx()
@@ -291,7 +244,7 @@ def _tail_process_log(  # noqa: C901, PLR0912
             header = f"{solver} ({status})  {back_hint}: {'stop' if running else 'back'}"
             with suppress(curses.error):
                 stdscr.addstr(header[: max(1, width - 1)] + "\n")
-            fatal_line = _find_fatal_line(lines)
+            fatal_line = fatal_log_line(lines)
             returncode = process.poll()
             if returncode is not None and returncode != 0:
                 error_line = f"ERROR: exit {returncode}"
@@ -310,7 +263,7 @@ def _tail_process_log(  # noqa: C901, PLR0912
             if summary:
                 with suppress(curses.error):
                     stdscr.addstr(summary[: max(1, width - 1)] + "\n")
-            residual_lines = _residual_spark_lines(lines, width)
+            residual_lines = residual_spark_lines(lines, width)
             for line in residual_lines:
                 with suppress(curses.error):
                     stdscr.addstr(line[: max(1, width - 1)] + "\n")
@@ -352,43 +305,17 @@ def _tail_process_log(  # noqa: C901, PLR0912
         stdscr.timeout(-1)
 
 
-def _extract_last_time(lines: list[str]) -> str | None:
-    for line in reversed(lines):
-        if "Time =" in line:
-            parts = line.split("Time =", 1)
-            if len(parts) == 2:
-                return parts[1].strip().split()[0]
-    return None
-
-
-def _find_fatal_line(lines: list[str]) -> str | None:
-    markers = [
-        "FOAM FATAL ERROR",
-        "FATAL ERROR",
-        "Cannot open file",
-        "cannot open file",
-        "cannot find file",
-        "No such file",
-        "file: ",
-    ]
-    for line in reversed(lines):
-        for marker in markers:
-            if marker in line:
-                return line.strip()
-    return None
-
-
 def _prepare_parallel_run(
     stdscr: Any,
     case_path: Path,
 ) -> tuple[str, int] | None:
-    solver, error = _resolve_solver_name(case_path)
+    solver, error = resolve_solver_name(case_path)
     if error:
         _show_message(stdscr, _with_no_foam_hint(error))
         return None
     if not _ensure_zero_dir(stdscr, case_path):
         return None
-    errors = _validate_initial_fields(case_path)
+    errors = validate_initial_fields(case_path)
     if errors:
         _show_message(stdscr, "\n".join(["Cannot run solver:", *errors]))
         return None
@@ -420,76 +347,7 @@ def _resolve_mpi_launcher(stdscr: Any) -> str | None:
             return None
 
 
-def _residual_spark_lines(lines: list[str], width: int) -> list[str]:
-    residuals = parse_residuals("\n".join(lines))
-    if not residuals:
-        return []
-    plot_width = max(10, min(30, width - 28))
-    preferred = ["p", "U", "Ux", "Uy", "Uz", "k", "omega", "epsilon"]
-    ordered = [field for field in preferred if field in residuals]
-    ordered += sorted(field for field in residuals if field not in ordered)
-    lines_out: list[str] = []
-    for field in ordered[:2]:
-        values = residuals.get(field, [])
-        if not values:
-            continue
-        plot = _sparkline(values, plot_width)
-        last = values[-1]
-        lines_out.append(f"Res {field:>6} {plot} last={last:.2g}")
-    return lines_out
-
-
-def _sparkline(values: list[float], width: int) -> str:
-    if not values or width <= 0:
-        return ""
-    if len(values) <= width:
-        sample = values
-    else:
-        step = len(values) / width
-        sample = [values[int(i * step)] for i in range(width)]
-
-    safe = [val if val > 0 else 1e-16 for val in sample]
-    vmin = min(safe)
-    vmax = max(safe)
-    if vmax <= 0:
-        vmax = 1e-16
-    ratio = vmax / vmin if vmin > 0 else vmax
-    if ratio > 1e3:
-        scaled = [log10(val) for val in safe]
-        vmin = min(scaled)
-        vmax = max(scaled)
-    else:
-        scaled = safe
-
-    levels = " .:-=+*#%@"
-    span = vmax - vmin
-    if span <= 0:
-        return levels[-1] * len(sample)
-    chars = []
-    for val in scaled:
-        norm = (val - vmin) / span
-        idx = round(norm * (len(levels) - 1))
-        idx = max(0, min(len(levels) - 1, idx))
-        chars.append(levels[idx])
-    return "".join(chars)
-
-
-def _remove_empty_log(log_path: Path) -> bool:
-    try:
-        if log_path.stat().st_size == 0:
-            log_path.unlink()
-            return True
-    except OSError:
-        pass
-    return False
-
-
-def _truncate_log(log_path: Path) -> None:
-    try:
-        log_path.write_text("")
-    except OSError:
-        with suppress(OSError):
-            log_path.unlink()
+ 
 
 
 def _clean_env(case_path: Path) -> dict[str, str]:
