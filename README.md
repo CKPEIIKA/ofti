@@ -1,3 +1,7 @@
+# DISCLAIMER
+
+THIS IS VIBE-CODED SOFTWARE. EXPECT ROUGH EDGES.
+
 # OFTI(1)
 
 ```
@@ -76,6 +80,4 @@ configs are missing. `:tool <name>` or `:<name>` runs any tool entry.
 
 GPL-3.0-or-later.
 
-## DISCLAIMER
-
-This is vibe-coded software. Expect rough edges.
+ 

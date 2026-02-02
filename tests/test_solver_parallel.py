@@ -55,7 +55,7 @@ def test_run_current_solver_parallel_invokes_mpirun(tmp_path: Path, monkeypatch)
     def fake_run(_stdscr, _case, _solver, cmd):
         seen["cmd"] = list(cmd)
 
-    monkeypatch.setattr("ofti.tools.solver.read_entry", lambda *_a, **_k: "simpleFoam;")
+    monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_a, **_k: "simpleFoam;")
     monkeypatch.setattr("ofti.tools.solver.read_number_of_subdomains", lambda *_a, **_k: 4)
     monkeypatch.setattr("ofti.tools.solver.resolve_executable", lambda *_a: "mpirun")
     monkeypatch.setattr("ofti.tools.solver._run_solver_live_cmd", fake_run)

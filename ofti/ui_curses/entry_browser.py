@@ -128,7 +128,7 @@ def entry_browser_screen(
                 return
         elif key_code == ord("o"):
             if _entry_browser_external_edit(
-                stdscr, file_path, cache, full_key, callbacks, use_cache,
+                stdscr, file_path, case_path, cache, full_key, callbacks, use_cache,
             ):
                 last_key = None
                 last_meta = None
@@ -382,6 +382,7 @@ def _entry_browser_scroll(index: int, list_scroll: int, stdscr: Any, total: int)
 def _entry_browser_external_edit(
     stdscr: Any,
     file_path: Path,
+    case_path: Path,
     cache: dict[str, tuple[str, str, list[str], list[str], list[str]]],
     full_key: str,
     callbacks: BrowserCallbacks,

@@ -47,8 +47,7 @@ def apply_assignment(
     target = case_path / file_path if not file_path.is_absolute() else file_path
     if not target.exists():
         return False
-    key = ".".join(key_path)
-    return foamlib_integration.write_entry(target, key, value)
+    return foamlib_integration.apply_assignment(case_path, target, key_path, value)
 
 
 def build_edit_plan(

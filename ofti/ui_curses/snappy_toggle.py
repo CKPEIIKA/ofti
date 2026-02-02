@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.entry_io import read_entry
-from ofti.core.tool_dicts_service import apply_assignment_or_write
+from ofti.core.tool_dicts_service import apply_edit_plan
 from ofti.foam.config import key_hint
 from ofti.foam.openfoam import OpenFOAMError
 from ofti.ui_curses.help import menu_hint
@@ -71,9 +71,11 @@ def _read_bool(path: Path, key: str, *, default: bool) -> bool:
 
 def _apply_toggles(path: Path, toggles: dict[str, bool]) -> None:
     case_path = path.parent.parent
+    edits: list[tuple[Path, list[str], str]] = []
     for key, enabled in toggles.items():
         value = "true" if enabled else "false"
-        apply_assignment_or_write(case_path, path, key.split("."), value)
+        edits.append((path, key.split("."), value))
+    apply_edit_plan(case_path, edits)
 
 
 def _show_message(stdscr: Any, message: str) -> None:

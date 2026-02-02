@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ofti.tools.postprocessing import _sampling_options
+from ofti.core.postprocessing import sampling_options
 
 
 def test_sampling_options_enabled(tmp_path: Path) -> None:
@@ -9,7 +9,7 @@ def test_sampling_options_enabled(tmp_path: Path) -> None:
     topo.parent.mkdir(parents=True)
     topo.write_text("FoamFile {}")
 
-    options = _sampling_options(case_dir)
+    options = sampling_options(case_dir)
     topo_opt = next(opt for opt in options if "topoSet" in opt.label)
     sample_opt = next(opt for opt in options if "sample" in opt.label)
     assert topo_opt.enabled is True

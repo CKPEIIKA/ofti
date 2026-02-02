@@ -92,7 +92,7 @@ def test_run_current_solver_fallback(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("WM_PROJECT_DIR", raising=False)
     monkeypatch.setenv("OFTI_USE_RUNFUNCTIONS", "0")
     _reset_config()
-    monkeypatch.setattr("ofti.tools.solver.read_entry", lambda *_args, **_kwargs: "simpleFoam;")
+    monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_args, **_kwargs: "simpleFoam;")
 
     from ofti.tools.solver import run_current_solver
 
@@ -107,7 +107,7 @@ def test_ensure_tool_dict_decline(tmp_path: Path) -> None:
     screen = FakeScreen(keys=[ord("n")])
     target = case_dir / "system" / "postProcessDict"
 
-    from ofti.tools.tool_dicts_utils import _ensure_tool_dict
+    from ofti.ui_curses.tool_dicts_ui import _ensure_tool_dict
 
     ok = _ensure_tool_dict(
         screen,

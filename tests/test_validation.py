@@ -38,3 +38,42 @@ def test_vector_values_validator_plain_and_uniform() -> None:
     assert validation.vector_values("uniform (1.0 2.0 3.0)") is None
     assert validation.vector_values("()") is not None
     assert validation.vector_values("(1 a 3)") is not None
+
+
+def test_dimension_set_validation_and_normalization() -> None:
+    """Validate dimension sets and normalize spacing."""
+    assert validation.dimension_set_values("[0 1 -2 0 0 0 0]") is None
+    assert validation.dimension_set_values("[0 1 -2 0 0 0]") is not None
+    normalized = validation.normalize_dimension_set("[0, 1, -2, 0, 0, 0, 0];")
+    assert normalized == "[0 1 -2 0 0 0 0]"
+
+
+def test_dimensioned_value_validation_and_normalization() -> None:
+    """Validate dimensioned values and normalize output."""
+    assert validation.dimensioned_value("[0 1 -2 0 0 0 0] 1e-05") is None
+    assert validation.dimensioned_value("[0 1 -2 0 0 0 0] (1 2 3)") is None
+    assert validation.dimensioned_value("[0 1 -2 0 0 0 0]") is not None
+    normalized = validation.normalize_dimensioned_value("[0 1 -2 0 0 0 0] 1e-05;")
+    assert normalized == "[0 1 -2 0 0 0 0] 1e-05"
+    normalized_vec = validation.normalize_dimensioned_value("[0 1 -2 0 0 0 0] (1 2 3)")
+    assert normalized_vec == "[0 1 -2 0 0 0 0] (1 2 3)"
+
+
+def test_normalize_value_for_type() -> None:
+    """Normalize by type label when possible."""
+    assert (
+        validation.normalize_value_for_type("dimensions", "[0 1 -2 0 0 0 0];")
+        == "[0 1 -2 0 0 0 0]"
+    )
+    assert (
+        validation.normalize_value_for_type("dimensioned", "[0 0 0 0 0 0 0] 10;")
+        == "[0 0 0 0 0 0 0] 10"
+    )
+    assert validation.normalize_value_for_type("word", "alpha") is None
+
+
+def test_normalize_field_value_uniform() -> None:
+    assert validation.normalize_field_value("uniform 1;") == "uniform 1"
+    assert validation.normalize_field_value("uniform (1 2 3);") == "uniform (1 2 3)"
+    assert validation.normalize_field_value("uniform (1.0 2.0 3.0)") == "uniform (1 2 3)"
+    assert validation.normalize_field_value("nonuniform List<scalar>") is None

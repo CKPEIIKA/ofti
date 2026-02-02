@@ -136,7 +136,7 @@ def test_run_current_solver_uses_runfunctions(tmp_path: Path) -> None:
     completed.stderr = ""
 
     with (
-        mock.patch("ofti.tools.solver.read_entry", return_value="simpleFoam;"),
+            mock.patch("ofti.core.solver_checks.read_entry", return_value="simpleFoam;"),
         mock.patch("ofti.tools.runner.run_trusted", return_value=completed) as run,
     ):
         run_current_solver(screen, case_dir)

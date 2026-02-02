@@ -35,9 +35,7 @@ def _ensure_tool_dict(
         helper_cmd,
         generate=True,
     )
-    if not result.created:
-        return False
-    return True
+    return result.created
 
 
 def _open_dict_preview(stdscr: Any, path: Path) -> None:

@@ -8,6 +8,7 @@ from curses import textpad
 from typing import Any
 
 from ofti.core.entries import Entry
+from ofti.core.validation import normalize_value_for_type
 from ofti.foam.config import get_config, key_in
 from ofti.foam.exceptions import QuitAppError
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
@@ -72,6 +73,9 @@ class EntryEditor:
                     error = self.validator(new_value) if self.validator else None
                     if error and not self._confirm_dangerous(new_value, error):
                         continue
+                    normalized = normalize_value_for_type(self.type_label, new_value)
+                    if normalized:
+                        new_value = normalized
 
                 if self.on_save(new_value):
                     self.entry.value = new_value

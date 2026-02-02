@@ -100,7 +100,7 @@ def test_run_current_solver_live(monkeypatch, tmp_path: Path) -> None:
     called = {}
     monkeypatch.setattr("ofti.tools.solver.resolve_openfoam_bashrc", lambda: None)
     monkeypatch.setattr("ofti.tools.solver.require_wm_project_dir", lambda *_: None)
-    monkeypatch.setattr("ofti.tools.solver.read_entry", lambda *_a, **_k: "simpleFoam;")
+    monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_a, **_k: "simpleFoam;")
     monkeypatch.setattr(
         "ofti.tools.solver._run_solver_live_cmd",
         lambda *_a, **_k: called.setdefault("run", True),

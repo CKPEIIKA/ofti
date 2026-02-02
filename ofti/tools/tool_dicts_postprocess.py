@@ -8,7 +8,7 @@ from ofti.core.times import latest_time
 from ofti.tools.input_prompts import prompt_args_line
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _run_simple_tool, _show_message
-from ofti.tools.tool_dicts_utils import _ensure_tool_dict
+from ofti.ui_curses.tool_dicts_ui import _ensure_tool_dict
 
 
 def post_process_prompt(stdscr: Any, case_path: Path) -> None:  # noqa: C901

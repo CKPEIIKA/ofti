@@ -9,6 +9,7 @@ from ofti.app.helpers import menu_scroll, prompt_command, show_message
 from ofti.app.screens.editor import view_file_screen
 from ofti.app.state import AppState
 from ofti.app.status import mode_status, status_with_check
+from ofti.core import entry_io
 from ofti.core.entry_io import read_entry
 from ofti.core.templates import find_example_file
 from ofti.core.tool_dicts_service import apply_assignment_or_write
@@ -332,6 +333,7 @@ def auto_fix_missing_required_entries(
         show_message(stdscr, "No example template found to auto-fix this file.")
         return
 
+    case_path = entry_io._find_case_root(file_path) or file_path.parent
     fixed: list[str] = []
     skipped: list[str] = []
     for key, missing_keys in missing_map.items():

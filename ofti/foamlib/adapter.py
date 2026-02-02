@@ -18,12 +18,16 @@ except Exception:  # pragma: no cover - optional fallback
     FOAMLIB_AVAILABLE = False
 
 try:  # pragma: no cover - optional preprocessing extras
+    from foamlib.preprocessing import system as foamlib_system
     from foamlib.preprocessing.of_dict import FoamDictAssignment, FoamDictInstruction
     FOAMLIB_PREPROCESSING = True
+    FOAMLIB_SYSTEM = True
 except Exception:  # pragma: no cover - optional fallback
     FoamDictAssignment = None  # type: ignore[assignment]
     FoamDictInstruction = None  # type: ignore[assignment]
+    foamlib_system = None  # type: ignore[assignment]
     FOAMLIB_PREPROCESSING = False
+    FOAMLIB_SYSTEM = False
 
 
 def available() -> bool:
@@ -152,7 +156,7 @@ def _parse_uniform_value(value: str) -> object | None:
 
 def write_entry(file_path: Path, key: str, value: str) -> bool:
     if FOAMLIB_PREPROCESSING:
-        ok = _write_entry_with_assignment(file_path, key, value)
+        ok = _write_entry_with_assignment(file_path, key, value, case_path=None)
         if ok:
             return True
     foam_file = _foam_file(file_path)
@@ -196,7 +200,25 @@ def write_field_entry(file_path: Path, key: str, value: str) -> bool:
     return True
 
 
-def _write_entry_with_assignment(file_path: Path, key: str, value: str) -> bool:
+def apply_assignment(
+    case_path: Path,
+    file_path: Path,
+    key_path: list[str],
+    value: str,
+) -> bool:
+    if not FOAMLIB_PREPROCESSING:
+        return False
+    key = ".".join(key_path)
+    return _write_entry_with_assignment(file_path, key, value, case_path=case_path)
+
+
+def _write_entry_with_assignment(
+    file_path: Path,
+    key: str,
+    value: str,
+    *,
+    case_path: Path | None,
+) -> bool:
     if not FOAMLIB_PREPROCESSING or FoamDictAssignment is None or FoamDictInstruction is None:
         return False
     cleaned = value.strip()
@@ -211,12 +233,49 @@ def _write_entry_with_assignment(file_path: Path, key: str, value: str) -> bool:
             return False
         payload = cleaned
     try:
-        instruction = FoamDictInstruction(file_name=file_path, keys=list(_split_key(key)))
+        instruction = _instruction_for_file(
+            file_path,
+            list(_split_key(key)),
+            case_path=case_path,
+        )
         assignment = FoamDictAssignment(instruction=instruction, value=payload)
         assignment.set_value()
     except Exception:
         return False
     return True
+
+
+def _instruction_for_file(
+    file_path: Path,
+    keys: list[str],
+    *,
+    case_path: Path | None,
+) -> Any:
+    rel_path: Path
+    if case_path is not None:
+        try:
+            rel_path = file_path.relative_to(case_path)
+        except ValueError:
+            rel_path = file_path
+    else:
+        rel_path = file_path
+    helper = _system_helper_for(rel_path)
+    if helper is not None:
+        return helper(keys)
+    return FoamDictInstruction(file_name=rel_path, keys=keys)
+
+
+def _system_helper_for(rel_path: Path) -> Any | None:
+    if not FOAMLIB_SYSTEM or foamlib_system is None:
+        return None
+    normalized = rel_path.as_posix()
+    mapping = {
+        "system/controlDict": foamlib_system.control_dict,
+        "system/fvSchemes": foamlib_system.fv_schemes,
+        "system/fvSolution": foamlib_system.fv_solution,
+        "system/simulationParameters": foamlib_system.simulation_parameters,
+    }
+    return mapping.get(normalized)
 
 
 def _dump_entry_value(key_name: str, node: object) -> str:

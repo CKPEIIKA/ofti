@@ -6,7 +6,7 @@ from typing import Any
 from ofti.tools.input_prompts import prompt_args_line
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _run_simple_tool
-from ofti.tools.tool_dicts_utils import _ensure_tool_dict, _open_dict_preview
+from ofti.ui_curses.tool_dicts_ui import _ensure_tool_dict, _open_dict_preview
 
 
 def topo_set_prompt(stdscr: Any, case_path: Path) -> None:

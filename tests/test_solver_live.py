@@ -91,7 +91,7 @@ def test_run_current_solver_live_rerun_declines(tmp_path: Path, monkeypatch) -> 
     log_path.write_text("old log")
 
     screen = FakeScreen(keys=[ord("n")])
-    monkeypatch.setattr("ofti.tools.solver.read_entry", lambda *_args, **_kw: "simpleFoam;")
+    monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_args, **_kw: "simpleFoam;")
     monkeypatch.setattr("ofti.tools.solver.require_wm_project_dir", lambda *_args, **_kw: None)
     monkeypatch.setattr("ofti.tools.solver.resolve_openfoam_bashrc", lambda: None)
     runner = mock.Mock()
@@ -112,7 +112,7 @@ def test_run_current_solver_live_rerun_accepts(tmp_path: Path, monkeypatch) -> N
     log_path.write_text("old log")
 
     screen = FakeScreen(keys=[ord("y")])
-    monkeypatch.setattr("ofti.tools.solver.read_entry", lambda *_args, **_kw: "simpleFoam;")
+    monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_args, **_kw: "simpleFoam;")
     monkeypatch.setattr("ofti.tools.solver.require_wm_project_dir", lambda *_args, **_kw: None)
     monkeypatch.setattr("ofti.tools.solver.resolve_openfoam_bashrc", lambda: None)
     runner = mock.Mock()
@@ -133,7 +133,7 @@ def test_run_current_solver_live_skips_runfunctions(tmp_path: Path, monkeypatch)
 
     screen = FakeScreen(keys=[ord("h")])
     monkeypatch.setenv("WM_PROJECT_DIR", "/WM")
-    monkeypatch.setattr("ofti.tools.solver.read_entry", lambda *_args, **_kw: "simpleFoam;")
+    monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_args, **_kw: "simpleFoam;")
     monkeypatch.setattr("ofti.tools.solver.resolve_openfoam_bashrc", lambda: None)
     runner = mock.Mock()
     monkeypatch.setattr("ofti.tools.solver._run_solver_live_cmd", runner)
