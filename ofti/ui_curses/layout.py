@@ -1,14 +1,9 @@
 from __future__ import annotations
 
 import curses
-import itertools
 from typing import Any
 
-_SPINNER = itertools.cycle("|/-\\")
-
-
-def next_spinner() -> str:
-    return next(_SPINNER)
+from ofti.core.spinner import next_spinner
 
 
 def draw_status_bar(stdscr: Any, text: str) -> None:

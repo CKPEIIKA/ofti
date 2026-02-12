@@ -5,9 +5,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
+from ofti.core.spinner import next_spinner
 from ofti.foam.openfoam import FileCheckResult
 from ofti.foam.tasks import TaskRegistry
-from ofti.ui_curses.layout import next_spinner
 
 
 class Screen(Enum):
