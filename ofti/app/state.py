@@ -43,6 +43,12 @@ class AppState:
     case_meta_at: float | None = None
     case_metadata_path: Path | None = None
     case_metadata: dict[str, str] | None = None
+    search_index_lock: threading.Lock = field(default_factory=threading.Lock)
+    search_index_case: Path | None = None
+    search_index_files: list[str] = field(default_factory=list)
+    search_index_entries: list[tuple[str, str]] = field(default_factory=list)
+    search_index_full: bool = False
+    search_index_building: bool = False
 
     def transition(self, screen: Screen, action: str | None = None) -> None:
         self.current_screen = screen

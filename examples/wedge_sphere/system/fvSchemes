@@ -1,0 +1,72 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  v1706                                 |
+|   \\  /    A nd           | Web:      www.OpenFOAM.org                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      fvSchemes;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+fluxScheme            Kurganov;
+implicitYiConvection  no;   // yes => legacy implicit species convection (fvmDiv)
+legacySiirSource      no;   // yes => use Siir in multi-Tv electron source (1706)
+legacySingleTvEnergySource no; // yes => use 1706 single-Tv rhoEv source terms
+
+ddtSchemes
+{
+    default           Euler;
+}
+
+gradSchemes
+{
+    default           Gauss linear;
+  //if convergence is difficult, add:
+  grad(U)           cellLimited Gauss linear 1;
+}
+
+divSchemes
+{
+    default           none;
+    div(tauMC)        Gauss linear;
+    div(phi,U)        Gauss limitedLinearV 1;
+
+    // Species diffusion
+    div(diffusiveFluxes)   Gauss linear;
+    div(phi,Yi_h)     Gauss limitedLinear 1;
+
+    // Turbulence modelling
+    div(phi,k)        Gauss limitedLinear 1;
+    div(phi,omega)    Gauss limitedLinear 1;
+    div(phi,epsilon)  Gauss limitedLinear 1;
+
+    // Needed when there are electrons in the gas mix
+    div(U)            Gauss linear;
+}
+
+laplacianSchemes
+{
+    default           Gauss linear corrected;
+}
+
+interpolationSchemes
+{
+    default           linear;
+    reconstruct(rho)  vanLeer;
+    reconstruct(U)    vanLeerV;
+    reconstruct(T)    vanLeer;
+}
+
+snGradSchemes
+{
+    default          corrected;
+}
+
+// ************************************************************************* //

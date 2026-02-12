@@ -1,0 +1,94 @@
+#!/bin/sh
+set -e
+
+CASE_SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+CASE_DIR="${CASE_DIR:-$CASE_SCRIPT_DIR}"
+cd "$CASE_DIR" || exit 1    # run from case directory
+
+# Ensure OpenFOAM env (from repo build)
+if [ -f "$CASE_SCRIPT_DIR/../../scripts/env.sh" ]; then
+    set +e
+    # shellcheck disable=SC1091
+    . "$CASE_SCRIPT_DIR/../../scripts/env.sh"
+    set -e
+fi
+
+WEDGE_ANGLE="${WEDGE_ANGLE:-5}"
+BLOCKMESH_DICT="${BLOCKMESH_DICT:-system/blockMeshDict}"
+PROJECT_WEDGE="${PROJECT_WEDGE:-0}"
+MESH_LEVEL="${MESH_LEVEL:-base}"
+
+case "$MESH_LEVEL" in
+    ""|base)
+        ;;
+    5k)
+        NX1="${NX1:-22}"
+        NX2="${NX2:-55}"
+        NY="${NY:-85}"
+        ;;
+    10k)
+        NX1="${NX1:-31}"
+        NX2="${NX2:-77}"
+        NY="${NY:-120}"
+        ;;
+    15k)
+        NX1="${NX1:-38}"
+        NX2="${NX2:-94}"
+        NY="${NY:-147}"
+        ;;
+    20k)
+        NX1="${NX1:-44}"
+        NX2="${NX2:-109}"
+        NY="${NY:-170}"
+        ;;
+    *)
+        echo "Unsupported MESH_LEVEL '$MESH_LEVEL' (use: base|5k|10k|15k|20k)" >&2
+        exit 2
+        ;;
+esac
+
+# Optional manual overrides for any preset.
+RUNTIME_BLOCKMESH=""
+if [ "$MESH_LEVEL" != "base" ] || [ -n "${NX1:-}" ] || [ -n "${NX2:-}" ] || [ -n "${NY:-}" ] || [ -n "${GX:-}" ] || [ -n "${GY:-}" ]; then
+    NX1="${NX1:-40}"
+    NX2="${NX2:-100}"
+    NY="${NY:-120}"
+    GX="${GX:-4.0}"
+    GY="${GY:-3.6}"
+
+    RUNTIME_BLOCKMESH="system/blockMeshDict.runtime"
+    sed -E \
+        -e "s@hex \(3 5 4 2 9 11 10 8\)[[:space:]]+\([0-9]+[[:space:]]+[0-9]+[[:space:]]+1\)[[:space:]]+simpleGrading[[:space:]]+\([0-9.]+[[:space:]]+[0-9.]+[[:space:]]+1\)@    hex (3 5 4 2 9 11 10 8) (${NX1} ${NY} 1) simpleGrading (${GX} ${GY} 1)@" \
+        -e "s@hex \(0 3 2 1 6 9 8 7\)[[:space:]]+\([0-9]+[[:space:]]+[0-9]+[[:space:]]+1\)[[:space:]]+simpleGrading[[:space:]]+\([0-9.]+[[:space:]]+[0-9.]+[[:space:]]+1\)@    hex (0 3 2 1 6 9 8 7)   (${NX2} ${NY} 1) simpleGrading (${GX} ${GY} 1)@" \
+        "$BLOCKMESH_DICT" > "$RUNTIME_BLOCKMESH"
+    BLOCKMESH_DICT="$RUNTIME_BLOCKMESH"
+
+    echo "Meshing preset: level=$MESH_LEVEL nx1=$NX1 nx2=$NX2 ny=$NY gx=$GX gy=$GY"
+else
+    echo "Meshing preset: level=base (using $BLOCKMESH_DICT)"
+fi
+
+# Ensure ascii mesh output so we can post-process points if needed
+foamDictionary system/controlDict -entry writeFormat -set ascii >/dev/null 2>&1 || true
+
+blockMesh -dict "$BLOCKMESH_DICT"
+createPatch -overwrite -dict system/createPatchDict.makeAxial
+makeAxialMesh -overwrite -axis symmetry -wedge frontAndBack -wedgeAngle "$WEDGE_ANGLE"
+topoSet -dict system/topoSetDict.makeAxial
+collapseEdges -overwrite -dict system/collapseDict.makeAxial -collapseFaceSet axisFaces
+createPatch -overwrite
+
+if [ "$PROJECT_WEDGE" != "0" ]; then
+    PROJECT_SCRIPT="$CASE_DIR/scripts/project_wedge_points.py"
+    if [ -f "$PROJECT_SCRIPT" ]; then
+        python3 "$PROJECT_SCRIPT" --angle "$WEDGE_ANGLE"
+    else
+        echo "Warning: PROJECT_WEDGE requested but $PROJECT_SCRIPT not found; skipping projection."
+    fi
+fi
+
+checkMesh
+
+if [ -n "$RUNTIME_BLOCKMESH" ] && [ "${KEEP_RUNTIME_BLOCKMESH:-0}" = "0" ]; then
+    rm -f "$RUNTIME_BLOCKMESH"
+fi

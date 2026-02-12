@@ -119,6 +119,77 @@ def test_global_search_screen_reports_parse_failures(monkeypatch, tmp_path: Path
     assert "could not be parsed" in messages[0]
 
 
+def test_collect_search_keys_includes_nested(monkeypatch, tmp_path: Path) -> None:
+    field = tmp_path / "dict"
+    field.write_text(
+        "\n".join(
+            [
+                "transportModels",
+                "{",
+                "    mixingRule Wilke;",
+                "    NN",
+                "    {",
+                "        speciesOrder ( N2 O2 NO N O );",
+                "        trimNegative true;",
+                "    }",
+                "}",
+            ],
+        ),
+    )
+
+    monkeypatch.setattr(search, "list_keywords", lambda _path: ["transportModels", "application"])
+
+    keys = search._collect_search_keys(field)
+    assert "transportModels" in keys
+    assert "transportModels.mixingRule" in keys
+    assert "transportModels.NN.speciesOrder" in keys
+
+
+def test_global_search_reuses_session_cache(monkeypatch, tmp_path: Path) -> None:
+    case_path = tmp_path / "case"
+    file_path = case_path / "system" / "controlDict"
+    file_path.parent.mkdir(parents=True)
+    file_path.write_text("FoamFile{}")
+    state = AppState()
+    calls = {"count": 0}
+
+    monkeypatch.setattr(search, "fzf_enabled", lambda: True)
+    monkeypatch.setattr(search, "discover_case_files", lambda _case: {"system": [file_path]})
+    monkeypatch.setattr(search, "status_message", lambda _screen, _msg: None)
+
+    def fake_list_keywords(_path: Path) -> list[str]:
+        calls["count"] += 1
+        return ["application"]
+
+    monkeypatch.setattr(search, "list_keywords", fake_list_keywords)
+    monkeypatch.setattr(search, "_collect_search_keys", lambda _path: ["application"])
+    monkeypatch.setattr(search, "_start_full_index_build", lambda _case, _state: None)
+    monkeypatch.setattr(
+        search,
+        "_run_fzf_live",
+        lambda *_a, **_k: SimpleNamespace(returncode=1, stdout=""),
+    )
+    monkeypatch.setattr(search.curses, "def_prog_mode", lambda: None)
+    monkeypatch.setattr(search.curses, "endwin", lambda: None)
+    monkeypatch.setattr(search.curses, "reset_prog_mode", lambda: None)
+
+    screen = SimpleNamespace(clear=lambda: None, refresh=lambda: None)
+    search.global_search_screen(
+        stdscr=screen,
+        case_path=case_path,
+        state=state,
+        browser_callbacks=SimpleNamespace(),
+    )
+    search.global_search_screen(
+        stdscr=screen,
+        case_path=case_path,
+        state=state,
+        browser_callbacks=SimpleNamespace(),
+    )
+
+    assert calls["count"] == 1
+
+
 def test_check_syntax_screen_foreground_path(monkeypatch, tmp_path: Path) -> None:
     case_path = tmp_path / "case"
     file_path = case_path / "system" / "controlDict"

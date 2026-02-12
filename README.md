@@ -51,7 +51,7 @@ to select a valid case directory.
 - `h` or `Esc`: back
 - `q`: quit (root menu only)
 - `/`: menu search with `fzf` (if installed)
-- `s`: config search (global)
+- `s`: global dictionary search
 - `:`: command line
 - `!`: shell/terminal
 - `?`: help for current menu/tool
@@ -68,6 +68,11 @@ to select a valid case directory.
 Common actions are grouped under Mesh, Physics, Simulation, Post‑Processing,
 Config Manager, and Tools/Diagnostics. Tools are greyed out when required
 configs are missing. `:tool <name>` or `:<name>` runs any tool entry.
+
+Post‑Processing notes:
+- `View logs` contains file view, live tail, and log analysis summary.
+- `Sampling & sets` includes `postProcess`-driven sampling actions.
+- `Parametric wizard` can load presets from `ofti.parametric` or run manual sweeps.
 
 ## FILES
 
