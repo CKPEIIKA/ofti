@@ -74,7 +74,7 @@ def get_entry_comments(file_path: Path, key: str) -> list[str]:
         return comments
 
     lines = text.splitlines()
-    key_lower = key.split(".")[-1].lower()
+    key_lower = key.rsplit(".", maxsplit=1)[-1].lower()
 
     for i, line in enumerate(lines):
         if key_lower in line.lower():

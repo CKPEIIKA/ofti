@@ -17,6 +17,13 @@ fi
 LOG_FILE="quality.txt"
 STATUS=0
 : > "${LOG_FILE}"
+STRICT_TOOLS="${QUALITY_STRICT_TOOLS:-0}"
+
+PYTEST_COV_AVAILABLE="$("$PYTHON" - <<'PY'
+import importlib.util
+print("1" if importlib.util.find_spec("pytest_cov") else "0")
+PY
+)"
 
 run_cmd() {
   local label="$1"
@@ -33,7 +40,9 @@ run_cmd() {
     run_cmd "ruff check" "$RUFF" check .
   else
     echo "skipping ruff (not found in PATH or .venv/bin)"
-    STATUS=1
+    if [[ "$STRICT_TOOLS" = "1" ]]; then
+      STATUS=1
+    fi
   fi
 
   echo
@@ -46,22 +55,22 @@ run_cmd() {
       tests/test_menu_utils.py
   else
     echo "skipping ty (not found in PATH or .venv/bin)"
-    STATUS=1
+    if [[ "$STRICT_TOOLS" = "1" ]]; then
+      STATUS=1
+    fi
   fi
 
   echo
-  PREV_PYTEST_ADDOPTS="${PYTEST_ADDOPTS-__UNSET__}"
-  export PYTEST_ADDOPTS="--no-cov"
-  run_cmd "pytest smoke" "$PYTHON" -m pytest -m smoke --maxfail=1
-  if [[ "${PREV_PYTEST_ADDOPTS}" = "__UNSET__" ]]; then
-    unset PYTEST_ADDOPTS
-  else
-    export PYTEST_ADDOPTS="$PREV_PYTEST_ADDOPTS"
-  fi
+  run_cmd "pytest smoke" "$PYTHON" -m pytest -o addopts='' -m smoke --maxfail=1
   echo
-  export PYTEST_ADDOPTS="--cov-fail-under=0"
-  run_cmd "pytest coverage" "$PYTHON" -m pytest --cov=ofti --cov-report=term-missing
-  unset PYTEST_ADDOPTS
+  if [[ "$PYTEST_COV_AVAILABLE" = "1" ]]; then
+    run_cmd "pytest coverage" "$PYTHON" -m pytest -o addopts='' --cov=ofti --cov-report=term-missing --cov-fail-under=0
+  else
+    echo "skipping pytest coverage (pytest-cov not installed)"
+    if [[ "$STRICT_TOOLS" = "1" ]]; then
+      STATUS=1
+    fi
+  fi
 } 2>&1 | tee -a "${LOG_FILE}"
 
 exit "${STATUS}"

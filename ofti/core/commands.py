@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class CommandKind(str, Enum):
+class CommandKind(StrEnum):
     QUIT = "quit"
     CHECK = "check"
     TOOLS = "tools"

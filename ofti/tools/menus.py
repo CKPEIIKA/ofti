@@ -41,9 +41,9 @@ from ofti.tools.runner import (
     load_tool_presets,
     tool_status_mode,
 )
+from ofti.ui.help import menu_hint, tools_help, tools_physics_help
 from ofti.ui_curses.blockmesh_helper import blockmesh_helper_screen
 from ofti.ui_curses.boundary_matrix import boundary_matrix_screen
-from ofti.ui_curses.help import menu_hint, tools_help, tools_physics_help
 from ofti.ui_curses.high_speed import high_speed_helper_screen
 from ofti.ui_curses.initial_conditions import initial_conditions_screen
 from ofti.ui_curses.snappy_toggle import snappy_staged_screen

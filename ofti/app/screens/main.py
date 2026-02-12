@@ -16,9 +16,9 @@ from ofti.app.state import AppState, Screen
 from ofti.core.case_meta import case_metadata, case_metadata_quick
 from ofti.foam.config import fzf_enabled
 from ofti.tools.menus import tools_screen
-from ofti.ui_curses.help import main_menu_help, menu_hint
+from ofti.ui.help import main_menu_help, menu_hint
+from ofti.ui.menu import RootMenu
 from ofti.ui_curses.layout import case_banner_lines, case_overview_lines
-from ofti.ui_curses.menus import RootMenu
 from ofti.ui_curses.openfoam_env import openfoam_env_screen
 
 EditorScreen = Callable[[Any, Path, AppState], None]

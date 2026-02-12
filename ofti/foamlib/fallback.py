@@ -296,18 +296,18 @@ def _parse_entries(tokens: list[str], index: int) -> tuple[dict[str, object], in
             continue
         value_tokens: list[str] = []
         while i < len(tokens) and tokens[i] != ";":
-            token = tokens[i]
-            if token == "{":
+            part = tokens[i]
+            if part == "{":
                 nested, i = _parse_entries(tokens, i + 1)
                 data[key] = nested
                 break
-            if token == "(":
+            if part == "(":
                 content, i = _collect_paren(tokens, i + 1)
                 value_tokens.append(f"({content})")
                 continue
-            if token == "}":
+            if part == "}":
                 break
-            value_tokens.append(_strip_quotes(token))
+            value_tokens.append(_strip_quotes(part))
             i += 1
         else:
             # no break

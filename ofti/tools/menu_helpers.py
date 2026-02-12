@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from ofti.ui_curses.help import menu_hint
-from ofti.ui_curses.menus import Menu
+from ofti.ui.help import menu_hint
+from ofti.ui.menu import Menu
 
 
 def build_menu(

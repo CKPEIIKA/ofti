@@ -7,8 +7,8 @@ from typing import Any
 from ofti.app.state import AppState
 from ofti.app.tasks import running_tasks_status
 from ofti.tools.runner import last_tool_status_line
-from ofti.ui_curses.help import menu_hint
-from ofti.ui_curses.menus import Menu
+from ofti.ui.help import menu_hint
+from ofti.ui.menu import Menu
 
 
 def menu_choice(

@@ -15,9 +15,9 @@ from ofti.core.syntax import find_suspicious_lines
 from ofti.core.tool_dicts_service import apply_assignment_or_write
 from ofti.foam.config import key_hint
 from ofti.foam.openfoam import OpenFOAMError
+from ofti.ui.menu import Menu, Submenu
 from ofti.ui_curses.entry_browser import BrowserCallbacks, entry_browser_screen
 from ofti.ui_curses.entry_editor import EntryEditor
-from ofti.ui_curses.menus import Menu, Submenu
 from ofti.ui_curses.viewer import Viewer
 
 

@@ -8,9 +8,9 @@ from typing import Any
 
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
-from ofti.ui_curses.help import menu_hint
+from ofti.ui.help import menu_hint
+from ofti.ui.menu import Menu
 from ofti.ui_curses.inputs import prompt_input
-from ofti.ui_curses.menus import Menu
 
 
 def option_index(options: list[str], selection: str | None) -> int:

@@ -12,8 +12,8 @@ from ofti.foam.config import fzf_enabled
 from ofti.foam.openfoam import OpenFOAMError, discover_case_files
 from ofti.foam.subprocess_utils import run_trusted
 from ofti.foamlib import adapter as foamlib_integration
-from ofti.ui_curses.entry_browser import BrowserCallbacks, entry_browser_screen
 from ofti.ui.status import status_message
+from ofti.ui_curses.entry_browser import BrowserCallbacks, entry_browser_screen
 
 
 def global_search_screen(
