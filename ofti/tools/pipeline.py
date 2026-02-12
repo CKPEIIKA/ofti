@@ -11,7 +11,7 @@ from ofti.tools.input_prompts import prompt_args_line, prompt_command_line, prom
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
 from ofti.tools.tool_catalog import tool_catalog
-from ofti.ui_curses.layout import status_message
+from ofti.ui.status import status_message
 from ofti.ui_curses.viewer import Viewer
 
 PIPELINE_FILENAME = pipeline_service.PIPELINE_FILENAME

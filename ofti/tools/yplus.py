@@ -11,7 +11,7 @@ from ofti.foam.subprocess_utils import run_trusted
 from ofti.tools.cleaning_utils import _ascii_kv_table, _run_shell_capture
 from ofti.tools.helpers import resolve_openfoam_bashrc
 from ofti.tools.runner import _show_message, _write_tool_log
-from ofti.ui_curses.layout import status_message
+from ofti.ui.status import status_message
 from ofti.ui_curses.viewer import Viewer
 
 

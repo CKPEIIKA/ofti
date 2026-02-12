@@ -11,7 +11,7 @@ from ofti.foam.subprocess_utils import run_trusted
 from ofti.tools.job_registry import refresh_jobs
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _run_shell_tool, _run_simple_tool, _show_message, get_last_tool_run
-from ofti.ui_curses.layout import status_message
+from ofti.ui.status import status_message
 from ofti.ui_curses.viewer import Viewer
 
 
