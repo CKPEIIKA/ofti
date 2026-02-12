@@ -5,6 +5,7 @@ from typing import Any
 
 from ofti.foamlib import fallback
 
+
 class FoamlibUnavailableError(RuntimeError):
     def __init__(self) -> None:
         super().__init__("foamlib is not available")

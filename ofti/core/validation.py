@@ -98,27 +98,30 @@ def dimensioned_value(value: str) -> str | None:
       [0 2 -2 0 0 0 0] 1e-05
     """
     text = value.strip().rstrip(";")
+    error: str | None = None
+    parsed: tuple[list[float], object, str] | None = None
     if not text.startswith("["):
-        return "Dimensioned value must start with dimensions, e.g. [0 1 -2 0 0 0 0] 1e-05."
-    if "]" not in text:
-        return "Dimensioned value missing closing bracket."
-    dims_text, rest = text.split("]", 1)
-    dims_text = dims_text + "]"
-    dims_err = dimension_set_values(dims_text)
-    if dims_err:
-        return dims_err
-    if not rest.strip():
-        return "Dimensioned value missing numeric value."
-    parsed = _parse_dimensioned_value(text)
-    if parsed is None:
-        return "Dimensioned value should be numeric or vector-like."
-    dims, payload, _normalized = parsed
-    if FoamlibDimensioned is not None:
+        error = "Dimensioned value must start with dimensions, e.g. [0 1 -2 0 0 0 0] 1e-05."
+    elif "]" not in text:
+        error = "Dimensioned value missing closing bracket."
+    else:
+        dims_text, rest = text.split("]", 1)
+        dims_err = dimension_set_values(dims_text + "]")
+        if dims_err:
+            error = dims_err
+        elif not rest.strip():
+            error = "Dimensioned value missing numeric value."
+        else:
+            parsed = _parse_dimensioned_value(text)
+            if parsed is None:
+                error = "Dimensioned value should be numeric or vector-like."
+    if error is None and parsed is not None and FoamlibDimensioned is not None:
+        dims, payload, _normalized = parsed
         try:
             FoamlibDimensioned(payload, dims)
         except Exception:
-            return "Dimensioned value has invalid numeric/vector data."
-    return None
+            error = "Dimensioned value has invalid numeric/vector data."
+    return error
 
 
 def normalize_dimension_set(value: str) -> str | None:
@@ -222,11 +225,8 @@ def normalize_field_value(value: str) -> str | None:
     text = value.strip().rstrip(";")
     if not text:
         return None
-    lower = text.lower()
-    if not lower.startswith("uniform"):
-        return None
     parts = text.split(None, 1)
-    if len(parts) < 2:
+    if len(parts) < 2 or parts[0].lower() != "uniform":
         return None
     payload = parts[1].strip()
     if not payload:

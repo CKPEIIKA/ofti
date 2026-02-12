@@ -9,8 +9,8 @@ from ofti.tools.cleaning_ops import clean_time_directories, remove_all_logs
 from ofti.tools.reconstruct import reconstruct_latest_once
 from ofti.tools.runner import _show_message
 from ofti.tools.time_pruner import time_directory_pruner_screen
-from ofti.ui_curses.help import clean_case_help
 from ofti.ui.status import status_message
+from ofti.ui_curses.help import clean_case_help
 
 
 def clean_case_menu(
