@@ -1,0 +1,93 @@
+#!/bin/sh
+set -e
+
+RUN_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+cd "$RUN_DIR" || exit 1
+
+# Ensure OpenFOAM env (from repo build)
+if [ -f "$RUN_DIR/../../scripts/env.sh" ]; then
+    set +e
+    # shellcheck disable=SC1091
+    . "$RUN_DIR/../../scripts/env.sh"
+    set -e
+fi
+
+MESH_LEVEL="${1:-base}"
+if [ "$MESH_LEVEL" = "-h" ] || [ "$MESH_LEVEL" = "--help" ]; then
+    echo "Usage: ./Allrun [base|5k|10k|15k|20k] [nProcs]"
+    echo "Example: ./Allrun 10k 6"
+    exit 0
+fi
+
+case "$MESH_LEVEL" in
+    base|5k|10k|15k|20k)
+        ;;
+    *)
+        echo "Unsupported mesh level '$MESH_LEVEL' (use: base|5k|10k|15k|20k)" >&2
+        exit 2
+        ;;
+esac
+
+NPROCS="${2:-}"
+if [ -z "$NPROCS" ]; then
+    NPROCS="$(foamDictionary system/decomposeParDict -entry numberOfSubdomains -value 2>/dev/null || true)"
+fi
+if [ -z "$NPROCS" ]; then
+    NPROCS=4
+fi
+case "$NPROCS" in
+    ''|*[!0-9]*)
+        echo "Invalid nProcs '$NPROCS'" >&2
+        exit 2
+        ;;
+esac
+
+MPIRUN_OPTS="${MPIRUN_OPTS:---bind-to core --map-by core --rank-by core}"
+
+APP="$(foamDictionary system/controlDict -entry application -value 2>/dev/null || true)"
+if [ -z "$APP" ]; then
+    APP=hy2Foam
+fi
+
+echo "Running wedge_sphere with mesh=$MESH_LEVEL, app=$APP, nProcs=$NPROCS"
+
+MESH_LEVEL="$MESH_LEVEL" "$RUN_DIR/Allmesh_makeAxial" > log.Allmesh 2>&1
+
+if [ "${ALLRUN_MESH_ONLY:-0}" = "1" ]; then
+    echo "ALLRUN_MESH_ONLY=1 set; stopping after mesh generation."
+    exit 0
+fi
+
+renumberMesh -overwrite -no-fields > log.renumberMesh 2>&1
+
+if [ "$NPROCS" -le 1 ]; then
+    set +e
+    "$APP" > "log.$APP" 2>&1
+    app_rc=$?
+    set -e
+else
+    foamDictionary system/decomposeParDict -entry numberOfSubdomains -set "$NPROCS" >/dev/null 2>&1 || true
+    decomposePar -force > log.decomposePar 2>&1
+    set +e
+    mpirun $MPIRUN_OPTS -np "$NPROCS" "$APP" -parallel > "log.$APP" 2>&1
+    app_rc=$?
+    set -e
+    reconstructPar > log.reconstructPar 2>&1
+fi
+
+if [ "${app_rc:-0}" -ne 0 ]; then
+    if grep -q "^End$" "log.$APP"; then
+        echo "Warning: $APP exited with code $app_rc after writing End (known teardown issue)." >&2
+    else
+        echo "Error: $APP failed with code $app_rc before End (see log.$APP)." >&2
+        exit "$app_rc"
+    fi
+fi
+
+if [ -f "$RUN_DIR/../../scripts/check_wedge_convergence.py" ]; then
+    python3 "$RUN_DIR/../../scripts/check_wedge_convergence.py" "$RUN_DIR" > log.convergence 2>&1 || true
+fi
+
+if [ -f "$RUN_DIR/../../scripts/profile_hy2foam_log.py" ]; then
+    python3 "$RUN_DIR/../../scripts/profile_hy2foam_log.py" "$RUN_DIR/log.$APP" "$RUN_DIR/system/controlDict" > log.iterProfile 2>&1 || true
+fi

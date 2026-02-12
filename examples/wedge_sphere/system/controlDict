@@ -1,0 +1,225 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  2512                                  |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+FoamFile
+{
+    version         2;
+    format          ascii;
+    class           dictionary;
+    location        "system";
+    object          controlDict;
+}
+
+application     hy2Foam;
+
+startFrom       latestTime;
+
+startTime       0;
+
+stopAt          endTime;
+
+endTime         1e-05;
+
+deltaT          1e-11;
+
+writeControl    adjustableRunTime;
+
+writeInterval   2e-08;
+
+purgeWrite      10;
+
+writeFormat     ascii;
+
+writePrecision  6;
+
+writeCompression off;
+
+timeFormat      general;
+
+timePrecision   10;
+
+runTimeModifiable true;
+
+adjustTimeStep  yes;
+
+maxCo           0.1;
+
+maxDeltaT       1e-08;
+
+libs            ( "libfvOptions.so" );
+
+functions
+{
+    inletMassFlux
+    {
+        type            surfaceFieldValue;
+        libs            ( "libfieldFunctionObjects.so" );
+        enabled         true;
+        writeControl    timeStep;
+        writeInterval   1;
+        log             true;
+        writeFields     false;
+        regionType      patch;
+        name            inlet;
+        operation       sum;
+        fields          ( phi );
+    }
+    outletMassFlux
+    {
+        type            surfaceFieldValue;
+        libs            ( "libfieldFunctionObjects.so" );
+        enabled         true;
+        writeControl    timeStep;
+        writeInterval   1;
+        log             true;
+        writeFields     false;
+        regionType      patch;
+        name            outlet;
+        operation       sum;
+        fields          ( phi );
+    }
+    domainMass
+    {
+        type            volFieldValue;
+        libs            ( "libfieldFunctionObjects.so" );
+        enabled         true;
+        writeControl    timeStep;
+        writeInterval   1;
+        log             true;
+        writeFields     false;
+        operation       volIntegrate;
+        fields          ( rho );
+    }
+    domainMeanP
+    {
+        type            volFieldValue;
+        libs            ( "libfieldFunctionObjects.so" );
+        enabled         true;
+        writeControl    timeStep;
+        writeInterval   1;
+        log             true;
+        writeFields     false;
+        operation       volAverage;
+        fields          ( p );
+    }
+    domainMeanTt
+    {
+        type            volFieldValue;
+        libs            ( "libfieldFunctionObjects.so" );
+        enabled         true;
+        writeControl    timeStep;
+        writeInterval   1;
+        log             true;
+        writeFields     false;
+        operation       volAverage;
+        fields          ( Tt );
+    }
+    domainMeanTv
+    {
+        type            volFieldValue;
+        libs            ( "libfieldFunctionObjects.so" );
+        enabled         true;
+        writeControl    timeStep;
+        writeInterval   1;
+        log             true;
+        writeFields     false;
+        operation       volAverage;
+        fields          ( Tv );
+    }
+    stagnationProbe
+    {
+        type            probes;
+        libs            ( "libsampling.so" );
+        enabled         true;
+        writeControl    timeStep;
+        writeInterval   1;
+        fields          ( p Tt Tv );
+        probeLocations  ( ( -0.0064 1e-06 0.00025 ) );
+    }
+    stagnationLineSample
+    {
+        type            sets;
+        libs            ( "libsampling.so" );
+        enabled         true;
+        writeControl    writeTime;
+        writeInterval   1;
+        interpolationScheme cellPoint;
+        setFormat       raw;
+        fields          ( Tt Tv p rho );
+        sets            ( stagnationLine { type uniform ; axis x ; start ( -0.01035 1e-06 0.00025 ) ; end ( 0 1e-06 0.00025 ) ; nPoints 600 ; } );
+    }
+    shockProbe
+    {
+        type            probes;
+        libs            ( "libsampling.so" );
+        enabled         true;
+        executeControl  writeTime;
+        executeInterval 1;
+        writeControl    writeTime;
+        writeInterval   1;
+        fields          ( p );
+        probeLocations  ( ( -0.00645 1e-06 0.00025 ) );
+    }
+    wallHeatFluxTotalAbs
+    {
+        type            surfaceFieldValue;
+        libs            ( "libfieldFunctionObjects.so" );
+        enabled         true;
+        executeControl  writeTime;
+        executeInterval 1;
+        writeControl    writeTime;
+        log             true;
+        writeFields     false;
+        regionType      patch;
+        name            sphere;
+        operation       sumMag;
+        fields          ( wallHeatFlux );
+    }
+    autoStop
+    {
+        type            runTimeControl;
+        libs            ( "libutilityFunctionObjects.so" );
+        enabled         true;
+        executeControl  writeTime;
+        executeInterval 1;
+        writeControl    writeTime;
+        writeInterval   1;
+        nWriteStep      1;
+        satisfiedAction end;
+        conditions
+        {
+            shockFlat
+            {
+                type            average;
+                functionObject  shockProbe;
+                fields          ( "average(p)" );
+                tolerance       300;
+                nIterStartUp    5;
+                windowType      exact;
+                window          2e-08;
+                timeStart       2e-07;
+                groupID         1;
+            }
+            bulkTtFlat
+            {
+                type            average;
+                functionObject  domainMeanTt;
+                fields          ( "volAverage(Tt)" );
+                tolerance       5;
+                nIterStartUp    5;
+                windowType      exact;
+                window          2e-08;
+                timeStart       2e-07;
+                groupID         1;
+            }
+        }
+    }
+}
+
+
+// ************************************************************************* //

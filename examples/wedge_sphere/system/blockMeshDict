@@ -1,0 +1,139 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  v2112                                 |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      blockMeshDict;
+}
+
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  v2112                                 |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      blockMeshDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+scale   0.001; // Geometry in millimeters, converted to meters
+
+vertices
+(
+    ( -6.35      0     0   )  //  0: Sphere center edge (x=-6.35)
+    (-10.35      0     0   )  //  1: Inlet point
+    ( -1.0   14.86     0   )  //  2: On inlet (near top arc)
+    ( -1.0    6.27077  0   )  //  3: On sphere surface
+    (  0.0   15.0      0   )  //  4: Top center (inlet)
+    (  0.0    6.35     0   )  //  5: Sphere surface (x=0)
+
+    ( -6.35      0     0.5 )  //  6: 3D duplicate of 0
+    (-10.35      0     0.5 )  //  7: 3D duplicate of 1
+    ( -1.0   14.86     0.5 )  //  8: 3D duplicate of 2
+    ( -1.0    6.27077  0.5 )  //  9: 3D duplicate of 3
+    (  0.0   15.0      0.5 )  // 10: 3D duplicate of 4
+    (  0.0    6.35     0.5 )  // 11: 3D duplicate of 5
+);
+
+blocks
+(
+    // Tightened grading + higher resolution (baseline was 40/67 x 80 with grading 6/4)
+    // Fewer cells on short sphereslip segment, redistributed upstream.
+    hex (3 5 4 2 9 11 10 8) (40 120 1) simpleGrading (4.0 3.0 1)
+    hex (0 3 2 1 6 9 8 7)   (100 120 1) simpleGrading (4.0 3.0 1)
+);
+
+edges
+(
+    spline 1 2   ((-9 3.66 0) (-7 8.14 0) (-5 11.5 0) (-3 13.74 0))
+    spline 2 4   ((-0.7 14.931 0) (-0.5 14.965 0) (-0.3 14.987 0))
+    spline 7 8   ((-9 3.66 0.5) (-7 8.14 0.5) (-5 11.5 0.5) (-3 13.74 0.5))
+    spline 8 10  ((-0.7 14.931 0.5) (-0.5 14.965 0.5) (-0.3 14.987 0.5))
+    arc 0 3 origin (0 0 0)
+    arc 3 5 origin (0 0 0)
+    arc 6 9 origin (0 0 0.5)
+    arc 9 11 origin (0 0 0.5)
+);
+
+boundary
+(
+    outlet
+    {
+        type patch;
+        faces
+        (
+            (4 5 11 10)
+        );
+    }
+
+    inlet
+    {
+        type patch;
+        faces
+        (
+            (2 4 10 8)
+            (1 2 8 7)
+        );
+    }
+
+    symmetry
+    {
+        type symmetryPlane;
+        faces
+        (
+            (0 1 7 6)
+        );
+    }
+
+    sphere
+    {
+        type wall;
+        faces
+        (
+            (3 0 6 9)
+        );
+    }
+
+    sphereslip
+    {
+        type wall;
+        faces
+        (
+            (5 3 9 11)
+        );
+    }
+
+    front
+    {
+        type patch;
+        faces
+        (
+            (5 4 2 3)
+            (3 2 1 0)
+        );
+    }
+
+    back
+    {
+        type patch;
+        faces
+        (
+            (11 10 8 9)
+            (9 8 7 6)
+        );
+    }
+);

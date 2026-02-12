@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+cd ${0%/*} || exit 1    # run from this directory
+
+# Ensure OpenFOAM env (from repo build)
+if [ -f "$(pwd)/../../scripts/env.sh" ]; then
+    set +e
+    # shellcheck disable=SC1091
+    . "$(pwd)/../../scripts/env.sh"
+    set -e
+fi
+
+foamListTimes -rm
+rm -rf processor*
+rm -f log.*
+rm -f system/blockMeshDict.runtime
+rm -rf postProcessing
