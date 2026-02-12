@@ -6,7 +6,7 @@ from typing import Any
 from ofti.app.menu_utils import has_processor_dirs, menu_choice
 from ofti.app.state import AppState, Screen
 from ofti.tools.case_ops import open_paraview_screen
-from ofti.tools.logs_analysis import log_analysis_screen, residual_timeline_screen
+from ofti.tools.logs_analysis import residual_timeline_screen
 from ofti.tools.logs_fields import field_summary_screen
 from ofti.tools.logs_probes import probes_viewer_screen
 from ofti.tools.logs_view import logs_screen
@@ -14,7 +14,6 @@ from ofti.tools.postprocessing import postprocessing_browser_screen, sampling_se
 from ofti.tools.reconstruct import reconstruct_manager_screen
 from ofti.tools.shell_tools import run_shell_script_screen
 from ofti.tools.tool_dicts_foamcalc import foam_calc_prompt
-from ofti.tools.tool_dicts_postprocess import post_process_prompt
 from ofti.ui_curses.help import postprocessing_help
 
 
@@ -31,12 +30,10 @@ def postprocessing_menu(
         "View logs",
         "Open ParaView",
         "Residual timeline",
-        "Log analysis summary",
         "PostProcessing browser",
         "Field summary",
         "Sampling & sets",
         "Probes viewer",
-        "postProcess",
         "foamCalc",
         "Run shell script",
         "Back",
@@ -55,20 +52,13 @@ def postprocessing_menu(
             0, "Post-processing requires processor* directories (decomposePar first).",
         )
         disabled_helpers[0] = "diagnostics"
-    postprocess_dict = case_path / "system" / "postProcessDict"
     foamcalc_dict = case_path / "system" / "foamCalcDict"
-    if not postprocess_dict.is_file():
-        disabled.add(9)
-        disabled_reasons[9] = (
-            "postProcess requires system/postProcessDict; create it via Config Manager."
-        )
-        disabled_helpers[9] = "config"
     if not foamcalc_dict.is_file():
-        disabled.add(10)
-        disabled_reasons[10] = (
+        disabled.add(8)
+        disabled_reasons[8] = (
             "foamCalc requires system/foamCalcDict; create it via Config Manager."
         )
-        disabled_helpers[10] = "config"
+        disabled_helpers[8] = "config"
     while True:
         choice = menu_choice(
             stdscr,
@@ -92,18 +82,14 @@ def postprocessing_menu(
         elif choice == 3:
             residual_timeline_screen(stdscr, case_path)
         elif choice == 4:
-            log_analysis_screen(stdscr, case_path)
-        elif choice == 5:
             postprocessing_browser_screen(stdscr, case_path)
-        elif choice == 6:
+        elif choice == 5:
             field_summary_screen(stdscr, case_path)
-        elif choice == 7:
+        elif choice == 6:
             sampling_sets_screen(stdscr, case_path)
-        elif choice == 8:
+        elif choice == 7:
             probes_viewer_screen(stdscr, case_path)
-        elif choice == 9:
-            post_process_prompt(stdscr, case_path)
-        elif choice == 10:
+        elif choice == 8:
             foam_calc_prompt(stdscr, case_path)
-        elif choice == 11:
+        elif choice == 9:
             run_shell_script_screen(stdscr, case_path)

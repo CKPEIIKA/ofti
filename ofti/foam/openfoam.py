@@ -38,12 +38,26 @@ def list_keywords(file_path: Path) -> list[str]:
     """
     List top-level keywords for a dictionary file.
     """
+    parse_error: Exception | None = None
     if _foamlib_candidate(file_path):
         try:
             return foamlib_integration.list_keywords(file_path)
         except Exception as exc:
             logging.debug("foamlib list_keywords failed: %s", exc)
-    raise OpenFOAMError("Failed to list keywords.")
+            parse_error = exc
+    rel = file_path.as_posix()
+    if parse_error is not None:
+        raise OpenFOAMError(
+            (
+                f"Failed to list keywords for '{rel}': parser error ({parse_error}). "
+                "Try opening this file in Config Editor and checking for unsupported "
+                "dictionary syntax."
+            ),
+        )
+    raise OpenFOAMError(
+        f"Failed to list keywords for '{rel}': file is not recognized as an OpenFOAM dictionary "
+        "(missing/invalid FoamFile header).",
+    )
 
 
 def list_subkeys(file_path: Path, entry: str) -> list[str]:

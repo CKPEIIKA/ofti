@@ -11,7 +11,6 @@ from ofti.core.entry_io import list_keywords
 from ofti.foam.config import fzf_enabled
 from ofti.foam.openfoam import OpenFOAMError, discover_case_files
 from ofti.foam.subprocess_utils import run_trusted
-from ofti.foamlib import adapter as foamlib_integration
 from ofti.ui.status import status_message
 from ofti.ui_curses.entry_browser import BrowserCallbacks, entry_browser_screen
 
@@ -29,6 +28,8 @@ def global_search_screen(
     except _GlobalSearchAbortError as exc:
         if exc.message:
             show_message(stdscr, exc.message)
+    except Exception as exc:
+        show_message(stdscr, f"Global search failed: {exc}")
 
 
 class _GlobalSearchAbortError(Exception):
@@ -49,26 +50,33 @@ def _run_global_search(
     foam_case = Case(root=case_path)
     sections = discover_case_files(foam_case.root)
     entries: list[EntryRef] = []
+    skipped_files = 0
 
     for files in sections.values():
         for file_path in files:
             status_message(stdscr, f"Indexing {file_path.relative_to(case_path)}...")
             dict_file = DictionaryFile(foam_case.root, file_path)
             try:
-                if foamlib_integration.is_foam_file(file_path):
-                    keys = foamlib_integration.list_keywords(file_path)
-                else:
-                    keys = list_keywords(file_path)
+                keys = list_keywords(file_path)
             except OpenFOAMError as exc:
                 if state.no_foam:
                     raise _GlobalSearchAbortError(
                         "Global search failed: "
                         f"{exc} (OpenFOAM env not available)",
                     ) from exc
+                skipped_files += 1
+                continue
+            except Exception:
+                skipped_files += 1
                 continue
             entries.extend(EntryRef(dict_file, key) for key in keys)
 
     if not entries:
+        if skipped_files:
+            raise _GlobalSearchAbortError(
+                "No entries found for global search. "
+                f"{skipped_files} file(s) could not be parsed; run Check syntax for details.",
+            )
         raise _GlobalSearchAbortError("No entries found for global search.")
 
     fzf_input = "\n".join(f"{ref.file.rel}\t{ref.key}" for ref in entries)
@@ -107,6 +115,10 @@ def _run_global_search(
         keys = list_keywords(file_path)
     except OpenFOAMError as exc:
         raise _GlobalSearchAbortError(f"Failed to load keys for {rel_str}: {exc}") from exc
+    except Exception as exc:
+        raise _GlobalSearchAbortError(
+            f"Failed to load keys for {rel_str}: unexpected parser error ({exc}).",
+        ) from exc
 
     base_key = full_key.split(".")[-1]
     try:

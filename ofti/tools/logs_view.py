@@ -7,6 +7,7 @@ from typing import Any
 
 from ofti.core.checkmesh import extract_last_courant
 from ofti.foam.config import get_config, key_hint, key_in
+from ofti.tools.logs_analysis import log_analysis_screen
 from ofti.tools.logs_select import _select_log_file
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
@@ -14,11 +15,34 @@ from ofti.ui_curses.viewer import Viewer
 
 
 def logs_screen(stdscr: Any, case_path: Path) -> None:
-    """Simple log viewer for files matching log.* in the case directory."""
+    """Logs menu: view, tail, and analysis in one place."""
     while True:
-        path = _select_log_file(case_path, stdscr)
-        if path is None:
+        labels = [
+            "View log file",
+            "Tail log (live)",
+            "[a] Log analysis summary",
+            "Back",
+        ]
+        menu = build_menu(
+            stdscr,
+            "View logs",
+            labels,
+            menu_key="menu:view_logs",
+            item_hint="Choose how to inspect logs.",
+        )
+        choice = menu.navigate()
+        if choice in (-1, len(labels) - 1):
             return
+        if choice == 1:
+            log_tail_screen(stdscr, case_path)
+            continue
+        if choice == 2:
+            log_analysis_screen(stdscr, case_path)
+            continue
+
+        path = _select_log_file(case_path, stdscr, title="Select log file to view")
+        if path is None:
+            continue
         try:
             text = path.read_text()
         except OSError as exc:

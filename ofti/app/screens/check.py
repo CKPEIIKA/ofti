@@ -14,7 +14,13 @@ from ofti.core.entry_io import read_entry
 from ofti.core.templates import find_example_file
 from ofti.core.tool_dicts_service import apply_assignment_or_write
 from ofti.foam.config import get_config, key_hint, key_in
-from ofti.foam.openfoam import FileCheckResult, OpenFOAMError, discover_case_files, verify_case
+from ofti.foam.openfoam import (
+    FileCheckResult,
+    OpenFOAMError,
+    discover_case_files,
+    get_entry_comments,
+    verify_case,
+)
 from ofti.foam.tasks import Task
 from ofti.ui.status import draw_status_bar, status_message
 
@@ -334,33 +340,50 @@ def auto_fix_missing_required_entries(
         return
 
     case_path = entry_io._find_case_root(file_path) or file_path.parent
-    fixed: list[str] = []
-    skipped: list[str] = []
+    fixed: list[tuple[str, str | None]] = []
+    skipped: list[tuple[str, str | None]] = []
     for key, missing_keys in missing_map.items():
         for missing_key in missing_keys:
             full_key = f"{key}.{missing_key}" if key else missing_key
+            desc = _entry_description(example_path, full_key)
             try:
                 value = read_entry(example_path, full_key)
             except OpenFOAMError:
-                skipped.append(full_key)
+                skipped.append((full_key, desc))
                 continue
             ok = apply_assignment_or_write(case_path, file_path, full_key.split("."), value)
             if ok:
-                fixed.append(full_key)
+                fixed.append((full_key, desc))
             else:
-                skipped.append(full_key)
+                skipped.append((full_key, desc))
 
     if fixed:
         show_message(
             stdscr,
-            "Inserted entries:\n" + "\n".join(f"- {item}" for item in fixed),
+            "Inserted entries:\n"
+            + "\n".join(_format_fix_item(item, desc) for item, desc in fixed),
         )
         return
     if skipped:
         show_message(
             stdscr,
             "No entries inserted. Missing example values for:\n"
-            + "\n".join(f"- {item}" for item in skipped),
+            + "\n".join(_format_fix_item(item, desc) for item, desc in skipped),
         )
         return
     show_message(stdscr, "No entries inserted.")
+
+
+def _entry_description(example_path: Path, key: str) -> str | None:
+    comments = get_entry_comments(example_path, key)
+    for comment in comments:
+        cleaned = comment.strip().lstrip("/*").strip()
+        if cleaned:
+            return cleaned
+    return None
+
+
+def _format_fix_item(key: str, description: str | None) -> str:
+    if description:
+        return f"- {key}: {description}"
+    return f"- {key}"

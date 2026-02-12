@@ -29,6 +29,8 @@ def foamlib_parametric_study_screen(  # noqa: C901
                 "Parametric wizard",
                 [*labels, "Manual entry", "Back"],
                 menu_key="menu:parametric_wizard",
+                item_hint="Select a preset or switch to manual entry.",
+                help_lines=_parametric_preset_help_lines(),
             )
             choice = menu.navigate()
             if choice == -1 or choice == len(labels) + 1:
@@ -91,19 +93,36 @@ def _parametric_form(
     while True:
         values_text = ", ".join(values) if values else "<none>"
         options = [
-            f"Dictionary: {dict_path or 'system/controlDict'}",
-            f"Entry: {entry or '<required>'}",
-            f"Values: {values_text}",
+            f"Dictionary file: {dict_path or 'system/controlDict'}",
+            f"Entry key: {entry or '<required>'}",
+            f"Sweep values: {values_text}",
             f"Run solver: {'yes' if run_solver else 'no'}",
-            "Run",
+            "Create cases",
             "Back",
         ]
+        def hint_for(idx: int) -> str:
+            hints = [
+                "Path inside case, e.g. system/controlDict or constant/thermophysicalProperties",
+                "Dictionary key (supports dotted keys), e.g. application or thermoType.transport",
+                "Comma-separated values. Example: simpleFoam, pisoFoam",
+                "Toggle whether to run solver in each created case",
+                "Create variant case folders with selected values",
+                "Return without changes",
+            ]
+            if 0 <= idx < len(hints):
+                return hints[idx]
+            return ""
+
         menu = build_menu(
             stdscr,
             "Parametric wizard",
             options,
             menu_key="menu:parametric_form",
-            item_hint="Edit field or run.",
+            hint_provider=hint_for,
+            status_line=(
+                "Creates sibling case folders; existing destination folders cause an error"
+            ),
+            help_lines=_parametric_form_help_lines(),
         )
         choice = menu.navigate()
         if choice in (-1, len(options) - 1):
@@ -136,7 +155,7 @@ def _update_parametric_dict(
 ) -> tuple[str, str, list[str], bool]:
     updated = _prompt_line(
         stdscr,
-        "Dictionary path (default system/controlDict): ",
+        "Dictionary path inside case (default system/controlDict): ",
     )
     return updated or "system/controlDict", entry, values, run_solver
 
@@ -148,7 +167,10 @@ def _update_parametric_entry(
     values: list[str],
     run_solver: bool,
 ) -> tuple[str, str, list[str], bool]:
-    updated = _prompt_line(stdscr, "Entry key (e.g. application): ")
+    updated = _prompt_line(
+        stdscr,
+        "Entry key (e.g. application or thermoType.transport): ",
+    )
     return dict_path, (updated or entry), values, run_solver
 
 
@@ -159,7 +181,10 @@ def _update_parametric_values(
     values: list[str],
     run_solver: bool,
 ) -> tuple[str, str, list[str], bool]:
-    updated = _prompt_line(stdscr, "Values (comma-separated): ")
+    updated = _prompt_line(
+        stdscr,
+        "Values (comma-separated, e.g. simpleFoam,pisoFoam): ",
+    )
     if updated:
         values = [val.strip() for val in updated.split(",") if val.strip()]
     return dict_path, entry, values, run_solver
@@ -184,9 +209,35 @@ def _finalize_parametric(
     run_solver: bool,
 ) -> tuple[str, str, list[str], bool] | None:
     if not entry:
-        _show_message(stdscr, "Entry key is required.")
+        _show_message(
+            stdscr,
+            "Entry key is required.\nExample: application or thermoType.transport",
+        )
         return None
     if not values:
-        _show_message(stdscr, "Provide at least one value.")
+        _show_message(
+            stdscr,
+            "Provide at least one value.\nExample: simpleFoam, pisoFoam",
+        )
         return None
     return dict_path or "system/controlDict", entry, values, run_solver
+
+
+def _parametric_preset_help_lines() -> list[str]:
+    return [
+        "Parametric wizard creates one case folder per value.",
+        "If ofti.parametric exists, choose a saved preset here.",
+        "Use Manual entry when you want a one-off sweep.",
+        "Destination folders are created next to the current case.",
+    ]
+
+
+def _parametric_form_help_lines() -> list[str]:
+    return [
+        "Dictionary file: path relative to case root.",
+        "Entry key: supports dotted keys, e.g. thermoType.transport.",
+        "Sweep values: comma-separated tokens.",
+        "Output cases are named <case>_<entry>_<value>.",
+        "Runtime artifacts are excluded from copies (processor*, logs, postProcessing).",
+        "Use Run solver=yes only when the base case is already runnable.",
+    ]
