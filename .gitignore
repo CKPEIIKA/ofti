@@ -16,6 +16,7 @@ env/
 
 .DS_Store
 *.egg-info/
+build/
 .vscode
 .ruff_cache
 qa_output.txt
