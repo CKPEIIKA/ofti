@@ -95,6 +95,30 @@ def test_global_search_screen_reports_missing_fzf(monkeypatch, tmp_path: Path) -
     assert messages == ["fzf not available (disabled or missing)."]
 
 
+def test_global_search_screen_reports_parse_failures(monkeypatch, tmp_path: Path) -> None:
+    case_path = tmp_path / "case"
+    file_path = case_path / "system" / "controlDict"
+    file_path.parent.mkdir(parents=True)
+    file_path.write_text("FoamFile{}")
+    messages: list[str] = []
+
+    monkeypatch.setattr(search, "fzf_enabled", lambda: True)
+    monkeypatch.setattr(search, "discover_case_files", lambda _case: {"system": [file_path]})
+    monkeypatch.setattr(search, "status_message", lambda _screen, _msg: None)
+    monkeypatch.setattr(search, "list_keywords", lambda _path: (_ for _ in ()).throw(ValueError("bad parse")))
+    monkeypatch.setattr(search, "show_message", lambda _screen, msg: messages.append(msg))
+
+    search.global_search_screen(
+        stdscr=object(),
+        case_path=case_path,
+        state=AppState(),
+        browser_callbacks=SimpleNamespace(),
+    )
+
+    assert messages
+    assert "could not be parsed" in messages[0]
+
+
 def test_check_syntax_screen_foreground_path(monkeypatch, tmp_path: Path) -> None:
     case_path = tmp_path / "case"
     file_path = case_path / "system" / "controlDict"

@@ -72,6 +72,9 @@ def _field_summary_lines(case_path: Path, field_path: Path) -> list[str]:
     patches = foamlib_integration.list_subkeys(field_path, "boundaryField")
     if patches:
         lines.append(f"Boundary patches: {len(patches)}")
+        lines.append("")
+        lines.append("Patch details:")
+        lines.extend(_summarize_patch_fields(field_path, patches))
     else:
         lines.append("Boundary patches: none")
     return lines
@@ -136,3 +139,25 @@ def _summarize_array(node: object) -> list[str]:
         return [f"Internal field: array shape={getattr(values, 'shape', '')}"]
     shape = getattr(values, "shape", "")
     return [f"Internal field: array shape={shape} min={min_val:.6g} max={max_val:.6g}"]
+
+
+def _summarize_patch_fields(field_path: Path, patches: list[str]) -> list[str]:
+    lines: list[str] = []
+    for patch in patches:
+        patch_type = _read_optional_node(field_path, f"boundaryField.{patch}.type")
+        patch_value = _read_optional_node(field_path, f"boundaryField.{patch}.value")
+        type_text = (
+            str(patch_type).strip()
+            if patch_type is not None
+            else "<missing>"
+        )
+        lines.append(f"- {patch}: type={type_text}")
+        if patch_value is None:
+            lines.append("    value: <not set>")
+            continue
+        value_lines = _summarize_internal_field(patch_value)
+        if value_lines:
+            lines.append(f"    value: {value_lines[0].replace('Internal field: ', '')}")
+            continue
+        lines.append("    value: <unreadable>")
+    return lines

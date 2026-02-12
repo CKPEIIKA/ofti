@@ -44,14 +44,30 @@ def test_logs_screen_and_tail(monkeypatch, tmp_path: Path) -> None:
     log_path.write_text("Time = 0.1\n")
     pick = iter([log_path, None])
     monkeypatch.setattr(
-        "ofti.tools.logs_select._select_log_file",
+        "ofti.tools.logs_view._select_log_file",
         lambda *_a, **_k: next(pick),
     )
     monkeypatch.setattr(Viewer, "display", lambda *_: None)
+    choices = iter([0, 3])
+    monkeypatch.setattr("ofti.ui_curses.menus.Menu.navigate", lambda *_: next(choices))
     logs_view.logs_screen(FakeScreen(), case_dir)
 
     monkeypatch.setattr("ofti.ui_curses.menus.Menu.navigate", lambda *_: 0)
     logs_view.log_tail_screen(FakeScreen(keys=[ord("h")]), case_dir)
+
+
+def test_logs_screen_analysis_shortcut(monkeypatch, tmp_path: Path) -> None:
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    called: dict[str, bool] = {}
+    choices = iter([2, 3])
+    monkeypatch.setattr("ofti.ui_curses.menus.Menu.navigate", lambda *_: next(choices))
+    monkeypatch.setattr(
+        "ofti.tools.logs_view.log_analysis_screen",
+        lambda *_a, **_k: called.__setitem__("analysis", True),
+    )
+    logs_view.logs_screen(FakeScreen(), case_dir)
+    assert called.get("analysis") is True
 
 
 def test_log_analysis_and_residuals(monkeypatch, tmp_path: Path) -> None:

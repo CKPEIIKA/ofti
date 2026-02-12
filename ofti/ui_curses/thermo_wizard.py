@@ -14,103 +14,37 @@ from ofti.foam.openfoam import OpenFOAMError
 from ofti.ui_curses.entry_editor import EntryEditor
 from ofti.ui_curses.menus import Menu
 
-THERMO_TEMPLATES: dict[str, list[tuple[str, str]]] = {
-    "thermoType": [
-        (
-            "hePsiThermo (perfectGas + sutherland)",
-            """{
-    type            hePsiThermo;
-    mixture         pureMixture;
-    transport       sutherland;
-    thermo          hConst;
-    equationOfState perfectGas;
-    specie          specie;
-    energy          sensibleEnthalpy;
-}""",
-        ),
-        (
-            "heRhoThermo (rhoConst + const)",
-            """{
-    type            heRhoThermo;
-    mixture         pureMixture;
-    transport       const;
-    thermo          hConst;
-    equationOfState rhoConst;
-    specie          specie;
-    energy          sensibleEnthalpy;
-}""",
-        ),
+THERMO_SLOT_TEMPLATES: dict[str, list[tuple[str, str]]] = {
+    "type": [
+        ("hePsiThermo", "hePsiThermo"),
+        ("heRhoThermo", "heRhoThermo"),
+        ("heRho2Thermo", "heRho2Thermo"),
     ],
     "mixture": [
-        (
-            "pureMixture",
-            """{
-    specie
-    {
-        nMoles      1;
-        molWeight   28.96;
-    }
-}""",
-        ),
-        (
-            "multiComponentMixture",
-            """{
-    species (O2 N2);
-    defaultSpecie O2;
-    specie
-    {
-        nMoles      1;
-        molWeight   32;
-    }
-}""",
-        ),
+        ("pureMixture", "pureMixture"),
+        ("reactingMixture", "reactingMixture"),
+        ("reacting2Mixture", "reacting2Mixture"),
+        ("multiComponentMixture", "multiComponentMixture"),
     ],
     "transport": [
-        (
-            "sutherland",
-            """{
-    As          1.4792e-06;
-    Ts          116;
-}""",
-        ),
-        (
-            "const",
-            """{
-    mu          1.8e-05;
-    Pr          0.7;
-}""",
-        ),
+        ("const", "const"),
+        ("sutherland", "sutherland"),
+        ("BlottnerEucken", "BlottnerEucken"),
     ],
     "equationOfState": [
-        (
-            "perfectGas",
-            """{
-    R           287;
-}""",
-        ),
-        (
-            "Boussinesq",
-            """{
-    rho0        1000;
-    T0          300;
-    beta        3e-03;
-}""",
-        ),
-        (
-            "rhoConst",
-            """{
-    rho         1000;
-}""",
-        ),
+        ("perfectGas", "perfectGas"),
+        ("perfect2Gas", "perfect2Gas"),
+        ("rhoConst", "rhoConst"),
+        ("Boussinesq", "Boussinesq"),
     ],
 }
 
 
 def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901
-    keys = ["thermoType", "mixture", "transport", "equationOfState"]
-    paths = {key: _dict_path_for(key, case_path) for key in keys}
+    keys = ["type", "mixture", "transport", "equationOfState"]
+    paths = {key: _dict_path_for(case_path) for key in keys}
     values = {
-        key: _read_value(paths[key], key) if paths[key].is_file() else ""
+        key: _read_value(paths[key], _entry_path_for(key)) if paths[key].is_file() else ""
         for key in keys
     }
 
@@ -128,7 +62,7 @@ def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:  # noqa:
             return
 
         key = keys[choice]
-        templates = THERMO_TEMPLATES.get(key, [])
+        templates = THERMO_SLOT_TEMPLATES.get(key, [])
         action_labels = [
             "Edit manually",
             *[f"Use template: {name}" for name, _ in templates],
@@ -168,9 +102,9 @@ def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:  # noqa:
             editor = EntryEditor(
                 stdscr,
                 entry,
-                on_save=lambda value, k=key: _write_value(dict_path, k, value),
-                validator=_thermo_validator,
-                type_label="dict",
+                on_save=lambda value, k=key: _write_value(dict_path, _entry_path_for(k), value),
+                validator=_slot_validator,
+                type_label="scalar",
                 case_label=case_path.name,
             )
             editor.edit()
@@ -185,7 +119,7 @@ def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:  # noqa:
                     f"Missing {dict_path.relative_to(case_path)}; template cannot be applied.",
                 )
                 continue
-            if _write_value(dict_path, key, template_value):
+            if _write_value(dict_path, _entry_path_for(key), template_value):
                 values[key] = template_value
                 _show_message(stdscr, f"Applied {key} template.")
             else:
@@ -212,9 +146,11 @@ def _write_value(path: Path, key: str, value: str) -> bool:
     return apply_assignment_or_write(case_path, path, key.split("."), cleaned)
 
 
-def _thermo_validator(value: str) -> str | None:
+def _slot_validator(value: str) -> str | None:
     if not value.strip():
         return "Value cannot be empty."
+    if any(ch in value for ch in "{}"):
+        return "Enter a single token, not a dictionary block."
     lowered = value.lower()
     if "janaf" in lowered or "coeffs" in lowered:
         numbers = re.findall(r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?", value)
@@ -233,11 +169,8 @@ def _template_hint(value: str) -> str:
 
 def _wizard_help_lines() -> list[str]:
     return [
-        (
-            "Thermophysical slots come from thermophysicalProperties "
-            "(transport from transportProperties)."
-        ),
-        "Use templates to insert complete dictionary blocks quickly.",
+        "Thermo wizard edits thermoType slots in thermophysicalProperties.",
+        "Use templates to set common scalar tokens quickly.",
         (
             "Manual edits delegate to Config Manager when files are absent "
             "or require broader context."
@@ -256,9 +189,9 @@ def _show_message(stdscr: Any, message: str) -> None:
         raise QuitAppError()
 
 
-def _dict_path_for(key: str, case_path: Path) -> Path:
-    lookup = {
-        "transport": "transport",
-    }
-    dict_key = lookup.get(key.lower(), "thermophysical")
-    return case_path / get_dict_path(dict_key)
+def _dict_path_for(case_path: Path) -> Path:
+    return case_path / get_dict_path("thermophysical")
+
+
+def _entry_path_for(key: str) -> str:
+    return f"thermoType.{key}"
