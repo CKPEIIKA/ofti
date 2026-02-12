@@ -14,7 +14,7 @@ from ofti.foam.config import get_config, key_in
 from ofti.foam.exceptions import QuitAppError
 from ofti.foam.subprocess_utils import run_trusted
 from ofti.tools.helpers import resolve_openfoam_bashrc, with_bashrc
-from ofti.ui_curses.layout import status_message
+from ofti.ui.status import status_message
 from ofti.ui_curses.viewer import Viewer
 
 

@@ -16,7 +16,7 @@ from ofti.core.tool_dicts_service import apply_assignment_or_write
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.openfoam import FileCheckResult, OpenFOAMError, discover_case_files, verify_case
 from ofti.foam.tasks import Task
-from ofti.ui_curses.layout import draw_status_bar, status_message
+from ofti.ui.status import draw_status_bar, status_message
 
 
 def start_check_thread(case_path: Path, state: AppState) -> None:
