@@ -8,7 +8,6 @@ __pycache__/
 
 TODO.md
 done.md
-of_example/
 
 .venv/
 venv/
@@ -22,7 +21,6 @@ build/
 qa_output.txt
 *.txt
 scripts/foamlib_mcp.py
-examples/
 refs/
 docs/
 quality.txt

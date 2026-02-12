@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ofti.foamlib import fallback
 
 class FoamlibUnavailableError(RuntimeError):
     def __init__(self) -> None:
@@ -31,7 +32,7 @@ except Exception:  # pragma: no cover - optional fallback
 
 
 def available() -> bool:
-    return FOAMLIB_AVAILABLE
+    return FOAMLIB_AVAILABLE or fallback.available()
 
 
 def is_foam_file(path: Path) -> bool:
@@ -69,11 +70,15 @@ def _foam_field_file(path: Path) -> Any:
 
 
 def list_keywords(file_path: Path) -> list[str]:
+    if not FOAMLIB_AVAILABLE:
+        return fallback.list_keywords(file_path)
     foam_file = _foam_file(file_path)
     return [key for key in foam_file if isinstance(key, str)]
 
 
 def list_subkeys(file_path: Path, entry: str) -> list[str]:
+    if not FOAMLIB_AVAILABLE:
+        return fallback.list_subkeys(file_path, entry)
     foam_file = _foam_file(file_path)
     key_parts = _split_key(entry)
     node = foam_file.getone(key_parts if key_parts else None)
@@ -85,6 +90,8 @@ def list_subkeys(file_path: Path, entry: str) -> list[str]:
 
 
 def read_entry(file_path: Path, key: str) -> str:
+    if not FOAMLIB_AVAILABLE:
+        return fallback.read_entry(file_path, key)
     foam_file = _foam_file(file_path)
     key_parts = _split_key(key)
     node = foam_file.getone(key_parts if key_parts else None)
@@ -95,6 +102,8 @@ def read_entry(file_path: Path, key: str) -> str:
 
 
 def read_entry_node(file_path: Path, key: str) -> object:
+    if not FOAMLIB_AVAILABLE:
+        return fallback.read_entry_node(file_path, key)
     foam_file = _foam_file(file_path)
     key_parts = _split_key(key)
     node = foam_file.getone(key_parts if key_parts else None)
@@ -104,6 +113,8 @@ def read_entry_node(file_path: Path, key: str) -> object:
 
 
 def read_field_entry(file_path: Path, key: str) -> str:
+    if not FOAMLIB_AVAILABLE:
+        return fallback.read_field_entry(file_path, key)
     field_file = _foam_field_file(file_path)
     key_parts = _split_key(key)
     node = field_file.getone(key_parts if key_parts else None)
@@ -114,6 +125,8 @@ def read_field_entry(file_path: Path, key: str) -> str:
 
 
 def read_field_entry_node(file_path: Path, key: str) -> object:
+    if not FOAMLIB_AVAILABLE:
+        return fallback.read_field_entry_node(file_path, key)
     field_file = _foam_field_file(file_path)
     key_parts = _split_key(key)
     node = field_file.getone(key_parts if key_parts else None)
@@ -155,6 +168,8 @@ def _parse_uniform_value(value: str) -> object | None:
 
 
 def write_entry(file_path: Path, key: str, value: str) -> bool:
+    if not FOAMLIB_AVAILABLE:
+        return fallback.write_entry(file_path, key, value)
     if FOAMLIB_PREPROCESSING:
         ok = _write_entry_with_assignment(file_path, key, value, case_path=None)
         if ok:
@@ -177,6 +192,8 @@ def write_entry(file_path: Path, key: str, value: str) -> bool:
 
 
 def write_field_entry(file_path: Path, key: str, value: str) -> bool:
+    if not FOAMLIB_AVAILABLE:
+        return fallback.write_field_entry(file_path, key, value)
     field_file = _foam_field_file(file_path)
     cleaned = value.strip()
     if not cleaned:
@@ -290,6 +307,8 @@ def _dump_entry_value(key_name: str, node: object) -> str:
 
 
 def parse_boundary_file(path: Path) -> tuple[list[str], dict[str, str]]:
+    if not FOAMLIB_AVAILABLE:
+        return fallback.parse_boundary_file(path)
     foam_file = _foam_file(path)
     entries = foam_file.getone(None)
     patches: list[str] = []
@@ -311,6 +330,8 @@ def parse_boundary_file(path: Path) -> tuple[list[str], dict[str, str]]:
 
 
 def rename_boundary_patch(path: Path, old: str, new: str) -> bool:
+    if not FOAMLIB_AVAILABLE:
+        return fallback.rename_boundary_patch(path, old, new)
     foam_file = _foam_file(path)
     entries = foam_file.getone(None)
     if not isinstance(entries, list):
@@ -335,6 +356,8 @@ def rename_boundary_patch(path: Path, old: str, new: str) -> bool:
 
 
 def change_boundary_patch_type(path: Path, patch: str, new_type: str) -> bool:
+    if not FOAMLIB_AVAILABLE:
+        return fallback.change_boundary_patch_type(path, patch, new_type)
     foam_file = _foam_file(path)
     entries = foam_file.getone(None)
     if not isinstance(entries, list):
@@ -361,6 +384,8 @@ def change_boundary_patch_type(path: Path, patch: str, new_type: str) -> bool:
 
 
 def rename_boundary_field_patch(file_path: Path, old: str, new: str) -> bool:
+    if not FOAMLIB_AVAILABLE:
+        return fallback.rename_boundary_field_patch(file_path, old, new)
     field_file = _foam_field_file(file_path)
     key_old = ("boundaryField", old)
     key_new = ("boundaryField", new)
