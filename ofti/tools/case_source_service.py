@@ -38,7 +38,11 @@ def resolve_log_source(source: Path) -> Path:
     solver_log = solver_log_path(target)
     if solver_log is not None:
         return solver_log
-    logs = sorted(target.glob("log.*"), key=lambda path: path.stat().st_mtime, reverse=True)
+    logs = sorted(
+        target.glob("log.*"),
+        key=lambda path: (path.stat().st_mtime_ns, path.stat().st_ctime_ns),
+        reverse=True,
+    )
     if not logs:
         raise ValueError(f"no log.* files found in {target}")
     return logs[0]
