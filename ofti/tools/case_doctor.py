@@ -151,7 +151,7 @@ def _classify_lint_issue(
 ) -> bool:
     text = f"{rel_path}: {message}"
     lowered = message.lower()
-    # Typical hy2Foam cases include helper/non-dictionary files or advanced
+    # Some OpenFOAM cases include helper/non-dictionary files or advanced
     # syntax that the lightweight parser cannot fully validate.
     if "missing/invalid foamfile header" in lowered:
         if include_heavy:

@@ -173,6 +173,45 @@ def test_converge_plot_residuals_and_watch_external(
     assert "dry_run=True" in out
 
 
+def test_knife_stability_handler_plain_and_json(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "stability_payload",
+        lambda *_a, **_k: {
+            "log": "log.simpleFoam",
+            "pattern": "Cd",
+            "count": 12,
+            "window": 6,
+            "tolerance": 0.01,
+            "comparator": "le",
+            "latest": 0.2,
+            "window_delta": 0.005,
+            "status": "pass",
+            "unmet_reason": None,
+            "eta_seconds": 0.0,
+        },
+    )
+    args = _ns(
+        source=Path("log.simpleFoam"),
+        pattern="Cd",
+        tolerance=0.01,
+        window=6,
+        startup_samples=0,
+        comparator="le",
+        json=False,
+    )
+    assert cli_tools._knife_stability(args) == 0
+    assert "status=pass" in capsys.readouterr().out
+
+    args.json = True
+    assert cli_tools._knife_stability(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "pass"
+
+
 def test_watch_stop_signal_and_pause_resume_handlers(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

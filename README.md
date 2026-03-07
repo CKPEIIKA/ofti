@@ -41,6 +41,32 @@ and common tools (mesh, run, post-process, diagnostics).
 If the provided path is not an OpenFOAM case, `ofti` opens a folder picker
 to select a valid case directory.
 
+Main menu/interface sketch (example):
+
+```text
+*------------------------------*- ofti -*-------------------------------*
+| Case: reactiveShockTube             | Solver: hy2Foam                 |
+| Status: ran                         | Latest time: 0.0002             |
+| Mesh: 7200 cells, faces=30006, ...  | Parallel: 10; (scotch;)         |
+| Faces: 30006 Points: 16814          | Disk: 34.0MB                    |
+| Env: v1706                          | Keys: ? help / search : cmd     |
+| Path: /path/to/openfoam/case        | Log: log.hy2Foam                |
+*------------------------------------------------------------------------*
+
+Main menu
+
+>> Mesh
+   Physics & Boundary Conditions
+   Simulation
+   Post-Processing
+   Clean case
+   Config Manager
+   Tools
+   Quit
+
+[normal mode: OpenFOAM env loaded | j/k move | Enter open | q quit]
+```
+
 ## NON-INTERACTIVE CLI
 
 `ofti` also provides non-TUI commands:
@@ -69,6 +95,8 @@ Examples:
 
 ```bash
 ofti knife preflight CASE --json
+ofti knife initials CASE --json
+ofti knife copy CASE_COPY --case CASE
 ofti watch jobs CASE --json
 ofti watch pause CASE --all
 ofti watch resume CASE --all
@@ -77,6 +105,9 @@ ofti watch log CASE --lines 80 --json
 ofti run tool --list --case CASE --json
 ofti run solver CASE --dry-run --json
 ```
+
+For very large logs, analysis/tail commands read recent log windows to stay
+responsive.
 
 External watcher integration (for example `scripts/oftools/ofwatch`) is
 expected to run through tool presets in `ofti.tools` and can be executed with

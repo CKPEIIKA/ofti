@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import os
 import shlex
-import signal
 import subprocess
 from pathlib import Path
 from typing import Any
 
 from ofti.foam.config import get_config
+from ofti.tools import job_control_service
 from ofti.tools.helpers import resolve_openfoam_bashrc, with_bashrc
 from ofti.tools.input_prompts import prompt_command_line
 from ofti.tools.job_registry import finish_job, refresh_jobs, register_job
@@ -60,18 +60,28 @@ def stop_job_screen(stdscr: Any, case_path: Path) -> None:
     if choice == -1 or choice == len(labels) - 1:
         return
     job = jobs[choice]
-    pid = job.get("pid")
-    if not isinstance(pid, int):
-        _show_message(stdscr, "Invalid job pid.")
+    control = job_control_service.stop_jobs(
+        case_path,
+        [job],
+        job_id=None,
+        name=None,
+        all_jobs=True,
+        signal_name="TERM",
+        kill_fn=os.kill,
+        finish_job_fn=finish_job,
+    )
+    if control["failed"]:
+        row = control["failed"][0]
+        _show_message(
+            stdscr,
+            f"Failed to stop pid {row.get('pid', '?')}: {row.get('error', 'unknown')}",
+        )
         return
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except OSError as exc:
-        finish_job(case_path, str(job.get("id", "")), "missing", None)
-        _show_message(stdscr, f"Failed to stop pid {pid}: {exc}")
+    if control["stopped"]:
+        row = control["stopped"][0]
+        _show_message(stdscr, f"Sent SIGTERM to pid {row.get('pid', '?')}.")
         return
-    finish_job(case_path, str(job.get("id", "")), "stopped", None)
-    _show_message(stdscr, f"Sent SIGTERM to pid {pid}.")
+    _show_message(stdscr, "No job stopped.")
 
 
 def _background_tool_catalog(case_path: Path) -> list[tuple[str, list[str]]]:

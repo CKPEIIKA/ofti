@@ -6,11 +6,8 @@ from typing import Any
 
 from ofti.foamlib.logs import (
     execution_time_deltas,
-    parse_courant_numbers,
-    parse_execution_times,
-    parse_log_metrics,
-    parse_residuals,
-    parse_time_steps,
+    parse_log_metrics_and_residuals,
+    read_log_text,
 )
 from ofti.tools.logs_select import _select_solver_log_file
 from ofti.tools.runner import _show_message
@@ -26,28 +23,25 @@ def residual_timeline_screen(stdscr: Any, case_path: Path) -> None:
     if path is None:
         return
     try:
-        text = path.read_text()
+        text = read_log_text(path)
     except OSError as exc:
         _show_message(stdscr, f"Failed to read {path.name}: {exc}")
         return
 
-    residuals = parse_residuals(text)
+    metrics, residuals = parse_log_metrics_and_residuals(text)
     if not residuals:
         _show_message(stdscr, f"No residuals found in {path.name}.")
         return
-    times = parse_time_steps(text)
-    courants = parse_courant_numbers(text)
-    exec_times = parse_execution_times(text)
     _height, width = stdscr.getmaxyx()
     plot_width = max(10, min(50, width - 28))
     lines = ["Residuals summary", ""]
-    if times:
-        lines.append(f"Time steps: {len(times)} (last={times[-1]:.6g})")
-    if courants:
-        lines.append(f"Max Courant: {max(courants):.6g}")
-    if exec_times:
-        lines.append(f"Execution time: {exec_times[-1]:.6g} s")
-    if times or courants or exec_times:
+    if metrics.times:
+        lines.append(f"Time steps: {len(metrics.times)} (last={metrics.times[-1]:.6g})")
+    if metrics.courants:
+        lines.append(f"Max Courant: {max(metrics.courants):.6g}")
+    if metrics.execution_times:
+        lines.append(f"Execution time: {metrics.execution_times[-1]:.6g} s")
+    if metrics.times or metrics.courants or metrics.execution_times:
         lines.append("")
     for field, values in sorted(residuals.items()):
         if not values:
@@ -71,13 +65,12 @@ def log_analysis_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901
     if path is None:
         return
     try:
-        text = path.read_text()
+        text = read_log_text(path)
     except OSError as exc:
         _show_message(stdscr, f"Failed to read {path.name}: {exc}")
         return
 
-    metrics = parse_log_metrics(text)
-    residuals = parse_residuals(text)
+    metrics, residuals = parse_log_metrics_and_residuals(text)
     if not (metrics.times or metrics.courants or metrics.execution_times or residuals):
         _show_message(stdscr, f"No metrics found in {path.name}.")
         return

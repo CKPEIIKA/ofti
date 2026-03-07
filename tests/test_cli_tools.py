@@ -31,6 +31,22 @@ def test_run_tool_list_outputs_catalog(tmp_path, capsys) -> None:
     assert "blockMesh" in out
 
 
+def test_cli_tools_without_args_prints_short_help(capsys) -> None:
+    code = cli_tools.main([])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Non-interactive OFTI utilities" in out
+    assert "{knife,plot,watch,run}" in out
+
+
+def test_cli_group_without_subcommand_prints_help(capsys) -> None:
+    code = cli_tools.main(["watch"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "usage: ofti watch" in out
+    assert "{jobs,status,log,attach,start,pause,resume,run,stop,external}" in out
+
+
 def test_run_tool_list_outputs_catalog_json(tmp_path, capsys) -> None:
     case = _make_case(tmp_path / "case")
 
@@ -78,6 +94,65 @@ def test_knife_preflight_reports_ok_for_minimal_case(tmp_path, capsys) -> None:
     assert code == 0
     assert payload["ok"] is True
     assert payload["checks"]["system/controlDict"] is True
+
+
+def test_knife_initials_payload_json(tmp_path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+    (case / "0" / "U").write_text(
+        "\n".join(
+            [
+                "FoamFile",
+                "{",
+                "    class volVectorField;",
+                "    object U;",
+                "}",
+                "internalField uniform (0 0 0);",
+                "boundaryField",
+                "{",
+                "    inlet { type fixedValue; value uniform (1 0 0); }",
+                "    outlet { type zeroGradient; }",
+                "}",
+            ],
+        ),
+    )
+    code = cli_tools.main(["knife", "initials", str(case), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["field_count"] >= 1
+    fields = {row["name"]: row for row in payload["fields"]}
+    assert fields["U"]["internal_field"] in {"uniform (0 0 0)", "uniform (0.0 0.0 0.0)"}
+    assert fields["U"]["boundary"]["inlet"]["type"] == "fixedValue"
+
+
+def test_knife_copy_skips_runtime_artifacts(tmp_path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+    (case / "1").mkdir()
+    (case / "1" / "U").write_text("runtime\n")
+    (case / "log.simpleFoam").write_text("log\n")
+    (case / "postProcessing").mkdir()
+    (case / "postProcessing" / "probe.dat").write_text("1\n")
+    (case / "processor0").mkdir()
+    (case / "processor0" / "U").write_text("runtime\n")
+    (case / ".ofti").mkdir()
+    (case / ".ofti" / "jobs.json").write_text("[]\n")
+    (case / f"{case.name}.foam").write_text("\n")
+
+    dest = tmp_path / "case_copy"
+    code = cli_tools.main(
+        ["knife", "copy", str(dest), "--case", str(case), "--json"],
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["ok"] is True
+    assert dest.is_dir()
+    assert (dest / "0" / "U").is_file()
+    assert not (dest / "1").exists()
+    assert not (dest / "log.simpleFoam").exists()
+    assert not (dest / "postProcessing").exists()
+    assert not (dest / "processor0").exists()
+    assert not (dest / ".ofti").exists()
+    assert not (dest / f"{case.name}.foam").exists()
 
 
 def test_plot_metrics_reads_log_file(tmp_path, capsys) -> None:
@@ -180,7 +255,7 @@ def test_watch_stop_stops_selected_job(tmp_path, capsys, monkeypatch) -> None:
         ),
     )
     monkeypatch.setattr("ofti.tools.job_registry._pid_running", lambda _pid: True)
-    monkeypatch.setattr("ofti.tools.cli_tools.watch.os.kill", lambda _pid, _sig: None)
+    monkeypatch.setattr("ofti.tools.watch_service.os.kill", lambda _pid, _sig: None)
 
     code = cli_tools.main(["watch", "stop", str(case), "--all", "--json"])
 
@@ -213,6 +288,67 @@ def test_watch_start_runs_solver_in_background(tmp_path, capsys, monkeypatch) ->
     out = capsys.readouterr().out
     assert code == 0
     assert "pid=1234" in out
+
+
+def test_knife_status_lightweight_flags_forwarded(monkeypatch, tmp_path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+    seen: dict[str, object] = {}
+
+    def _status(case_dir: Path, **kwargs: object) -> dict[str, object]:
+        seen["case"] = case_dir
+        seen.update(kwargs)
+        return {
+            "case": str(case_dir),
+            "latest_time": 0.1,
+            "latest_iteration": 1,
+            "latest_delta_t": 1e-9,
+            "sec_per_iter": 0.2,
+            "solver_error": None,
+            "solver": "simpleFoam",
+            "solver_status": "running",
+            "run_time_control": {
+                "criteria": [
+                    {
+                        "key": "residualTolerance",
+                        "status": "fail",
+                        "live_value": 0.2,
+                        "live_delta": 0.1,
+                        "tolerance": 0.01,
+                        "eta_seconds": None,
+                        "unmet_reason": "window",
+                    },
+                ],
+                "passed": 0,
+                "failed": 1,
+                "unknown": 0,
+            },
+            "eta_seconds_to_criteria_start": None,
+            "eta_seconds_to_end_time": None,
+            "log_path": str(case / "log.simpleFoam"),
+            "log_fresh": False,
+            "running": False,
+            "tracked_solver_processes": [],
+            "untracked_solver_processes": [],
+            "jobs_running": 0,
+            "jobs_total": 0,
+        }
+
+    monkeypatch.setattr(cli_tools.knife_ops, "status_payload", _status)
+    code = cli_tools.main(
+        [
+            "knife",
+            "status",
+            str(case),
+            "--lightweight",
+            "--tail-bytes",
+            "4096",
+        ],
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert seen["lightweight"] is True
+    assert seen["tail_bytes"] == 4096
+    assert "unmet_reason=window" in out
 
 
 def test_knife_set_uses_shared_logic(tmp_path, capsys, monkeypatch) -> None:
@@ -341,15 +477,15 @@ def test_watch_log_json_rejects_follow(tmp_path, capsys) -> None:
 def test_knife_current_includes_untracked_solver_processes(tmp_path, monkeypatch) -> None:
     case = _make_case(tmp_path / "case", solver="hy2Foam")
     monkeypatch.setattr(
-        "ofti.tools.cli_tools.knife.resolve_solver_name",
+        "ofti.tools.knife_service.resolve_solver_name",
         lambda _case: ("hy2Foam", None),
     )
     monkeypatch.setattr(
-        "ofti.tools.cli_tools.knife.refresh_jobs",
+        "ofti.tools.knife_service.refresh_jobs",
         lambda _case: [{"id": "job-1", "name": "hy2Foam", "pid": 123, "status": "running"}],
     )
     monkeypatch.setattr(
-        "ofti.tools.cli_tools.knife._scan_proc_solver_processes",
+        "ofti.tools.knife_service._scan_proc_solver_processes",
         lambda _case, _solver, **_kwargs: [
             {"pid": 777, "solver": "hy2Foam", "command": "hy2Foam -case /tmp/case"},
         ],

@@ -149,12 +149,17 @@ def _compare_dictionary_file(rel_path: str, left_path: Path, right_path: Path) -
     right_data, right_error = _load_dict(right_path)
     left_flat = _flatten_mapping(left_data) if left_data else {}
     right_flat = _flatten_mapping(right_data) if right_data else {}
-    if not left_flat or not right_flat:
-        left_keys = _raw_key_scan(left_path)
-        right_keys = _raw_key_scan(right_path)
-    else:
+    if not left_flat:
+        left_flat = _raw_flatten_pairs(left_path)
+    if not right_flat:
+        right_flat = _raw_flatten_pairs(right_path)
+
+    if left_flat or right_flat:
         left_keys = set(left_flat)
         right_keys = set(right_flat)
+    else:
+        left_keys = _raw_key_scan(left_path)
+        right_keys = _raw_key_scan(right_path)
 
     missing_in_left = sorted(right_keys - left_keys)
     missing_in_right = sorted(left_keys - right_keys)
@@ -261,6 +266,64 @@ def _raw_key_scan(path: Path) -> set[str]:
         if _is_key_token(candidate):
             keys.add(candidate)
     return keys
+
+
+def _raw_flatten_pairs(path: Path) -> dict[str, str]:
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return {}
+    tokens = _raw_flatten_tokens(text)
+    pairs: dict[str, str] = {}
+    stack: list[str] = []
+    index = 0
+    while index < len(tokens):
+        part = tokens[index]
+        if part == "}":
+            if stack:
+                stack.pop()
+            index += 1
+            continue
+        if part in {"{", ";"}:
+            index += 1
+            continue
+        key = part.strip('"')
+        if not _is_key_token(key):
+            index += 1
+            continue
+        index += 1
+        index, opened_block, value_tokens = _consume_raw_value(tokens, index)
+        if opened_block:
+            stack.append(key)
+            continue
+        if value_tokens:
+            value = _normalize_scalar(" ".join(value_tokens))
+            full_key = ".".join([*stack, key]) if stack else key
+            pairs[full_key] = value
+    return pairs
+
+
+def _raw_flatten_tokens(text: str) -> list[str]:
+    cleaned = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    cleaned = re.sub(r"//.*", "", cleaned)
+    cleaned = "\n".join(line for line in cleaned.splitlines() if not line.strip().startswith("#"))
+    return re.findall(r'"[^"]*"|[{};]|[^\s{};]+', cleaned)
+
+
+def _consume_raw_value(tokens: list[str], index: int) -> tuple[int, bool, list[str]]:
+    values: list[str] = []
+    idx = index
+    while idx < len(tokens):
+        part = tokens[idx]
+        if part == "{":
+            return idx + 1, True, []
+        if part in {";", "}"}:
+            break
+        values.append(part.strip('"'))
+        idx += 1
+    if idx < len(tokens) and tokens[idx] == ";":
+        idx += 1
+    return idx, False, values
 
 
 def _is_key_token(value: str) -> bool:
