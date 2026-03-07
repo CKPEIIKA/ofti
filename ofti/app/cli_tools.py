@@ -352,6 +352,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     jobs = watch_sub.add_parser("jobs", help="Show tracked jobs in .ofti/jobs.json")
     jobs.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
     jobs.add_argument("--all", action="store_true", help="Include finished/stopped jobs")
+    jobs.add_argument("--kind", choices=["solver", "watcher", "any"], default="any")
     jobs.add_argument("--output", choices=["brief", "detailed"], default=None)
     jobs.add_argument("--json", action="store_true")
     jobs.set_defaults(func=_watch_jobs)
@@ -359,6 +360,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     status = watch_sub.add_parser("status", help="Alias of watch jobs")
     status.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
     status.add_argument("--all", action="store_true", help="Include finished/stopped jobs")
+    status.add_argument("--kind", choices=["solver", "watcher", "any"], default="any")
     status.add_argument("--output", choices=["brief", "detailed"], default=None)
     status.add_argument("--json", action="store_true")
     status.set_defaults(func=_watch_jobs)
@@ -373,10 +375,42 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     log.add_argument("--json", action="store_true", help="Print result as JSON")
     log.set_defaults(func=_watch_log)
 
-    attach = watch_sub.add_parser("attach", help="Alias of watch log --follow")
+    attach = watch_sub.add_parser(
+        "attach",
+        help="Follow logs, or launch watcher process with --watcher",
+    )
     attach.add_argument("source", nargs="?", default=None, type=Path)
     attach.add_argument("--lines", type=int, default=40)
     attach.add_argument("--job-id", default=None, help="Tracked job id from .ofti/jobs.json")
+    attach.add_argument(
+        "--watcher",
+        nargs="*",
+        default=None,
+        help="Start/attach watcher process command; empty uses ofti.watcher preset",
+    )
+    attach.add_argument(
+        "--background",
+        action="store_true",
+        help="With --watcher, start detached and keep tracking in jobs.json",
+    )
+    attach.add_argument(
+        "--watcher-name",
+        default="watcher",
+        help="Tracked watcher job name",
+    )
+    attach.add_argument(
+        "--log-file",
+        default=None,
+        help="Watcher log path (relative to case or absolute)",
+    )
+    attach.add_argument(
+        "--env",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Extra environment variable for watcher process (repeatable)",
+    )
+    attach.add_argument("--dry-run", action="store_true", help="Show watcher launch payload only")
     attach.add_argument(
         "--adopt",
         default=None,
@@ -387,11 +421,26 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     attach.add_argument("--json", action="store_true", help="Print result as JSON")
     attach.set_defaults(func=_watch_attach)
 
-    start = watch_sub.add_parser("start", help="Start solver in background")
+    start = watch_sub.add_parser(
+        "start",
+        help="Start solver or watcher in background",
+    )
     start.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    start.add_argument("--case", dest="case_dir", type=Path)
     start.add_argument("--solver", default=None)
     start.add_argument("--parallel", type=int, default=0)
     start.add_argument("--mpi", default=None)
+    start.add_argument(
+        "--watcher",
+        nargs="*",
+        default=None,
+        help="Start watcher command; empty uses ofti.watcher preset",
+    )
+    start.add_argument(
+        "--watcher-name",
+        default="watcher",
+        help="Tracked watcher job name",
+    )
     start.add_argument(
         "--no-detach",
         action="store_true",
@@ -414,6 +463,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         metavar="KEY=VALUE",
         help="Extra environment variable for started process (repeatable)",
     )
+    start.add_argument("--dry-run", action="store_true", help="Show launch payload only")
     start.add_argument("--json", action="store_true", help="Print result as JSON")
     start.set_defaults(func=_watch_start)
 
@@ -422,6 +472,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     pause.add_argument("--job-id", default=None)
     pause.add_argument("--name", default=None)
     pause.add_argument("--all", action="store_true")
+    pause.add_argument("--kind", choices=["solver", "watcher", "any"], default="any")
     pause.add_argument("--json", action="store_true")
     pause.set_defaults(func=_watch_pause)
 
@@ -430,6 +481,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     resume.add_argument("--job-id", default=None)
     resume.add_argument("--name", default=None)
     resume.add_argument("--all", action="store_true")
+    resume.add_argument("--kind", choices=["solver", "watcher", "any"], default="any")
     resume.add_argument("--json", action="store_true")
     resume.set_defaults(func=_watch_resume)
 
@@ -465,6 +517,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     stop.add_argument("--job-id", default=None)
     stop.add_argument("--name", default=None)
     stop.add_argument("--all", action="store_true")
+    stop.add_argument("--kind", choices=["solver", "watcher", "any"], default="any")
     stop.add_argument(
         "--signal",
         default="TERM",
@@ -964,7 +1017,11 @@ def _plot_residuals(args: argparse.Namespace) -> int:
 
 
 def _watch_jobs(args: argparse.Namespace) -> int:
-    payload = watch_ops.jobs_payload(args.case_dir, include_all=bool(args.all))
+    payload = watch_ops.jobs_payload(
+        args.case_dir,
+        include_all=bool(args.all),
+        kind=str(getattr(args, "kind", "any")),
+    )
     profile = _watch_profile(args.case_dir, getattr(args, "output", None))
     if args.json:
         print(
@@ -976,18 +1033,22 @@ def _watch_jobs(args: argparse.Namespace) -> int:
         )
         return 0
     if profile == "brief":
-        print(f"case={payload['case']} count={payload['count']}")
+        print(f"case={payload['case']} kind={payload.get('kind', 'any')} count={payload['count']}")
         for job in payload["jobs"]:
-            print(f"- id={job.get('id')} pid={job.get('pid')} status={job.get('status')}")
+            print(
+                f"- id={job.get('id')} kind={job.get('kind')} pid={job.get('pid')} "
+                f"status={job.get('status')}",
+            )
         return 0
     print(f"case={payload['case']}")
+    print(f"kind={payload.get('kind', 'any')}")
     if not payload["jobs"]:
         print("No tracked jobs.")
         return 0
     for job in payload["jobs"]:
         print(
-            f"{job.get('name', 'job')} pid={job.get('pid', '?')} "
-            f"status={job.get('status', 'unknown')}",
+            f"{job.get('name', 'job')} kind={job.get('kind', 'unknown')} "
+            f"pid={job.get('pid', '?')} status={job.get('status', 'unknown')}",
         )
     return 0
 
@@ -1033,7 +1094,52 @@ def _watch_log(args: argparse.Namespace) -> int:
     return _follow_log_path(Path(payload["log"]), interval=interval)
 
 
-def _watch_attach(args: argparse.Namespace) -> int:
+def _watch_attach(args: argparse.Namespace) -> int:  # noqa: C901, PLR0911
+    watcher_raw = getattr(args, "watcher", None)
+    if watcher_raw is not None:
+        if getattr(args, "adopt", None):
+            print("ofti: --adopt cannot be used with --watcher", file=sys.stderr)
+            return 2
+        try:
+            extra_env = _parse_env_assignments(getattr(args, "env", []))
+        except ValueError as exc:
+            print(f"ofti: {exc}", file=sys.stderr)
+            return 2
+        payload = watch_ops.watcher_attach_payload(
+            args.case_dir,
+            command=list(watcher_raw),
+            background=bool(getattr(args, "background", False)),
+            log_file=getattr(args, "log_file", None),
+            env=extra_env,
+            dry_run=bool(getattr(args, "dry_run", False)),
+            name=str(getattr(args, "watcher_name", "watcher")),
+        )
+        if args.json:
+            print(
+                json.dumps(
+                    _watch_json_payload("attach.watcher", payload, profile="detailed"),
+                    indent=2,
+                    sort_keys=True,
+                ),
+            )
+            return 0 if bool(payload.get("ok", True)) else 1
+        print(f"case={payload['case']}")
+        print(f"kind={payload.get('kind', 'watcher')}")
+        print(f"name={payload.get('name')}")
+        print(f"command={payload.get('command')}")
+        if payload.get("dry_run"):
+            print("dry_run=True")
+            return 0
+        if payload.get("log_path"):
+            print(f"log_path={payload.get('log_path')}")
+        if payload.get("pid") is not None:
+            print(f"pid={payload.get('pid')}")
+        if payload.get("job_id") is not None:
+            print(f"job_id={payload.get('job_id')}")
+        if payload.get("returncode") is not None:
+            print(f"returncode={payload.get('returncode')}")
+        return 0 if bool(payload.get("ok", True)) else 1
+
     job_id = args.job_id
     if getattr(args, "adopt", None):
         try:
@@ -1067,6 +1173,48 @@ def _watch_attach(args: argparse.Namespace) -> int:
 
 
 def _watch_start(args: argparse.Namespace) -> int:
+    watcher_raw = getattr(args, "watcher", None)
+    if (
+        watcher_raw is None
+        and not getattr(args, "solver", None)
+        and int(getattr(args, "parallel", 0) or 0) <= 0
+        and getattr(args, "mpi", None) is None
+    ):
+        try:
+            preset = watch_ops.watcher_preset_payload(args.case_dir)
+        except Exception:
+            preset = {"found": False}
+        if bool(preset.get("found")):
+            watcher_raw = []
+    if watcher_raw is not None:
+        try:
+            extra_env = _parse_env_assignments(getattr(args, "env", []))
+        except ValueError as exc:
+            print(f"ofti: {exc}", file=sys.stderr)
+            return 2
+        payload = watch_ops.watcher_start_payload(
+            args.case_dir,
+            command=list(watcher_raw),
+            detached=not bool(getattr(args, "no_detach", False)),
+            log_file=getattr(args, "log_file", None),
+            env=extra_env,
+            dry_run=bool(getattr(args, "dry_run", False)),
+            name=str(getattr(args, "watcher_name", "watcher")),
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0 if bool(payload.get("ok", True)) else 1
+        print(f"case={payload['case']}")
+        print(f"kind={payload.get('kind', 'watcher')}")
+        print(f"name={payload['name']}")
+        print(f"command={payload['command']}")
+        print(f"log_path={payload.get('log_path')}")
+        if payload.get("dry_run"):
+            print("dry_run=True")
+            return 0
+        print(f"pid={payload.get('pid')}")
+        print(f"job_id={payload.get('job_id')}")
+        return 0 if bool(payload.get("ok", True)) else 1
     return _run_solver_with_mode(args, background=True)
 
 
@@ -1081,6 +1229,7 @@ def _watch_stop(args: argparse.Namespace) -> int:
         job_id=args.job_id,
         name=args.name,
         all_jobs=bool(args.all),
+        kind=str(getattr(args, "kind", "any")),
         signal_name=signal_name,
     )
     if args.json:
@@ -1106,6 +1255,7 @@ def _watch_pause(args: argparse.Namespace) -> int:
         job_id=args.job_id,
         name=args.name,
         all_jobs=bool(args.all),
+        kind=str(getattr(args, "kind", "any")),
     )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -1129,6 +1279,7 @@ def _watch_resume(args: argparse.Namespace) -> int:
         job_id=args.job_id,
         name=args.name,
         all_jobs=bool(args.all),
+        kind=str(getattr(args, "kind", "any")),
     )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -1327,7 +1478,7 @@ def _watch_profile(case_dir: Path, explicit: str | None) -> str:
         return "detailed"
 
 
-def _watch_json_payload(
+def _watch_json_payload(  # noqa: C901
     command: str,
     payload: dict[str, object],
     *,
@@ -1350,8 +1501,13 @@ def _watch_json_payload(
             {
                 "id": job.get("id"),
                 "name": job.get("name"),
+                "kind": job.get("kind"),
+                "case_dir": job.get("case_dir"),
                 "pid": job.get("pid"),
                 "status": job.get("status"),
+                "running": job.get("running"),
+                "detached": job.get("detached"),
+                "log_path": job.get("log_path"),
             }
             for job in jobs
         ]
@@ -1368,6 +1524,14 @@ def _watch_json_payload(
         base["pid"] = payload.get("pid")
     if "job_id" in payload:
         base["job_id"] = payload.get("job_id")
+    if "kind" in payload:
+        base["kind"] = payload.get("kind")
+    if "detached" in payload:
+        base["detached"] = payload.get("detached")
+    if "running" in payload:
+        base["running"] = payload.get("running")
+    if "log_path" in payload:
+        base["log_path"] = payload.get("log_path")
     return base
 
 

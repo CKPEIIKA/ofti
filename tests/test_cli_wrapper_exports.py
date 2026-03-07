@@ -15,6 +15,10 @@ def test_watch_wrapper_exports_service_functions() -> None:
     assert watch.output_profile_payload is watch_service.output_profile_payload
     assert watch.effective_interval is watch_service.effective_interval
     assert watch.effective_output_profile is watch_service.effective_output_profile
+    assert watch.watcher_preset_payload is watch_service.watcher_preset_payload
+    assert watch.watcher_start_payload is watch_service.watcher_start_payload
+    assert watch.watcher_run_payload is watch_service.watcher_run_payload
+    assert watch.watcher_attach_payload is watch_service.watcher_attach_payload
     assert watch.log_tail_payload is watch_service.log_tail_payload
     assert watch.stop_payload is watch_service.stop_payload
     assert watch.pause_payload is watch_service.pause_payload

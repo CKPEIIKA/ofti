@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import signal as _signal
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Literal
 
@@ -16,14 +18,37 @@ ExternalWatchMode = Literal["run", "start", "status", "attach", "stop"]
 WatchOutputProfile = Literal["brief", "detailed"]
 _WATCH_SETTINGS_DEFAULT_INTERVAL = 0.25
 _WATCH_SETTINGS_DEFAULT_OUTPUT: WatchOutputProfile = "detailed"
+_WATCHER_KIND = "watcher"
+_SOLVER_KIND = "solver"
+_WATCHER_ENV_FORWARD_KEYS = (
+    "MIND_URL",
+    "CONTROL_API_TOKEN",
+    "RELAY_BASE_URL",
+    "RELAY_SECRET",
+    "RELAY_CA_CERT",
+)
 
 
-def jobs_payload(case_dir: Path, *, include_all: bool) -> dict[str, Any]:
+def jobs_payload(
+    case_dir: Path,
+    *,
+    include_all: bool,
+    kind: str | None = None,
+) -> dict[str, Any]:
     case_path = case_source_service.require_case_dir(case_dir)
     jobs = refresh_jobs(case_path)
+    selected_kind = _normalize_kind_filter(kind)
     if not include_all:
         jobs = [job for job in jobs if job.get("status") in {"running", "paused"}]
-    return {"case": str(case_path), "count": len(jobs), "jobs": jobs}
+    shaped = [_job_with_schema(case_path, job) for job in jobs]
+    if selected_kind is not None:
+        shaped = [job for job in shaped if str(job.get("kind")) == selected_kind]
+    return {
+        "case": str(case_path),
+        "count": len(shaped),
+        "kind": selected_kind or "any",
+        "jobs": shaped,
+    }
 
 
 def interval_payload(case_dir: Path, *, seconds: float | None = None) -> dict[str, Any]:
@@ -84,6 +109,185 @@ def effective_output_profile(case_dir: Path) -> WatchOutputProfile:
     return _watch_output(settings)
 
 
+def watcher_preset_payload(case_dir: Path) -> dict[str, Any]:
+    case_path = case_source_service.require_case_dir(case_dir)
+    command, env, preset_path = _resolve_watcher_command(case_path, None)
+    return {
+        "case": str(case_path),
+        "preset_path": str(preset_path) if preset_path is not None else None,
+        "command": command,
+        "env": env,
+        "found": bool(command),
+    }
+
+
+def watcher_start_payload(
+    case_dir: Path,
+    *,
+    command: list[str] | None,
+    detached: bool = True,
+    log_file: str | None = None,
+    env: dict[str, str] | None = None,
+    dry_run: bool = False,
+    name: str = "watcher",
+) -> dict[str, Any]:
+    case_path = case_source_service.require_case_dir(case_dir)
+    resolved_command, preset_env, preset_path = _resolve_watcher_command(case_path, command)
+    if not resolved_command and not dry_run:
+        if preset_path is None:
+            raise ValueError("watcher command is required or define preset in ofti.watcher")
+        raise ValueError(f"watcher command not found in preset: {preset_path}")
+    watcher_id = (
+        str((env or {}).get("WATCHER_ID") or "")
+        or f"watcher-{int(time.time())}"
+    )
+    merged_env = _watcher_env(
+        case_path,
+        watcher_id=watcher_id,
+        preset_env=preset_env,
+        extra_env=env,
+    )
+    log_path = _external_log_path(case_path, name=name, raw=log_file)
+    payload: dict[str, Any] = {
+        "case": str(case_path),
+        "kind": _WATCHER_KIND,
+        "name": name,
+        "command": resolved_command,
+        "detached": detached,
+        "log_path": str(log_path),
+        "env_keys": sorted(merged_env),
+        "watcher_id": watcher_id,
+        "preset_path": str(preset_path) if preset_path is not None else None,
+        "dry_run": dry_run,
+    }
+    if dry_run:
+        payload["ok"] = True
+        return payload
+
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = log_path.open("a", encoding="utf-8", errors="ignore")
+    process = subprocess.Popen(  # noqa: S603
+        resolved_command,
+        cwd=case_path,
+        stdout=handle,
+        stderr=handle,
+        text=True,
+        env=merged_env,
+        start_new_session=detached,
+    )
+    handle.close()
+    payload["pid"] = int(process.pid)
+    job_id = register_job(
+        case_path,
+        name,
+        int(process.pid),
+        " ".join(resolved_command),
+        log_path,
+        kind=_WATCHER_KIND,
+        detached=detached,
+        extra={
+            "watcher_id": watcher_id,
+            "env_keys": sorted(merged_env),
+        },
+    )
+    payload["job_id"] = job_id
+    payload["ok"] = True
+    return payload
+
+
+def watcher_run_payload(
+    case_dir: Path,
+    *,
+    command: list[str] | None,
+    env: dict[str, str] | None = None,
+    dry_run: bool = False,
+    name: str = "watcher",
+) -> dict[str, Any]:
+    case_path = case_source_service.require_case_dir(case_dir)
+    resolved_command, preset_env, preset_path = _resolve_watcher_command(case_path, command)
+    if not resolved_command and not dry_run:
+        if preset_path is None:
+            raise ValueError("watcher command is required or define preset in ofti.watcher")
+        raise ValueError(f"watcher command not found in preset: {preset_path}")
+    watcher_id = (
+        str((env or {}).get("WATCHER_ID") or "")
+        or f"watcher-{int(time.time())}"
+    )
+    merged_env = _watcher_env(
+        case_path,
+        watcher_id=watcher_id,
+        preset_env=preset_env,
+        extra_env=env,
+    )
+    payload: dict[str, Any] = {
+        "case": str(case_path),
+        "kind": _WATCHER_KIND,
+        "name": name,
+        "command": resolved_command,
+        "detached": False,
+        "env_keys": sorted(merged_env),
+        "watcher_id": watcher_id,
+        "preset_path": str(preset_path) if preset_path is not None else None,
+        "dry_run": dry_run,
+    }
+    if dry_run:
+        payload["ok"] = True
+        return payload
+    process = subprocess.Popen(  # noqa: S603
+        resolved_command,
+        cwd=case_path,
+        text=True,
+        env=merged_env,
+    )
+    payload["pid"] = int(process.pid)
+    job_id = register_job(
+        case_path,
+        name,
+        int(process.pid),
+        " ".join(resolved_command),
+        None,
+        kind=_WATCHER_KIND,
+        detached=False,
+        extra={"watcher_id": watcher_id},
+    )
+    payload["job_id"] = job_id
+    returncode = process.wait()
+    status = "finished" if returncode == 0 else "failed"
+    finish_job(case_path, job_id, status, int(returncode))
+    payload["returncode"] = int(returncode)
+    payload["ok"] = returncode == 0
+    return payload
+
+
+def watcher_attach_payload(
+    case_dir: Path,
+    *,
+    command: list[str] | None,
+    background: bool,
+    log_file: str | None = None,
+    env: dict[str, str] | None = None,
+    dry_run: bool = False,
+    name: str = "watcher",
+) -> dict[str, Any]:
+    if background:
+        return watcher_start_payload(
+            case_dir,
+            command=command,
+            detached=True,
+            log_file=log_file,
+            env=env,
+            dry_run=dry_run,
+            name=name,
+        )
+    return watcher_run_payload(
+        case_dir,
+        command=command,
+        env=env,
+        dry_run=dry_run,
+        name=name,
+    )
+
+
 def _tail_payload_from_log(log_path: Path, *, lines: int) -> dict[str, Any]:
     tail_lines: list[str] = []
     if lines > 0:
@@ -111,12 +315,14 @@ def stop_payload(
     job_id: str | None = None,
     name: str | None = None,
     all_jobs: bool = False,
+    kind: str | None = None,
     signal_name: str = "TERM",
 ) -> dict[str, Any]:
     signal_name = signal_name.strip().upper()
     return _job_action_payload(
         case_dir,
         action="stopped",
+        kind=kind,
         run_control_fn=lambda case_path, jobs: job_control_service.stop_jobs(
             case_path,
             jobs,
@@ -136,10 +342,12 @@ def pause_payload(
     job_id: str | None = None,
     name: str | None = None,
     all_jobs: bool = False,
+    kind: str | None = None,
 ) -> dict[str, Any]:
     return _job_action_payload(
         case_dir,
         action="paused",
+        kind=kind,
         run_control_fn=lambda case_path, jobs: job_control_service.pause_jobs(
             case_path,
             jobs,
@@ -159,10 +367,12 @@ def resume_payload(
     job_id: str | None = None,
     name: str | None = None,
     all_jobs: bool = False,
+    kind: str | None = None,
 ) -> dict[str, Any]:
     return _job_action_payload(
         case_dir,
         action="resumed",
+        kind=kind,
         run_control_fn=lambda case_path, jobs: job_control_service.resume_jobs(
             case_path,
             jobs,
@@ -325,6 +535,8 @@ def external_watch_start_payload(
         int(process.pid),
         " ".join(command),
         log_path,
+        kind=_WATCHER_KIND,
+        detached=detached,
     )
     payload["job_id"] = job_id
     payload["ok"] = True
@@ -339,7 +551,7 @@ def external_watch_status_payload(
     include_all: bool = False,
 ) -> dict[str, Any]:
     case_path = case_source_service.require_case_dir(case_dir)
-    jobs = refresh_jobs(case_path)
+    jobs = [_job_with_schema(case_path, job) for job in refresh_jobs(case_path)]
     rows = _external_jobs(jobs, name=name)
     if job_id is not None:
         rows = [job for job in rows if str(job.get("id")) == str(job_id)]
@@ -432,7 +644,14 @@ def adopt_job_payload(
     name = solver if solver and solver != "unknown" else "solver"
     log_path = _adopt_log_path(case_path, solver)
     command = " ".join(entry.args) if entry.args else name
-    job_id = register_job(case_path, name, pid, command, log_path)
+    job_id = register_job(
+        case_path,
+        name,
+        pid,
+        command,
+        log_path,
+        kind=_SOLVER_KIND,
+    )
     return {
         "case": str(case_path),
         "adopted": True,
@@ -541,6 +760,8 @@ def _external_jobs(jobs: list[dict[str, Any]], *, name: str) -> list[dict[str, A
         prefix = "watch.external"
     rows: list[dict[str, Any]] = []
     for job in jobs:
+        if _infer_job_kind(job) != _WATCHER_KIND:
+            continue
         job_name = str(job.get("name") or "")
         if job_name == prefix or job_name.startswith(f"{prefix}."):
             rows.append(job)
@@ -566,6 +787,142 @@ def _select_external_job(
         raise ValueError(f"no tracked external watcher jobs for {name}")
     pool.sort(key=lambda item: float(item.get("started_at") or 0.0), reverse=True)
     return pool[0]
+
+
+def _normalize_kind_filter(kind: str | None) -> str | None:
+    if kind is None:
+        return None
+    normalized = str(kind).strip().lower()
+    if not normalized or normalized in {"all", "any"}:
+        return None
+    if normalized not in {_SOLVER_KIND, _WATCHER_KIND}:
+        raise ValueError(f"unsupported job kind: {kind}")
+    return normalized
+
+
+def _infer_job_kind(job: dict[str, Any]) -> str:
+    raw = str(job.get("kind") or "").strip().lower()
+    if raw in {_SOLVER_KIND, _WATCHER_KIND}:
+        return raw
+    name = str(job.get("name") or "").strip().lower()
+    if name.startswith(("watch.", "watcher")):
+        return _WATCHER_KIND
+    if "watch" in name and "foam" not in name:
+        return _WATCHER_KIND
+    return _SOLVER_KIND
+
+
+def _job_with_schema(case_path: Path, job: dict[str, Any]) -> dict[str, Any]:
+    row = dict(job)
+    kind = _infer_job_kind(job)
+    status = str(job.get("status") or "unknown")
+    row["kind"] = kind
+    row["case_dir"] = str(case_path)
+    row["running"] = status in {"running", "paused"}
+    row["detached"] = bool(job.get("detached", kind == _SOLVER_KIND))
+    row["log_path"] = _job_log_path(case_path, job)
+    return row
+
+
+def _job_log_path(case_path: Path, job: dict[str, Any]) -> str | None:
+    raw = str(job.get("log") or "").strip()
+    if not raw:
+        return None
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = case_path / path
+    try:
+        return str(path.resolve())
+    except OSError:
+        return str(path)
+
+
+def _resolve_watcher_command(
+    case_path: Path,
+    command: list[str] | None,
+) -> tuple[list[str], dict[str, str], Path | None]:
+    explicit = normalize_external_command(list(command or []))
+    if explicit:
+        return explicit, {}, None
+    preset_path = case_path / "ofti.watcher"
+    if not preset_path.is_file():
+        return [], {}, None
+    preset = _load_watcher_preset(preset_path)
+    return preset.get("command", []), preset.get("env", {}), preset_path
+
+
+def _load_watcher_preset(path: Path) -> dict[str, Any]:
+    command: list[str] = []
+    env: dict[str, str] = {}
+    try:
+        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError:
+        return {"command": command, "env": env}
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parsed_env = _env_assignment_from_line(line)
+        if parsed_env is not None:
+            key, value = parsed_env
+            env[key] = value
+            continue
+        if not command:
+            cmd_text = _watcher_command_text(line)
+            try:
+                command = shlex.split(cmd_text)
+            except ValueError:
+                continue
+    return {"command": command, "env": env}
+
+
+def _watcher_command_text(line: str) -> str:
+    if ":" not in line:
+        return line
+    key, value = line.split(":", 1)
+    lhs = key.strip().lower()
+    rhs = value.strip()
+    if lhs in {"command", "cmd", "watcher", "default"} and rhs:
+        return rhs
+    if rhs:
+        return rhs
+    return line
+
+
+def _env_assignment_from_line(line: str) -> tuple[str, str] | None:
+    stripped = line.strip()
+    if stripped.startswith("env "):
+        stripped = stripped[4:].strip()
+    if "=" not in stripped:
+        return None
+    key, value = stripped.split("=", 1)
+    name = key.strip()
+    if not name:
+        return None
+    if not all(ch.isalnum() or ch == "_" for ch in name):
+        return None
+    return name, value
+
+
+def _watcher_env(
+    case_path: Path,
+    *,
+    watcher_id: str,
+    preset_env: dict[str, str],
+    extra_env: dict[str, str] | None,
+) -> dict[str, str]:
+    env = os.environ.copy()
+    for key in _WATCHER_ENV_FORWARD_KEYS:
+        value = os.environ.get(key)
+        if value:
+            env[key] = value
+    env["CASE_DIR"] = str(case_path)
+    env["WATCHER_ID"] = watcher_id
+    env.setdefault("FRAMEWORK", "ofti")
+    env.update(preset_env)
+    if extra_env:
+        env.update(extra_env)
+    return env
 
 
 def _watch_settings_path(case_path: Path) -> Path:
@@ -638,13 +995,18 @@ def _job_action_payload(
     case_dir: Path,
     *,
     action: str,
+    kind: str | None,
     run_control_fn,
 ) -> dict[str, Any]:
     case_path = case_source_service.require_case_dir(case_dir)
-    jobs = refresh_jobs(case_path)
+    jobs = [_job_with_schema(case_path, job) for job in refresh_jobs(case_path)]
+    selected_kind = _normalize_kind_filter(kind)
+    if selected_kind is not None:
+        jobs = [job for job in jobs if str(job.get("kind")) == selected_kind]
     control = run_control_fn(case_path, jobs)
     payload = {
         "case": str(case_path),
+        "kind": selected_kind or "any",
         "selected": control["selected"],
         "failed": control["failed"],
         action: control[action],
