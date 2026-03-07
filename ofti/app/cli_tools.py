@@ -109,8 +109,30 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     stop.add_argument("--job-id", default=None)
     stop.add_argument("--name", default=None)
     stop.add_argument("--all", action="store_true")
+    stop.add_argument(
+        "--signal",
+        default="TERM",
+        choices=["TERM", "INT", "QUIT", "KILL"],
+        help="Signal used to stop job(s); TERM is gentle and default",
+    )
     stop.add_argument("--json", action="store_true")
     stop.set_defaults(func=_watch_stop)
+
+    pause = knife_sub.add_parser("pause", help="Alias of watch pause")
+    pause.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    pause.add_argument("--job-id", default=None)
+    pause.add_argument("--name", default=None)
+    pause.add_argument("--all", action="store_true")
+    pause.add_argument("--json", action="store_true")
+    pause.set_defaults(func=_watch_pause)
+
+    resume = knife_sub.add_parser("resume", help="Alias of watch resume")
+    resume.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    resume.add_argument("--job-id", default=None)
+    resume.add_argument("--name", default=None)
+    resume.add_argument("--all", action="store_true")
+    resume.add_argument("--json", action="store_true")
+    resume.set_defaults(func=_watch_resume)
 
     converge = knife_sub.add_parser(
         "converge",
@@ -210,16 +232,46 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     start.add_argument("--solver", default=None)
     start.add_argument("--parallel", type=int, default=0)
     start.add_argument("--mpi", default=None)
+    start.add_argument(
+        "--no-detach",
+        action="store_true",
+        help="Run without session detach (default is detached background run)",
+    )
+    start.add_argument(
+        "--log-file",
+        default=None,
+        help="Custom log path (relative to case or absolute)",
+    )
+    start.add_argument(
+        "--pid-file",
+        default=None,
+        help="Write started PID to this file (relative to case or absolute)",
+    )
+    start.add_argument(
+        "--env",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Extra environment variable for started process (repeatable)",
+    )
     start.add_argument("--json", action="store_true", help="Print result as JSON")
     start.set_defaults(func=_watch_start)
 
-    resume = watch_sub.add_parser("resume", help="Resume solver in background")
+    pause = watch_sub.add_parser("pause", help="Pause tracked running jobs (SIGSTOP)")
+    pause.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    pause.add_argument("--job-id", default=None)
+    pause.add_argument("--name", default=None)
+    pause.add_argument("--all", action="store_true")
+    pause.add_argument("--json", action="store_true")
+    pause.set_defaults(func=_watch_pause)
+
+    resume = watch_sub.add_parser("resume", help="Resume paused tracked jobs (SIGCONT)")
     resume.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    resume.add_argument("--solver", default=None)
-    resume.add_argument("--parallel", type=int, default=0)
-    resume.add_argument("--mpi", default=None)
-    resume.add_argument("--json", action="store_true", help="Print result as JSON")
-    resume.set_defaults(func=_watch_start)
+    resume.add_argument("--job-id", default=None)
+    resume.add_argument("--name", default=None)
+    resume.add_argument("--all", action="store_true")
+    resume.add_argument("--json", action="store_true")
+    resume.set_defaults(func=_watch_resume)
 
     run = watch_sub.add_parser("run", help="Run solver in foreground")
     run.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
@@ -234,6 +286,12 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     stop.add_argument("--job-id", default=None)
     stop.add_argument("--name", default=None)
     stop.add_argument("--all", action="store_true")
+    stop.add_argument(
+        "--signal",
+        default="TERM",
+        choices=["TERM", "INT", "QUIT", "KILL"],
+        help="Signal used to stop job(s); TERM is gentle and default",
+    )
     stop.add_argument("--json", action="store_true")
     stop.set_defaults(func=_watch_stop)
 
@@ -608,7 +666,33 @@ def _watch_run(args: argparse.Namespace) -> int:
 
 
 def _watch_stop(args: argparse.Namespace) -> int:
+    signal_name = str(getattr(args, "signal", "TERM")).upper()
     payload = watch_ops.stop_payload(
+        args.case_dir,
+        job_id=args.job_id,
+        name=args.name,
+        all_jobs=bool(args.all),
+        signal_name=signal_name,
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if not payload["failed"] else 1
+    print(f"case={payload['case']}")
+    print(f"signal={payload.get('signal', signal_name)}")
+    print(f"selected={payload['selected']}")
+    if payload["stopped"]:
+        print("stopped:")
+        for row in payload["stopped"]:
+            print(f"- id={row['id']} pid={row['pid']} name={row['name']}")
+    if payload["failed"]:
+        print("failed:")
+        for row in payload["failed"]:
+            print(f"- id={row.get('id')} pid={row.get('pid')} error={row['error']}")
+    return 0 if not payload["failed"] else 1
+
+
+def _watch_pause(args: argparse.Namespace) -> int:
+    payload = watch_ops.pause_payload(
         args.case_dir,
         job_id=args.job_id,
         name=args.name,
@@ -619,9 +703,32 @@ def _watch_stop(args: argparse.Namespace) -> int:
         return 0 if not payload["failed"] else 1
     print(f"case={payload['case']}")
     print(f"selected={payload['selected']}")
-    if payload["stopped"]:
-        print("stopped:")
-        for row in payload["stopped"]:
+    if payload["paused"]:
+        print("paused:")
+        for row in payload["paused"]:
+            print(f"- id={row['id']} pid={row['pid']} name={row['name']}")
+    if payload["failed"]:
+        print("failed:")
+        for row in payload["failed"]:
+            print(f"- id={row.get('id')} pid={row.get('pid')} error={row['error']}")
+    return 0 if not payload["failed"] else 1
+
+
+def _watch_resume(args: argparse.Namespace) -> int:
+    payload = watch_ops.resume_payload(
+        args.case_dir,
+        job_id=args.job_id,
+        name=args.name,
+        all_jobs=bool(args.all),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if not payload["failed"] else 1
+    print(f"case={payload['case']}")
+    print(f"selected={payload['selected']}")
+    if payload["resumed"]:
+        print("resumed:")
+        for row in payload["resumed"]:
             print(f"- id={row['id']} pid={row['pid']} name={row['name']}")
     if payload["failed"]:
         print("failed:")
@@ -748,11 +855,21 @@ def _run_solver_with_mode(args: argparse.Namespace, *, background: bool) -> int:
             return 0
         print(cmd_text)
         return 0
+    detached = not bool(getattr(args, "no_detach", False))
+    log_path_raw = getattr(args, "log_file", None)
+    pid_path_raw = getattr(args, "pid_file", None)
+    log_path = Path(log_path_raw) if isinstance(log_path_raw, str) and log_path_raw else None
+    pid_path = Path(pid_path_raw) if isinstance(pid_path_raw, str) and pid_path_raw else None
+    extra_env = _parse_env_assignments(getattr(args, "env", []))
     result = run_ops.execute_case_command(
         args.case_dir,
         display,
         cmd,
         background=background,
+        detached=detached,
+        log_path=log_path,
+        pid_path=pid_path,
+        extra_env=extra_env,
     )
     if getattr(args, "json", False):
         payload: dict[str, object] = {
@@ -760,6 +877,10 @@ def _run_solver_with_mode(args: argparse.Namespace, *, background: bool) -> int:
             "name": display,
             "command": run_ops.dry_run_command(cmd),
             "background": background,
+            "detached": detached if background else False,
+            "log_file": str(log_path) if log_path is not None else None,
+            "pid_file": str(pid_path) if pid_path is not None else None,
+            "env": extra_env,
             "returncode": result.returncode,
             "pid": result.pid,
             "log_path": str(result.log_path) if result.log_path else None,
@@ -777,3 +898,19 @@ def _run_solver_with_mode(args: argparse.Namespace, *, background: bool) -> int:
     if result.stderr:
         print(result.stderr, file=sys.stderr, end="")
     return result.returncode
+
+
+def _parse_env_assignments(raw_values: object) -> dict[str, str]:
+    values: list[str] = []
+    if isinstance(raw_values, list):
+        values = [str(item) for item in raw_values]
+    payload: dict[str, str] = {}
+    for item in values:
+        if "=" not in item:
+            raise ValueError(f"invalid --env assignment: {item}")
+        key, value = item.split("=", 1)
+        name = key.strip()
+        if not name:
+            raise ValueError(f"invalid --env assignment: {item}")
+        payload[name] = value
+    return payload

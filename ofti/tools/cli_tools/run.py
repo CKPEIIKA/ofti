@@ -99,6 +99,10 @@ def execute_case_command(
     cmd: list[str],
     *,
     background: bool,
+    detached: bool = True,
+    log_path: Path | None = None,
+    pid_path: Path | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> RunResult:
     case_path = require_case_dir(case_dir)
     command_text = " ".join(shlex.quote(part) for part in cmd)
@@ -106,12 +110,16 @@ def execute_case_command(
     env = os.environ.copy()
     env.pop("BASH_ENV", None)
     env.pop("ENV", None)
+    if extra_env:
+        env.update(extra_env)
 
     if background:
         safe = _safe_name(name)
-        log_path = case_path / f"log.{safe}"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        handle = log_path.open("a", encoding="utf-8", errors="ignore")
+        chosen_log_path = log_path if log_path is not None else Path(f"log.{safe}")
+        if not chosen_log_path.is_absolute():
+            chosen_log_path = case_path / chosen_log_path
+        chosen_log_path.parent.mkdir(parents=True, exist_ok=True)
+        handle = chosen_log_path.open("a", encoding="utf-8", errors="ignore")
         process = subprocess.Popen(  # noqa: S603
             ["/bin/bash", "--noprofile", "--norc", "-c", shell_cmd],
             cwd=case_path,
@@ -119,10 +127,15 @@ def execute_case_command(
             stderr=handle,
             text=True,
             env=env,
+            start_new_session=detached,
         )
         handle.close()
-        register_job(case_path, name, process.pid, shell_cmd, log_path)
-        return RunResult(0, "", "", pid=process.pid, log_path=log_path)
+        if pid_path is not None:
+            chosen_pid_path = pid_path if pid_path.is_absolute() else case_path / pid_path
+            chosen_pid_path.parent.mkdir(parents=True, exist_ok=True)
+            chosen_pid_path.write_text(f"{process.pid}\n")
+        register_job(case_path, name, process.pid, shell_cmd, chosen_log_path)
+        return RunResult(0, "", "", pid=process.pid, log_path=chosen_log_path)
 
     result = run_trusted(
         ["/bin/bash", "--noprofile", "--norc", "-c", shell_cmd],

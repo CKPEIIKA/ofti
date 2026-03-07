@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ofti"
-version = "0.1.0"
+version = "0.1.1"
 description = "Curses-based OpenFOAM case editor"
 readme = "README.md"
 authors = [{name = "OpenFOAM TUI maintainers"}]
@@ -24,7 +24,7 @@ dependencies = [
 ofti = "ofti.app.cli:main"
 
 [tool.pytest.ini_options]
-addopts = "--cov=ofti --cov-report=term-missing --cov-fail-under=70"
+addopts = "--cov=ofti --cov-report=term-missing --cov-fail-under=75"
 norecursedirs = ["refs"]
 
 [tool.coverage.run]

@@ -24,6 +24,7 @@ _DELTA_T_RE = re.compile(r"\bdeltaT\s*=\s*(?P<value>[0-9eE.+-]+)", re.IGNORECASE
 _ITER_RE = re.compile(r"\b(?:iteration|iter)\s*[=:]\s*(?P<value>\d+)", re.IGNORECASE)
 _END_TIME_RE = re.compile(r"\bendTime\s+(?P<value>[^;]+);")
 _START_TIME_RE = re.compile(r"\bstartTime\s+(?P<value>[^;]+);")
+_TIME_START_RE = re.compile(r"\btimeStart\s+(?P<value>[^;]+);")
 _SHOCK_RE = re.compile(r"(?:shock|delta\s*/?\s*d)[^0-9+\-]*(?P<value>[0-9eE.+-]+)", re.IGNORECASE)
 _DRAG_RE = re.compile(
     r"(?:\bcd\b|drag(?:\s+coefficient)?)\s*[:=]?\s*(?P<value>[0-9eE.+-]+)",
@@ -35,6 +36,19 @@ _CRITERIA_RE = re.compile(
     r"(?P<value>[^;]+);",
     re.MULTILINE,
 )
+_TYPE_RE = re.compile(r"\btype\s+(?P<value>[^;]+);")
+_VALUE_RE = re.compile(
+    r"\b(?:value|threshold|max|min|delta|tolerance|target)\s+(?P<value>[^;]+);",
+    re.IGNORECASE,
+)
+_FIELD_RE = re.compile(r"\bfield\s+(?P<value>[^;]+);")
+_FIELDS_RE = re.compile(r"\bfields\s*\((?P<value>[^)]*)\)\s*;", re.IGNORECASE)
+_INCLUDE_RE = re.compile(
+    r'^\s*#(?P<kind>include|includeEtc)\s+(?P<path>"[^"]+"|<[^>]+>|\S+)',
+    re.MULTILINE,
+)
+_COMMENT_BLOCK_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+_COMMENT_LINE_RE = re.compile(r"//.*?$", re.MULTILINE)
 _KEY_TOKEN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_./:-]*$")
 _MPI_LAUNCHERS = {"mpirun", "mpiexec", "mpiexec.hydra", "orterun", "srun"}
 
@@ -67,8 +81,8 @@ def current_payload(case_dir: Path) -> dict[str, Any]:
     case_path = require_case_dir(case_dir)
     solver, solver_error = resolve_solver_name(case_path)
     jobs = refresh_jobs(case_path)
-    running_jobs = [job for job in jobs if job.get("status") == "running"]
-    tracked_pids = set(_running_job_pids(running_jobs))
+    active_jobs = [job for job in jobs if job.get("status") in {"running", "paused"}]
+    tracked_pids = set(_running_job_pids(active_jobs))
     untracked: list[dict[str, Any]] = []
     if solver and solver_error is None:
         untracked = _scan_proc_solver_processes(
@@ -76,13 +90,28 @@ def current_payload(case_dir: Path) -> dict[str, Any]:
             solver,
             tracked_pids=tracked_pids,
         )
+    elif solver_error is not None:
+        untracked = _scan_proc_solver_processes(
+            case_path,
+            None,
+            tracked_pids=tracked_pids,
+        )
+        if not untracked:
+            untracked = _scan_proc_solver_processes(
+                case_path,
+                None,
+                tracked_pids=tracked_pids,
+                require_case_target=False,
+            )
+    running_count = len(active_jobs) if active_jobs else len(untracked)
     return {
         "case": str(case_path),
         "solver": solver,
         "solver_error": solver_error,
-        "jobs": running_jobs,
+        "jobs": active_jobs,
         "jobs_total": len(jobs),
-        "jobs_running": len(running_jobs),
+        "jobs_running": running_count,
+        "jobs_tracked_running": len(active_jobs),
         "untracked_processes": untracked,
     }
 
@@ -118,13 +147,20 @@ def status_payload(case_dir: Path) -> dict[str, Any]:
     case_path = require_case_dir(case_dir)
     solver, solver_error = resolve_solver_name(case_path)
     jobs = refresh_jobs(case_path)
-    running_jobs = [job for job in jobs if job.get("status") == "running"]
-    tracked_pids = set(_running_job_pids(running_jobs))
+    active_jobs = [job for job in jobs if job.get("status") in {"running", "paused"}]
+    tracked_pids = set(_running_job_pids(active_jobs))
     live_processes: list[dict[str, Any]] = []
     if solver and solver_error is None:
         live_processes = _scan_proc_solver_processes(
             case_path,
             solver,
+            tracked_pids=tracked_pids,
+            include_tracked=True,
+        )
+    elif solver_error is not None:
+        live_processes = _scan_proc_solver_processes(
+            case_path,
+            None,
             tracked_pids=tracked_pids,
             include_tracked=True,
         )
@@ -140,6 +176,7 @@ def status_payload(case_dir: Path) -> dict[str, Any]:
     latest_time_value = runtime["latest_time"]
     has_live_pids = bool(live_processes)
     running_heuristic = has_live_pids or runtime["log_fresh"]
+    running_count = len(active_jobs) if active_jobs else len(untracked_live)
     return {
         "case": str(case_path),
         "solver": solver,
@@ -158,7 +195,8 @@ def status_payload(case_dir: Path) -> dict[str, Any]:
         "log_fresh": runtime["log_fresh"],
         "running": running_heuristic,
         "jobs_total": len(jobs),
-        "jobs_running": len(running_jobs),
+        "jobs_running": running_count,
+        "jobs_tracked_running": len(active_jobs),
         "jobs": jobs,
         "tracked_solver_processes": tracked_live,
         "untracked_solver_processes": untracked_live,
@@ -300,15 +338,16 @@ def _running_job_pids(jobs: list[dict[str, Any]]) -> list[int]:
 
 def _scan_proc_solver_processes(
     case_path: Path,
-    solver: str,
+    solver: str | None,
     *,
     tracked_pids: set[int],
     proc_root: Path = Path("/proc"),
     include_tracked: bool = False,
+    require_case_target: bool = True,
 ) -> list[dict[str, Any]]:
     table = _proc_table(proc_root)
     case_root = case_path.resolve()
-    solver_name = solver.lower()
+    solver_name = solver.lower() if solver else None
     launcher_pids = _launcher_pids_for_case(table, solver_name, case_root)
     processes: list[dict[str, Any]] = []
     for entry in table.values():
@@ -319,11 +358,12 @@ def _scan_proc_solver_processes(
         role = _process_role(entry.args, solver_name)
         if role is None:
             continue
-        if (
-            not _entry_targets_case(entry, case_root)
-            and entry.pid not in launcher_pids
-            and not _has_ancestor(entry.pid, launcher_pids, table)
-        ):
+        in_scope = (
+            _entry_targets_case(entry, case_root)
+            or entry.pid in launcher_pids
+            or _has_ancestor(entry.pid, launcher_pids, table)
+        )
+        if require_case_target and not in_scope:
             continue
         if role == "launcher" and not _launcher_has_solver_descendant(
             entry.pid,
@@ -335,7 +375,7 @@ def _scan_proc_solver_processes(
             {
                 "pid": entry.pid,
                 "ppid": entry.ppid,
-                "solver": solver,
+                "solver": solver or _guess_solver_from_args(entry.args),
                 "role": role,
                 "tracked": entry.pid in tracked_pids,
                 "command": " ".join(entry.args),
@@ -362,7 +402,11 @@ def _proc_table(proc_root: Path) -> dict[int, ProcEntry]:
     return table
 
 
-def _launcher_pids_for_case(table: dict[int, ProcEntry], solver: str, case_path: Path) -> set[int]:
+def _launcher_pids_for_case(
+    table: dict[int, ProcEntry],
+    solver: str | None,
+    case_path: Path,
+) -> set[int]:
     launcher_pids: set[int] = set()
     for entry in table.values():
         if not entry.args:
@@ -370,7 +414,16 @@ def _launcher_pids_for_case(table: dict[int, ProcEntry], solver: str, case_path:
         base = Path(entry.args[0]).name.lower()
         if base not in _MPI_LAUNCHERS:
             continue
-        if not _entry_targets_case(entry, case_path):
+        targeted = _entry_targets_case(entry, case_path) or _launcher_descendant_targets_case(
+            entry.pid,
+            table,
+            case_path,
+        )
+        if not targeted:
+            continue
+        if solver is None:
+            if _launcher_has_solver_descendant(entry.pid, table, None):
+                launcher_pids.add(entry.pid)
             continue
         if any(_token_matches_solver(arg, solver) for arg in entry.args):
             launcher_pids.add(entry.pid)
@@ -380,7 +433,11 @@ def _launcher_pids_for_case(table: dict[int, ProcEntry], solver: str, case_path:
     return launcher_pids
 
 
-def _launcher_has_solver_descendant(pid: int, table: dict[int, ProcEntry], solver: str) -> bool:
+def _launcher_has_solver_descendant(
+    pid: int,
+    table: dict[int, ProcEntry],
+    solver: str | None,
+) -> bool:
     for child in table.values():
         if not _has_ancestor(child.pid, {pid}, table):
             continue
@@ -434,12 +491,16 @@ def _read_proc_ppid(proc_dir: Path) -> int:
         return -1
 
 
-def _process_role(args: list[str], solver: str) -> str | None:
+def _process_role(args: list[str], solver: str | None) -> str | None:
     if not args:
         return None
     base = Path(args[0]).name.lower()
     if base in _MPI_LAUNCHERS:
         return "launcher"
+    if solver is None:
+        if _looks_like_solver_args(args):
+            return "solver"
+        return None
     if _args_match_solver(args, solver):
         return "solver"
     return None
@@ -464,7 +525,7 @@ def _targets_case(proc_dir: Path, args: list[str], case_path: Path) -> bool:
 
 def _entry_targets_case(entry: ProcEntry, case_path: Path) -> bool:
     resolved_case = case_path.resolve()
-    if entry.cwd == resolved_case:
+    if entry.cwd is not None and _path_within(entry.cwd, resolved_case):
         return True
     for idx, arg_value in enumerate(entry.args):
         if arg_value != "-case":
@@ -472,12 +533,13 @@ def _entry_targets_case(entry: ProcEntry, case_path: Path) -> bool:
         if idx + 1 >= len(entry.args):
             continue
         candidate = Path(entry.args[idx + 1]).expanduser()
-        if candidate == resolved_case:
-            return True
-        if not candidate.is_absolute():
+        if candidate.is_absolute():
+            resolved_candidate = candidate.resolve()
+        else:
             base = entry.cwd if entry.cwd is not None else resolved_case
-            if (base / candidate).resolve() == resolved_case:
-                return True
+            resolved_candidate = (base / candidate).resolve()
+        if _path_within(resolved_candidate, resolved_case):
+            return True
     return False
 
 
@@ -487,6 +549,43 @@ def _proc_cwd(proc_dir: Path) -> Path | None:
         return cwd_link.resolve()
     except OSError:
         return None
+
+
+def _launcher_descendant_targets_case(
+    pid: int,
+    table: dict[int, ProcEntry],
+    case_path: Path,
+) -> bool:
+    for child in table.values():
+        if not _has_ancestor(child.pid, {pid}, table):
+            continue
+        if _entry_targets_case(child, case_path):
+            return True
+    return False
+
+
+def _path_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _looks_like_solver_args(args: list[str]) -> bool:
+    for arg in args:
+        token = Path(arg).name
+        if token.endswith("Foam"):
+            return True
+    return False
+
+
+def _guess_solver_from_args(args: list[str]) -> str:
+    for arg in args:
+        token = Path(arg).name
+        if token.endswith("Foam"):
+            return token
+    return "unknown"
 
 
 def _runtime_control_snapshot(case_path: Path, solver: str | None) -> dict[str, Any]:
@@ -540,7 +639,7 @@ def _resolve_solver_log(case_path: Path, solver: str | None) -> Path | None:
 def _run_time_control_data(case_path: Path, log_text: str) -> dict[str, Any]:
     control_dict = case_path / "system" / "controlDict"
     try:
-        text = control_dict.read_text(encoding="utf-8", errors="ignore")
+        text = _read_with_local_includes(control_dict, case_root=case_path)
     except OSError:
         return {
             "end_time": None,
@@ -550,16 +649,15 @@ def _run_time_control_data(case_path: Path, log_text: str) -> dict[str, Any]:
             "failed": 0,
             "unknown": 0,
         }
-    end_time = _to_float(_first_match(text, _END_TIME_RE))
-    start_time = _to_float(_first_match(text, _START_TIME_RE))
-    criteria: list[dict[str, Any]] = []
-    for match in _CRITERIA_RE.finditer(text):
-        key = match.group("key")
-        if not _KEY_TOKEN_RE.match(key):
-            continue
-        value = match.group("value").strip()
-        status, evidence = _criterion_status(key, log_text)
-        criteria.append({"key": key, "value": value, "status": status, "evidence": evidence})
+    clean_text = _strip_comments(text)
+    end_time = _to_float(_first_match(clean_text, _END_TIME_RE))
+    start_time = _to_float(_first_match(clean_text, _START_TIME_RE))
+    criteria = _inline_criteria(clean_text, log_text)
+    rtc_start_time, rtc_criteria = _runtime_control_conditions(clean_text, log_text)
+    criteria.extend(rtc_criteria)
+    if rtc_start_time is not None:
+        start_time = rtc_start_time
+    criteria = _dedupe_criteria(criteria)
     passed = sum(1 for row in criteria if row["status"] == "pass")
     failed = sum(1 for row in criteria if row["status"] == "fail")
     unknown = len(criteria) - passed - failed
@@ -571,6 +669,227 @@ def _run_time_control_data(case_path: Path, log_text: str) -> dict[str, Any]:
         "failed": failed,
         "unknown": unknown,
     }
+
+
+def _read_with_local_includes(
+    path: Path,
+    *,
+    case_root: Path | None = None,
+    _seen: set[Path] | None = None,
+) -> str:
+    seen = _seen if _seen is not None else set()
+    target = path.resolve()
+    root = case_root.resolve() if case_root is not None else target.parent
+    if target in seen:
+        return ""
+    seen.add(target)
+    text = target.read_text(encoding="utf-8", errors="ignore")
+    lines: list[str] = []
+    for raw in text.splitlines():
+        match = _INCLUDE_RE.match(raw)
+        if match is None:
+            lines.append(raw)
+            continue
+        include_kind = match.group("kind")
+        include_raw = _strip_include_token(match.group("path").strip())
+        include_path = _resolve_include_path(include_kind, include_raw, target.parent, root)
+        if include_path is None:
+            lines.append(raw)
+            continue
+        try:
+            included = _read_with_local_includes(
+                include_path,
+                case_root=root,
+                _seen=seen,
+            )
+        except OSError:
+            lines.append(raw)
+            continue
+        lines.append(included)
+    return "\n".join(lines)
+
+
+def _strip_include_token(value: str) -> str:
+    if (value.startswith('"') and value.endswith('"')) or (
+        value.startswith("<") and value.endswith(">")
+    ):
+        return value[1:-1].strip()
+    return value.strip()
+
+
+def _resolve_include_path(
+    include_kind: str,
+    include_raw: str,
+    include_parent: Path,
+    case_root: Path,
+) -> Path | None:
+    if not include_raw:
+        return None
+    expanded = os.path.expandvars(include_raw.replace("$FOAM_CASE", str(case_root)))
+    include_path = Path(expanded).expanduser()
+    if include_path.is_absolute():
+        return include_path
+    if include_kind == "includeEtc":
+        foam_etc = os.environ.get("FOAM_ETC")
+        wm_project_dir = os.environ.get("WM_PROJECT_DIR")
+        candidates: list[Path] = []
+        if foam_etc:
+            candidates.append(Path(foam_etc))
+        if wm_project_dir:
+            candidates.append(Path(wm_project_dir) / "etc")
+        for root in candidates:
+            candidate = (root / include_path).resolve()
+            if candidate.exists():
+                return candidate
+        if candidates:
+            return (candidates[0] / include_path).resolve()
+    return (include_parent / include_path).resolve()
+
+
+def _strip_comments(text: str) -> str:
+    text = _COMMENT_BLOCK_RE.sub("", text)
+    return _COMMENT_LINE_RE.sub("", text)
+
+
+def _iter_blocks_recursive(text: str, prefix: str = "") -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    for name, body in _iter_named_blocks(text):
+        key = f"{prefix}.{name}" if prefix else name
+        rows.append((key, body))
+        rows.extend(_iter_blocks_recursive(body, key))
+    return rows
+
+
+def _iter_named_blocks(text: str) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    idx = 0
+    length = len(text)
+    while idx < length:
+        parsed = _parse_block_name(text, idx)
+        if parsed is None:
+            idx += 1
+            continue
+        name, end_name = parsed
+        cursor = end_name
+        while cursor < length and text[cursor].isspace():
+            cursor += 1
+        if cursor >= length or text[cursor] != "{":
+            idx = end_name
+            continue
+        end_block = _matching_brace(text, cursor)
+        if end_block < 0:
+            break
+        rows.append((name, text[cursor + 1 : end_block]))
+        idx = end_block + 1
+    return rows
+
+
+def _parse_block_name(text: str, start: int) -> tuple[str, int] | None:
+    if start >= len(text):
+        return None
+    first = text[start]
+    if first == '"':
+        end_quote = text.find('"', start + 1)
+        if end_quote < 0:
+            return None
+        return text[start + 1 : end_quote], end_quote + 1
+    if not (first.isalnum() or first == "_"):
+        return None
+    end_name = start + 1
+    while end_name < len(text) and (
+        text[end_name].isalnum() or text[end_name] in {"_", ".", "/", ":", "-", "+"}
+    ):
+        end_name += 1
+    return text[start:end_name], end_name
+
+
+def _matching_brace(text: str, start: int) -> int:
+    depth = 0
+    for idx in range(start, len(text)):
+        if text[idx] == "{":
+            depth += 1
+        elif text[idx] == "}":
+            depth -= 1
+            if depth == 0:
+                return idx
+    return -1
+
+
+def _first_block_body(text: str, name: str) -> str | None:
+    for block_name, body in _iter_named_blocks(text):
+        if block_name == name:
+            return body
+    return None
+
+
+def _dedupe_criteria(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    unique: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = str(row.get("key", "")).strip()
+        value = str(row.get("value", "")).strip()
+        if not key:
+            continue
+        unique[(key, value)] = row
+    return list(unique.values())
+
+
+def _inline_criteria(clean_text: str, log_text: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for match in _CRITERIA_RE.finditer(clean_text):
+        key = match.group("key")
+        if not _KEY_TOKEN_RE.match(key):
+            continue
+        value = match.group("value").strip()
+        status, evidence = _criterion_status(key, log_text)
+        rows.append({"key": key, "value": value, "status": status, "evidence": evidence})
+    return rows
+
+
+def _runtime_control_conditions(
+    clean_text: str,
+    log_text: str,
+) -> tuple[float | None, list[dict[str, Any]]]:
+    start_time: float | None = None
+    rows: list[dict[str, Any]] = []
+    for key, body in _iter_blocks_recursive(clean_text):
+        block_type = _first_match(body, _TYPE_RE)
+        if block_type is None or block_type.strip().strip('"') != "runTimeControl":
+            continue
+        if start_time is None:
+            start_time = _to_float(_first_match(body, _TIME_START_RE))
+        rows.extend(_runtime_control_block_rows(key, body, log_text))
+    return start_time, rows
+
+
+def _runtime_control_block_rows(
+    block_key: str,
+    body: str,
+    log_text: str,
+) -> list[dict[str, Any]]:
+    conditions = _first_block_body(body, "conditions")
+    if conditions is None:
+        return []
+    rows: list[dict[str, Any]] = []
+    for cond_name, cond_body in _iter_named_blocks(conditions):
+        cond_type = (_first_match(cond_body, _TYPE_RE) or "condition").strip()
+        cond_value = (_first_match(cond_body, _VALUE_RE) or cond_type).strip()
+        field = _first_match(cond_body, _FIELD_RE) or _first_match(cond_body, _FIELDS_RE)
+        key_parts = [block_key, cond_name, cond_type]
+        if field:
+            key_parts.append(field.strip())
+        cond_key = ".".join(part for part in key_parts if part)
+        status, evidence = _criterion_status(cond_name, log_text)
+        if status == "unknown":
+            status, evidence = _criterion_status(cond_type, log_text)
+        rows.append(
+            {
+                "key": cond_key,
+                "value": cond_value,
+                "status": status,
+                "evidence": evidence,
+            },
+        )
+    return rows
 
 
 def _criterion_status(key: str, log_text: str) -> tuple[str, str | None]:

@@ -54,7 +54,7 @@ def refresh_jobs(case_path: Path) -> list[dict[str, object]]:
     jobs = load_jobs(case_path)
     updated = False
     for job in jobs:
-        if job.get("status") == "running":
+        if job.get("status") in {"running", "paused"}:
             pid = job.get("pid")
             if isinstance(pid, int) and not _pid_running(pid):
                 job["status"] = "finished"

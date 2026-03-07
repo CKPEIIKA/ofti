@@ -445,3 +445,46 @@ def test_watch_external_cli_dry_run_json(tmp_path, capsys, monkeypatch) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
     assert payload["dry_run"] is True
+
+
+def test_watch_pause_resume_and_stop_signal_cli(tmp_path, capsys, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case")
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.watch_ops.pause_payload",
+        lambda *_args, **_kwargs: {
+            "case": str(case),
+            "selected": 1,
+            "paused": [{"id": "job-1", "pid": 123, "name": "simpleFoam"}],
+            "failed": [],
+        },
+    )
+    code = cli_tools.main(["watch", "pause", str(case), "--json"])
+    assert code == 0
+    assert json.loads(capsys.readouterr().out)["selected"] == 1
+
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.watch_ops.resume_payload",
+        lambda *_args, **_kwargs: {
+            "case": str(case),
+            "selected": 1,
+            "resumed": [{"id": "job-1", "pid": 123, "name": "simpleFoam"}],
+            "failed": [],
+        },
+    )
+    code = cli_tools.main(["watch", "resume", str(case)])
+    assert code == 0
+    assert "resumed:" in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.watch_ops.stop_payload",
+        lambda *_args, **kwargs: {
+            "case": str(case),
+            "signal": kwargs.get("signal_name", "TERM"),
+            "selected": 1,
+            "stopped": [{"id": "job-1", "pid": 123, "name": "simpleFoam"}],
+            "failed": [],
+        },
+    )
+    code = cli_tools.main(["watch", "stop", str(case), "--signal", "INT"])
+    assert code == 0
+    assert "signal=INT" in capsys.readouterr().out
