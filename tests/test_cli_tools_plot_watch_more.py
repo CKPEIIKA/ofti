@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import types
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -309,3 +310,125 @@ def test_watch_signal_name_maps_quit_and_kill(monkeypatch: pytest.MonkeyPatch, t
     watch.stop_payload(case, all_jobs=True, signal_name="QUIT")
     watch.stop_payload(case, all_jobs=True, signal_name="KILL")
     assert sent[-2:] == [int(watch.signal.SIGQUIT), int(watch.signal.SIGKILL)]
+
+
+def test_watch_jobs_payload_schema_and_kind_filter(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    (case / "log.simpleFoam").write_text("solver\n")
+    (case / "log.watcher").write_text("watcher\n")
+    monkeypatch.setattr(
+        watch_service,
+        "refresh_jobs",
+        lambda _case: [
+            {"id": "s1", "name": "simpleFoam", "pid": 11, "status": "running", "log": "log.simpleFoam"},
+            {
+                "id": "w1",
+                "name": "watcher",
+                "kind": "watcher",
+                "pid": 22,
+                "status": "paused",
+                "log": "log.watcher",
+                "detached": True,
+            },
+        ],
+    )
+
+    payload = watch.jobs_payload(case, include_all=True, kind="watcher")
+    assert payload["count"] == 1
+    row = payload["jobs"][0]
+    assert row["kind"] == "watcher"
+    assert row["running"] is True
+    assert row["detached"] is True
+    assert row["case_dir"] == str(case.resolve())
+    assert str(row["log_path"]).endswith("log.watcher")
+
+    with pytest.raises(ValueError, match="unsupported job kind"):
+        watch.jobs_payload(case, include_all=True, kind="bad")
+
+
+def test_watch_watcher_preset_start_and_run_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    (case / "ofti.watcher").write_text(
+        "\n".join(
+            [
+                "# watcher preset",
+                "watcher: python scripts/watcher.py --poll 1",
+                "FRAMEWORK=custom",
+                "RELAY_BASE_URL=https://relay.example",
+            ],
+        ),
+    )
+    dry = watch.watcher_preset_payload(case)
+    assert dry["found"] is True
+    assert dry["command"][:2] == ["python", "scripts/watcher.py"]
+
+    captured_register: dict[str, object] = {}
+
+    class _StartPopen:
+        def __init__(self, _cmd: list[str], **_kwargs: object) -> None:
+            self.pid = 333
+
+    monkeypatch.setattr(watch_service.subprocess, "Popen", _StartPopen)
+
+    def _register(*args: object, **kwargs: object) -> str:
+        captured_register["args"] = args
+        captured_register["kwargs"] = kwargs
+        return "watch-job-1"
+
+    monkeypatch.setattr(watch_service, "register_job", _register)
+    started = watch.watcher_start_payload(
+        case,
+        command=[],
+        detached=True,
+        env={"WATCHER_ID": "w-1"},
+        dry_run=False,
+        name="watcher",
+    )
+    assert started["ok"] is True
+    assert started["job_id"] == "watch-job-1"
+    kwargs = cast(dict[str, object], captured_register["kwargs"])
+    assert kwargs["kind"] == "watcher"
+    assert kwargs["detached"] is True
+
+    class _RunPopen:
+        def __init__(self, _cmd: list[str], **_kwargs: object) -> None:
+            self.pid = 444
+
+        def wait(self) -> int:
+            return 1
+
+    finished: list[tuple[str | None, str, int | None]] = []
+    monkeypatch.setattr(watch_service.subprocess, "Popen", _RunPopen)
+    monkeypatch.setattr(
+        watch_service,
+        "finish_job",
+        lambda _c, job_id, status, rc: finished.append((job_id, status, rc)),
+    )
+    monkeypatch.setattr(watch_service, "register_job", lambda *_a, **_k: "watch-job-2")
+    run_payload = watch.watcher_run_payload(case, command=[], dry_run=False, name="watcher")
+    assert run_payload["ok"] is False
+    assert run_payload["returncode"] == 1
+    assert finished == [("watch-job-2", "failed", 1)]
+
+
+def test_watch_stop_kind_filter_for_watcher(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    monkeypatch.setattr(
+        watch_service,
+        "refresh_jobs",
+        lambda _case: [
+            {"id": "solver-1", "name": "simpleFoam", "kind": "solver", "pid": 11, "status": "running"},
+            {"id": "watch-1", "name": "watcher", "kind": "watcher", "pid": 22, "status": "running"},
+        ],
+    )
+    monkeypatch.setattr(watch_service.os, "kill", lambda *_a, **_k: None)
+    monkeypatch.setattr(watch_service, "finish_job", lambda *_a, **_k: None)
+    payload = watch.stop_payload(case, all_jobs=True, kind="watcher")
+    assert payload["selected"] == 1
+    assert payload["stopped"][0]["id"] == "watch-1"

@@ -458,3 +458,73 @@ def test_watch_interval_output_and_adopt_handlers(
     )
     assert payload["schema"] == "ofti.watch.v1"
     assert payload["profile"] == "brief"
+
+
+def test_watch_start_and_attach_watcher_modes(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli_tools.watch_ops,
+        "watcher_start_payload",
+        lambda *_a, **_k: {
+            "case": "/case",
+            "kind": "watcher",
+            "name": "watcher",
+            "command": ["python", "watcher.py"],
+            "log_path": "/case/log.watcher",
+            "pid": 123,
+            "job_id": "w-1",
+            "ok": True,
+        },
+    )
+    args = _ns(
+        case_dir=Path("/case"),
+        solver=None,
+        parallel=0,
+        mpi=None,
+        watcher=["python", "watcher.py"],
+        watcher_name="watcher",
+        no_detach=False,
+        log_file=None,
+        env=[],
+        dry_run=False,
+        json=False,
+    )
+    assert cli_tools._watch_start(args) == 0
+    out = capsys.readouterr().out
+    assert "kind=watcher" in out
+    assert "job_id=w-1" in out
+
+    monkeypatch.setattr(
+        cli_tools.watch_ops,
+        "watcher_attach_payload",
+        lambda *_a, **_k: {
+            "case": "/case",
+            "kind": "watcher",
+            "name": "watcher",
+            "command": ["python", "watcher.py"],
+            "pid": 321,
+            "returncode": 0,
+            "ok": True,
+        },
+    )
+    attach_args = _ns(
+        source=None,
+        lines=40,
+        job_id=None,
+        watcher=["python", "watcher.py"],
+        background=False,
+        watcher_name="watcher",
+        log_file=None,
+        env=[],
+        dry_run=False,
+        adopt=None,
+        case_dir=Path("/case"),
+        output=None,
+        json=True,
+    )
+    assert cli_tools._watch_attach(attach_args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["kind"] == "watcher"
+    assert payload["pid"] == 321

@@ -12,22 +12,31 @@ def register_job(
     pid: int,
     command: str,
     log_path: Path | None = None,
+    *,
+    kind: str = "solver",
+    detached: bool | None = None,
+    extra: dict[str, object] | None = None,
 ) -> str:
     jobs = load_jobs(case_path)
     job_id = f"{int(time.time())}-{pid}"
-    jobs.append(
-        {
-            "id": job_id,
-            "name": name,
-            "pid": pid,
-            "command": command,
-            "log": str(log_path) if log_path else "",
-            "status": "running",
-            "started_at": time.time(),
-            "ended_at": None,
-            "returncode": None,
-        },
-    )
+    row: dict[str, object] = {
+        "id": job_id,
+        "name": name,
+        "kind": kind,
+        "case_dir": str(case_path.resolve()),
+        "pid": pid,
+        "command": command,
+        "log": str(log_path) if log_path else "",
+        "status": "running",
+        "started_at": time.time(),
+        "ended_at": None,
+        "returncode": None,
+    }
+    if detached is not None:
+        row["detached"] = detached
+    if extra:
+        row.update(extra)
+    jobs.append(row)
     save_jobs(case_path, jobs)
     return job_id
 

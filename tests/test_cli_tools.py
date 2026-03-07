@@ -311,6 +311,60 @@ def test_knife_new_commands_json(tmp_path, capsys) -> None:
     assert payload["case"] == str(case.resolve())
 
 
+def test_watch_start_uses_watcher_preset_when_available(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(cli_tools.watch_ops, "watcher_preset_payload", lambda _case: {"found": True})
+    monkeypatch.setattr(
+        cli_tools.watch_ops,
+        "watcher_start_payload",
+        lambda *_a, **_k: {
+            "case": "/case",
+            "kind": "watcher",
+            "name": "watcher",
+            "command": ["python", "watcher.py"],
+            "pid": 11,
+            "job_id": "w-1",
+            "ok": True,
+        },
+    )
+    code = cli_tools.main(["watch", "start", "--case", "/case"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "kind=watcher" in out
+    assert "job_id=w-1" in out
+
+
+def test_watch_attach_watcher_json(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        cli_tools.watch_ops,
+        "watcher_attach_payload",
+        lambda *_a, **_k: {
+            "case": "/case",
+            "kind": "watcher",
+            "name": "watcher",
+            "command": ["python", "watcher.py"],
+            "pid": 12,
+            "returncode": 0,
+            "ok": True,
+        },
+    )
+    code = cli_tools.main(
+        [
+            "watch",
+            "attach",
+            "--watcher",
+            "python",
+            "watcher.py",
+            "--case",
+            "/case",
+            "--json",
+        ],
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["kind"] == "watcher"
+    assert payload["pid"] == 12
+
+
 def test_watch_stop_stops_selected_job(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case")
     jobs_file = case / ".ofti" / "jobs.json"

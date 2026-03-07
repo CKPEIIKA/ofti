@@ -242,7 +242,8 @@ def test_watch_jobs_with_rows(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Ca
         },
     )
     assert cli_tools._watch_jobs(_ns(case_dir=Path(), all=False, json=False)) == 0
-    assert "simpleFoam pid=123 status=running" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "simpleFoam kind=unknown pid=123 status=running" in out
 
 
 def test_watch_log_follow_paths(
