@@ -1,8 +1,10 @@
 """Tool menu behavior and integration points."""
 
+import types
 from pathlib import Path
 from unittest import mock
 
+from ofti.tools import menus
 from ofti.tools.cleaning_ops import clean_time_directories, remove_all_logs
 from ofti.tools.diagnostics import diagnostics_screen
 from ofti.tools.menus import TOOLS_SPECIAL_HINTS, run_tool_by_name
@@ -236,3 +238,105 @@ def test_run_tool_by_name_cli_group_aliases(tmp_path: Path) -> None:
     plot_screen.assert_called_once_with(screen, case_dir)
     watch_screen.assert_called_once_with(screen, case_dir)
     run_screen.assert_called_once_with(screen, case_dir)
+
+
+def test_tools_screen_runs_simple_and_special_entries(tmp_path: Path, monkeypatch) -> None:
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    screen = FakeScreen(keys=[])
+    calls: list[str] = []
+    choices = iter([1, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+
+    class _Menu:
+        def navigate(self) -> int:
+            return next(choices)
+
+    def fake_build_menu(*_args, **kwargs):
+        hint_provider = kwargs.get("hint_provider")
+        if hint_provider is not None:
+            hint_provider(0)
+            hint_provider(1)
+            hint_provider(2)
+            hint_provider(3)
+        return _Menu()
+
+    monkeypatch.setattr(menus, "build_menu", fake_build_menu)
+    monkeypatch.setattr(menus, "load_tool_presets", lambda _case: [("extra", ["echo", "x"])])
+    monkeypatch.setattr(menus, "load_postprocessing_presets", lambda _case: [("post1", ["echo", "p"])])
+    monkeypatch.setattr(menus, "_run_simple_tool", lambda *_a, **_k: calls.append("simple"))
+    monkeypatch.setattr(menus, "diagnostics_screen", lambda *_a, **_k: calls.append("diagnostics"))
+    monkeypatch.setattr(menus.case_doctor, "case_doctor_screen", lambda *_a, **_k: calls.append("doctor"))
+    monkeypatch.setattr(menus, "cli_tools_screen", lambda *_a, **_k: calls.append("cli"))
+    monkeypatch.setattr(menus, "run_shell_script_screen", lambda *_a, **_k: calls.append("script"))
+    monkeypatch.setattr(menus, "clone_case", lambda *_a, **_k: calls.append("clone"))
+    monkeypatch.setattr(menus, "job_status_poll_screen", lambda *_a, **_k: calls.append("jobstatus"))
+    monkeypatch.setattr(menus, "stop_job_screen", lambda *_a, **_k: calls.append("jobstop"))
+    monkeypatch.setattr(menus, "physics_tools_screen", lambda *_a, **_k: calls.append("physics"))
+    monkeypatch.setattr(menus, "_no_foam_active", lambda: False)
+    monkeypatch.setattr(menus, "tools_help", list)
+    monkeypatch.setattr(menus, "tool_status_mode", lambda: "mode:foam")
+    monkeypatch.setattr(menus, "last_tool_status_line", lambda: "last:ok")
+    monkeypatch.setattr(menus, "get_last_tool_run", lambda: types.SimpleNamespace(name="blockMesh"))
+    monkeypatch.setattr(menus, "menu_hint", lambda *_a, **_k: None)
+
+    menus.tools_screen(screen, case_dir)
+
+    assert calls == [
+        "simple",
+        "diagnostics",
+        "doctor",
+        "cli",
+        "script",
+        "clone",
+        "jobstatus",
+        "jobstop",
+        "physics",
+    ]
+
+
+def test_tools_screen_limited_mode_status_and_physics_menu(tmp_path: Path, monkeypatch) -> None:
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    screen = FakeScreen(keys=[])
+    seen_status: list[str | None] = []
+    choices = iter([0, 1, 2])
+    calls: list[str] = []
+
+    class _Menu:
+        def navigate(self) -> int:
+            return next(choices)
+
+    def fake_build_menu(*_args, **kwargs):
+        seen_status.append(kwargs.get("status_line"))
+        return _Menu()
+
+    monkeypatch.setattr(menus, "build_menu", fake_build_menu)
+    monkeypatch.setattr(menus, "_no_foam_active", lambda: True)
+    monkeypatch.setattr(menus, "high_speed_helper_screen", lambda *_a, **_k: calls.append("high"))
+    monkeypatch.setattr(menus, "yplus_screen", lambda *_a, **_k: calls.append("yplus"))
+    monkeypatch.setattr(menus, "tools_physics_help", list)
+
+    menus.physics_tools_screen(screen, case_dir)
+    assert calls == ["high", "yplus"]
+
+    menu_choices = iter([0, 9])
+
+    class _ToolsMenu:
+        def navigate(self) -> int:
+            return next(menu_choices)
+
+    def fake_tools_build_menu(*_args, **kwargs):
+        seen_status.append(kwargs.get("status_line"))
+        return _ToolsMenu()
+
+    monkeypatch.setattr(menus, "build_menu", fake_tools_build_menu)
+    monkeypatch.setattr(menus, "load_tool_presets", lambda _case: [])
+    monkeypatch.setattr(menus, "load_postprocessing_presets", lambda _case: [])
+    monkeypatch.setattr(menus, "tool_status_mode", lambda: "mode:limited")
+    monkeypatch.setattr(menus, "last_tool_status_line", lambda: "last:tool")
+    monkeypatch.setattr(menus, "tools_help", list)
+    monkeypatch.setattr(menus, "menu_hint", lambda *_a, **_k: "")
+    monkeypatch.setattr(menus, "get_last_tool_run", lambda: None)
+
+    menus.tools_screen(screen, case_dir)
+    assert any(item and "Limited mode" in item for item in seen_status)

@@ -24,6 +24,14 @@ python -m ofti.app.cli /path/to/case
 ofti /path/to/case
 ```
 
+Install from the repo root:
+
+```bash
+pip install .
+# or
+pipx install .
+```
+
 ## DESCRIPTION
 
 `ofti` is a small curses-based interface for OpenFOAM cases. It focuses on
@@ -62,6 +70,9 @@ Examples:
 ```bash
 ofti knife preflight CASE --json
 ofti watch jobs CASE --json
+ofti watch pause CASE --all
+ofti watch resume CASE --all
+ofti watch stop CASE --signal TERM
 ofti watch log CASE --lines 80 --json
 ofti run tool --list --case CASE --json
 ofti run solver CASE --dry-run --json
@@ -73,9 +84,17 @@ expected to run through tool presets in `ofti.tools` and can be executed with
 
 ## REQUIREMENTS
 
-- Python 3.11+
+- Python 3.10+
 - `foamlib` (dictionary parsing/writing)
 - OpenFOAM environment on `PATH` for running tools (optional for read-only)
+
+## DEVELOPMENT QUALITY
+
+Current repo checks:
+
+- `ruff check`
+- `ty check`
+- `pytest` with coverage gate `--cov-fail-under=75`
 
 ## MODES
 

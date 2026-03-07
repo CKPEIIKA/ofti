@@ -398,3 +398,178 @@ def test_cli_tools_screen_wrappers(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     screens.cli_watch_screen(_DummyScreen(), case)
     screens.cli_run_screen(_DummyScreen(), case)
     assert called == ["knife", "plot", "watch", "run"]
+
+
+def test_knife_screen_value_errors_and_extended_compare(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    messages: list[str] = []
+    shown = _capture_viewer(monkeypatch)
+    monkeypatch.setattr(screens, "_show_message", lambda _screen, text: messages.append(text))
+
+    monkeypatch.setattr(screens, "build_menu", lambda *_a, **_k: _Menu(0))
+    monkeypatch.setattr(screens.knife_ops, "preflight_payload", lambda _case: (_ for _ in ()).throw(ValueError("bad preflight")))
+    screens._knife_screen(_DummyScreen(), case)
+    assert messages[-1] == "bad preflight"
+
+    monkeypatch.setattr(screens, "build_menu", lambda *_a, **_k: _Menu(1))
+    monkeypatch.setattr(screens.knife_ops, "doctor_payload", lambda _case: (_ for _ in ()).throw(ValueError("bad doctor")))
+    screens._knife_screen(_DummyScreen(), case)
+    assert messages[-1] == "bad doctor"
+
+    monkeypatch.setattr(
+        screens.knife_ops,
+        "doctor_payload",
+        lambda _case: {"lines": ["line"], "errors": [], "warnings": []},
+    )
+    screens._knife_screen(_DummyScreen(), case)
+    assert "OK: no issues found." in shown[-1]
+
+    monkeypatch.setattr(screens, "build_menu", lambda *_a, **_k: _Menu(2))
+    monkeypatch.setattr(screens.knife_ops, "status_payload", lambda _case: (_ for _ in ()).throw(ValueError("bad status")))
+    screens._knife_screen(_DummyScreen(), case)
+    assert messages[-1] == "bad status"
+
+    monkeypatch.setattr(
+        screens.knife_ops,
+        "status_payload",
+        lambda _case: {
+            "case": str(case),
+            "latest_time": "4",
+            "latest_iteration": 10,
+            "latest_delta_t": 0.1,
+            "sec_per_iter": 1.0,
+            "solver_error": None,
+            "solver": "simpleFoam",
+            "solver_status": "running",
+            "run_time_control": {"criteria": [], "passed": 0, "failed": 0, "unknown": 0},
+            "eta_seconds_to_criteria_start": None,
+            "eta_seconds_to_end_time": None,
+            "log_path": "log.simpleFoam",
+            "log_fresh": True,
+            "running": True,
+            "tracked_solver_processes": [{"pid": 1}],
+            "untracked_solver_processes": [{"pid": 2}],
+            "jobs_running": 1,
+            "jobs_total": 1,
+        },
+    )
+    screens._knife_screen(_DummyScreen(), case)
+    status_text = shown[-1]
+    assert "solver=simpleFoam" in status_text
+    assert "tracked_solver_processes=1" in status_text
+    assert "untracked_solver_processes=1" in status_text
+
+    monkeypatch.setattr(screens, "build_menu", lambda *_a, **_k: _Menu(3))
+    monkeypatch.setattr(screens, "prompt_line", lambda *_a, **_k: str(case / "other"))
+    monkeypatch.setattr(screens.knife_ops, "compare_payload", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad compare")))
+    screens._knife_screen(_DummyScreen(), case)
+    assert messages[-1] == "bad compare"
+
+    monkeypatch.setattr(
+        screens.knife_ops,
+        "compare_payload",
+        lambda *_a, **_k: {
+            "left_case": str(case),
+            "right_case": str(case / "other"),
+            "diff_count": 1,
+            "diffs": [
+                {
+                    "rel_path": "system/controlDict",
+                    "kind": "dict",
+                    "error": None,
+                    "missing_in_left": [],
+                    "missing_in_right": ["application"],
+                    "value_diffs": [{"key": f"k{idx}", "left": str(idx), "right": str(idx + 1)} for idx in range(21)],
+                    "left_hash": "aaa",
+                    "right_hash": "bbb",
+                },
+            ],
+        },
+    )
+    screens._knife_screen(_DummyScreen(), case)
+    compare_text = shown[-1]
+    assert "missing_in_right: application" in compare_text
+    assert "value_diff k0" in compare_text
+    assert "value_diff_more=1" in compare_text
+    assert "left_hash=aaa" in compare_text
+
+
+def test_plot_watch_run_and_export_error_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    messages: list[str] = []
+    monkeypatch.setattr(screens, "_show_message", lambda _screen, text: messages.append(text))
+
+    monkeypatch.setattr(screens, "build_menu", lambda *_a, **_k: _Menu(2))
+    screens._plot_screen(_DummyScreen(), case)
+
+    monkeypatch.setattr(screens, "build_menu", lambda *_a, **_k: _Menu(1))
+    monkeypatch.setattr(screens.plot_ops, "residuals_payload", lambda _case: (_ for _ in ()).throw(ValueError("plot bad")))
+    screens._plot_screen(_DummyScreen(), case)
+    assert messages[-1] == "plot bad"
+
+    monkeypatch.setattr(screens, "build_menu", lambda *_a, **_k: _Menu(3))
+    screens._watch_screen(_DummyScreen(), case)
+
+    monkeypatch.setattr(screens, "build_menu", lambda *_a, **_k: _Menu(2))
+    monkeypatch.setattr(screens.watch_ops, "log_tail_payload", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("watch bad")))
+    screens._watch_screen(_DummyScreen(), case)
+    assert messages[-1] == "watch bad"
+
+    monkeypatch.setattr(screens, "build_menu", lambda *_a, **_k: _Menu(0))
+    monkeypatch.setattr(screens.run_ops, "tool_catalog_payload", lambda _case: (_ for _ in ()).throw(ValueError("catalog bad")))
+    screens._run_screen(_DummyScreen(), case)
+    assert messages[-1] == "catalog bad"
+
+    monkeypatch.setattr(screens, "build_menu", lambda *_a, **_k: _Menu(2))
+    monkeypatch.setattr(screens, "prompt_line", lambda *_a, **_k: "")
+    screens._run_screen(_DummyScreen(), case)
+
+    monkeypatch.setattr(screens, "prompt_line", lambda *_a, **_k: "tool")
+    monkeypatch.setattr(screens.run_ops, "resolve_tool", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("resolve bad")))
+    screens._run_screen(_DummyScreen(), case)
+    assert messages[-1] == "resolve bad"
+
+    called: list[str] = []
+    monkeypatch.setattr(screens, "_export_tool_catalog_json", lambda *_a, **_k: called.append("export"))
+    monkeypatch.setattr(screens, "build_menu", lambda *_a, **_k: _Menu(1))
+    screens._run_screen(_DummyScreen(), case)
+    assert called == ["export"]
+
+    monkeypatch.setattr(screens, "prompt_line", lambda *_a, **_k: None)
+    screens._export_tool_catalog_json(_DummyScreen(), case)
+
+
+def test_cli_tools_screen_return_branches(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    shown = _capture_viewer(monkeypatch)
+
+    monkeypatch.setattr(screens, "build_menu", lambda *_a, **_k: _Menu(-1))
+    screens._knife_screen(_DummyScreen(), case)
+    screens._run_screen(_DummyScreen(), case)
+
+    monkeypatch.setattr(screens, "build_menu", lambda *_a, **_k: _Menu(0))
+    monkeypatch.setattr(
+        screens.knife_ops,
+        "preflight_payload",
+        lambda _case: {
+            "case": str(case),
+            "checks": {"system/controlDict": True},
+            "solver_error": "missing app",
+            "ok": False,
+        },
+    )
+    screens._knife_screen(_DummyScreen(), case)
+    assert "solver_error=missing app" in shown[-1]
+
+
+def test_export_tool_catalog_json_none_input(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    messages: list[str] = []
+    monkeypatch.setattr(screens, "_show_message", lambda _screen, text: messages.append(text))
+    monkeypatch.setattr(screens, "prompt_line", lambda *_a, **_k: None)
+    screens._export_tool_catalog_json(_DummyScreen(), case)
+    assert messages == []
