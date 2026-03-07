@@ -44,7 +44,16 @@ def test_cli_group_without_subcommand_prints_help(capsys) -> None:
     out = capsys.readouterr().out
     assert code == 0
     assert "usage: ofti watch" in out
-    assert "{jobs,status,log,attach,start,pause,resume,run,stop,external}" in out
+    assert "{jobs,status,log,attach,start,pause,resume,interval,output,run,stop,external}" in out
+
+
+def test_knife_group_help_lists_new_commands(capsys) -> None:
+    code = cli_tools.main(["knife"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "criteria" in out
+    assert "eta" in out
+    assert "report" in out
 
 
 def test_run_tool_list_outputs_catalog_json(tmp_path, capsys) -> None:
@@ -231,6 +240,75 @@ def test_watch_jobs_json_reports_running_job(tmp_path, capsys, monkeypatch) -> N
     assert code == 0
     assert payload["count"] == 1
     assert payload["jobs"][0]["name"] == "simpleFoam"
+
+
+def test_watch_jobs_brief_json_schema(tmp_path, capsys, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case")
+    jobs_file = case / ".ofti" / "jobs.json"
+    jobs_file.parent.mkdir(parents=True)
+    jobs_file.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "123",
+                    "name": "simpleFoam",
+                    "pid": 99999,
+                    "command": "simpleFoam",
+                    "status": "running",
+                    "started_at": 0.0,
+                    "ended_at": None,
+                    "returncode": None,
+                    "log": str(case / "log.simpleFoam"),
+                },
+            ],
+        ),
+    )
+    monkeypatch.setattr("ofti.tools.job_registry._pid_running", lambda _pid: True)
+
+    code = cli_tools.main(["watch", "jobs", str(case), "--output", "brief", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["schema"] == "ofti.watch.v1"
+    assert payload["profile"] == "brief"
+    assert payload["items"][0]["id"] == "123"
+
+
+def test_knife_new_commands_json(tmp_path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+    (case / "log.simpleFoam").write_text(
+        "\n".join(
+            [
+                "Time = 0.1",
+                "ExecutionTime = 1.0 s",
+                "residualTolerance 0.2",
+            ],
+        ),
+    )
+    (case / "system" / "controlDict").write_text(
+        "\n".join(
+            [
+                "application simpleFoam;",
+                "startTime 0;",
+                "endTime 1;",
+                "residualTolerance 0.1;",
+            ],
+        ),
+    )
+
+    code = cli_tools.main(["knife", "criteria", str(case), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 1
+    assert payload["criteria_count"] >= 1
+
+    code = cli_tools.main(["knife", "eta", str(case), "--mode", "endtime", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["mode"] == "endtime"
+
+    code = cli_tools.main(["knife", "report", str(case), "--format", "json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["case"] == str(case.resolve())
 
 
 def test_watch_stop_stops_selected_job(tmp_path, capsys, monkeypatch) -> None:

@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import json
 import os
 import signal as _signal
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ofti.foamlib.logs import read_log_tail_lines
-from ofti.tools import case_source_service, job_control_service
+from ofti.tools import case_source_service, job_control_service, process_scan_service
 from ofti.tools.job_registry import finish_job, load_jobs, refresh_jobs, register_job, save_jobs
 
 signal = _signal
+ExternalWatchMode = Literal["run", "start", "status", "attach", "stop"]
+WatchOutputProfile = Literal["brief", "detailed"]
+_WATCH_SETTINGS_DEFAULT_INTERVAL = 0.25
+_WATCH_SETTINGS_DEFAULT_OUTPUT: WatchOutputProfile = "detailed"
 
 
 def jobs_payload(case_dir: Path, *, include_all: bool) -> dict[str, Any]:
@@ -19,6 +24,64 @@ def jobs_payload(case_dir: Path, *, include_all: bool) -> dict[str, Any]:
     if not include_all:
         jobs = [job for job in jobs if job.get("status") in {"running", "paused"}]
     return {"case": str(case_path), "count": len(jobs), "jobs": jobs}
+
+
+def interval_payload(case_dir: Path, *, seconds: float | None = None) -> dict[str, Any]:
+    case_path = case_source_service.require_case_dir(case_dir)
+    settings = _load_watch_settings(case_path)
+    changed = False
+    requested: float | None = None
+    if seconds is not None:
+        if seconds <= 0:
+            raise ValueError("interval must be > 0")
+        requested = float(seconds)
+        settings["interval"] = requested
+        _save_watch_settings(case_path, settings)
+        changed = True
+    effective = _watch_interval(settings)
+    return {
+        "case": str(case_path),
+        "changed": changed,
+        "requested": requested,
+        "effective": effective,
+        "settings_path": str(_watch_settings_path(case_path)),
+    }
+
+
+def output_profile_payload(
+    case_dir: Path,
+    *,
+    profile: WatchOutputProfile | None = None,
+) -> dict[str, Any]:
+    case_path = case_source_service.require_case_dir(case_dir)
+    settings = _load_watch_settings(case_path)
+    changed = False
+    requested: str | None = None
+    if profile is not None:
+        requested = str(profile)
+        settings["output"] = requested
+        _save_watch_settings(case_path, settings)
+        changed = True
+    effective = _watch_output(settings)
+    return {
+        "case": str(case_path),
+        "changed": changed,
+        "requested": requested,
+        "effective": effective,
+        "settings_path": str(_watch_settings_path(case_path)),
+    }
+
+
+def effective_interval(case_dir: Path) -> float:
+    case_path = case_source_service.require_case_dir(case_dir)
+    settings = _load_watch_settings(case_path)
+    return _watch_interval(settings)
+
+
+def effective_output_profile(case_dir: Path) -> WatchOutputProfile:
+    case_path = case_source_service.require_case_dir(case_dir)
+    settings = _load_watch_settings(case_path)
+    return _watch_output(settings)
 
 
 def _tail_payload_from_log(log_path: Path, *, lines: int) -> dict[str, Any]:
@@ -137,6 +200,86 @@ def external_watch_payload(
     payload["returncode"] = returncode
     payload["ok"] = returncode == 0
     return payload
+
+
+def external_watch_mode(
+    *,
+    start: bool = False,
+    status: bool = False,
+    attach: bool = False,
+    stop: bool = False,
+) -> ExternalWatchMode | None:
+    selected = sum(1 for flag in (start, status, attach, stop) if flag)
+    if selected > 1:
+        return None
+    if start:
+        return "start"
+    if status:
+        return "status"
+    if attach:
+        return "attach"
+    if stop:
+        return "stop"
+    return "run"
+
+
+def normalize_external_command(command: list[str]) -> list[str]:
+    if command and command[0] == "--":
+        return command[1:]
+    return command
+
+
+def external_watch_mode_payload(
+    case_dir: Path,
+    *,
+    mode: ExternalWatchMode,
+    command: list[str],
+    dry_run: bool,
+    name: str = "watch.external",
+    detached: bool = True,
+    log_file: str | None = None,
+    job_id: str | None = None,
+    include_all: bool = False,
+    all_jobs: bool = False,
+    lines: int = 40,
+    signal_name: str = "TERM",
+) -> dict[str, Any]:
+    if mode == "start":
+        return external_watch_start_payload(
+            case_dir,
+            command=command,
+            dry_run=dry_run,
+            name=name,
+            detached=detached,
+            log_file=log_file,
+        )
+    if mode == "status":
+        return external_watch_status_payload(
+            case_dir,
+            job_id=job_id,
+            name=name,
+            include_all=include_all,
+        )
+    if mode == "attach":
+        return external_watch_attach_payload(
+            case_dir,
+            lines=lines,
+            job_id=job_id,
+            name=name,
+        )
+    if mode == "stop":
+        return external_watch_stop_payload(
+            case_dir,
+            job_id=job_id,
+            name=name,
+            all_jobs=all_jobs,
+            signal_name=signal_name,
+        )
+    return external_watch_payload(
+        case_dir,
+        command=command,
+        dry_run=dry_run,
+    )
 
 
 def external_watch_start_payload(
@@ -259,6 +402,109 @@ def external_watch_stop_payload(
     }
 
 
+def adopt_job_payload(
+    case_dir: Path,
+    *,
+    adopt: str,
+    source_case: Path | None = None,
+) -> dict[str, Any]:
+    case_path = case_source_service.require_case_dir(case_dir)
+    jobs = refresh_jobs(case_path)
+    pid = _resolve_adopt_pid(adopt, case_path, source_case=source_case)
+    for job in jobs:
+        job_pid = job.get("pid")
+        if not isinstance(job_pid, int) or job_pid != pid:
+            continue
+        if str(job.get("status")) in {"running", "paused"}:
+            return {
+                "case": str(case_path),
+                "adopted": False,
+                "reason": "already_tracked",
+                "job_id": str(job.get("id")),
+                "pid": pid,
+                "log": str(job.get("log") or ""),
+            }
+    table = process_scan_service.proc_table(Path("/proc"))
+    entry = table.get(pid)
+    if entry is None:
+        raise ValueError(f"process not found for adopt pid: {pid}")
+    solver = process_scan_service.guess_solver_from_args(entry.args)
+    name = solver if solver and solver != "unknown" else "solver"
+    log_path = _adopt_log_path(case_path, solver)
+    command = " ".join(entry.args) if entry.args else name
+    job_id = register_job(case_path, name, pid, command, log_path)
+    return {
+        "case": str(case_path),
+        "adopted": True,
+        "job_id": job_id,
+        "pid": pid,
+        "name": name,
+        "solver": solver,
+        "log": str(log_path),
+    }
+
+
+def _resolve_adopt_pid(
+    adopt: str,
+    case_path: Path,
+    *,
+    source_case: Path | None = None,
+) -> int:
+    token = str(adopt).strip()
+    if not token:
+        raise ValueError("adopt target is empty")
+    if token.isdigit():
+        pid = int(token)
+        if pid <= 0:
+            raise ValueError(f"invalid adopt pid: {token}")
+        return pid
+    source = source_case if source_case is not None else Path(token).expanduser()
+    target_case = case_source_service.require_case_dir(source)
+    rows = process_scan_service.scan_proc_solver_processes(
+        target_case,
+        None,
+        tracked_pids=set(),
+        include_tracked=True,
+        require_case_target=True,
+    )
+    if not rows and target_case != case_path:
+        rows = process_scan_service.scan_proc_solver_processes(
+            case_path,
+            None,
+            tracked_pids=set(),
+            include_tracked=True,
+            require_case_target=True,
+        )
+    if not rows:
+        raise ValueError(f"no running solver processes found for case: {target_case}")
+    rows.sort(
+        key=lambda row: (
+            0 if str(row.get("role")) == "solver" else 1,
+            int(row.get("pid") or 0),
+        ),
+    )
+    pid = int(rows[0].get("pid") or 0)
+    if pid <= 0:
+        raise ValueError(f"invalid solver pid for case: {target_case}")
+    return pid
+
+
+def _adopt_log_path(case_path: Path, solver: str | None) -> Path:
+    if solver and solver != "unknown":
+        candidate = (case_path / f"log.{solver}").resolve()
+        if candidate.is_file():
+            return candidate
+    logs = sorted(
+        case_path.glob("log.*"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if logs:
+        return logs[0].resolve()
+    safe = solver if solver and solver != "unknown" else "solver"
+    return (case_path / f"log.{safe}").resolve()
+
+
 def _log_path_from_job(case_path: Path, job_id: str) -> Path:
     jobs = load_jobs(case_path)
     for job in jobs:
@@ -320,6 +566,41 @@ def _select_external_job(
         raise ValueError(f"no tracked external watcher jobs for {name}")
     pool.sort(key=lambda item: float(item.get("started_at") or 0.0), reverse=True)
     return pool[0]
+
+
+def _watch_settings_path(case_path: Path) -> Path:
+    return case_path / ".ofti" / "watch.json"
+
+
+def _load_watch_settings(case_path: Path) -> dict[str, Any]:
+    path = _watch_settings_path(case_path)
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError, AttributeError, TypeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return dict(data)
+
+
+def _save_watch_settings(case_path: Path, settings: dict[str, Any]) -> None:
+    path = _watch_settings_path(case_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(settings, indent=2, sort_keys=True))
+
+
+def _watch_interval(settings: dict[str, Any]) -> float:
+    value = settings.get("interval")
+    if isinstance(value, (int, float)) and float(value) > 0:
+        return float(value)
+    return _WATCH_SETTINGS_DEFAULT_INTERVAL
+
+
+def _watch_output(settings: dict[str, Any]) -> WatchOutputProfile:
+    value = str(settings.get("output") or "").strip().lower()
+    if value in {"brief", "detailed"}:
+        return value  # type: ignore[return-value]
+    return _WATCH_SETTINGS_DEFAULT_OUTPUT
 
 
 def _signal_by_name(signal_name: str) -> int:

@@ -159,7 +159,7 @@ def test_converge_plot_residuals_and_watch_external(
 
     monkeypatch.setattr(
         cli_tools.watch_ops,
-        "external_watch_payload",
+        "external_watch_mode_payload",
         lambda *_a, **_k: {
             "case": "/case",
             "command": ["python", "watcher.py"],
@@ -263,3 +263,198 @@ def test_watch_stop_signal_and_pause_resume_handlers(
     out = capsys.readouterr().out
     assert "resumed:" in out
     assert "failed:" in out
+
+
+def test_knife_new_flag_forwarding_and_new_handlers(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    compare_seen: dict[str, object] = {}
+    status_seen: dict[str, object] = {}
+    current_seen: dict[str, object] = {}
+
+    def _compare(_left: Path, _right: Path, **kwargs: object) -> dict[str, object]:
+        compare_seen.update(kwargs)
+        return {
+            "left_case": "left",
+            "right_case": "right",
+            "diff_count": 0,
+            "diffs": [],
+            "flat": kwargs.get("flat", False),
+        }
+
+    def _status(_case: Path, **kwargs: object) -> dict[str, object]:
+        status_seen.update(kwargs)
+        return {"case": "case"}
+
+    def _current(_case: Path, **kwargs: object) -> dict[str, object]:
+        current_seen.update(kwargs)
+        return {
+            "case": "case",
+            "solver": "simpleFoam",
+            "solver_error": None,
+            "jobs": [],
+            "jobs_total": 0,
+            "jobs_running": 0,
+            "jobs_tracked_running": 0,
+            "untracked_processes": [],
+        }
+
+    monkeypatch.setattr(cli_tools.knife_ops, "compare_payload", _compare)
+    monkeypatch.setattr(cli_tools.knife_ops, "status_payload", _status)
+    monkeypatch.setattr(cli_tools.knife_ops, "current_payload", _current)
+
+    assert (
+        cli_tools._knife_compare(
+            _ns(
+                left_case=Path("left"),
+                right_case=Path("right"),
+                flat=True,
+                files=["system/controlDict,maxCoSchedule.dat"],
+                raw_hash=True,
+                json=False,
+            ),
+        )
+        == 0
+    )
+    assert compare_seen["flat"] is True
+    assert compare_seen["raw_hash_only"] is True
+    assert compare_seen["files"] == ["system/controlDict,maxCoSchedule.dat"]
+    capsys.readouterr()
+
+    assert cli_tools._knife_status(_ns(case_dir=Path(), fast=True, lightweight=False, tail_bytes=4096, json=True)) == 0
+    assert status_seen["lightweight"] is True
+    assert status_seen["tail_bytes"] == 4096
+    assert json.loads(capsys.readouterr().out)["case"] == "case"
+
+    assert cli_tools._knife_current(_ns(case_dir=Path(), live=True, json=True)) == 0
+    assert current_seen["live"] is True
+    assert json.loads(capsys.readouterr().out)["solver"] == "simpleFoam"
+
+
+def test_knife_criteria_eta_and_report_handlers(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "criteria_payload",
+        lambda *_a, **_k: {
+            "case": "case",
+            "criteria_count": 1,
+            "passed": 0,
+            "failed": 1,
+            "unknown": 0,
+            "criteria": [
+                {
+                    "name": "residualTolerance",
+                    "met": False,
+                    "value": 0.1,
+                    "tol": 0.01,
+                    "unmet": "window",
+                    "source": "runTimeControl",
+                },
+            ],
+        },
+    )
+    assert cli_tools._knife_criteria(_ns(case_dir=Path(), fast=True, tail_bytes=1024, json=False)) == 0
+    assert "residualTolerance" in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "eta_payload",
+        lambda *_a, **_k: {
+            "case": "case",
+            "mode": "criteria",
+            "eta_seconds": 12.0,
+            "eta_criteria_seconds": 12.0,
+            "eta_end_time_seconds": 100.0,
+        },
+    )
+    assert cli_tools._knife_eta(_ns(case_dir=Path(), mode="criteria", fast=False, tail_bytes=None, json=True)) == 0
+    assert json.loads(capsys.readouterr().out)["eta_seconds"] == 12.0
+
+    monkeypatch.setattr(cli_tools.knife_ops, "report_payload", lambda *_a, **_k: {"case": "case"})
+    monkeypatch.setattr(cli_tools.knife_ops, "report_markdown", lambda _p: "# report")
+    assert cli_tools._knife_report(_ns(case_dir=Path(), format="md", fast=False, tail_bytes=None, json=False)) == 0
+    assert capsys.readouterr().out.strip() == "# report"
+    assert cli_tools._knife_report(_ns(case_dir=Path(), format="json", fast=False, tail_bytes=None, json=True)) == 0
+    assert json.loads(capsys.readouterr().out)["case"] == "case"
+
+
+def test_watch_interval_output_and_adopt_handlers(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli_tools.watch_ops,
+        "interval_payload",
+        lambda *_a, **_k: {
+            "case": "case",
+            "effective": 0.5,
+            "changed": True,
+            "requested": 0.5,
+            "settings_path": "/case/.ofti/watch.json",
+        },
+    )
+    assert cli_tools._watch_interval(_ns(case_dir=Path(), seconds=0.5, json=False)) == 0
+    assert "effective=0.5" in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        cli_tools.watch_ops,
+        "output_profile_payload",
+        lambda *_a, **_k: {
+            "case": "case",
+            "effective": "brief",
+            "changed": True,
+            "requested": "brief",
+            "settings_path": "/case/.ofti/watch.json",
+        },
+    )
+    assert cli_tools._watch_output(_ns(case_dir=Path(), brief=True, detailed=False, json=False)) == 0
+    assert "effective=brief" in capsys.readouterr().out
+    assert cli_tools._watch_output(_ns(case_dir=Path(), brief=True, detailed=True, json=False)) == 2
+
+    monkeypatch.setattr(
+        cli_tools.watch_ops,
+        "adopt_job_payload",
+        lambda *_a, **_k: {
+            "case": "case",
+            "adopted": True,
+            "job_id": "job-1",
+            "pid": 123,
+            "log": "/case/log.simpleFoam",
+        },
+    )
+    captured: dict[str, object] = {}
+
+    def _watch_log(args: argparse.Namespace) -> int:
+        captured["job_id"] = args.job_id
+        captured["follow"] = args.follow
+        return 0
+
+    monkeypatch.setattr(cli_tools, "_watch_log", _watch_log)
+    assert (
+        cli_tools._watch_attach(
+            _ns(
+                source=None,
+                lines=40,
+                job_id=None,
+                adopt="123",
+                case_dir=Path("/case"),
+                output="brief",
+                json=False,
+            ),
+        )
+        == 0
+    )
+    assert captured["job_id"] == "job-1"
+    assert captured["follow"] is True
+
+    payload = cli_tools._watch_json_payload(
+        "jobs",
+        {"case": "/case", "count": 1, "jobs": [{"id": "j", "name": "w", "pid": 9, "status": "running"}]},
+        profile="brief",
+    )
+    assert payload["schema"] == "ofti.watch.v1"
+    assert payload["profile"] == "brief"

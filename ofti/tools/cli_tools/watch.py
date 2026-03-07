@@ -5,12 +5,20 @@ from ofti.tools import watch_service as service
 signal = service.signal
 
 jobs_payload = service.jobs_payload
+interval_payload = service.interval_payload
+output_profile_payload = service.output_profile_payload
+effective_interval = service.effective_interval
+effective_output_profile = service.effective_output_profile
 log_tail_payload = service.log_tail_payload
 log_tail_payload_for_job = service.log_tail_payload_for_job
 stop_payload = service.stop_payload
 pause_payload = service.pause_payload
 resume_payload = service.resume_payload
+adopt_job_payload = service.adopt_job_payload
 external_watch_payload = service.external_watch_payload
+external_watch_mode = service.external_watch_mode
+normalize_external_command = service.normalize_external_command
+external_watch_mode_payload = service.external_watch_mode_payload
 external_watch_start_payload = service.external_watch_start_payload
 external_watch_status_payload = service.external_watch_status_payload
 external_watch_attach_payload = service.external_watch_attach_payload

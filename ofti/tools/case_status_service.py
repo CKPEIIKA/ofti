@@ -50,6 +50,7 @@ def current_payload(
     refresh_jobs_fn: Callable[[Path], list[dict[str, Any]]],
     running_job_pids_fn: Callable[[list[dict[str, Any]]], list[int]],
     scan_proc_solver_processes_fn: Callable[..., list[SolverProcessRow]],
+    live: bool = False,
 ) -> CurrentPayload:
     solver, solver_error = resolve_solver_name_fn(case_path)
     jobs = refresh_jobs_fn(case_path)
@@ -62,6 +63,13 @@ def current_payload(
             solver,
             tracked_pids=tracked_pids,
         )
+        if live and not untracked:
+            untracked = scan_proc_solver_processes_fn(
+                case_path,
+                solver,
+                tracked_pids=tracked_pids,
+                require_case_target=False,
+            )
     elif solver_error is not None:
         untracked = scan_proc_solver_processes_fn(
             case_path,

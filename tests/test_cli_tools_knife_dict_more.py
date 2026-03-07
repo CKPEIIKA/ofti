@@ -67,6 +67,47 @@ def test_knife_doctor_and_compare_payloads(tmp_path: Path, monkeypatch: pytest.M
     compare = knife.compare_payload(case, case)
     assert compare["diff_count"] == 1
     assert compare["diffs"][0]["value_diffs"][0]["key"] == "application"
+    assert compare["diffs"][0]["value_diffs_flat"][0].startswith("application:")
+
+
+def test_knife_compare_filters_files_and_raw_hash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    monkeypatch.setattr(
+        knife_service,
+        "compare_case_dicts",
+        lambda _l, _r: [
+            DictDiff(
+                rel_path="system/controlDict",
+                missing_in_left=[],
+                missing_in_right=[],
+                value_diffs=[ValueDiff(key="application", left="a", right="b")],
+                kind="dict",
+            ),
+            DictDiff(
+                rel_path="maxCoSchedule.dat",
+                missing_in_left=[],
+                missing_in_right=[],
+                value_diffs=[],
+                kind="file",
+                left_hash="1",
+                right_hash="2",
+            ),
+        ],
+    )
+    payload = knife.compare_payload(
+        case,
+        case,
+        files=["maxCoSchedule.dat"],
+        flat=True,
+        raw_hash_only=True,
+    )
+    assert payload["diff_count"] == 1
+    assert payload["diffs"][0]["rel_path"] == "maxCoSchedule.dat"
+    assert payload["flat"] is True
+    assert payload["raw_hash_only"] is True
 
 
 def test_knife_fallback_solver_and_set_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -235,6 +276,70 @@ def test_knife_current_payload_falls_back_to_relaxed_proc_scan(
     assert seen == [True, False]
     assert payload["jobs_running"] == 1
     assert payload["untracked_processes"][0]["pid"] == 404
+
+
+def test_knife_current_live_and_report_payloads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    seen: dict[str, object] = {}
+
+    def _status(_case: Path, **kwargs: object) -> dict[str, object]:
+        seen.update(kwargs)
+        return {
+            "case": str(case),
+            "solver": "simpleFoam",
+            "solver_error": None,
+            "running": True,
+            "log_path": str(case / "log.simpleFoam"),
+            "log_fresh": True,
+            "latest_time": 2.0,
+            "latest_iteration": 20,
+            "latest_delta_t": 1e-9,
+            "sec_per_iter": 0.2,
+            "eta_seconds_to_criteria_start": 0.0,
+            "eta_seconds_to_end_time": 42.0,
+            "run_time_control": {
+                "criteria_start": 0.0,
+                "end_time": 10.0,
+                "passed": 0,
+                "failed": 1,
+                "unknown": 0,
+                "criteria": [
+                    {
+                        "key": "residualTolerance",
+                        "status": "fail",
+                        "live_value": 0.1,
+                        "live_delta": 0.05,
+                        "value": "0.01",
+                        "tolerance": 0.01,
+                        "eta_seconds": 12.0,
+                        "samples": 8,
+                        "unmet_reason": "window",
+                    },
+                ],
+            },
+        }
+
+    monkeypatch.setattr(knife_service, "status_payload", _status)
+    criteria = knife.criteria_payload(case, lightweight=True, tail_bytes=2048)
+    assert criteria["criteria_count"] == 1
+    assert criteria["criteria"][0]["unmet"] == "window"
+    assert seen["lightweight"] is True
+    assert seen["tail_bytes"] == 2048
+
+    eta = knife.eta_payload(case, mode="criteria", lightweight=True, tail_bytes=2048)
+    assert eta["eta_seconds"] == 12.0
+    assert eta["eta_end_time_seconds"] == 42.0
+
+    report = knife.report_payload(case, lightweight=True, tail_bytes=2048)
+    assert report["criteria"]["failed"] == 1
+    assert report["eta"]["criteria_seconds"] == 12.0
+
+    md = knife.report_markdown(report)
+    assert "## Criteria" in md
+    assert "criteria_seconds: 12.0" in md
 
 
 def test_knife_runtime_and_numeric_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -535,7 +535,7 @@ def test_watch_external_handler_requires_command_and_formats_output(
 
     monkeypatch.setattr(
         cli_tools.watch_ops,
-        "external_watch_payload",
+        "external_watch_mode_payload",
         lambda *_a, **_k: {
             "case": "/case",
             "command": ["python", "watcher.py"],
@@ -555,20 +555,44 @@ def test_watch_external_handler_start_status_attach_stop_modes(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(
-        cli_tools.watch_ops,
-        "external_watch_start_payload",
-        lambda *_a, **_k: {
+    def _payload(*_a: object, **kwargs: object) -> dict[str, object]:
+        mode = str(kwargs.get("mode"))
+        if mode == "start":
+            return {
+                "case": "/case",
+                "name": "watch.external",
+                "command": ["python", "watcher.py"],
+                "log_path": "/case/log.watch.external",
+                "dry_run": False,
+                "pid": 123,
+                "job_id": "job-1",
+                "ok": True,
+            }
+        if mode == "status":
+            return {
+                "case": "/case",
+                "name": "watch.external",
+                "count": 1,
+                "jobs": [{"id": "job-1", "name": "watch.external", "pid": 1, "status": "running"}],
+            }
+        if mode == "attach":
+            return {
+                "case": "/case",
+                "log": "/case/log.watch.external",
+                "lines": ["a", "b"],
+                "job_id": "job-1",
+                "name": "watch.external",
+            }
+        return {
             "case": "/case",
             "name": "watch.external",
-            "command": ["python", "watcher.py"],
-            "log_path": "/case/log.watch.external",
-            "dry_run": False,
-            "pid": 123,
-            "job_id": "job-1",
-            "ok": True,
-        },
-    )
+            "signal": "TERM",
+            "selected": 1,
+            "stopped": [{"id": "job-1", "pid": 1, "name": "watch.external"}],
+            "failed": [],
+        }
+
+    monkeypatch.setattr(cli_tools.watch_ops, "external_watch_mode_payload", _payload)
     args = _ns(
         case_dir=Path("/case"),
         command=["python", "watcher.py"],
@@ -591,38 +615,16 @@ def test_watch_external_handler_start_status_attach_stop_modes(
     assert cli_tools._watch_external(args) == 0
     assert "job_id=job-1" in capsys.readouterr().out
 
-    monkeypatch.setattr(
-        cli_tools.watch_ops,
-        "external_watch_status_payload",
-        lambda *_a, **_k: {"case": "/case", "name": "watch.external", "count": 1, "jobs": [{"id": "job-1", "name": "watch.external", "pid": 1, "status": "running"}]},
-    )
     args.start = False
     args.status = True
     assert cli_tools._watch_external(args) == 0
     assert "count=1" in capsys.readouterr().out
 
-    monkeypatch.setattr(
-        cli_tools.watch_ops,
-        "external_watch_attach_payload",
-        lambda *_a, **_k: {"case": "/case", "log": "/case/log.watch.external", "lines": ["a", "b"], "job_id": "job-1", "name": "watch.external"},
-    )
     args.status = False
     args.attach = True
     assert cli_tools._watch_external(args) == 0
     assert "a\nb" in capsys.readouterr().out
 
-    monkeypatch.setattr(
-        cli_tools.watch_ops,
-        "external_watch_stop_payload",
-        lambda *_a, **_k: {
-            "case": "/case",
-            "name": "watch.external",
-            "signal": "TERM",
-            "selected": 1,
-            "stopped": [{"id": "job-1", "pid": 1, "name": "watch.external"}],
-            "failed": [],
-        },
-    )
     args.attach = False
     args.stop = True
     assert cli_tools._watch_external(args) == 0
