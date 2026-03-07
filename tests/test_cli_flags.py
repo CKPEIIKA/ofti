@@ -10,6 +10,15 @@ def test_cli_main_invokes_run_tui_with_defaults(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(target)
 
     with mock.patch("ofti.app.cli.run_tui") as run:
-        cli.main([])
+        code = cli.main([])
 
+    assert code == 0
     run.assert_called_once_with(str(target), debug=False)
+
+
+def test_cli_main_delegates_tool_subcommand(monkeypatch) -> None:
+    with mock.patch("ofti.app.cli.cli_tools_main", return_value=7) as tool_main:
+        code = cli.main(["knife", "status"])
+
+    assert code == 7
+    tool_main.assert_called_once_with(["knife", "status"])

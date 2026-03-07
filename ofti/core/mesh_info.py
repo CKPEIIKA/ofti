@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TypedDict
 
 from ofti.core.boundary import parse_boundary_text
 from ofti.foamlib import adapter as foamlib_integration
+
+
+class BoundarySummary(TypedDict):
+    patches: int
+    types: dict[str, int]
 
 
 def mesh_counts(case_path: Path) -> tuple[int | None, int | None, int | None]:
@@ -60,7 +66,7 @@ def _max_index(path: Path) -> int | None:
         return None
 
 
-def boundary_summary(case_path: Path) -> dict[str, object]:
+def boundary_summary(case_path: Path) -> BoundarySummary:
     boundary = case_path / "constant" / "polyMesh" / "boundary"
     if not boundary.is_file():
         return {"patches": 0, "types": {}}

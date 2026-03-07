@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ofti.foamlib import fallback
 
@@ -208,9 +208,13 @@ def write_field_entry(file_path: Path, key: str, value: str) -> bool:
             cleaned = f"{cleaned};"
         payload = f"{key_name} {cleaned}"
     try:
-        parsed = FoamFieldFile.loads(payload, include_header=False).get(key_name)
+        loaded = FoamFieldFile.loads(payload, include_header=False)
     except Exception:
         return False
+    getter = getattr(loaded, "get", None)
+    if not callable(getter):
+        return False
+    parsed = getter(key_name)
     if parsed is None:
         return False
     with field_file:
@@ -297,7 +301,8 @@ def _system_helper_for(rel_path: Path) -> Any | None:
 
 
 def _dump_entry_value(key_name: str, node: object) -> str:
-    text = FoamFile.dumps({key_name: node}, ensure_header=False).decode().strip()
+    payload = cast(Any, {key_name: node})
+    text = FoamFile.dumps(payload, ensure_header=False).decode().strip()
     lines = text.splitlines()
     if len(lines) == 1 and key_name:
         line = lines[0].strip()

@@ -1,0 +1,91 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  2206                                  |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+FoamFile
+{
+    version         2;
+    format          ascii;
+    class           dictionary;
+    object          forces;
+}
+
+Ttr             30000;
+
+Tve             Tve 1000;
+
+TveAtom         0;
+
+Twall           Twall 1000;
+
+pressure        101325;
+
+magVelocityInlet 1000;
+
+velocityInlet   ( 1000 0 0 );
+
+velocityField   ( 0 0 0 );
+
+velocityWall    ( 0 0 0 );
+
+Y_N2            1;
+
+Y_O2            0;
+
+Y_NO            0;
+
+Y_N             0;
+
+Y_O             0;
+
+Y_N2+           0;
+
+Y_O2+           0;
+
+Y_NO+           0;
+
+Y_N+            0;
+
+Y_O+            0;
+
+Y_e-            0;
+
+forces
+{
+    type            forces;
+    functionObjectLibs ( "libstrathForces.so" );
+    outputControl   timeStep;
+    outputInterval  50;
+    patches         ( cylinder );
+    rhoName         rho;
+    rhoInf          1.363e-05;
+    log             false;
+    CofR            ( 0 0 0 );
+    pitchAxis       ( 0 0 1 );
+}
+
+forceCoeffs
+{
+    type            forceCoeffs;
+    functionObjectLibs ( "libstrathForces.so" );
+    outputControl   timeStep;
+    outputInterval  10;
+    patches         ( cylinder );
+    rhoName         rho;
+    rhoInf          1.363e-05;
+    magUInf         1000;
+    log             true;
+    CofR            ( 0 0 0 );
+    dragDir         ( 1 0 0 );
+    liftDir         ( 0 1 0 );
+    pitchAxis       ( 0 0 1 );
+    lRef            0.05;
+    Aref            0.2;
+}
+
+
+// ************************************************************************* //

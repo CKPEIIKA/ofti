@@ -52,9 +52,9 @@ def build_case_doctor_report(case_path: Path) -> dict[str, list[str]]:
 
 def _required_dicts() -> list[Path]:
     return [
-        get_dict_path("controlDict"),
-        get_dict_path("fvSchemes"),
-        get_dict_path("fvSolution"),
+        Path(get_dict_path("controlDict")),
+        Path(get_dict_path("fvSchemes")),
+        Path(get_dict_path("fvSolution")),
     ]
 
 
@@ -88,7 +88,7 @@ def _check_initial_conditions(
     zero_dir = case_path / "0"
     zero_orig = case_path / "0.orig"
     if not zero_dir.is_dir() and not zero_orig.is_dir():
-        errors.append("Missing 0/ (or 0.orig) initial conditions directory.")
+        warnings.append("Missing 0/ (or 0.orig) initial conditions directory.")
         return
     fields = list_field_files(case_path)
     if not fields:
@@ -119,12 +119,77 @@ def _lint_case_dicts(case_path: Path) -> tuple[list[str], list[str]]:
         return errors, warnings
     for path, result in results.items():
         rel = path.relative_to(case_path)
+        include_heavy = _is_include_heavy_or_helper_file(path)
+        suppressed_noise = False
         for err in result.errors:
-            errors.append(f"{rel}: {err}")
+            suppressed = _classify_lint_issue(
+                rel,
+                err,
+                errors,
+                warnings,
+                include_heavy=include_heavy,
+            )
+            suppressed_noise = suppressed_noise or suppressed
         for warn in result.warnings:
             warnings.append(f"{rel}: {warn}")
+        if include_heavy and suppressed_noise:
+            warnings.append(f"{rel}: parser lint skipped for include-heavy/custom syntax.")
     return errors, warnings
 
 
 def _can_lint() -> bool:
     return foamlib_integration.available()
+
+
+def _classify_lint_issue(
+    rel_path: Path,
+    message: str,
+    errors: list[str],
+    warnings: list[str],
+    *,
+    include_heavy: bool = False,
+) -> bool:
+    text = f"{rel_path}: {message}"
+    lowered = message.lower()
+    # Typical hy2Foam cases include helper/non-dictionary files or advanced
+    # syntax that the lightweight parser cannot fully validate.
+    if "missing/invalid foamfile header" in lowered:
+        if include_heavy:
+            return True
+        warnings.append(text)
+        return False
+    if "parser error (" in lowered:
+        if include_heavy:
+            return True
+        warnings.append(text)
+        return False
+    if "boundaryfield missing patches:" in lowered:
+        warnings.append(text)
+        return False
+    errors.append(text)
+    return False
+
+
+def _is_include_heavy_or_helper_file(path: Path) -> bool:
+    if path.suffix.lower() in {".msh", ".stl", ".obj", ".dat", ".csv", ".txt"}:
+        return True
+    name = path.name
+    if name in {"sampleDict"}:
+        return True
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    markers = (
+        "#include",
+        "#includeEtc",
+        "#ifdef",
+        "#ifndef",
+        "#if",
+        "#else",
+        "#endif",
+        "codeStream",
+        "$FOAM_",
+        "${",
+    )
+    return any(marker in text for marker in markers)

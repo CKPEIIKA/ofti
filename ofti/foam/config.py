@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import contextlib
+import importlib
 import os
 import shutil
-
-try:
-    import tomllib
-except ImportError:  # pragma: no cover - Python <3.11 fallback
-    import tomli as tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
+
+
+def _load_toml_module() -> Any | None:
+    for name in ("tomllib", "tomli"):
+        with contextlib.suppress(ModuleNotFoundError):
+            return importlib.import_module(name)
+    return None
+
+
+_TOML = _load_toml_module()
 
 
 @dataclass
@@ -113,10 +119,14 @@ def _load_config() -> Config:
     cfg = Config()
     path = config_path()
     if path.is_file():
-        try:
-            raw = tomllib.loads(path.read_text())
-        except (OSError, tomllib.TOMLDecodeError):
-            raw = {}
+        raw: dict[str, Any] = {}
+        if _TOML is not None:
+            try:
+                parsed = _TOML.loads(path.read_text())
+                if isinstance(parsed, dict):
+                    raw = cast(dict[str, Any], parsed)
+            except Exception:
+                raw = {}
         _apply_file_config(cfg, raw)
 
     _apply_env_overrides(cfg)

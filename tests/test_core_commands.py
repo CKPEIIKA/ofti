@@ -39,6 +39,18 @@ def test_parse_command_run_tool_and_tool_alias() -> None:
     assert action.args == ("simpleFoam",)
 
 
+def test_parse_command_cli_group_aliases() -> None:
+    for name in ("clitools", "knife", "watch", "plot", "run"):
+        action = parse_command(f":{name}", tool_names=[name])
+        assert action is not None
+        assert action.kind == CommandKind.RUN_TOOL
+        assert action.args == (name,)
+
+    solver = parse_command(":solver")
+    assert solver is not None
+    assert solver.kind == CommandKind.RUN_SOLVER
+
+
 def test_parse_command_cancel_requires_name() -> None:
     action = parse_command(":cancel")
     assert action is not None

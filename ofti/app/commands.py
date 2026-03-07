@@ -15,7 +15,7 @@ class CommandCallbacks:
     check_syntax: Callable[[Any, Path, Any], None]
     tools_screen: Callable[[Any, Path, Any], None]
     diagnostics_screen: Callable[[Any, Path, Any], None]
-    run_current_solver: Callable[[Any, Path, Any], None]
+    run_current_solver: Callable[..., None]
     show_message: Callable[[Any, str], None]
     tasks_screen: Callable[[Any, Any], None]
     openfoam_env_screen: Callable[[Any], None]
@@ -39,8 +39,13 @@ def command_suggestions(case_path: Path) -> list[str]:
     base = [
         "check",
         "tools",
+        "clitools",
+        "knife",
+        "plot",
+        "watch",
         "diag",
         "run",
+        "solver",
         "tasks",
         "cancel",
         "search",
@@ -189,8 +194,8 @@ def handle_command(
     if action.kind == CommandKind.HELP:
         callbacks.show_message(
             stdscr,
-            "Commands: :check, :tools, :diag, :run, :tasks, "
-            ":search, :cancel <name>, :foamenv, :clone <name>, :tool <name>, :quit",
+            "Commands: :check, :tools, :clitools, :knife, :plot, :watch, :run, :solver, "
+            ":diag, :tasks, :search, :cancel <name>, :foamenv, :clone <name>, :tool <name>, :quit",
         )
         return "handled"
 

@@ -5,7 +5,7 @@ from unittest import mock
 
 from ofti.tools.cleaning_ops import clean_time_directories, remove_all_logs
 from ofti.tools.diagnostics import diagnostics_screen
-from ofti.tools.menus import TOOLS_SPECIAL_HINTS
+from ofti.tools.menus import TOOLS_SPECIAL_HINTS, run_tool_by_name
 from ofti.tools.runner import load_postprocessing_presets
 from ofti.tools.shell_tools import run_shell_script_screen
 from ofti.tools.solver import run_current_solver
@@ -202,3 +202,37 @@ def test_load_postprocessing_presets(tmp_path: Path) -> None:
     presets = load_postprocessing_presets(case_dir)
 
     assert presets == [("foamToVTK", ["foamToVTK", "-latestTime"])]
+
+
+def test_run_tool_by_name_cli_tools_alias(tmp_path: Path) -> None:
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    screen = FakeScreen(keys=[ord("h")])
+
+    with mock.patch("ofti.tools.menus.cli_tools_screen") as cli_screen:
+        handled = run_tool_by_name(screen, case_dir, "cli-tools")
+
+    assert handled is True
+    cli_screen.assert_called_once_with(screen, case_dir)
+
+
+def test_run_tool_by_name_cli_group_aliases(tmp_path: Path) -> None:
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    screen = FakeScreen(keys=[ord("h")])
+
+    with (
+        mock.patch("ofti.tools.menus.cli_knife_screen") as knife_screen,
+        mock.patch("ofti.tools.menus.cli_plot_screen") as plot_screen,
+        mock.patch("ofti.tools.menus.cli_watch_screen") as watch_screen,
+        mock.patch("ofti.tools.menus.cli_run_screen") as run_screen,
+    ):
+        assert run_tool_by_name(screen, case_dir, "knife") is True
+        assert run_tool_by_name(screen, case_dir, "plot") is True
+        assert run_tool_by_name(screen, case_dir, "watch") is True
+        assert run_tool_by_name(screen, case_dir, "run") is True
+
+    knife_screen.assert_called_once_with(screen, case_dir)
+    plot_screen.assert_called_once_with(screen, case_dir)
+    watch_screen.assert_called_once_with(screen, case_dir)
+    run_screen.assert_called_once_with(screen, case_dir)

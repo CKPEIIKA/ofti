@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any, cast
 
 from ofti.core.entry_io import list_subkeys, read_entry
 from ofti.core.validation import (
@@ -283,7 +284,7 @@ def _is_foamlib_field(node: object) -> bool:
     if FoamlibField is None:
         return False
     try:
-        return isinstance(node, FoamlibField)
+        return isinstance(node, cast(type[Any], FoamlibField))
     except TypeError:
         return False
 

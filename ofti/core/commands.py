@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
 
 
-class CommandKind(StrEnum):
+class CommandKind(str, Enum):  # noqa: UP042
     QUIT = "quit"
     CHECK = "check"
     TOOLS = "tools"
@@ -50,7 +50,7 @@ def _strip_command(command: str) -> str | None:
 
 
 def _simple_command(name: str, raw: str) -> CommandAction | None:
-    simple_map = {
+    simple_map: dict[str, CommandKind] = {
         "q": CommandKind.QUIT,
         "quit": CommandKind.QUIT,
         "exit": CommandKind.QUIT,
@@ -90,6 +90,7 @@ def _simple_command(name: str, raw: str) -> CommandAction | None:
         "configcheck": CommandKind.CONFIG_CHECK,
         "config-env": CommandKind.FOAM_ENV,
         "configenv": CommandKind.FOAM_ENV,
+        "runsolver": CommandKind.RUN_SOLVER,
     }
     kind = simple_map.get(name)
     if kind is None:
@@ -97,7 +98,14 @@ def _simple_command(name: str, raw: str) -> CommandAction | None:
     return CommandAction(kind, raw=raw)
 
 
-def _tool_command(name: str, raw: str, parts: list[str], background: bool) -> CommandAction | None:
+def _tool_command(  # noqa: PLR0911
+    name: str,
+    raw: str,
+    parts: list[str],
+    background: bool,
+    *,
+    tool_set: set[str] | None = None,
+) -> CommandAction | None:
     if name == "tool":
         if len(parts) < 2:
             return CommandAction(
@@ -111,7 +119,23 @@ def _tool_command(name: str, raw: str, parts: list[str], background: bool) -> Co
             args=(" ".join(parts[1:]),),
             background=background,
         )
-    if name in ("run", "solver"):
+    if name == "run":
+        if len(parts) == 1:
+            if tool_set is None or "run" not in tool_set:
+                return CommandAction(CommandKind.RUN_SOLVER, raw=raw)
+            return CommandAction(
+                CommandKind.RUN_TOOL,
+                raw=raw,
+                args=("run",),
+                background=background,
+            )
+        return CommandAction(
+            CommandKind.RUN_TOOL,
+            raw=raw,
+            args=(" ".join(parts[1:]),),
+            background=background,
+        )
+    if name == "solver":
         if len(parts) > 1:
             return CommandAction(
                 CommandKind.RUN_TOOL,
@@ -176,7 +200,13 @@ def parse_command(command: str, tool_names: Iterable[str] | None = None) -> Comm
 
     action = _simple_command(name, cmd)
     if action is None:
-        action = _tool_command(name, cmd, sanitized_parts, background)
+        action = _tool_command(
+            name,
+            cmd,
+            sanitized_parts,
+            background,
+            tool_set=tool_set,
+        )
     if action is None:
         action = _cancel_command(name, cmd, sanitized_parts)
     if action is None:
