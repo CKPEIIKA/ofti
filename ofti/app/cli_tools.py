@@ -112,12 +112,21 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     stop.add_argument("--json", action="store_true")
     stop.set_defaults(func=_watch_stop)
 
-    converge = knife_sub.add_parser("converge", help="Alias of plot residuals")
+    converge = knife_sub.add_parser(
+        "converge",
+        help="Post-check convergence signals from solver logs",
+    )
     converge.add_argument("source", nargs="?", default=Path.cwd(), type=Path)
-    converge.add_argument("--field", action="append", default=[])
-    converge.add_argument("--limit", type=int, default=0)
+    converge.add_argument(
+        "--strict",
+        action="store_true",
+        help="Require shock+drag+mass checks to pass",
+    )
+    converge.add_argument("--shock-drift-limit", type=float, default=0.02)
+    converge.add_argument("--drag-band-limit", type=float, default=0.02)
+    converge.add_argument("--mass-limit", type=float, default=1e-4)
     converge.add_argument("--json", action="store_true")
-    converge.set_defaults(func=_plot_residuals)
+    converge.set_defaults(func=_knife_converge)
 
     plot_criteria = knife_sub.add_parser("plot-criteria", help="Alias of plot criteria")
     plot_criteria.add_argument("source", nargs="?", default=Path.cwd(), type=Path)
@@ -228,6 +237,20 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     stop.add_argument("--json", action="store_true")
     stop.set_defaults(func=_watch_stop)
 
+    external = watch_sub.add_parser(
+        "external",
+        help="Run an external watcher command (arguments are passed through)",
+    )
+    external.add_argument("--case", dest="case_dir", default=Path.cwd(), type=Path)
+    external.add_argument("--dry-run", action="store_true")
+    external.add_argument("--json", action="store_true")
+    external.add_argument(
+        "command",
+        nargs=argparse.REMAINDER,
+        help="External watcher command and arguments (use '--' before command)",
+    )
+    external.set_defaults(func=_watch_external)
+
 
 def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     run = groups.add_parser(
@@ -316,15 +339,23 @@ def _knife_compare(args: argparse.Namespace) -> int:
         return 0
     for diff in payload["diffs"]:
         print(f"\n{diff['rel_path']}")
+        print(f"  kind: {diff.get('kind', 'dict')}")
         if diff["error"]:
             print(f"  error: {diff['error']}")
-            continue
         missing_left = diff["missing_in_left"]
         missing_right = diff["missing_in_right"]
         if missing_left:
             print(f"  missing_in_left: {', '.join(missing_left)}")
         if missing_right:
             print(f"  missing_in_right: {', '.join(missing_right)}")
+        value_diffs = diff.get("value_diffs", [])
+        for value in value_diffs[:40]:
+            print(f"  value_diff {value['key']}: left={value['left']} right={value['right']}")
+        if len(value_diffs) > 40:
+            print(f"  value_diff_more={len(value_diffs) - 40}")
+        if diff.get("left_hash") or diff.get("right_hash"):
+            print(f"  left_hash={diff.get('left_hash')}")
+            print(f"  right_hash={diff.get('right_hash')}")
     return 0
 
 
@@ -335,11 +366,30 @@ def _knife_status(args: argparse.Namespace) -> int:
         return 0
     print(f"case={payload['case']}")
     print(f"latest_time={payload['latest_time']}")
+    print(f"latest_iteration={payload.get('latest_iteration')}")
+    print(f"latest_deltaT={payload.get('latest_delta_t')}")
+    print(f"sec_per_iter={payload.get('sec_per_iter')}")
     if payload["solver_error"]:
         print(f"solver_error={payload['solver_error']}")
     else:
         print(f"solver={payload['solver']}")
         print(f"solver_status={payload['solver_status'] or 'not tracked'}")
+    rtc = payload.get("run_time_control", {})
+    print(
+        "runtime_control="
+        f"criteria:{len(rtc.get('criteria', []))} "
+        f"pass:{rtc.get('passed', 0)} fail:{rtc.get('failed', 0)} unknown:{rtc.get('unknown', 0)}",
+    )
+    print(f"eta_to_criteria_start={payload.get('eta_seconds_to_criteria_start')}")
+    print(f"eta_to_end_time={payload.get('eta_seconds_to_end_time')}")
+    print(
+        f"log_path={payload.get('log_path')} "
+        f"fresh={payload.get('log_fresh')} running={payload.get('running')}",
+    )
+    if payload.get("tracked_solver_processes"):
+        print(f"tracked_solver_processes={len(payload['tracked_solver_processes'])}")
+    if payload.get("untracked_solver_processes"):
+        print(f"untracked_solver_processes={len(payload['untracked_solver_processes'])}")
     print(f"jobs_running={payload['jobs_running']} jobs_total={payload['jobs_total']}")
     return 0
 
@@ -373,6 +423,48 @@ def _knife_current(args: argparse.Namespace) -> int:
     else:
         print("untracked_solver_processes=none")
     return 0
+
+
+def _knife_converge(args: argparse.Namespace) -> int:
+    try:
+        payload = knife_ops.converge_payload(
+            args.source,
+            strict=bool(args.strict),
+            shock_drift_limit=float(args.shock_drift_limit),
+            drag_band_limit=float(args.drag_band_limit),
+            mass_limit=float(args.mass_limit),
+        )
+    except ValueError as exc:
+        print(f"ofti: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload["ok"] else 1
+    print(f"log={payload['log']}")
+    print(
+        f"shock drift={payload['shock']['drift']} limit={payload['shock']['limit']} "
+        f"ok={payload['shock']['ok']}",
+    )
+    print(
+        f"drag band={payload['drag']['band']} limit={payload['drag']['limit']} "
+        f"ok={payload['drag']['ok']}",
+    )
+    print(
+        "mass "
+        f"last_abs_global={payload['mass']['last_abs_global']} limit={payload['mass']['limit']} "
+        f"ok={payload['mass']['ok']}",
+    )
+    print(
+        f"residuals flatline={payload['residuals']['flatline']} "
+        f"fields={','.join(payload['residuals']['flatline_fields'])}",
+    )
+    print(
+        f"thermo out_of_range_count={payload['thermo']['out_of_range_count']} "
+        f"ok={payload['thermo']['ok']}",
+    )
+    print(f"strict={payload['strict']} strict_ok={payload['strict_ok']}")
+    print(f"ok={payload['ok']}")
+    return 0 if payload["ok"] else 1
 
 
 def _knife_set(args: argparse.Namespace) -> int:
@@ -536,6 +628,31 @@ def _watch_stop(args: argparse.Namespace) -> int:
         for row in payload["failed"]:
             print(f"- id={row.get('id')} pid={row.get('pid')} error={row['error']}")
     return 0 if not payload["failed"] else 1
+
+
+def _watch_external(args: argparse.Namespace) -> int:
+    command = list(args.command)
+    if command and command[0] == "--":
+        command = command[1:]
+    if not command and not args.dry_run:
+        print("ofti: external command is required", file=sys.stderr)
+        return 2
+    payload = watch_ops.external_watch_payload(
+        args.case_dir,
+        command=command,
+        dry_run=bool(args.dry_run),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload.get("ok", True) else 1
+    print(f"case={payload['case']}")
+    print(f"command={payload['command']}")
+    if payload.get("dry_run"):
+        print("dry_run=True")
+        return 0
+    print(f"pid={payload.get('pid')}")
+    print(f"returncode={payload.get('returncode')}")
+    return 0 if payload.get("ok", True) else 1
 
 
 def _run_tool(args: argparse.Namespace) -> int:  # noqa: C901, PLR0911

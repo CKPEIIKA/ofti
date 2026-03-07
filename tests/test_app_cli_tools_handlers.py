@@ -482,3 +482,70 @@ def test_run_solver_with_mode_json_result(
     assert cli_tools._run_solver_with_mode(args, background=False) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["dry_run"] is False
+
+
+def test_knife_converge_plain_and_json(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "converge_payload",
+        lambda *_args, **_kwargs: {
+            "log": "log.hy2Foam",
+            "shock": {"drift": 0.01, "limit": 0.02, "ok": True},
+            "drag": {"band": 0.01, "limit": 0.02, "ok": True},
+            "mass": {"last_abs_global": 1e-5, "limit": 1e-4, "ok": True},
+            "residuals": {"flatline": False, "flatline_fields": []},
+            "thermo": {"out_of_range_count": 0, "ok": True},
+            "strict": True,
+            "strict_ok": True,
+            "ok": True,
+        },
+    )
+    args = _ns(
+        source=Path("log.hy2Foam"),
+        strict=True,
+        shock_drift_limit=0.02,
+        drag_band_limit=0.02,
+        mass_limit=1e-4,
+        json=False,
+    )
+    assert cli_tools._knife_converge(args) == 0
+    assert "strict_ok=True" in capsys.readouterr().out
+
+    args.json = True
+    assert cli_tools._knife_converge(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+
+
+def test_watch_external_handler_requires_command_and_formats_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    args = _ns(
+        case_dir=Path("case"),
+        command=[],
+        dry_run=False,
+        json=False,
+    )
+    assert cli_tools._watch_external(args) == 2
+    assert "external command is required" in capsys.readouterr().err
+
+    monkeypatch.setattr(
+        cli_tools.watch_ops,
+        "external_watch_payload",
+        lambda *_a, **_k: {
+            "case": "/case",
+            "command": ["python", "watcher.py"],
+            "pid": 555,
+            "returncode": 0,
+            "ok": True,
+        },
+    )
+    args.command = ["python", "watcher.py"]
+    assert cli_tools._watch_external(args) == 0
+    out = capsys.readouterr().out
+    assert "pid=555" in out
+    assert "returncode=0" in out

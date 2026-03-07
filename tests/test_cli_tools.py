@@ -389,3 +389,59 @@ def test_run_tool_help_mentions_presets(capsys) -> None:
     out = capsys.readouterr().out
     assert exc.value.code == 0
     assert "--json" in out
+
+
+def test_knife_converge_cli_json(tmp_path, capsys, monkeypatch) -> None:
+    log_path = tmp_path / "log.hy2Foam"
+    log_path.write_text("Time = 1\n")
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.knife_ops.converge_payload",
+        lambda *_args, **_kwargs: {
+            "log": str(log_path),
+            "shock": {"drift": 0.1, "limit": 0.02, "ok": False},
+            "drag": {"band": 0.01, "limit": 0.02, "ok": True},
+            "mass": {"last_abs_global": 1e-5, "limit": 1e-4, "ok": True},
+            "residuals": {"flatline": False, "flatline_fields": []},
+            "thermo": {"out_of_range_count": 0, "ok": True},
+            "strict": True,
+            "strict_ok": False,
+            "ok": False,
+        },
+    )
+
+    code = cli_tools.main(["knife", "converge", str(log_path), "--strict", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 1
+    assert payload["strict_ok"] is False
+
+
+def test_watch_external_cli_dry_run_json(tmp_path, capsys, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case")
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.watch_ops.external_watch_payload",
+        lambda *_args, **_kwargs: {
+            "case": str(case),
+            "command": ["python", "watcher.py"],
+            "dry_run": True,
+            "ok": True,
+        },
+    )
+
+    code = cli_tools.main(
+        [
+            "watch",
+            "external",
+            "--case",
+            str(case),
+            "--dry-run",
+            "--json",
+            "--",
+            "python",
+            "watcher.py",
+        ],
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["dry_run"] is True
