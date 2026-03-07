@@ -1,0 +1,92 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  2206                                  |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+FoamFile
+{
+    version         2;
+    format          ascii;
+    class           volScalarField;
+    location        "0";
+    object          N+;
+}
+
+Ttr             30000;
+
+Tve             10000;
+
+TveAtom         0;
+
+Twall           1000;
+
+pressure        101325;
+
+magVelocityInlet 1000;
+
+velocityInlet   ( 1000 0 0 );
+
+velocityField   ( 0 0 0 );
+
+velocityWall    ( 0 0 0 );
+
+Y_N2            1;
+
+Y_O2            0;
+
+Y_NO            0;
+
+Y_N             0;
+
+Y_O             0;
+
+Y_N2+           0;
+
+Y_O2+           0;
+
+Y_NO+           0;
+
+Y_N+            0;
+
+Y_O+            0;
+
+Y_e-            0;
+
+dimensions      [ 0 0 0 0 0 0 0 ];
+
+internalField   uniform 0;
+
+boundaryField
+{
+    inlet
+    {
+        type            fixedValue;
+        value           uniform 0;
+    }
+    fire
+    {
+        type            zeroGradient;
+    }
+    empty
+    {
+        type            empty;
+    }
+    outlet
+    {
+        type            zeroGradient;
+    }
+    lWedge
+    {
+        type            wedge;
+    }
+    rWedge
+    {
+        type            wedge;
+    }
+}
+
+
+// ************************************************************************* //

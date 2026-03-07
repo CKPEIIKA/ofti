@@ -33,6 +33,44 @@ and common tools (mesh, run, post-process, diagnostics).
 If the provided path is not an OpenFOAM case, `ofti` opens a folder picker
 to select a valid case directory.
 
+## NON-INTERACTIVE CLI
+
+`ofti` also provides non-TUI commands:
+
+```bash
+ofti knife ...
+ofti plot ...
+ofti watch ...
+ofti run ...
+```
+
+Use built-in help at each level:
+
+```bash
+ofti -h
+ofti knife -h
+ofti watch log -h
+ofti run tool -h
+```
+
+Most commands support `--json` for machine-readable output.
+For streaming tails (`watch log --follow` / `watch attach`), JSON is only for
+non-follow mode.
+
+Examples:
+
+```bash
+ofti knife preflight CASE --json
+ofti watch jobs CASE --json
+ofti watch log CASE --lines 80 --json
+ofti run tool --list --case CASE --json
+ofti run solver CASE --dry-run --json
+```
+
+External watcher integration (for example `scripts/oftools/ofwatch`) is
+expected to run through tool presets in `ofti.tools` and can be executed with
+`ofti run tool <name> --case CASE`.
+
 ## REQUIREMENTS
 
 - Python 3.11+

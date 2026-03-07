@@ -9,6 +9,7 @@ from ofti.tools import (
     case_doctor,
     case_ops,
     cleaning_ops,
+    cli_tools_screens,
     diagnostics,
     job_control,
     logs_analysis,
@@ -84,6 +85,11 @@ postprocessing_browser_screen = postprocessing.postprocessing_browser_screen
 solver_resurrection_screen = solver_control.solver_resurrection_screen
 time_directory_pruner_screen = time_pruner.time_directory_pruner_screen
 yplus_screen = yplus.yplus_screen
+cli_tools_screen = cli_tools_screens.cli_tools_screen
+cli_knife_screen = cli_tools_screens.cli_knife_screen
+cli_plot_screen = cli_tools_screens.cli_plot_screen
+cli_watch_screen = cli_tools_screens.cli_watch_screen
+cli_run_screen = cli_tools_screens.cli_run_screen
 
 
 @dataclass
@@ -238,6 +244,12 @@ def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, _ToolAlias]:
     add("jobstatus", lambda: job_status_poll_screen(stdscr, case_path))
     add("jobstart", lambda: run_tool_background_screen(stdscr, case_path))
     add("jobstop", lambda: stop_job_screen(stdscr, case_path))
+    add("clitools", lambda: cli_tools_screen(stdscr, case_path))
+    add("cli-tools", lambda: cli_tools_screen(stdscr, case_path))
+    add("knife", lambda: cli_knife_screen(stdscr, case_path))
+    add("plot", lambda: cli_plot_screen(stdscr, case_path))
+    add("watch", lambda: cli_watch_screen(stdscr, case_path))
+    add("run", lambda: cli_run_screen(stdscr, case_path))
     add("renumbermesh", lambda: renumber_mesh_screen(stdscr, case_path))
     add("transformpoints", lambda: transform_points_screen(stdscr, case_path))
     add("cfmesh", lambda: cfmesh_screen(stdscr, case_path))
@@ -249,6 +261,7 @@ def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, _ToolAlias]:
 TOOLS_SPECIAL_HINTS = [
     "Environment and installation checks",
     "Case doctor checks required files, mesh, and syntax",
+    "CLI tools: knife, plot, watch, run",
     "Run a shell script from case folder",
     "Clone case directory and clean mesh/time/logs",
     "View tracked solver jobs (no external tools)",
@@ -279,6 +292,7 @@ def tools_screen(  # noqa: C901
     labels = ["Re-run last tool"] + [name for name, _ in simple_tools] + [
         "Diagnostics",
         "Case doctor",
+        "CLI tools",
         "Run shell script",
         "Clone case",
         "Job status",
@@ -355,14 +369,21 @@ def tools_screen(  # noqa: C901
         elif special_index == 1:
             case_doctor.case_doctor_screen(stdscr, case_path)
         elif special_index == 2:
-            run_shell_script_screen(stdscr, case_path)
+            cli_tools_screen(
+                stdscr,
+                case_path,
+                command_handler=command_handler,
+                command_suggestions=command_suggestions,
+            )
         elif special_index == 3:
-            clone_case(stdscr, case_path)
+            run_shell_script_screen(stdscr, case_path)
         elif special_index == 4:
-            job_status_poll_screen(stdscr, case_path)
+            clone_case(stdscr, case_path)
         elif special_index == 5:
-            stop_job_screen(stdscr, case_path)
+            job_status_poll_screen(stdscr, case_path)
         elif special_index == 6:
+            stop_job_screen(stdscr, case_path)
+        elif special_index == 7:
             physics_tools_screen(
                 stdscr,
                 case_path,

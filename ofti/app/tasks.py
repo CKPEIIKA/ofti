@@ -26,6 +26,7 @@ def running_tasks_status(state: AppState) -> str | None:
 def recent_task_summary(state: AppState) -> str | None:
     now = time.time()
     recent: Task | None = None
+    recent_finished_at: float | None = None
     for task in state.tasks.list_tasks():
         if task.name in ("case_meta",):
             continue
@@ -33,8 +34,9 @@ def recent_task_summary(state: AppState) -> str | None:
             continue
         if now - task.finished_at > 5.0:
             continue
-        if recent is None or (task.finished_at and task.finished_at > recent.finished_at):
+        if recent_finished_at is None or task.finished_at > recent_finished_at:
             recent = task
+            recent_finished_at = task.finished_at
     if recent is None:
         return None
     message = recent.message or ""

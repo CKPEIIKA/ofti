@@ -40,7 +40,7 @@ class FakeScreen:
 
 def test_entry_editor_saves_on_enter_with_valid_value():
     entry = Entry(key="testKey", value="0")
-    saved = {"value": None}
+    saved: dict[str, str | None] = {"value": None}
 
     def on_save(new_value: str) -> bool:
         saved["value"] = new_value
@@ -67,7 +67,7 @@ def test_entry_editor_saves_on_enter_with_valid_value():
 
 def test_entry_editor_enter_without_change_does_not_save_or_validate():
     entry = Entry(key="testKey", value="unchanged")
-    saved = {"value": None}
+    saved: dict[str, str | None] = {"value": None}
     validated = {"called": False}
 
     def on_save(new_value: str) -> bool:
@@ -99,7 +99,7 @@ def test_entry_editor_enter_without_change_does_not_save_or_validate():
 
 def test_entry_editor_confirms_on_invalid_and_saves_on_yes():
     entry = Entry(key="testKey", value="bad")
-    saved = {"value": None}
+    saved: dict[str, str | None] = {"value": None}
 
     def on_save(new_value: str) -> bool:
         saved["value"] = new_value

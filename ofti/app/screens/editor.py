@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -302,27 +303,28 @@ def edit_entry_screen(
         validator=validator,
         type_label=type_label,
     )
-    editor.display()
+    editor.edit()
 
 
 def _annotate_content(content: str, extra_warnings: list[str] | None = None) -> str:
     warnings = find_suspicious_lines(content)
-    if extra_warnings:
-        warnings = [*warnings, *extra_warnings]
-    if not warnings:
+    if not warnings and not extra_warnings:
         return content
 
     lines = content.splitlines()
     notes: dict[int, list[str]] = {}
     general_notes: list[str] = []
     for warning in warnings:
-        if warning.line is None:
-            general_notes.append(warning.message)
-        else:
-            notes.setdefault(warning.line, []).append(warning.message)
+        match = re.match(r"^Line\s+(\d+):\s*(.+)$", warning)
+        if match is None:
+            general_notes.append(warning)
+            continue
+        line_no = int(match.group(1))
+        notes.setdefault(line_no, []).append(match.group(2))
+    if extra_warnings:
+        general_notes.extend(extra_warnings)
 
     annotated_lines: list[str] = []
-    inserted_general = False
     for idx, line in enumerate(lines, start=1):
         if idx in notes:
             note_text = " | ".join(notes[idx])
@@ -330,7 +332,7 @@ def _annotate_content(content: str, extra_warnings: list[str] | None = None) -> 
         else:
             annotated_lines.append(line)
 
-    if general_notes and not inserted_general:
+    if general_notes:
         annotated_lines.extend(f"// LINT: {note}" for note in general_notes)
 
     return "\n".join(annotated_lines)

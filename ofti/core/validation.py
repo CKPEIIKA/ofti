@@ -99,7 +99,7 @@ def dimensioned_value(value: str) -> str | None:
     """
     text = value.strip().rstrip(";")
     error: str | None = None
-    parsed: tuple[list[float], object, str] | None = None
+    parsed: tuple[list[float], float | list[float], str] | None = None
     if not text.startswith("["):
         error = "Dimensioned value must start with dimensions, e.g. [0 1 -2 0 0 0 0] 1e-05."
     elif "]" not in text:
@@ -197,7 +197,7 @@ def _parse_vector_payload(text: str) -> list[float] | None:
     return values
 
 
-def _parse_dimensioned_value(value: str) -> tuple[list[float], object, str] | None:
+def _parse_dimensioned_value(value: str) -> tuple[list[float], float | list[float], str] | None:
     text = value.strip().rstrip(";")
     if "]" not in text:
         return None

@@ -143,7 +143,7 @@ def _run_fzf_live(
             stdin_pipe.flush()
         return added
 
-    send_new([(ref.file.rel, ref.key) for ref in entries])
+    send_new([(ref.file.rel.as_posix(), ref.key) for ref in entries])
 
     close_sent = False
     while proc.poll() is None:

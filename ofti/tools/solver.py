@@ -43,6 +43,9 @@ def run_current_solver(stdscr: Any, case_path: Path) -> None:
     if error:
         _show_message(stdscr, _with_no_foam_hint(error))
         return
+    if solver is None:
+        _show_message(stdscr, _with_no_foam_hint("Could not determine solver name."))
+        return
     if not _ensure_zero_dir(stdscr, case_path):
         return
     errors = validate_initial_fields(case_path)
@@ -74,6 +77,9 @@ def run_current_solver_live(stdscr: Any, case_path: Path) -> None:
     solver, error = resolve_solver_name(case_path)
     if error:
         _show_message(stdscr, _with_no_foam_hint(error))
+        return
+    if solver is None:
+        _show_message(stdscr, _with_no_foam_hint("Could not determine solver name."))
         return
     if not _ensure_zero_dir(stdscr, case_path):
         return
@@ -313,6 +319,7 @@ def _prepare_parallel_run(
     if error:
         _show_message(stdscr, _with_no_foam_hint(error))
         return None
+    assert solver is not None
     if not _ensure_zero_dir(stdscr, case_path):
         return None
     errors = validate_initial_fields(case_path)
@@ -355,7 +362,4 @@ def _clean_env(case_path: Path) -> dict[str, str]:
     env.pop("BASH_ENV", None)
     env.pop("ENV", None)
     env["PWD"] = str(case_path.resolve())
-    return env
-
-
     return env

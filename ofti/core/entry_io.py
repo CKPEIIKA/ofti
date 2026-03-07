@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ofti.foam import openfoam
@@ -131,7 +131,7 @@ def _log_entry_edit(file_path: Path, key: str, old: str | None, new: str) -> Non
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "edits.log"
-        timestamp = datetime.now(UTC).isoformat(timespec="seconds")
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
         old_text = _compact_value(old)
         new_text = _compact_value(new)
         line = f"{timestamp} {rel} {key}: {old_text} -> {new_text}\n"

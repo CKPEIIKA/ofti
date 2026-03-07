@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import cast
 
 
 def available() -> bool:
@@ -18,20 +19,23 @@ def list_keywords(file_path: Path) -> list[str]:
 
 def list_subkeys(file_path: Path, entry: str) -> list[str]:
     node = read_entry_node(file_path, entry)
-    if isinstance(node, dict):
-        return list(node.keys())
+    as_dict = _as_str_dict(node)
+    if as_dict is not None:
+        return list(as_dict.keys())
     return []
 
 
 def read_entry(file_path: Path, key: str) -> str:
     node = read_entry_node(file_path, key)
-    if isinstance(node, dict):
-        return _dump_dict(node)
-    if isinstance(node, list):
+    as_dict = _as_str_dict(node)
+    if as_dict is not None:
+        return _dump_dict(as_dict)
+    as_list = _as_object_list(node)
+    if as_list is not None:
         key_name = _split_key(key)[-1] if _split_key(key) else ""
         if key_name == "dimensions":
-            return _dump_list(node, bracket="[]")
-        return _dump_list(node)
+            return _dump_list(as_list, bracket="[]")
+        return _dump_list(as_list)
     return str(node)
 
 
@@ -42,9 +46,10 @@ def read_entry_node(file_path: Path, key: str) -> object:
     data = _parse_mapping(text)
     node: object = data
     for part in _split_key(key):
-        if not isinstance(node, dict) or part not in node:
+        mapping = _as_str_dict(node)
+        if mapping is None or part not in mapping:
             raise KeyError(key)
-        node = node[part]
+        node = mapping[part]
     return node
 
 
@@ -235,9 +240,10 @@ def _parse_uniform(value: str) -> str | None:
 def _dump_dict(node: dict[str, object]) -> str:
     lines = ["{"]
     for key, value in node.items():
-        if isinstance(value, dict):
+        nested = _as_str_dict(value)
+        if nested is not None:
             lines.append(f"    {key}")
-            block = _dump_dict(value).splitlines()
+            block = _dump_dict(nested).splitlines()
             lines.extend([f"    {line}" for line in block])
             continue
         lines.append(f"    {key} {_dump_scalar(value)};")
@@ -251,9 +257,24 @@ def _dump_list(values: list[object], bracket: str = "()") -> str:
 
 
 def _dump_scalar(value: object) -> str:
-    if isinstance(value, list):
-        return _dump_list(value)
+    as_list = _as_object_list(value)
+    if as_list is not None:
+        return _dump_list(as_list)
     return str(value)
+
+
+def _as_str_dict(node: object) -> dict[str, object] | None:
+    if not isinstance(node, dict):
+        return None
+    if not all(isinstance(key, str) for key in node):
+        return None
+    return cast(dict[str, object], node)
+
+
+def _as_object_list(node: object) -> list[object] | None:
+    if not isinstance(node, list):
+        return None
+    return cast(list[object], node)
 
 
 def _parse_mapping(text: str) -> dict[str, object]:

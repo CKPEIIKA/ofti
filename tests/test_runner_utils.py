@@ -17,4 +17,9 @@ def test_list_tool_commands_includes_basics(tmp_path: Path) -> None:
 
     assert "blockmesh" in commands
     assert "checkmesh" in commands
+    assert "clitools" in commands
+    assert "knife" in commands
+    assert "plot" in commands
+    assert "watch" in commands
+    assert "run" in commands
     assert "foamdictionary" not in commands

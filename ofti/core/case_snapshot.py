@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from ofti.core.boundary import list_field_files, zero_dir
 from ofti.core.case import (
@@ -17,7 +18,7 @@ from ofti.core.times import latest_time
 from ofti.foam.openfoam_env import detect_openfoam_version
 
 
-def build_case_snapshot(case_path: Path) -> dict[str, object]:
+def build_case_snapshot(case_path: Path) -> dict[str, Any]:
     latest = latest_time(case_path)
     status = "ran" if latest not in ("0", "0.0", "") else "clean"
     cells, faces, points = mesh_counts(case_path)

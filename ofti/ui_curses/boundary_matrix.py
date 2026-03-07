@@ -5,7 +5,7 @@ import re
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ofti.core.boundary import (
     BoundaryCell,
@@ -153,7 +153,7 @@ def _handle_boundary_key(
     patches: list[str],
     key: int,
     state: _MatrixState,
-) -> _MatrixState | str:
+) -> _MatrixState | Literal["reload", "back"]:
     cfg = get_config()
     if key_in(key, cfg.keys.get("quit", [])):
         raise QuitAppError()
@@ -206,7 +206,7 @@ def _handle_boundary_action_key(
     patches: list[str],
     key: int,
     state: _MatrixState,
-) -> _MatrixState | None:
+) -> _MatrixState | Literal["reload"] | None:
     if key in (ord("f"), ord("F")):
         return _MatrixState(
             row=0,

@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+import os
+import signal
+from pathlib import Path
+from typing import Any
+
+from ofti.tools.job_registry import finish_job, load_jobs, refresh_jobs
+
+from .common import read_text, require_case_dir, resolve_log_source
+
+
+def jobs_payload(case_dir: Path, *, include_all: bool) -> dict[str, Any]:
+    case_path = require_case_dir(case_dir)
+    jobs = refresh_jobs(case_path)
+    if not include_all:
+        jobs = [job for job in jobs if job.get("status") == "running"]
+    return {"case": str(case_path), "count": len(jobs), "jobs": jobs}
+
+
+def log_tail_payload(source: Path, *, lines: int) -> dict[str, Any]:
+    log_path = resolve_log_source(source)
+    tail_lines: list[str] = []
+    if lines > 0:
+        tail_lines = read_text(log_path).splitlines()[-lines:]
+    return {"log": str(log_path), "lines": tail_lines}
+
+
+def log_tail_payload_for_job(case_dir: Path, *, job_id: str, lines: int) -> dict[str, Any]:
+    case_path = require_case_dir(case_dir)
+    log_path = _log_path_from_job(case_path, job_id)
+    tail_lines: list[str] = []
+    if lines > 0:
+        tail_lines = read_text(log_path).splitlines()[-lines:]
+    return {"log": str(log_path), "lines": tail_lines}
+
+
+def stop_payload(
+    case_dir: Path,
+    *,
+    job_id: str | None = None,
+    name: str | None = None,
+    all_jobs: bool = False,
+) -> dict[str, Any]:
+    case_path = require_case_dir(case_dir)
+    jobs = refresh_jobs(case_path)
+    running = [job for job in jobs if job.get("status") == "running"]
+    selected: list[dict[str, Any]] = []
+    for job in running:
+        if all_jobs:
+            selected.append(job)
+            continue
+        if job_id and str(job.get("id")) == job_id:
+            selected.append(job)
+            continue
+        if name and str(job.get("name")) == name:
+            selected.append(job)
+            continue
+    if not all_jobs and not job_id and not name and running:
+        selected = [running[0]]
+
+    stopped: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    for job in selected:
+        pid = job.get("pid")
+        if not isinstance(pid, int):
+            failed.append({"id": job.get("id"), "error": "invalid pid"})
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError as exc:
+            finish_job(case_path, str(job.get("id", "")), "missing", None)
+            failed.append({"id": job.get("id"), "pid": pid, "error": str(exc)})
+            continue
+        finish_job(case_path, str(job.get("id", "")), "stopped", None)
+        stopped.append({"id": job.get("id"), "pid": pid, "name": job.get("name")})
+
+    return {
+        "case": str(case_path),
+        "selected": len(selected),
+        "stopped": stopped,
+        "failed": failed,
+    }
+
+
+def _log_path_from_job(case_path: Path, job_id: str) -> Path:
+    jobs = load_jobs(case_path)
+    for job in jobs:
+        if str(job.get("id")) != str(job_id):
+            continue
+        log_raw = str(job.get("log") or "").strip()
+        if not log_raw:
+            raise ValueError(f"job {job_id} has no log path")
+        log_path = Path(log_raw).expanduser()
+        if not log_path.is_absolute():
+            log_path = case_path / log_path
+        log_path = log_path.resolve()
+        if not log_path.is_file():
+            raise ValueError(f"log for job {job_id} not found: {log_path}")
+        return log_path
+    raise ValueError(f"job not found: {job_id}")

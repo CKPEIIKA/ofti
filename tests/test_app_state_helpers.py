@@ -18,6 +18,7 @@ def test_command_suggestions_include_tools(monkeypatch) -> None:
     assert "tool blockMesh" in suggestions
     assert "run custom" in suggestions
     assert "blockMesh" in suggestions
+    assert "knife" in suggestions
 
 
 def test_mode_status_includes_env(monkeypatch) -> None:
