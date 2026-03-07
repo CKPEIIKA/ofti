@@ -5,6 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from ofti.tools import status_render_service
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import plot as plot_ops
 from ofti.tools.cli_tools import run as run_ops
@@ -98,36 +99,7 @@ def _knife_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0911,
         except ValueError as exc:
             _show_message(stdscr, str(exc))
             return
-        lines = [
-            f"case={payload['case']}",
-            f"latest_time={payload['latest_time']}",
-            f"latest_iteration={payload.get('latest_iteration')}",
-            f"latest_deltaT={payload.get('latest_delta_t')}",
-            f"sec_per_iter={payload.get('sec_per_iter')}",
-        ]
-        if payload["solver_error"]:
-            lines.append(f"solver_error={payload['solver_error']}")
-        else:
-            lines.append(f"solver={payload['solver']}")
-            lines.append(f"solver_status={payload['solver_status'] or 'not tracked'}")
-        rtc = payload.get("run_time_control", {})
-        lines.append(
-            "runtime_control="
-            f"criteria:{len(rtc.get('criteria', []))} "
-            f"pass:{rtc.get('passed', 0)} fail:{rtc.get('failed', 0)} "
-            f"unknown:{rtc.get('unknown', 0)}",
-        )
-        lines.append(f"eta_to_criteria_start={payload.get('eta_seconds_to_criteria_start')}")
-        lines.append(f"eta_to_end_time={payload.get('eta_seconds_to_end_time')}")
-        lines.append(
-            f"log_path={payload.get('log_path')} "
-            f"fresh={payload.get('log_fresh')} running={payload.get('running')}",
-        )
-        if payload.get("tracked_solver_processes"):
-            lines.append(f"tracked_solver_processes={len(payload['tracked_solver_processes'])}")
-        if payload.get("untracked_solver_processes"):
-            lines.append(f"untracked_solver_processes={len(payload['untracked_solver_processes'])}")
-        lines.append(f"jobs_running={payload['jobs_running']} jobs_total={payload['jobs_total']}")
+        lines = status_render_service.case_status_lines(payload)
         Viewer(stdscr, "\n".join(lines)).display()
         return
     other = prompt_line(stdscr, "Compare with case path: ")

@@ -91,6 +91,28 @@ def test_watch_external_payload_runs_process(monkeypatch: pytest.MonkeyPatch, tm
     assert payload["ok"] is False
 
 
+def test_watch_external_mode_and_dispatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    assert watch.external_watch_mode(start=True, status=True) is None
+    assert watch.external_watch_mode(start=True) == "start"
+    assert watch.normalize_external_command(["--", "python", "w.py"]) == ["python", "w.py"]
+    assert watch.normalize_external_command(["python", "w.py"]) == ["python", "w.py"]
+
+    monkeypatch.setattr(
+        watch_service,
+        "external_watch_payload",
+        lambda *_a, **_k: {"case": str(case), "command": ["python"], "dry_run": True, "ok": True},
+    )
+    payload = watch.external_watch_mode_payload(
+        case,
+        mode="run",
+        command=["python"],
+        dry_run=True,
+    )
+    assert payload["ok"] is True
+
+
 def test_watch_external_start_status_attach_stop(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     case = tmp_path / "case"
     case.mkdir()
@@ -144,6 +166,49 @@ def test_watch_external_start_status_attach_stop(monkeypatch: pytest.MonkeyPatch
     stopped = watch.external_watch_stop_payload(case, name="watch.external", all_jobs=True)
     assert stopped["selected"] == 1
     assert stopped["signal"] == "TERM"
+
+
+def test_watch_interval_output_and_adopt_helpers(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+
+    interval = watch.interval_payload(case, seconds=0.7)
+    assert interval["effective"] == 0.7
+    assert watch.effective_interval(case) == 0.7
+
+    output = watch.output_profile_payload(case, profile="brief")
+    assert output["effective"] == "brief"
+    assert watch.effective_output_profile(case) == "brief"
+
+    monkeypatch.setattr(
+        watch_service,
+        "refresh_jobs",
+        lambda _case: [{"id": "job-1", "pid": 100, "status": "running", "log": "log.simpleFoam"}],
+    )
+    already = watch.adopt_job_payload(case, adopt="100")
+    assert already["adopted"] is False
+    assert already["reason"] == "already_tracked"
+
+    monkeypatch.setattr(watch_service, "refresh_jobs", lambda _case: [])
+    monkeypatch.setattr(
+        watch_service.process_scan_service,
+        "proc_table",
+        lambda _root: {
+            101: watch_service.process_scan_service.ProcEntry(
+                pid=101,
+                ppid=1,
+                args=["simpleFoam", "-case", "."],
+                cwd=case,
+            ),
+        },
+    )
+    monkeypatch.setattr(watch_service, "register_job", lambda *_a, **_k: "job-new")
+    adopted = watch.adopt_job_payload(case, adopt="101")
+    assert adopted["adopted"] is True
+    assert adopted["job_id"] == "job-new"
 
 
 def test_watch_log_path_from_job_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

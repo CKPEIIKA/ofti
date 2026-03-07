@@ -48,7 +48,7 @@ def doctor_exit_code(payload: dict[str, Any]) -> int:
     return 1 if errors else 0
 
 
-def current_payload(case_dir: Path) -> case_status_service.CurrentPayload:
+def current_payload(case_dir: Path, *, live: bool = False) -> case_status_service.CurrentPayload:
     case_path = case_source_service.require_case_dir(case_dir)
     return case_status_service.current_payload(
         case_path,
@@ -56,16 +56,36 @@ def current_payload(case_dir: Path) -> case_status_service.CurrentPayload:
         refresh_jobs_fn=refresh_jobs,
         running_job_pids_fn=_running_job_pids,
         scan_proc_solver_processes_fn=_scan_proc_solver_processes,
+        live=live,
     )
 
 
-def compare_payload(left_case: Path, right_case: Path) -> dict[str, Any]:
+def current_live_payload(case_dir: Path) -> case_status_service.CurrentPayload:
+    return current_payload(case_dir, live=True)
+
+
+def compare_payload(
+    left_case: Path,
+    right_case: Path,
+    *,
+    files: list[str] | None = None,
+    flat: bool = False,
+    raw_hash_only: bool = False,
+) -> dict[str, Any]:
     left = case_source_service.require_case_dir(left_case)
     right = case_source_service.require_case_dir(right_case)
     diffs = compare_case_dicts(left, right)
+    file_filter = _compare_file_filter(files)
+    if file_filter:
+        diffs = [diff for diff in diffs if diff.rel_path in file_filter]
+    if raw_hash_only:
+        diffs = [diff for diff in diffs if diff.kind != "dict"]
     return {
         "left_case": str(left),
         "right_case": str(right),
+        "flat": flat,
+        "files": sorted(file_filter) if file_filter else [],
+        "raw_hash_only": raw_hash_only,
         "diff_count": len(diffs),
         "diffs": [
             {
@@ -75,6 +95,10 @@ def compare_payload(left_case: Path, right_case: Path) -> dict[str, Any]:
                 "missing_in_right": diff.missing_in_right,
                 "value_diffs": [
                     {"key": value.key, "left": value.left, "right": value.right}
+                    for value in diff.value_diffs
+                ],
+                "value_diffs_flat": [
+                    f"{value.key}: left={value.left} right={value.right}"
                     for value in diff.value_diffs
                 ],
                 "left_hash": diff.left_hash,
@@ -168,6 +192,124 @@ def status_payload(
     )
 
 
+def criteria_payload(
+    case_dir: Path,
+    *,
+    lightweight: bool = False,
+    tail_bytes: int | None = None,
+) -> dict[str, Any]:
+    payload = status_payload(
+        case_dir,
+        lightweight=lightweight,
+        tail_bytes=tail_bytes,
+    )
+    rtc = payload.get("run_time_control", {})
+    criteria = [
+        {
+            "name": row.get("key"),
+            "value": row.get("live_value"),
+            "target": row.get("value"),
+            "tol": row.get("tolerance"),
+            "status": row.get("status"),
+            "met": row.get("status") == "pass",
+            "unmet": row.get("unmet_reason"),
+            "window": {
+                "samples": row.get("samples"),
+                "delta": row.get("live_delta"),
+            },
+            "source": criterion_source(str(row.get("key", ""))),
+        }
+        for row in rtc.get("criteria", [])
+    ]
+    return {
+        "case": payload["case"],
+        "solver": payload.get("solver"),
+        "solver_error": payload.get("solver_error"),
+        "criteria_count": len(criteria),
+        "criteria": criteria,
+        "criteria_start": rtc.get("criteria_start"),
+        "end_time": rtc.get("end_time"),
+        "passed": rtc.get("passed", 0),
+        "failed": rtc.get("failed", 0),
+        "unknown": rtc.get("unknown", 0),
+        "eta_to_criteria_start": payload.get("eta_seconds_to_criteria_start"),
+    }
+
+
+def eta_payload(
+    case_dir: Path,
+    *,
+    mode: str,
+    lightweight: bool = False,
+    tail_bytes: int | None = None,
+) -> dict[str, Any]:
+    status = status_payload(
+        case_dir,
+        lightweight=lightweight,
+        tail_bytes=tail_bytes,
+    )
+    rtc = status.get("run_time_control", {})
+    eta_end = status.get("eta_seconds_to_end_time")
+    eta_criteria = criteria_satisfaction_eta(rtc.get("criteria", []))
+    selected_eta = eta_criteria if mode == "criteria" else eta_end
+    return {
+        "case": status["case"],
+        "mode": mode,
+        "eta_seconds": selected_eta,
+        "eta_criteria_seconds": eta_criteria,
+        "eta_end_time_seconds": eta_end,
+        "criteria_start": rtc.get("criteria_start"),
+        "end_time": rtc.get("end_time"),
+        "running": status.get("running"),
+    }
+
+
+def report_payload(
+    case_dir: Path,
+    *,
+    lightweight: bool = False,
+    tail_bytes: int | None = None,
+) -> dict[str, Any]:
+    status = status_payload(
+        case_dir,
+        lightweight=lightweight,
+        tail_bytes=tail_bytes,
+    )
+    criteria = criteria_payload(
+        case_dir,
+        lightweight=lightweight,
+        tail_bytes=tail_bytes,
+    )
+    eta_criteria = criteria_satisfaction_eta(status.get("run_time_control", {}).get("criteria", []))
+    return {
+        "case": status["case"],
+        "solver": status.get("solver"),
+        "running": status.get("running"),
+        "log": {
+            "path": status.get("log_path"),
+            "fresh": status.get("log_fresh"),
+        },
+        "metrics": {
+            "latest_time": status.get("latest_time"),
+            "latest_iteration": status.get("latest_iteration"),
+            "latest_delta_t": status.get("latest_delta_t"),
+            "sec_per_iter": status.get("sec_per_iter"),
+        },
+        "criteria": {
+            "count": criteria.get("criteria_count"),
+            "passed": criteria.get("passed"),
+            "failed": criteria.get("failed"),
+            "unknown": criteria.get("unknown"),
+            "items": criteria.get("criteria"),
+        },
+        "eta": {
+            "criteria_seconds": eta_criteria,
+            "end_time_seconds": status.get("eta_seconds_to_end_time"),
+            "criteria_start_seconds": status.get("eta_seconds_to_criteria_start"),
+        },
+    }
+
+
 def converge_payload(
     source: Path,
     *,
@@ -256,6 +398,41 @@ def _fallback_solver(control_dict_path: Path) -> str | None:
     return None
 
 
+def report_markdown(payload: dict[str, Any]) -> str:
+    metrics = payload.get("metrics", {})
+    criteria = payload.get("criteria", {})
+    eta = payload.get("eta", {})
+    lines = [
+        f"# OFTI Report: {payload.get('case')}",
+        "",
+        "## Status",
+        f"- solver: {payload.get('solver')}",
+        f"- running: {payload.get('running')}",
+        (
+            f"- log: {payload.get('log', {}).get('path')} "
+            f"(fresh={payload.get('log', {}).get('fresh')})"
+        ),
+        "",
+        "## Key metrics",
+        f"- latest_time: {metrics.get('latest_time')}",
+        f"- latest_iteration: {metrics.get('latest_iteration')}",
+        f"- latest_delta_t: {metrics.get('latest_delta_t')}",
+        f"- sec_per_iter: {metrics.get('sec_per_iter')}",
+        "",
+        "## Criteria",
+        (
+            f"- count: {criteria.get('count')} (pass={criteria.get('passed')} "
+            f"fail={criteria.get('failed')} unknown={criteria.get('unknown')})"
+        ),
+        "",
+        "## ETA",
+        f"- criteria_seconds: {eta.get('criteria_seconds')}",
+        f"- end_time_seconds: {eta.get('end_time_seconds')}",
+        f"- criteria_start_seconds: {eta.get('criteria_start_seconds')}",
+    ]
+    return "\n".join(lines)
+
+
 def set_entry_payload(case_dir: Path, rel_file: str, key: str, value: str) -> dict[str, Any]:
     case_path = case_source_service.require_case_dir(case_dir)
     file_path = (case_path / rel_file).resolve()
@@ -269,6 +446,40 @@ def set_entry_payload(case_dir: Path, rel_file: str, key: str, value: str) -> di
         "value": value,
         "ok": bool(ok),
     }
+
+
+def _compare_file_filter(files: list[str] | None) -> set[str]:
+    if not files:
+        return set()
+    selected: set[str] = set()
+    for item in files:
+        for token in str(item).split(","):
+            cleaned = token.strip().replace("\\", "/")
+            if cleaned:
+                selected.add(cleaned)
+    return selected
+
+
+def criterion_source(key: str) -> str:
+    if key.startswith("functions."):
+        return "runTimeControl"
+    return "controlDict"
+
+
+def criteria_satisfaction_eta(criteria: list[dict[str, Any]]) -> float | None:
+    if not criteria:
+        return None
+    pending: list[dict[str, Any]] = [row for row in criteria if str(row.get("status")) != "pass"]
+    if not pending:
+        return 0.0
+    eta_values: list[float] = []
+    for row in pending:
+        value = row.get("eta_seconds")
+        if isinstance(value, (int, float)):
+            eta_values.append(float(value))
+    if not eta_values or len(eta_values) < len(pending):
+        return None
+    return max(eta_values)
 
 
 def _running_job_pids(jobs: list[dict[str, Any]]) -> list[int]:
