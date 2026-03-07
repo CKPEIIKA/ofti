@@ -40,9 +40,12 @@ def resolve_log_source(source: Path) -> Path:
         return solver_log
     logs = sorted(
         target.glob("log.*"),
-        key=lambda path: (path.stat().st_mtime_ns, path.stat().st_ctime_ns),
-        reverse=True,
+        key=lambda path: (
+            path.stat().st_mtime_ns,
+            path.stat().st_ctime_ns,
+            getattr(path.stat(), "st_ino", 0),
+        ),
     )
     if not logs:
         raise ValueError(f"no log.* files found in {target}")
-    return logs[0]
+    return logs[-1]
