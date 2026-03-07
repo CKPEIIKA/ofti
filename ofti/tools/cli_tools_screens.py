@@ -101,12 +101,32 @@ def _knife_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0911,
         lines = [
             f"case={payload['case']}",
             f"latest_time={payload['latest_time']}",
+            f"latest_iteration={payload.get('latest_iteration')}",
+            f"latest_deltaT={payload.get('latest_delta_t')}",
+            f"sec_per_iter={payload.get('sec_per_iter')}",
         ]
         if payload["solver_error"]:
             lines.append(f"solver_error={payload['solver_error']}")
         else:
             lines.append(f"solver={payload['solver']}")
             lines.append(f"solver_status={payload['solver_status'] or 'not tracked'}")
+        rtc = payload.get("run_time_control", {})
+        lines.append(
+            "runtime_control="
+            f"criteria:{len(rtc.get('criteria', []))} "
+            f"pass:{rtc.get('passed', 0)} fail:{rtc.get('failed', 0)} "
+            f"unknown:{rtc.get('unknown', 0)}",
+        )
+        lines.append(f"eta_to_criteria_start={payload.get('eta_seconds_to_criteria_start')}")
+        lines.append(f"eta_to_end_time={payload.get('eta_seconds_to_end_time')}")
+        lines.append(
+            f"log_path={payload.get('log_path')} "
+            f"fresh={payload.get('log_fresh')} running={payload.get('running')}",
+        )
+        if payload.get("tracked_solver_processes"):
+            lines.append(f"tracked_solver_processes={len(payload['tracked_solver_processes'])}")
+        if payload.get("untracked_solver_processes"):
+            lines.append(f"untracked_solver_processes={len(payload['untracked_solver_processes'])}")
         lines.append(f"jobs_running={payload['jobs_running']} jobs_total={payload['jobs_total']}")
         Viewer(stdscr, "\n".join(lines)).display()
         return
@@ -126,13 +146,23 @@ def _knife_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0911,
     for diff in payload["diffs"]:
         lines.append("")
         lines.append(diff["rel_path"])
+        lines.append(f"  kind: {diff.get('kind', 'dict')}")
         if diff["error"]:
             lines.append(f"  error: {diff['error']}")
-            continue
         if diff["missing_in_left"]:
             lines.append(f"  missing_in_left: {', '.join(diff['missing_in_left'])}")
         if diff["missing_in_right"]:
             lines.append(f"  missing_in_right: {', '.join(diff['missing_in_right'])}")
+        for value in diff.get("value_diffs", [])[:20]:
+            lines.append(
+                f"  value_diff {value['key']}: "
+                f"left={value['left']} right={value['right']}",
+            )
+        if len(diff.get("value_diffs", [])) > 20:
+            lines.append(f"  value_diff_more={len(diff['value_diffs']) - 20}")
+        if diff.get("left_hash") or diff.get("right_hash"):
+            lines.append(f"  left_hash={diff.get('left_hash')}")
+            lines.append(f"  right_hash={diff.get('right_hash')}")
     Viewer(stdscr, "\n".join(lines)).display()
 
 

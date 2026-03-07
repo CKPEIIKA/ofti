@@ -292,3 +292,137 @@ def test_watch_log_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
     with pytest.raises(ValueError, match="job not found"):
         watch._log_path_from_job(case, "missing")
+
+
+def _write_proc_entry(proc_root: Path, pid: int, ppid: int, cmdline: bytes, cwd: Path) -> None:
+    proc_dir = proc_root / str(pid)
+    proc_dir.mkdir()
+    (proc_dir / "cmdline").write_bytes(cmdline)
+    (proc_dir / "stat").write_text(f"{pid} (cmd) S {ppid} 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n")
+    (proc_dir / "cwd").symlink_to(cwd, target_is_directory=True)
+
+
+def test_knife_scan_proc_detects_mpi_launcher_and_rank_processes(tmp_path: Path) -> None:
+    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+
+    _write_proc_entry(proc_root, 10, 1, b"mpirun\x00-np\x004\x00hy2Foam\x00-case\x00.\x00", case)
+    _write_proc_entry(proc_root, 11, 10, b"hy2Foam\x00-parallel\x00-case\x00.\x00", case)
+    _write_proc_entry(proc_root, 12, 10, b"hy2Foam\x00-parallel\x00-case\x00.\x00", case)
+
+    rows = knife._scan_proc_solver_processes(
+        case,
+        "hy2Foam",
+        tracked_pids={11},
+        proc_root=proc_root,
+        include_tracked=True,
+    )
+
+    by_pid = {int(row["pid"]): row for row in rows}
+    assert by_pid[10]["role"] == "launcher"
+    assert by_pid[11]["tracked"] is True
+    assert by_pid[12]["tracked"] is False
+
+
+def test_knife_status_payload_includes_runtime_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    case = _make_case(tmp_path / "case")
+    control = case / "system" / "controlDict"
+    control.write_text(
+        "\n".join(
+            [
+                "application simpleFoam;",
+                "startTime 0;",
+                "endTime 100;",
+                "residualTolerance 1e-06;",
+            ],
+        ),
+    )
+    log = case / "log.simpleFoam"
+    log.write_text(
+        "\n".join(
+            [
+                "Time = 1",
+                "deltaT = 0.01",
+                "ExecutionTime = 2 s",
+                "Time = 2",
+                "deltaT = 0.02",
+                "ExecutionTime = 5 s",
+                "residualTolerance satisfied",
+            ],
+        ),
+    )
+
+    monkeypatch.setattr(knife, "resolve_solver_name", lambda _case: ("simpleFoam", None))
+    monkeypatch.setattr(knife, "refresh_jobs", lambda _case: [])
+    monkeypatch.setattr(
+        knife,
+        "_scan_proc_solver_processes",
+        lambda *_args, **_kwargs: [],
+    )
+
+    payload = knife.status_payload(case)
+
+    assert payload["latest_time"] == 2.0
+    assert payload["latest_delta_t"] == 0.02
+    assert payload["run_time_control"]["criteria"][0]["key"] == "residualTolerance"
+    assert payload["run_time_control"]["passed"] == 1
+    assert payload["running"] is True
+
+
+def test_knife_converge_payload_strict(tmp_path: Path) -> None:
+    log = tmp_path / "log.hy2Foam"
+    log.write_text(
+        "\n".join(
+            [
+                "Time = 1",
+                "shockPosition = 0.50",
+                "Cd = 0.200",
+                "time step continuity errors : sum local = 1e-8, global = 1e-5, cumulative = 1e-3",
+                "Solving for Ux, Initial residual = 1e-02, Final residual = 1e-04, No Iterations 1",
+                "Solving for Ux, Initial residual = 9e-03, Final residual = 1e-04, No Iterations 1",
+                "Time = 2",
+                "shockPosition = 0.51",
+                "Cd = 0.201",
+                "time step continuity errors : sum local = 1e-8, global = 9e-6, cumulative = 1e-3",
+                "Solving for Ux, Initial residual = 8e-03, Final residual = 1e-04, No Iterations 1",
+                "Solving for Ux, Initial residual = 8e-03, Final residual = 1e-04, No Iterations 1",
+            ],
+        ),
+    )
+
+    payload = knife.converge_payload(log, strict=True)
+
+    assert payload["strict"] is True
+    assert payload["shock"]["ok"] is True
+    assert payload["drag"]["ok"] is True
+    assert payload["mass"]["ok"] is True
+    assert payload["strict_ok"] is True
+
+
+def test_watch_external_payload_passes_through_arguments(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    case = _make_case(tmp_path / "case")
+    seen: dict[str, object] = {}
+
+    class FakeProcess:
+        def __init__(self, cmd: list[str], **kwargs: object) -> None:
+            self.pid = 4242
+            seen["cmd"] = cmd
+            seen.update(kwargs)
+
+        def wait(self) -> int:
+            return 0
+
+    monkeypatch.setattr(watch.subprocess, "Popen", FakeProcess)
+
+    payload = watch.external_watch_payload(
+        case,
+        command=["python", "watcher.py", "--foo", "bar"],
+        dry_run=False,
+    )
+
+    assert payload["pid"] == 4242
+    assert payload["returncode"] == 0
+    assert payload["ok"] is True
+    assert seen["cmd"] == ["python", "watcher.py", "--foo", "bar"]
+    assert seen["cwd"] == case

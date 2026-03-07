@@ -17,6 +17,13 @@ def list_keywords(file_path: Path) -> list[str]:
     return list(data.keys())
 
 
+def parse_mapping(file_path: Path) -> dict[str, object]:
+    text = _read_text(file_path)
+    if text is None:
+        raise OSError(f"failed to read {file_path}")
+    return _parse_mapping(text)
+
+
 def list_subkeys(file_path: Path, entry: str) -> list[str]:
     node = read_entry_node(file_path, entry)
     as_dict = _as_str_dict(node)

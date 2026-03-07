@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import signal
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +82,32 @@ def stop_payload(
         "stopped": stopped,
         "failed": failed,
     }
+
+
+def external_watch_payload(
+    case_dir: Path,
+    *,
+    command: list[str],
+    dry_run: bool,
+) -> dict[str, Any]:
+    case_path = require_case_dir(case_dir)
+    payload: dict[str, Any] = {
+        "case": str(case_path),
+        "command": command,
+        "dry_run": dry_run,
+    }
+    if dry_run:
+        payload["ok"] = True
+        return payload
+    if not command:
+        raise ValueError("external watcher command is required")
+
+    process = subprocess.Popen(command, cwd=case_path)  # noqa: S603
+    payload["pid"] = process.pid
+    returncode = process.wait()
+    payload["returncode"] = returncode
+    payload["ok"] = returncode == 0
+    return payload
 
 
 def _log_path_from_job(case_path: Path, job_id: str) -> Path:
