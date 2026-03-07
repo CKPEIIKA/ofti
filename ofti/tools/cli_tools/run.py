@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 from ofti.core.solver_checks import resolve_solver_name, validate_initial_fields
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
@@ -24,9 +26,31 @@ class RunResult:
     log_path: Path | None = None
 
 
+class ToolCatalogPayload(TypedDict):
+    case: str
+    tools: list[str]
+
+
 def tool_catalog_names(case_dir: Path) -> list[str]:
+    payload = tool_catalog_payload(case_dir)
+    return list(payload["tools"])
+
+
+def tool_catalog_payload(case_dir: Path) -> ToolCatalogPayload:
     case_path = require_case_dir(case_dir)
-    return [name for name, _ in tool_catalog(case_path)]
+    names = [name for name, _ in tool_catalog(case_path)]
+    return {"case": str(case_path.resolve()), "tools": names}
+
+
+def write_tool_catalog_json(case_dir: Path, output_path: Path | None = None) -> Path:
+    case_path = require_case_dir(case_dir)
+    payload = tool_catalog_payload(case_path)
+    destination = output_path if output_path is not None else Path(".ofti/tool_catalog.json")
+    if not destination.is_absolute():
+        destination = case_path / destination
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(payload, indent=2, sort_keys=True))
+    return destination.resolve()
 
 
 def resolve_tool(case_dir: Path, name: str) -> tuple[str, list[str]] | None:
