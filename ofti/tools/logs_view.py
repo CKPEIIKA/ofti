@@ -7,6 +7,7 @@ from typing import Any
 
 from ofti.core.checkmesh import extract_last_courant
 from ofti.foam.config import get_config, key_hint, key_in
+from ofti.foamlib.logs import read_log_tail_lines
 from ofti.tools.logs_analysis import log_analysis_screen
 from ofti.tools.logs_select import _select_log_file
 from ofti.tools.menu_helpers import build_menu
@@ -78,12 +79,11 @@ def log_tail_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR091
     try:
         while True:
             try:
-                text = path.read_text(errors="ignore")
+                lines = read_log_tail_lines(path, max_lines=400)
             except OSError as exc:
                 _show_message(stdscr, f"Failed to read {path.name}: {exc}")
                 return
-
-            lines = text.splitlines()[-50:]
+            tail = lines[-50:]
             last_courant = extract_last_courant(lines)
             has_fpe = any("floating point exception" in line.lower() for line in lines)
             has_nan = any("nan" in line.lower() for line in lines)
@@ -107,7 +107,7 @@ def log_tail_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR091
                 if alerts:
                     highlight += " | ALERT: " + ", ".join(alerts)
                 stdscr.addstr(highlight[: max(1, width - 1)] + "\n\n")
-            for line in lines:
+            for line in tail:
                 if stdscr.getyx()[0] >= height - 1:
                     break
                 mark = ""

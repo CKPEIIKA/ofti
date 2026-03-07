@@ -7,6 +7,7 @@ import pytest
 
 from ofti.core import dict_compare
 from ofti.core.dict_compare import DictDiff, ValueDiff
+from ofti.tools import knife_service
 from ofti.tools.cli_tools import knife
 
 
@@ -40,7 +41,7 @@ def _write_proc_entry(
 def test_knife_doctor_and_compare_payloads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.setattr(
-        knife,
+        knife_service,
         "build_case_doctor_report",
         lambda _path: {"lines": ["ok"], "errors": [], "warnings": ["warn"]},
     )
@@ -50,7 +51,7 @@ def test_knife_doctor_and_compare_payloads(tmp_path: Path, monkeypatch: pytest.M
     assert knife.doctor_exit_code({"errors": ["bad"]}) == 1
 
     monkeypatch.setattr(
-        knife,
+        knife_service,
         "compare_case_dicts",
         lambda _l, _r: [
             DictDiff(
@@ -78,7 +79,7 @@ def test_knife_fallback_solver_and_set_payload(tmp_path: Path, monkeypatch: pyte
     assert knife._fallback_solver(control) is None
     assert knife._fallback_solver(case / "system" / "missing") is None
 
-    monkeypatch.setattr(knife, "write_entry", lambda *_a, **_k: False)
+    monkeypatch.setattr(knife_service, "write_entry", lambda *_a, **_k: False)
     payload = knife.set_entry_payload(case, "system/controlDict", "application", "simpleFoam")
     assert payload["ok"] is False
 
@@ -211,8 +212,8 @@ def test_knife_current_payload_falls_back_to_relaxed_proc_scan(
 ) -> None:
     case = _make_case(tmp_path / "repo", solver="hy2Foam")
     (case / "system" / "controlDict").unlink()
-    monkeypatch.setattr(knife, "resolve_solver_name", lambda _case: (None, "no controlDict"))
-    monkeypatch.setattr(knife, "refresh_jobs", lambda _case: [])
+    monkeypatch.setattr(knife_service, "resolve_solver_name", lambda _case: (None, "no controlDict"))
+    monkeypatch.setattr(knife_service, "refresh_jobs", lambda _case: [])
     seen: list[bool] = []
 
     def _scan(
@@ -229,7 +230,7 @@ def test_knife_current_payload_falls_back_to_relaxed_proc_scan(
             return []
         return [{"pid": 404, "solver": "hy2Foam", "role": "solver", "tracked": False, "command": "hy2Foam -parallel"}]
 
-    monkeypatch.setattr(knife, "_scan_proc_solver_processes", _scan)
+    monkeypatch.setattr(knife_service, "_scan_proc_solver_processes", _scan)
     payload = knife.current_payload(case)
     assert seen == [True, False]
     assert payload["jobs_running"] == 1
@@ -258,7 +259,11 @@ def test_knife_runtime_and_numeric_helpers(tmp_path: Path, monkeypatch: pytest.M
     assert snap["latest_iteration"] == 3
     assert snap["run_time_control"]["passed"] == 1
 
-    monkeypatch.setattr(knife, "resolve_log_source", lambda _path: (_ for _ in ()).throw(ValueError("none")))
+    monkeypatch.setattr(
+        knife_service.case_source_service,
+        "resolve_log_source",
+        lambda _path: (_ for _ in ()).throw(ValueError("none")),
+    )
     assert knife._resolve_solver_log(case, "missing") is None
 
     assert knife._run_time_control_data(tmp_path / "missing-case", "")["criteria"] == []
@@ -330,8 +335,8 @@ def test_knife_run_time_control_extracts_quoted_blocks_and_case_include(tmp_path
 
 def test_knife_status_and_converge_edge_cases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     case = _make_case(tmp_path / "case")
-    monkeypatch.setattr(knife, "resolve_solver_name", lambda _case: (None, "missing solver"))
-    monkeypatch.setattr(knife, "refresh_jobs", lambda _case: [{"status": "running", "pid": 7}])
+    monkeypatch.setattr(knife_service, "resolve_solver_name", lambda _case: (None, "missing solver"))
+    monkeypatch.setattr(knife_service, "refresh_jobs", lambda _case: [{"status": "running", "pid": 7}])
     payload = knife.status_payload(case)
     assert payload["solver_error"] == "missing solver"
     assert payload["running"] is False
@@ -380,8 +385,8 @@ def test_dict_compare_private_helpers(tmp_path: Path) -> None:
 def test_dict_compare_dictionary_error_and_raw_key_scan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     left = tmp_path / "left.foam"
     right = tmp_path / "right.foam"
-    left.write_text("alpha 1;\nblock {\n}\n")
-    right.write_text("beta 2;\n")
+    left.write_text("alpha 1;\ntransportModels {\n  precompiledModel on;\n}\n")
+    right.write_text("beta 2;\ntransportModels {\n  precompiledModel off;\n}\n")
     monkeypatch.setattr(
         dict_compare,
         "_load_dict",
@@ -391,10 +396,11 @@ def test_dict_compare_dictionary_error_and_raw_key_scan(tmp_path: Path, monkeypa
     assert diff is not None
     assert diff.error is not None
     assert "beta" in diff.missing_in_right or "beta" in diff.missing_in_left
+    assert any(item.key == "transportModels.precompiledModel" for item in diff.value_diffs)
 
     keys = dict_compare._raw_key_scan(left)
     assert "alpha" in keys
-    assert "block" in keys
+    assert "transportModels" in keys
 
     nested = cast(dict[str, object], {"FoamFile": {"skip": 1}, "a": {"b": 1}, "v": [1, 2]})
     flat = dict_compare._flatten_mapping(nested)

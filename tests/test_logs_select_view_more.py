@@ -89,7 +89,11 @@ def test_log_tail_screen_branches_and_alerts(monkeypatch: pytest.MonkeyPatch, tm
     logs_view.log_tail_screen(_Screen(), case)
 
     monkeypatch.setattr(logs_view, "build_menu", lambda *_a, **_k: _Menu(0))
-    monkeypatch.setattr(Path, "read_text", lambda *_a, **_k: (_ for _ in ()).throw(OSError("io bad")))
+    monkeypatch.setattr(
+        logs_view,
+        "read_log_tail_lines",
+        lambda *_a, **_k: (_ for _ in ()).throw(OSError("io bad")),
+    )
     logs_view.log_tail_screen(_Screen(), case)
     assert "Failed to read log.simpleFoam: io bad" in messages[-1]
 

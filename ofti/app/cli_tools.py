@@ -4,13 +4,25 @@ import argparse
 import json
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from textwrap import dedent
+from typing import cast
 
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import plot as plot_ops
 from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.cli_tools import watch as watch_ops
+
+Handler = Callable[[argparse.Namespace], int]
+
+
+def _help_handler(parser: argparse.ArgumentParser) -> Handler:
+    def _show_help(_args: argparse.Namespace) -> int:
+        parser.print_help()
+        return 0
+
+    return _show_help
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,7 +44,8 @@ def build_parser() -> argparse.ArgumentParser:
             """,
         ),
     )
-    groups = parser.add_subparsers(dest="group", required=True)
+    parser.set_defaults(func=_help_handler(parser))
+    groups = parser.add_subparsers(dest="group", required=False)
 
     _build_knife_parser(groups)
     _build_plot_parser(groups)
@@ -47,7 +60,8 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Case inspection and quick edits",
         description="Case inspection and quick edits.",
     )
-    knife_sub = knife.add_subparsers(dest="command", required=True)
+    knife.set_defaults(func=_help_handler(knife))
+    knife_sub = knife.add_subparsers(dest="command", required=False)
 
     doctor = knife_sub.add_parser("doctor", help="Run case doctor checks")
     doctor.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
@@ -65,8 +79,46 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     compare.add_argument("--json", action="store_true")
     compare.set_defaults(func=_knife_compare)
 
+    copy = knife_sub.add_parser(
+        "copy",
+        help="Copy case to destination (skip runtime artifacts by default)",
+    )
+    copy.add_argument("destination", type=Path)
+    copy.add_argument("--case", dest="case_dir", default=Path.cwd(), type=Path)
+    copy.add_argument(
+        "--with-trash",
+        action="store_true",
+        help="Include runtime artifacts (log.*, processor*, time dirs, postProcessing)",
+    )
+    copy.add_argument(
+        "--drop-mesh",
+        action="store_true",
+        help="Also skip constant/polyMesh in destination",
+    )
+    copy.add_argument("--json", action="store_true")
+    copy.set_defaults(func=_knife_copy)
+
+    initials = knife_sub.add_parser(
+        "initials",
+        help="Show initial internal fields and boundary conditions",
+    )
+    initials.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    initials.add_argument("--json", action="store_true")
+    initials.set_defaults(func=_knife_initials)
+
     status = knife_sub.add_parser("status", help="Show solver/job status for a case")
     status.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    status.add_argument(
+        "--lightweight",
+        action="store_true",
+        help="Tail-only bounded log read for fast polling",
+    )
+    status.add_argument(
+        "--tail-bytes",
+        type=int,
+        default=None,
+        help="Max log bytes to parse (default: auto in --lightweight mode)",
+    )
     status.add_argument("--json", action="store_true")
     status.set_defaults(func=_knife_status)
 
@@ -77,6 +129,17 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
 
     case_status = knife_sub.add_parser("case-status", help="Alias of knife status")
     case_status.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    case_status.add_argument(
+        "--lightweight",
+        action="store_true",
+        help="Tail-only bounded log read for fast polling",
+    )
+    case_status.add_argument(
+        "--tail-bytes",
+        type=int,
+        default=None,
+        help="Max log bytes to parse (default: auto in --lightweight mode)",
+    )
     case_status.add_argument("--json", action="store_true")
     case_status.set_defaults(func=_knife_status)
 
@@ -150,6 +213,28 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     converge.add_argument("--json", action="store_true")
     converge.set_defaults(func=_knife_converge)
 
+    stability = knife_sub.add_parser(
+        "stability",
+        help="Generic windowed stability check for scalar log series",
+    )
+    stability.add_argument("source", nargs="?", default=Path.cwd(), type=Path)
+    stability.add_argument(
+        "--pattern",
+        required=True,
+        help="Regex with named group 'value' (or first group) for scalar extraction",
+    )
+    stability.add_argument("--tolerance", type=float, required=True)
+    stability.add_argument("--window", type=int, default=8)
+    stability.add_argument("--startup-samples", type=int, default=0)
+    stability.add_argument(
+        "--comparator",
+        choices=["le", "ge"],
+        default="le",
+        help="le: stable when delta <= tolerance (default), ge: delta >= tolerance",
+    )
+    stability.add_argument("--json", action="store_true")
+    stability.set_defaults(func=_knife_stability)
+
     plot_criteria = knife_sub.add_parser("plot-criteria", help="Alias of plot criteria")
     plot_criteria.add_argument("source", nargs="?", default=Path.cwd(), type=Path)
     plot_criteria.add_argument("--json", action="store_true")
@@ -162,7 +247,8 @@ def _build_plot_parser(groups: argparse._SubParsersAction[argparse.ArgumentParse
         help="Log metrics and residual summaries",
         description="Log metrics and residual summaries.",
     )
-    plot_sub = plot.add_subparsers(dest="command", required=True)
+    plot.set_defaults(func=_help_handler(plot))
+    plot_sub = plot.add_subparsers(dest="command", required=False)
 
     metrics = plot_sub.add_parser("metrics", help="Summarize time/courant/execution metrics")
     metrics.add_argument("source", nargs="?", default=Path.cwd(), type=Path)
@@ -196,7 +282,8 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    watch_sub = watch.add_subparsers(dest="command", required=True)
+    watch.set_defaults(func=_help_handler(watch))
+    watch_sub = watch.add_subparsers(dest="command", required=False)
 
     jobs = watch_sub.add_parser("jobs", help="Show tracked jobs in .ofti/jobs.json")
     jobs.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
@@ -297,9 +384,60 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
 
     external = watch_sub.add_parser(
         "external",
-        help="Run an external watcher command (arguments are passed through)",
+        help="External watcher lifecycle: run/start/status/attach/stop",
     )
     external.add_argument("--case", dest="case_dir", default=Path.cwd(), type=Path)
+    external.add_argument("--start", action="store_true", help="Start watcher in background")
+    external.add_argument(
+        "--status",
+        action="store_true",
+        help="Show tracked external watcher jobs",
+    )
+    external.add_argument(
+        "--attach",
+        action="store_true",
+        help="Tail tracked external watcher log",
+    )
+    external.add_argument(
+        "--stop",
+        action="store_true",
+        help="Stop tracked external watcher job(s)",
+    )
+    external.add_argument("--job-id", default=None, help="Tracked external watcher job id")
+    external.add_argument(
+        "--name",
+        default="watch.external",
+        help="External watcher job name/prefix",
+    )
+    external.add_argument(
+        "--all",
+        action="store_true",
+        help="Apply to all matching external watcher jobs",
+    )
+    external.add_argument("--lines", type=int, default=40, help="Tail lines for --attach")
+    external.add_argument("--follow", action="store_true", help="Follow mode for --attach")
+    external.add_argument(
+        "--interval",
+        type=float,
+        default=0.25,
+        help="Polling interval for --follow",
+    )
+    external.add_argument(
+        "--log-file",
+        default=None,
+        help="Log file for --start (relative to case or absolute)",
+    )
+    external.add_argument(
+        "--no-detach",
+        action="store_true",
+        help="Do not detach session for --start",
+    )
+    external.add_argument(
+        "--signal",
+        default="TERM",
+        choices=["TERM", "INT", "QUIT", "KILL"],
+        help="Signal used by --stop (TERM is default)",
+    )
     external.add_argument("--dry-run", action="store_true")
     external.add_argument("--json", action="store_true")
     external.add_argument(
@@ -320,7 +458,8 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    run_sub = run.add_subparsers(dest="command", required=True)
+    run.set_defaults(func=_help_handler(run))
+    run_sub = run.add_subparsers(dest="command", required=False)
 
     tool = run_sub.add_parser("tool", help="Run a tool from the OFTI tool catalog")
     tool.add_argument("name", nargs="?")
@@ -417,8 +556,61 @@ def _knife_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _knife_copy(args: argparse.Namespace) -> int:
+    try:
+        payload = knife_ops.copy_payload(
+            args.case_dir,
+            args.destination,
+            include_runtime_artifacts=bool(args.with_trash),
+            drop_mesh=bool(args.drop_mesh),
+        )
+    except ValueError as exc:
+        print(f"ofti: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(f"source={payload['source']}")
+    print(f"destination={payload['destination']}")
+    print(f"include_runtime_artifacts={payload['include_runtime_artifacts']}")
+    print(f"drop_mesh={payload['drop_mesh']}")
+    print(f"ok={payload['ok']}")
+    return 0
+
+
+def _knife_initials(args: argparse.Namespace) -> int:
+    payload = knife_ops.initials_payload(args.case_dir)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(f"case={payload['case']}")
+    print(f"initial_dir={payload['initial_dir']}")
+    print(f"fields={payload['field_count']} patches={payload['patch_count']}")
+    for field in payload["fields"]:
+        print(f"\n[{field['name']}]")
+        print(f"internalField={field['internal_field'] or '<missing>'}")
+        boundary = field.get("boundary", {})
+        if not boundary:
+            print("boundary=<none>")
+            continue
+        for patch in sorted(boundary):
+            row = boundary[patch]
+            print(
+                f"- {patch}: type={row.get('type') or 'missing'} "
+                f"value={row.get('value') or ''}",
+            )
+    return 0
+
+
 def _knife_status(args: argparse.Namespace) -> int:
-    payload = knife_ops.status_payload(args.case_dir)
+    try:
+        payload = knife_ops.status_payload(
+            args.case_dir,
+            lightweight=bool(getattr(args, "lightweight", False)),
+            tail_bytes=getattr(args, "tail_bytes", None),
+        )
+    except TypeError:
+        payload = knife_ops.status_payload(args.case_dir)
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
@@ -438,6 +630,7 @@ def _knife_status(args: argparse.Namespace) -> int:
         f"criteria:{len(rtc.get('criteria', []))} "
         f"pass:{rtc.get('passed', 0)} fail:{rtc.get('failed', 0)} unknown:{rtc.get('unknown', 0)}",
     )
+    _print_runtime_criteria(rtc.get("criteria", []))
     print(f"eta_to_criteria_start={payload.get('eta_seconds_to_criteria_start')}")
     print(f"eta_to_end_time={payload.get('eta_seconds_to_end_time')}")
     print(
@@ -476,11 +669,30 @@ def _knife_current(args: argparse.Namespace) -> int:
         for process in payload["untracked_processes"]:
             print(
                 f"- pid={process['pid']} solver={process['solver']} "
-                f"cmd={process['command']}",
+                f"case={process.get('case')} cmd={process['command']}",
             )
     else:
         print("untracked_solver_processes=none")
     return 0
+
+
+def _print_runtime_criteria(criteria: list[dict[str, object]]) -> None:
+    if not criteria:
+        print("criteria=none")
+        return
+    print("criteria:")
+    for row in criteria:
+        key = row.get("key")
+        status = row.get("status")
+        value = row.get("live_value")
+        delta = row.get("live_delta")
+        tol = row.get("tolerance")
+        eta = row.get("eta_seconds")
+        reason = row.get("unmet_reason")
+        print(
+            f"- {key}: status={status} value={value} delta={delta} "
+            f"tolerance={tol} eta={eta} unmet_reason={reason}",
+        )
 
 
 def _knife_converge(args: argparse.Namespace) -> int:
@@ -523,6 +735,35 @@ def _knife_converge(args: argparse.Namespace) -> int:
     print(f"strict={payload['strict']} strict_ok={payload['strict_ok']}")
     print(f"ok={payload['ok']}")
     return 0 if payload["ok"] else 1
+
+
+def _knife_stability(args: argparse.Namespace) -> int:
+    try:
+        payload = knife_ops.stability_payload(
+            args.source,
+            pattern=str(args.pattern),
+            tolerance=float(args.tolerance),
+            window=int(args.window),
+            startup_samples=int(args.startup_samples),
+            comparator=str(args.comparator),
+        )
+    except ValueError as exc:
+        print(f"ofti: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload["status"] == "pass" else 1
+    print(f"log={payload['log']}")
+    print(f"pattern={payload['pattern']}")
+    print(
+        f"count={payload['count']} window={payload['window']} "
+        f"delta={payload['window_delta']} tolerance={payload['tolerance']} "
+        f"comparator={payload['comparator']}",
+    )
+    print(f"latest={payload['latest']}")
+    print(f"status={payload['status']} unmet_reason={payload['unmet_reason']}")
+    print(f"eta_seconds={payload['eta_seconds']}")
+    return 0 if payload["status"] == "pass" else 1
 
 
 def _knife_set(args: argparse.Namespace) -> int:
@@ -604,7 +845,7 @@ def _watch_jobs(args: argparse.Namespace) -> int:
     return 0
 
 
-def _watch_log(args: argparse.Namespace) -> int:  # noqa: C901
+def _watch_log(args: argparse.Namespace) -> int:
     if args.follow and args.json:
         print("ofti: --json cannot be used with --follow", file=sys.stderr)
         return 2
@@ -628,21 +869,7 @@ def _watch_log(args: argparse.Namespace) -> int:  # noqa: C901
     if not args.follow:
         return 0
 
-    log_path = Path(payload["log"])
-    try:
-        with log_path.open("r", encoding="utf-8", errors="ignore") as handle:
-            handle.seek(0, 2)
-            while True:
-                line = handle.readline()
-                if line:
-                    print(line.rstrip("\n"), flush=True)
-                    continue
-                time.sleep(0.25)
-    except KeyboardInterrupt:
-        return 0
-    except OSError as exc:
-        print(f"Failed to follow {log_path}: {exc}", file=sys.stderr)
-        return 1
+    return _follow_log_path(Path(payload["log"]), interval=0.25)
 
 
 def _watch_attach(args: argparse.Namespace) -> int:
@@ -738,20 +965,169 @@ def _watch_resume(args: argparse.Namespace) -> int:
 
 
 def _watch_external(args: argparse.Namespace) -> int:
-    command = list(args.command)
-    if command and command[0] == "--":
-        command = command[1:]
-    if not command and not args.dry_run:
+    mode = _watch_external_mode(args)
+    if mode is None:
+        print("ofti: choose only one of --start/--status/--attach/--stop", file=sys.stderr)
+        return 2
+    command = _watch_external_command(args)
+    if mode in {"run", "start"} and not command and not args.dry_run:
         print("ofti: external command is required", file=sys.stderr)
         return 2
-    payload = watch_ops.external_watch_payload(
+    payload = _watch_external_payload(args, mode, command)
+    return _watch_external_render(args, mode, payload)
+
+
+def _watch_external_mode(args: argparse.Namespace) -> str | None:
+    enabled = [
+        bool(getattr(args, "start", False)),
+        bool(getattr(args, "status", False)),
+        bool(getattr(args, "attach", False)),
+        bool(getattr(args, "stop", False)),
+    ]
+    if sum(1 for flag in enabled if flag) > 1:
+        return None
+    if enabled[0]:
+        return "start"
+    if enabled[1]:
+        return "status"
+    if enabled[2]:
+        return "attach"
+    if enabled[3]:
+        return "stop"
+    return "run"
+
+
+def _watch_external_command(args: argparse.Namespace) -> list[str]:
+    command = list(args.command)
+    if command and command[0] == "--":
+        return command[1:]
+    return command
+
+
+def _watch_external_payload(
+    args: argparse.Namespace,
+    mode: str,
+    command: list[str],
+) -> dict[str, object]:
+    if mode == "start":
+        return watch_ops.external_watch_start_payload(
+            args.case_dir,
+            command=command,
+            dry_run=bool(args.dry_run),
+            name=str(args.name),
+            detached=not bool(args.no_detach),
+            log_file=args.log_file,
+        )
+    if mode == "status":
+        return watch_ops.external_watch_status_payload(
+            args.case_dir,
+            job_id=args.job_id,
+            name=str(args.name),
+            include_all=bool(args.all),
+        )
+    if mode == "attach":
+        return watch_ops.external_watch_attach_payload(
+            args.case_dir,
+            lines=int(args.lines),
+            job_id=args.job_id,
+            name=str(args.name),
+        )
+    if mode == "stop":
+        return watch_ops.external_watch_stop_payload(
+            args.case_dir,
+            job_id=args.job_id,
+            name=str(args.name),
+            all_jobs=bool(args.all),
+            signal_name=str(args.signal),
+        )
+    return watch_ops.external_watch_payload(
         args.case_dir,
         command=command,
         dry_run=bool(args.dry_run),
     )
+
+
+def _watch_external_render(
+    args: argparse.Namespace,
+    mode: str,
+    payload: dict[str, object],
+) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
-        return 0 if payload.get("ok", True) else 1
+        return _watch_external_json_exit(mode, payload)
+    handlers: dict[str, Callable[[dict[str, object]], int]] = {
+        "status": _print_watch_external_status,
+        "attach": lambda data: _print_watch_external_attach(args, data),
+        "stop": _print_watch_external_stop,
+        "start": _print_watch_external_start,
+    }
+    handler = handlers.get(mode, _print_watch_external_run)
+    return handler(payload)
+
+
+def _watch_external_json_exit(mode: str, payload: dict[str, object]) -> int:
+    if mode == "stop":
+        failed = payload.get("failed")
+        return 0 if not failed else 1
+    if mode in {"status", "attach"}:
+        return 0
+    return 0 if bool(payload.get("ok", True)) else 1
+
+
+def _print_watch_external_status(payload: dict[str, object]) -> int:
+    print(f"case={payload['case']}")
+    print(f"name={payload['name']}")
+    print(f"count={payload['count']}")
+    jobs = cast(list[dict[str, object]], payload.get("jobs", []))
+    for job in jobs:
+        print(
+            f"- id={job.get('id')} name={job.get('name')} pid={job.get('pid')} "
+            f"status={job.get('status')}",
+        )
+    return 0
+
+
+def _print_watch_external_attach(args: argparse.Namespace, payload: dict[str, object]) -> int:
+    lines = cast(list[str], payload.get("lines", []))
+    for line in lines:
+        print(line)
+    if not args.follow:
+        return 0
+    return _follow_log_path(Path(str(payload["log"])), interval=float(args.interval))
+
+
+def _print_watch_external_stop(payload: dict[str, object]) -> int:
+    print(f"case={payload['case']}")
+    print(f"name={payload['name']}")
+    print(f"signal={payload['signal']}")
+    print(f"selected={payload['selected']}")
+    stopped = cast(list[dict[str, object]], payload.get("stopped", []))
+    failed = cast(list[dict[str, object]], payload.get("failed", []))
+    if stopped:
+        print("stopped:")
+        for row in stopped:
+            print(f"- id={row.get('id')} pid={row.get('pid')} name={row.get('name')}")
+    if failed:
+        print("failed:")
+        for row in failed:
+            print(f"- id={row.get('id')} pid={row.get('pid')} error={row.get('error')}")
+    return 0 if not failed else 1
+
+
+def _print_watch_external_start(payload: dict[str, object]) -> int:
+    print(f"case={payload['case']}")
+    print(f"name={payload['name']}")
+    print(f"command={payload['command']}")
+    print(f"log_path={payload['log_path']}")
+    if payload.get("dry_run"):
+        print("dry_run=True")
+        return 0
+    print(f"pid={payload.get('pid')}")
+    print(f"job_id={payload.get('job_id')}")
+    return 0 if bool(payload.get("ok", True)) else 1
+
+
+def _print_watch_external_run(payload: dict[str, object]) -> int:
     print(f"case={payload['case']}")
     print(f"command={payload['command']}")
     if payload.get("dry_run"):
@@ -759,7 +1135,25 @@ def _watch_external(args: argparse.Namespace) -> int:
         return 0
     print(f"pid={payload.get('pid')}")
     print(f"returncode={payload.get('returncode')}")
-    return 0 if payload.get("ok", True) else 1
+    return 0 if bool(payload.get("ok", True)) else 1
+
+
+def _follow_log_path(log_path: Path, *, interval: float) -> int:
+    sleep_interval = max(0.05, float(interval))
+    try:
+        with log_path.open("r", encoding="utf-8", errors="ignore") as handle:
+            handle.seek(0, 2)
+            while True:
+                line = handle.readline()
+                if line:
+                    print(line.rstrip("\n"), flush=True)
+                    continue
+                time.sleep(sleep_interval)
+    except KeyboardInterrupt:
+        return 0
+    except OSError as exc:
+        print(f"Failed to follow {log_path}: {exc}", file=sys.stderr)
+        return 1
 
 
 def _run_tool(args: argparse.Namespace) -> int:  # noqa: C901, PLR0911

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from ofti.tools import case_source_service, knife_service, watch_service
 from ofti.tools.cli_tools import common, knife, run, watch
 
 
@@ -28,10 +29,10 @@ def test_common_resolve_log_source_fallbacks(tmp_path: Path, monkeypatch: pytest
     case = _make_case(tmp_path / "case")
     solver_log = case / "log.simpleFoam"
     solver_log.write_text("solver\n")
-    monkeypatch.setattr(common, "resolve_solver_name", lambda _case: ("simpleFoam", None))
+    monkeypatch.setattr(case_source_service, "resolve_solver_name", lambda _case: ("simpleFoam", None))
     assert common.resolve_log_source(case) == solver_log.resolve()
 
-    monkeypatch.setattr(common, "resolve_solver_name", lambda _case: (None, "no solver"))
+    monkeypatch.setattr(case_source_service, "resolve_solver_name", lambda _case: (None, "no solver"))
     old_log = case / "log.old"
     new_log = case / "log.new"
     old_log.write_text("old\n")
@@ -41,7 +42,7 @@ def test_common_resolve_log_source_fallbacks(tmp_path: Path, monkeypatch: pytest
     assert common.resolve_log_source(case) == new_log.resolve()
 
     empty_case = _make_case(tmp_path / "empty-case")
-    monkeypatch.setattr(common, "resolve_solver_name", lambda _case: (None, "no solver"))
+    monkeypatch.setattr(case_source_service, "resolve_solver_name", lambda _case: (None, "no solver"))
     with pytest.raises(ValueError, match="no log\\.\\* files found"):
         common.resolve_log_source(empty_case)
 
@@ -172,8 +173,8 @@ def test_knife_preflight_uses_fallback_solver(tmp_path: Path, monkeypatch: pytes
     (case / "constant" / "polyMesh").mkdir(parents=True)
     (case / "constant" / "polyMesh" / "boundary").write_text("ok\n")
 
-    monkeypatch.setattr(knife, "resolve_solver_name", lambda _case: (None, "missing solver"))
-    monkeypatch.setattr(knife.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(knife_service, "resolve_solver_name", lambda _case: (None, "missing solver"))
+    monkeypatch.setattr(knife_service.shutil, "which", lambda _name: None)
     monkeypatch.delenv("WM_PROJECT_DIR", raising=False)
 
     payload = knife.preflight_payload(case)
@@ -240,7 +241,7 @@ def test_knife_scan_proc_solver_processes(tmp_path: Path) -> None:
 def test_watch_stop_payload_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.setattr(
-        watch,
+        watch_service,
         "refresh_jobs",
         lambda _case: [
             {"id": "1", "name": "solverA", "pid": 11, "status": "running"},
@@ -260,8 +261,8 @@ def test_watch_stop_payload_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         if pid == 33:
             raise OSError("gone")
 
-    monkeypatch.setattr(watch, "finish_job", fake_finish)
-    monkeypatch.setattr(watch.os, "kill", fake_kill)
+    monkeypatch.setattr(watch_service, "finish_job", fake_finish)
+    monkeypatch.setattr(watch_service.os, "kill", fake_kill)
 
     payload = watch.stop_payload(case, all_jobs=True)
 
@@ -278,7 +279,7 @@ def test_watch_log_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     log_path = case / "log.simpleFoam"
     log_path.write_text("a\nb\nc\n")
 
-    monkeypatch.setattr(watch, "resolve_log_source", lambda source: source)
+    monkeypatch.setattr(watch_service.case_source_service, "resolve_log_source", lambda source: source)
     tail = watch.log_tail_payload(log_path, lines=2)
     assert tail["lines"] == ["b", "c"]
     assert watch.log_tail_payload(log_path, lines=0)["lines"] == []
@@ -286,12 +287,12 @@ def test_watch_log_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     jobs = [
         {"id": "x", "log": "log.simpleFoam"},
     ]
-    monkeypatch.setattr(watch, "load_jobs", lambda _case: jobs)
+    monkeypatch.setattr(watch_service, "load_jobs", lambda _case: jobs)
     by_job = watch.log_tail_payload_for_job(case, job_id="x", lines=1)
     assert by_job["lines"] == ["c"]
 
     with pytest.raises(ValueError, match="job not found"):
-        watch._log_path_from_job(case, "missing")
+        watch_service._log_path_from_job(case, "missing")
 
 
 def _write_proc_entry(proc_root: Path, pid: int, ppid: int, cmdline: bytes, cwd: Path) -> None:
@@ -353,10 +354,10 @@ def test_knife_status_payload_includes_runtime_snapshot(tmp_path: Path, monkeypa
         ),
     )
 
-    monkeypatch.setattr(knife, "resolve_solver_name", lambda _case: ("simpleFoam", None))
-    monkeypatch.setattr(knife, "refresh_jobs", lambda _case: [])
+    monkeypatch.setattr(knife_service, "resolve_solver_name", lambda _case: ("simpleFoam", None))
+    monkeypatch.setattr(knife_service, "refresh_jobs", lambda _case: [])
     monkeypatch.setattr(
-        knife,
+        knife_service,
         "_scan_proc_solver_processes",
         lambda *_args, **_kwargs: [],
     )
@@ -413,7 +414,7 @@ def test_watch_external_payload_passes_through_arguments(tmp_path: Path, monkeyp
         def wait(self) -> int:
             return 0
 
-    monkeypatch.setattr(watch.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(watch_service.subprocess, "Popen", FakeProcess)
 
     payload = watch.external_watch_payload(
         case,

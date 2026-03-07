@@ -32,6 +32,10 @@ def test_clone_case_creates_destination(tmp_path: Path, monkeypatch) -> None:
     (case_dir / "log.simpleFoam").write_text("log")
     (case_dir / "0").mkdir()
     (case_dir / "0" / "U").write_text("internalField uniform (0 0 0);\n")
+    (case_dir / "1").mkdir()
+    (case_dir / "1" / "U").write_text("runtime\n")
+    (case_dir / "constant" / "polyMesh").mkdir(parents=True)
+    (case_dir / "constant" / "polyMesh" / "boundary").write_text("boundary\n")
 
     monkeypatch.setattr(case_ops, "Viewer", DummyViewer)
     screen = FakeScreen()
@@ -40,6 +44,10 @@ def test_clone_case_creates_destination(tmp_path: Path, monkeypatch) -> None:
 
     dest = case_dir.parent / "case_copy"
     assert dest.is_dir()
+    assert (dest / "0" / "U").is_file()
+    assert not (dest / "1").exists()
+    assert not (dest / "log.simpleFoam").exists()
+    assert not (dest / "constant" / "polyMesh").exists()
 
 
 def test_open_paraview_screen_reports_missing_binary(tmp_path: Path, monkeypatch) -> None:

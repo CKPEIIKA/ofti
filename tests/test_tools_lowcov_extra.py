@@ -253,7 +253,7 @@ def test_job_control_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     )
     monkeypatch.setattr(job_control, "build_menu", lambda *_a, **_k: _Menu(0))
     job_control.stop_job_screen(screen, case)
-    assert "Invalid job pid." in messages[-1]
+    assert "invalid pid" in messages[-1]
 
     monkeypatch.setattr(
         job_control,

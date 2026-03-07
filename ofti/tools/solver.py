@@ -25,6 +25,7 @@ from ofti.core.solver_status import (
 )
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.subprocess_utils import resolve_executable
+from ofti.foamlib.logs import read_log_tail_lines
 from ofti.tools.cleaning_utils import _require_wm_project_dir
 from ofti.tools.helpers import resolve_openfoam_bashrc, with_bashrc
 from ofti.tools.job_registry import finish_job, register_job
@@ -234,10 +235,9 @@ def _tail_process_log(  # noqa: C901, PLR0912
     try:
         while True:
             try:
-                text = log_path.read_text(errors="ignore")
+                lines = read_log_tail_lines(log_path, max_lines=600)
             except OSError:
-                text = ""
-            lines = text.splitlines()
+                lines = []
             tail = lines[-12:]
             last_time = last_solver_time(lines)
             last_courant = last_courant_value(lines)
