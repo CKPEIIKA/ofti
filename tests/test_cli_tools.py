@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from ofti.app import cli_tools
+from ofti.tools import cli_tools_screens
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import watch as watch_ops
 from ofti.tools.cli_tools.run import RunResult
@@ -39,6 +40,32 @@ def test_run_tool_list_outputs_catalog_json(tmp_path, capsys) -> None:
     assert code == 0
     assert payload["case"] == str(case.resolve())
     assert "blockMesh" in payload["tools"]
+
+
+def test_run_tool_catalog_payload_matches_list_json(tmp_path) -> None:
+    case = _make_case(tmp_path / "case")
+
+    payload = cli_tools.run_ops.tool_catalog_payload(case)
+
+    assert payload["case"] == str(case.resolve())
+    assert "blockMesh" in payload["tools"]
+
+
+def test_tui_run_export_tool_catalog_json_default_path(tmp_path, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case")
+    messages: list[str] = []
+
+    monkeypatch.setattr(cli_tools_screens, "prompt_line", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(cli_tools_screens, "_show_message", lambda _screen, text: messages.append(text))
+
+    cli_tools_screens._export_tool_catalog_json(object(), case)
+
+    exported = case / ".ofti" / "tool_catalog.json"
+    assert exported.is_file()
+    payload = json.loads(exported.read_text())
+    assert payload["case"] == str(case.resolve())
+    assert "blockMesh" in payload["tools"]
+    assert messages and "Exported" in messages[0]
 
 
 def test_knife_preflight_reports_ok_for_minimal_case(tmp_path, capsys) -> None:

@@ -131,7 +131,7 @@ def _log_entry_edit(file_path: Path, key: str, old: str | None, new: str) -> Non
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "edits.log"
-        timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")  # noqa: UP017
         old_text = _compact_value(old)
         new_text = _compact_value(new)
         line = f"{timestamp} {rel} {key}: {old_text} -> {new_text}\n"

@@ -540,17 +540,11 @@ def _watch_stop(args: argparse.Namespace) -> int:
 
 def _run_tool(args: argparse.Namespace) -> int:  # noqa: C901, PLR0911
     if args.list:
-        names = run_ops.tool_catalog_names(args.case_dir)
+        payload = run_ops.tool_catalog_payload(args.case_dir)
         if args.json:
-            print(
-                json.dumps(
-                    {"case": str(Path(args.case_dir).resolve()), "tools": names},
-                    indent=2,
-                    sort_keys=True,
-                ),
-            )
+            print(json.dumps(payload, indent=2, sort_keys=True))
             return 0
-        for name in names:
+        for name in payload["tools"]:
             print(name)
         return 0
     if not args.name:

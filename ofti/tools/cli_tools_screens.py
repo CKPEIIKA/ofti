@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -219,6 +220,7 @@ def _watch_screen(stdscr: Any, case_path: Path) -> None:
 def _run_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0911
     labels = [
         "List tools",
+        "Export tools JSON",
         "Run tool",
         "Run solver",
         "Run solver in background",
@@ -230,13 +232,17 @@ def _run_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0911
         return
     if choice == 0:
         try:
-            names = run_ops.tool_catalog_names(case_path)
+            payload = run_ops.tool_catalog_payload(case_path)
         except ValueError as exc:
             _show_message(stdscr, str(exc))
             return
+        names = [str(item) for item in payload["tools"]]
         Viewer(stdscr, "\n".join(names) if names else "No tools available.").display()
         return
     if choice == 1:
+        _export_tool_catalog_json(stdscr, case_path)
+        return
+    if choice == 2:
         name = prompt_line(stdscr, "Tool name: ")
         if not name:
             return
@@ -266,7 +272,31 @@ def _run_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0911
     except ValueError as exc:
         _show_message(stdscr, str(exc))
         return
-    _show_run_result(stdscr, case_path, display, cmd, background=(choice == 3))
+    _show_run_result(stdscr, case_path, display, cmd, background=(choice == 4))
+
+
+def _export_tool_catalog_json(stdscr: Any, case_path: Path) -> None:
+    output_text = prompt_line(stdscr, "Output path (.ofti/tool_catalog.json): ")
+    if output_text is None:
+        return
+    destination = Path(output_text) if output_text else Path(".ofti/tool_catalog.json")
+    try:
+        export_path = run_ops.write_tool_catalog_json(case_path, output_path=destination)
+    except (OSError, ValueError) as exc:
+        _show_message(stdscr, f"Failed to export tool catalog: {exc}")
+        return
+    try:
+        payload = run_ops.tool_catalog_payload(case_path)
+    except ValueError:
+        payload = None
+    if payload is None:
+        _show_message(stdscr, f"Exported tool catalog: {export_path}")
+        return
+    _show_message(
+        stdscr,
+        f"Exported {len(payload['tools'])} tools to {export_path}\n"
+        f"{json.dumps(payload, indent=2, sort_keys=True)}",
+    )
 
 
 def _show_run_result(
