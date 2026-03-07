@@ -36,6 +36,30 @@ def is_case_dir(path: Path) -> bool:
     return (path / "system" / "controlDict").is_file()
 
 
+def is_probable_case_dir(path: Path) -> bool:
+    if not path.is_dir() or is_case_dir(path):
+        return False
+    has_system = (path / "system").is_dir()
+    has_constant = (path / "constant").is_dir()
+    has_zero = False
+    try:
+        for entry in os.scandir(path):
+            if entry.is_dir() and entry.name.startswith("0"):
+                has_zero = True
+                break
+    except OSError:
+        return False
+    return has_system and (has_constant or has_zero)
+
+
+def case_flag(path: Path) -> str:
+    if is_case_dir(path):
+        return "OF case"
+    if is_probable_case_dir(path):
+        return "probably OF case"
+    return ""
+
+
 def list_dir_entries(path: Path) -> tuple[list[Path], list[Path]]:
     dirs: list[Path] = []
     files: list[Path] = []
@@ -56,25 +80,25 @@ def select_case_directory(stdscr: Any, start_path: Path) -> Path | None:  # noqa
     current = start_path if start_path.is_dir() else start_path.parent
     index = 0
     scroll = 0
+    query = ""
     cfg = get_config()
 
     while True:
         dirs, files = list_dir_entries(current)
-        entries: list[tuple[str, Path | None]] = [
-            ("[Use this folder]", None),
-            ("[Create new case]", None),
-            ("..", current.parent if current.parent != current else None),
-        ]
-        entries += [(f"{path.name}/", path) for path in dirs]
-        entries += [(path.name, path) for path in files]
+        entries = _case_chooser_entries(current, dirs, files, query)
 
         labels = [label for label, _path in entries]
         stdscr.clear()
         height, width = stdscr.getmaxyx()
         header = f"Select case folder: {current}"
+        current_flag = case_flag(current)
+        if current_flag:
+            header += f" [{current_flag}]"
         back_hint = key_hint("back", "h")
+        search_hint = "/" if not query else f"/:{query}"
         hint = (
-            f"Enter: open/select  e: use this folder  {back_hint}: back  "  # noqa: S608
+            f"Enter: open/select  e: use this folder  {search_hint}: search  "  # noqa: S608
+            f"n: new case  {back_hint}: back  "
             "[Create new case] to clone from examples"
         )
         try:
@@ -119,11 +143,25 @@ def select_case_directory(stdscr: Any, start_path: Path) -> Path | None:  # noqa
                 current = current.parent
                 index = 0
                 scroll = 0
+                query = ""
+            continue
+        if key == ord("/") or key_in(key, cfg.keys.get("search", [])):
+            value = prompt_input(stdscr, "Search entries (empty clears): ")
+            if value is None:
+                continue
+            query = value.strip().lower()
+            index = 0
+            scroll = 0
             continue
         if key == ord("e"):
             if is_case_dir(current):
                 return current
             show_message(stdscr, "Not an OpenFOAM case (missing system/controlDict).")
+            continue
+        if key in (ord("n"), ord("N")):
+            created = _create_case_from_example(stdscr, current)
+            if created is not None:
+                return created
             continue
         if key in (curses.KEY_ENTER, 10, 13) or key_in(key, cfg.keys.get("select", [])):
             label, path = entries[index]
@@ -141,6 +179,7 @@ def select_case_directory(stdscr: Any, start_path: Path) -> Path | None:  # noqa
                 current = path
                 index = 0
                 scroll = 0
+                query = ""
                 continue
             if path is None:
                 continue
@@ -148,8 +187,36 @@ def select_case_directory(stdscr: Any, start_path: Path) -> Path | None:  # noqa
                 current = path
                 index = 0
                 scroll = 0
+                query = ""
                 continue
             show_message(stdscr, f"{path.name} is not a folder.")
+
+
+def _case_chooser_entries(
+    current: Path,
+    dirs: list[Path],
+    files: list[Path],
+    query: str,
+) -> list[tuple[str, Path | None]]:
+    entries: list[tuple[str, Path | None]] = [
+        ("[Use this folder]", None),
+        ("[Create new case]", None),
+        ("..", current.parent if current.parent != current else None),
+    ]
+    query_text = query.strip().lower()
+    for path in dirs:
+        if query_text and query_text not in path.name.lower():
+            continue
+        suffix = case_flag(path)
+        suffix_text = f" [{suffix}]" if suffix else ""
+        entries.append((f"{path.name}/{suffix_text}", path))
+    for path in files:
+        if query_text and query_text not in path.name.lower():
+            continue
+        entries.append((path.name, path))
+    if len(entries) == 3 and query_text:
+        entries.append(("[No matches]", None))
+    return entries
 
 
 def _list_example_cases() -> list[Path]:

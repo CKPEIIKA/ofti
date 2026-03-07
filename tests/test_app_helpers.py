@@ -73,3 +73,42 @@ def test_list_example_cases_includes_tutorials(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setenv("WM_PROJECT_DIR", str(tmp_path))
     cases = helpers._list_example_cases()
     assert tutorials in cases
+
+
+def test_case_flag_and_probable_case_detection(tmp_path: Path) -> None:
+    definite = tmp_path / "definite"
+    (definite / "system").mkdir(parents=True)
+    (definite / "system" / "controlDict").write_text("application simpleFoam;\n")
+    assert helpers.case_flag(definite) == "OF case"
+
+    probable = tmp_path / "probable"
+    (probable / "system").mkdir(parents=True)
+    (probable / "constant").mkdir()
+    assert helpers.case_flag(probable) == "probably OF case"
+
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert helpers.case_flag(plain) == ""
+
+
+def test_case_chooser_entries_respect_search_and_flags(tmp_path: Path) -> None:
+    case_dir = tmp_path / "caseA"
+    (case_dir / "system").mkdir(parents=True)
+    (case_dir / "system" / "controlDict").write_text("application simpleFoam;\n")
+    probable_dir = tmp_path / "caseB"
+    (probable_dir / "system").mkdir(parents=True)
+    (probable_dir / "constant").mkdir()
+    note = tmp_path / "notes.txt"
+    note.write_text("x")
+
+    entries = helpers._case_chooser_entries(
+        tmp_path,
+        dirs=[case_dir, probable_dir],
+        files=[note],
+        query="case",
+    )
+    labels = [label for label, _ in entries]
+
+    assert any(label == "caseA/ [OF case]" for label in labels)
+    assert any(label == "caseB/ [probably OF case]" for label in labels)
+    assert "notes.txt" not in labels
