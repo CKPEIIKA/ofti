@@ -102,3 +102,18 @@ def test_select_case_directory_accepts_current(monkeypatch, tmp_path: Path) -> N
     monkeypatch.setattr(app.curses, "color_pair", lambda *_args: 0)
     selected = app.select_case_directory(screen, case_dir)
     assert selected == case_dir
+
+
+def test_select_case_directory_n_key_creates_case(monkeypatch, tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    created = tmp_path / "created-case"
+    (created / "system").mkdir(parents=True)
+    (created / "system" / "controlDict").write_text("application simpleFoam;")
+
+    screen = FakeScreen(keys=[ord("n")])
+    monkeypatch.setattr(app.curses, "color_pair", lambda *_args: 0)
+    monkeypatch.setattr("ofti.app.helpers._create_case_from_example", lambda _s, _c: created)
+
+    selected = app.select_case_directory(screen, root)
+    assert selected == created
