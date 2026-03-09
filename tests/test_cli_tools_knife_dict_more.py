@@ -342,6 +342,46 @@ def test_knife_current_live_and_report_payloads(
     assert "criteria_seconds: 12.0" in md
 
 
+def test_knife_report_payload_uses_single_status_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    calls = 0
+
+    def _status(_case: Path, **_kwargs: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return {
+            "case": str(case),
+            "solver": "simpleFoam",
+            "solver_error": None,
+            "running": True,
+            "log_path": str(case / "log.simpleFoam"),
+            "log_fresh": True,
+            "latest_time": 2.0,
+            "latest_iteration": 20,
+            "latest_delta_t": 1e-9,
+            "sec_per_iter": 0.2,
+            "eta_seconds_to_criteria_start": 0.0,
+            "eta_seconds_to_end_time": 42.0,
+            "run_time_control": {
+                "criteria_start": 0.0,
+                "end_time": 10.0,
+                "passed": 0,
+                "failed": 1,
+                "unknown": 0,
+                "criteria": [],
+            },
+        }
+
+    monkeypatch.setattr(knife_service, "status_payload", _status)
+    report = knife.report_payload(case, lightweight=False, tail_bytes=None)
+
+    assert calls == 1
+    assert report["case"] == str(case)
+
+
 def test_knife_runtime_and_numeric_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     case = _make_case(tmp_path / "case")
     log = case / "log.simpleFoam"

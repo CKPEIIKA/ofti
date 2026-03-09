@@ -483,6 +483,65 @@ def test_knife_status_lightweight_flags_forwarded(monkeypatch, tmp_path, capsys)
     assert "unmet_reason=window" in out
 
 
+def test_knife_status_defaults_to_fast_mode(monkeypatch, tmp_path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+    seen: dict[str, object] = {}
+
+    def _status(case_dir: Path, **kwargs: object) -> dict[str, object]:
+        seen["case"] = case_dir
+        seen.update(kwargs)
+        return {"case": str(case_dir)}
+
+    monkeypatch.setattr(cli_tools.knife_ops, "status_payload", _status)
+    code = cli_tools.main(["knife", "status", str(case), "--json"])
+
+    assert code == 0
+    assert seen["lightweight"] is True
+    assert json.loads(capsys.readouterr().out)["case"] == str(case)
+
+
+def test_knife_status_full_disables_fast_mode(monkeypatch, tmp_path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+    seen: dict[str, object] = {}
+
+    def _status(case_dir: Path, **kwargs: object) -> dict[str, object]:
+        seen["case"] = case_dir
+        seen.update(kwargs)
+        return {"case": str(case_dir)}
+
+    monkeypatch.setattr(cli_tools.knife_ops, "status_payload", _status)
+    code = cli_tools.main(["knife", "status", str(case), "--full", "--json"])
+
+    assert code == 0
+    assert seen["lightweight"] is False
+    assert json.loads(capsys.readouterr().out)["case"] == str(case)
+
+
+def test_knife_criteria_fast_default_with_full_override(monkeypatch, tmp_path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+    seen: list[dict[str, object]] = []
+
+    def _criteria(case_dir: Path, **kwargs: object) -> dict[str, object]:
+        seen.append({"case": case_dir, **kwargs})
+        return {
+            "case": str(case_dir),
+            "criteria_count": 0,
+            "passed": 0,
+            "failed": 0,
+            "unknown": 0,
+            "criteria": [],
+        }
+
+    monkeypatch.setattr(cli_tools.knife_ops, "criteria_payload", _criteria)
+    assert cli_tools.main(["knife", "criteria", str(case), "--json"]) == 0
+    assert seen[0]["lightweight"] is True
+    assert json.loads(capsys.readouterr().out)["case"] == str(case)
+
+    assert cli_tools.main(["knife", "criteria", str(case), "--full", "--json"]) == 0
+    assert seen[1]["lightweight"] is False
+    assert json.loads(capsys.readouterr().out)["case"] == str(case)
+
+
 def test_knife_set_uses_shared_logic(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.setattr(

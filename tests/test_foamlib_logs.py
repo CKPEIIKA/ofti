@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from ofti.foamlib.logs import (
     execution_time_deltas,
     parse_courant_numbers,
@@ -10,6 +12,7 @@ from ofti.foamlib.logs import (
     parse_time_steps,
     read_log_tail_lines,
     read_log_text,
+    read_log_text_filtered,
 )
 
 
@@ -62,3 +65,48 @@ def test_read_log_text_is_capped_and_line_aligned(tmp_path: Path) -> None:
     capped = read_log_text(path, max_bytes=32)
     assert "tail-10" in capped
     assert "keep-1" not in capped
+
+
+def test_read_log_text_filtered_uses_rg_stdout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    path = tmp_path / "log.simpleFoam"
+    path.write_text("alpha\nbeta\n")
+
+    class _Result:
+        returncode = 0
+        stdout = "beta\n"
+        stderr = ""
+
+    monkeypatch.setattr("ofti.foamlib.logs.run_trusted", lambda *_a, **_k: _Result())
+    text = read_log_text_filtered(path, terms=["beta"])
+    assert text.strip() == "beta"
+
+
+def test_read_log_text_filtered_falls_back_when_rg_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "log.hy2Foam"
+    path.write_text("keep\nresidualTolerance value=1e-3\nother\n")
+
+    def _missing(*_args, **_kwargs):
+        raise OSError("missing rg")
+
+    monkeypatch.setattr("ofti.foamlib.logs.run_trusted", _missing)
+    text = read_log_text_filtered(path, terms=["residualTolerance"])
+    assert "residualTolerance" in text
+    assert "keep" not in text
+
+
+def test_read_log_text_filtered_with_max_bytes_skips_external_runner(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "log.simpleFoam"
+    path.write_text("x\ny\n")
+
+    def _fail(*_args, **_kwargs):
+        raise AssertionError("external command must not be called")
+
+    monkeypatch.setattr("ofti.foamlib.logs.run_trusted", _fail)
+    text = read_log_text_filtered(path, terms=["y"], max_bytes=16)
+    assert text.strip() == "y"

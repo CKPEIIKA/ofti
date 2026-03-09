@@ -125,21 +125,27 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
 
     status = knife_sub.add_parser("status", help="Show solver/job status for a case")
     status.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    status.add_argument(
-        "--lightweight",
-        action="store_true",
-        help="Tail-only bounded log read for fast polling",
-    )
-    status.add_argument(
+    status_mode = status.add_mutually_exclusive_group()
+    status_mode.add_argument(
         "--fast",
         action="store_true",
-        help="Alias of --lightweight",
+        help="Use fast tail-only bounded log read (default)",
+    )
+    status_mode.add_argument(
+        "--lightweight",
+        action="store_true",
+        help="Alias of --fast",
+    )
+    status_mode.add_argument(
+        "--full",
+        action="store_true",
+        help="Parse full logs (slower, previous behavior)",
     )
     status.add_argument(
         "--tail-bytes",
         type=int,
         default=None,
-        help="Max log bytes to parse (default: auto in --lightweight mode)",
+        help="Max log bytes to parse (default: auto in fast mode)",
     )
     status.add_argument("--json", action="store_true")
     status.set_defaults(func=_knife_status)
@@ -156,21 +162,27 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
 
     case_status = knife_sub.add_parser("case-status", help="Alias of knife status")
     case_status.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    case_status.add_argument(
-        "--lightweight",
-        action="store_true",
-        help="Tail-only bounded log read for fast polling",
-    )
-    case_status.add_argument(
+    case_status_mode = case_status.add_mutually_exclusive_group()
+    case_status_mode.add_argument(
         "--fast",
         action="store_true",
-        help="Alias of --lightweight",
+        help="Use fast tail-only bounded log read (default)",
+    )
+    case_status_mode.add_argument(
+        "--lightweight",
+        action="store_true",
+        help="Alias of --fast",
+    )
+    case_status_mode.add_argument(
+        "--full",
+        action="store_true",
+        help="Parse full logs (slower, previous behavior)",
     )
     case_status.add_argument(
         "--tail-bytes",
         type=int,
         default=None,
-        help="Max log bytes to parse (default: auto in --lightweight mode)",
+        help="Max log bytes to parse (default: auto in fast mode)",
     )
     case_status.add_argument("--json", action="store_true")
     case_status.set_defaults(func=_knife_status)
@@ -272,7 +284,13 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Show runtime criteria as normalized rows",
     )
     criteria.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    criteria.add_argument("--fast", action="store_true", help="Use lightweight log parsing")
+    criteria_mode = criteria.add_mutually_exclusive_group()
+    criteria_mode.add_argument(
+        "--fast",
+        action="store_true",
+        help="Use lightweight log parsing (default)",
+    )
+    criteria_mode.add_argument("--full", action="store_true", help="Parse full logs (slower)")
     criteria.add_argument("--tail-bytes", type=int, default=None)
     criteria.add_argument("--json", action="store_true")
     criteria.set_defaults(func=_knife_criteria)
@@ -283,7 +301,13 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     )
     eta.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
     eta.add_argument("--mode", choices=["criteria", "endtime"], default="criteria")
-    eta.add_argument("--fast", action="store_true", help="Use lightweight log parsing")
+    eta_mode = eta.add_mutually_exclusive_group()
+    eta_mode.add_argument(
+        "--fast",
+        action="store_true",
+        help="Use lightweight log parsing (default)",
+    )
+    eta_mode.add_argument("--full", action="store_true", help="Parse full logs (slower)")
     eta.add_argument("--tail-bytes", type=int, default=None)
     eta.add_argument("--json", action="store_true")
     eta.set_defaults(func=_knife_eta)
@@ -294,7 +318,13 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     )
     report.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
     report.add_argument("--format", choices=["json", "md"], default="json")
-    report.add_argument("--fast", action="store_true", help="Use lightweight log parsing")
+    report_mode = report.add_mutually_exclusive_group()
+    report_mode.add_argument(
+        "--fast",
+        action="store_true",
+        help="Use lightweight log parsing (default)",
+    )
+    report_mode.add_argument("--full", action="store_true", help="Parse full logs (slower)")
     report.add_argument("--tail-bytes", type=int, default=None)
     report.add_argument("--json", action="store_true", help="Alias for --format json")
     report.set_defaults(func=_knife_report)
@@ -775,11 +805,15 @@ def _knife_initials(args: argparse.Namespace) -> int:
     return 0
 
 
+def _knife_use_lightweight_mode(args: argparse.Namespace) -> bool:
+    return not bool(getattr(args, "full", False))
+
+
 def _knife_status(args: argparse.Namespace) -> int:
     try:
         payload = knife_ops.status_payload(
             args.case_dir,
-            lightweight=bool(getattr(args, "lightweight", False) or getattr(args, "fast", False)),
+            lightweight=_knife_use_lightweight_mode(args),
             tail_bytes=getattr(args, "tail_bytes", None),
         )
     except TypeError:
@@ -903,7 +937,7 @@ def _knife_stability(args: argparse.Namespace) -> int:
 def _knife_criteria(args: argparse.Namespace) -> int:
     payload = knife_ops.criteria_payload(
         args.case_dir,
-        lightweight=bool(getattr(args, "fast", False)),
+        lightweight=_knife_use_lightweight_mode(args),
         tail_bytes=getattr(args, "tail_bytes", None),
     )
     if args.json:
@@ -926,7 +960,7 @@ def _knife_eta(args: argparse.Namespace) -> int:
     payload = knife_ops.eta_payload(
         args.case_dir,
         mode=str(args.mode),
-        lightweight=bool(getattr(args, "fast", False)),
+        lightweight=_knife_use_lightweight_mode(args),
         tail_bytes=getattr(args, "tail_bytes", None),
     )
     if args.json:
@@ -944,7 +978,7 @@ def _knife_report(args: argparse.Namespace) -> int:
     fmt = "json" if bool(getattr(args, "json", False)) else str(getattr(args, "format", "json"))
     payload = knife_ops.report_payload(
         args.case_dir,
-        lightweight=bool(getattr(args, "fast", False)),
+        lightweight=_knife_use_lightweight_mode(args),
         tail_bytes=getattr(args, "tail_bytes", None),
     )
     if fmt == "md":
