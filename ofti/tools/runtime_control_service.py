@@ -12,6 +12,7 @@ from ofti.foamlib.logs import (
     parse_log_metrics,
     parse_log_metrics_and_residuals,
     read_log_text,
+    read_log_text_filtered,
 )
 
 DELTA_T_RE = re.compile(r"\bdeltaT\s*=\s*(?P<value>[0-9eE.+-]+)", re.IGNORECASE)
@@ -88,7 +89,15 @@ def runtime_control_snapshot(
     read_limit = max_log_bytes
     if read_limit is None and lightweight:
         read_limit = 2 * 1024 * 1024
-    text = read_log_text(log_path, max_bytes=read_limit) if log_path is not None else ""
+    text = ""
+    if log_path is not None:
+        if lightweight or read_limit is not None:
+            text = read_log_text(log_path, max_bytes=read_limit)
+        else:
+            text = read_log_text_filtered(
+                log_path,
+                terms=runtime_log_terms(case_path),
+            )
     if text:
         if lightweight:
             metrics, residuals = parse_log_metrics(text), {}
@@ -169,10 +178,15 @@ def run_time_control_data(
             "unknown": 0,
         }
     clean_text = strip_comments(text)
+    log_lines = log_text.splitlines()
     end_time = to_float(first_match(clean_text, END_TIME_RE))
     start_time = to_float(first_match(clean_text, START_TIME_RE))
-    criteria = inline_criteria(clean_text, log_text)
-    rtc_start_time, rtc_criteria = runtime_control_conditions(clean_text, log_text)
+    criteria = inline_criteria(clean_text, log_text, log_lines=log_lines)
+    rtc_start_time, rtc_criteria = runtime_control_conditions(
+        clean_text,
+        log_text,
+        log_lines=log_lines,
+    )
     criteria.extend(rtc_criteria)
     if rtc_start_time is not None:
         start_time = rtc_start_time
@@ -180,6 +194,7 @@ def run_time_control_data(
     criteria = enrich_criteria(
         criteria,
         log_text,
+        log_lines=log_lines,
         criteria_start=start_time,
         latest_time=latest_time,
         execution_times=execution_times or [],
@@ -195,6 +210,49 @@ def run_time_control_data(
         "failed": failed,
         "unknown": unknown,
     }
+
+
+def runtime_log_terms(case_path: Path) -> list[str]:
+    control_dict = case_path / "system" / "controlDict"
+    try:
+        text = read_with_local_includes(control_dict, case_root=case_path)
+    except OSError:
+        return []
+    clean_text = strip_comments(text)
+    terms: list[str] = []
+    for match in CRITERIA_RE.finditer(clean_text):
+        key = match.group("key").strip()
+        if key:
+            terms.append(key)
+    for _block_key, row in runtime_control_term_rows(clean_text):
+        cond_name, cond_type, field = row
+        if cond_name:
+            terms.append(cond_name)
+        if cond_type:
+            terms.append(cond_type)
+        if field:
+            terms.append(field)
+    return terms
+
+
+def runtime_control_term_rows(clean_text: str) -> list[tuple[str, tuple[str, str, str]]]:
+    rows: list[tuple[str, tuple[str, str, str]]] = []
+    for key, body in iter_blocks_recursive(clean_text):
+        block_type = first_match(body, TYPE_RE)
+        if block_type is None or block_type.strip().strip('"') != "runTimeControl":
+            continue
+        conditions = first_block_body(body, "conditions")
+        if conditions is None:
+            continue
+        for cond_name, cond_body in iter_named_blocks(conditions):
+            cond_type = (first_match(cond_body, TYPE_RE) or "").strip().strip('"')
+            field = (
+                (first_match(cond_body, FIELD_RE) or first_match(cond_body, FIELDS_RE) or "")
+                .strip()
+                .strip('"')
+            )
+            rows.append((key, (cond_name.strip(), cond_type, field)))
+    return rows
 
 
 def read_with_local_includes(
@@ -359,14 +417,19 @@ def dedupe_criteria(rows: list[CriterionRow]) -> list[CriterionRow]:
     return list(unique.values())
 
 
-def inline_criteria(clean_text: str, log_text: str) -> list[CriterionRow]:
+def inline_criteria(
+    clean_text: str,
+    log_text: str,
+    *,
+    log_lines: list[str] | None = None,
+) -> list[CriterionRow]:
     rows: list[CriterionRow] = []
     for match in CRITERIA_RE.finditer(clean_text):
         key = match.group("key")
         if not KEY_TOKEN_RE.match(key):
             continue
         value = match.group("value").strip()
-        status, evidence = criterion_status(key, log_text)
+        status, evidence = criterion_status(key, log_text, log_lines=log_lines)
         rows.append({"key": key, "value": value, "status": status, "evidence": evidence})
     return rows
 
@@ -374,6 +437,8 @@ def inline_criteria(clean_text: str, log_text: str) -> list[CriterionRow]:
 def runtime_control_conditions(
     clean_text: str,
     log_text: str,
+    *,
+    log_lines: list[str] | None = None,
 ) -> tuple[float | None, list[CriterionRow]]:
     start_time: float | None = None
     rows: list[CriterionRow] = []
@@ -383,7 +448,7 @@ def runtime_control_conditions(
             continue
         if start_time is None:
             start_time = to_float(first_match(body, TIME_START_RE))
-        rows.extend(runtime_control_block_rows(key, body, log_text))
+        rows.extend(runtime_control_block_rows(key, body, log_text, log_lines=log_lines))
     return start_time, rows
 
 
@@ -391,6 +456,8 @@ def runtime_control_block_rows(
     block_key: str,
     body: str,
     log_text: str,
+    *,
+    log_lines: list[str] | None = None,
 ) -> list[CriterionRow]:
     conditions = first_block_body(body, "conditions")
     if conditions is None:
@@ -404,9 +471,9 @@ def runtime_control_block_rows(
         if field:
             key_parts.append(field.strip())
         cond_key = ".".join(part for part in key_parts if part)
-        status, evidence = criterion_status(cond_name, log_text)
+        status, evidence = criterion_status(cond_name, log_text, log_lines=log_lines)
         if status == "unknown":
-            status, evidence = criterion_status(cond_type, log_text)
+            status, evidence = criterion_status(cond_type, log_text, log_lines=log_lines)
         rows.append(
             {
                 "key": cond_key,
@@ -418,9 +485,15 @@ def runtime_control_block_rows(
     return rows
 
 
-def criterion_status(key: str, log_text: str) -> tuple[str, str | None]:
+def criterion_status(
+    key: str,
+    log_text: str,
+    *,
+    log_lines: list[str] | None = None,
+) -> tuple[str, str | None]:
     needle = key.lower()
-    for raw in reversed(log_text.splitlines()):
+    lines = log_lines if log_lines is not None else log_text.splitlines()
+    for raw in reversed(lines):
         line = raw.strip()
         lower = line.lower()
         if needle not in lower:
@@ -437,16 +510,18 @@ def enrich_criteria(
     rows: list[CriterionRow],
     log_text: str,
     *,
+    log_lines: list[str] | None = None,
     criteria_start: float | None,
     latest_time: float | None,
     execution_times: list[float],
 ) -> list[CriterionRow]:
     if not rows:
         return rows
+    lines = log_lines if log_lines is not None else log_text.splitlines()
     for row in rows:
         key = str(row.get("key", "")).strip()
         value = str(row.get("value", "")).strip()
-        observed = criterion_observations(key, log_text)
+        observed = criterion_observations(key, log_text, log_lines=lines)
         tolerance = to_float(first_float(value))
         comparator = criterion_comparator(key)
         delta_mode = criterion_uses_delta(key)
@@ -485,12 +560,18 @@ def enrich_criteria(
     return rows
 
 
-def criterion_observations(key: str, log_text: str) -> list[float]:
+def criterion_observations(
+    key: str,
+    log_text: str,
+    *,
+    log_lines: list[str] | None = None,
+) -> list[float]:
     if not key:
         return []
     needle = key.lower()
     values: list[float] = []
-    for raw in log_text.splitlines():
+    lines = log_lines if log_lines is not None else log_text.splitlines()
+    for raw in lines:
         line = raw.strip()
         if not line:
             continue

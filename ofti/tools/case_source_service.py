@@ -43,7 +43,6 @@ def resolve_log_source(source: Path) -> Path:
         key=lambda path: (
             path.stat().st_mtime_ns,
             path.stat().st_ctime_ns,
-            getattr(path.stat(), "st_ino", 0),
         ),
     )
     if not logs:

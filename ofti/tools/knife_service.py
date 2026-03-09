@@ -198,33 +198,17 @@ def criteria_payload(
     lightweight: bool = False,
     tail_bytes: int | None = None,
 ) -> dict[str, Any]:
-    payload = status_payload(
+    status = status_payload(
         case_dir,
         lightweight=lightweight,
         tail_bytes=tail_bytes,
     )
-    rtc = payload.get("run_time_control", {})
-    criteria = [
-        {
-            "name": row.get("key"),
-            "value": row.get("live_value"),
-            "target": row.get("value"),
-            "tol": row.get("tolerance"),
-            "status": row.get("status"),
-            "met": row.get("status") == "pass",
-            "unmet": row.get("unmet_reason"),
-            "window": {
-                "samples": row.get("samples"),
-                "delta": row.get("live_delta"),
-            },
-            "source": criterion_source(str(row.get("key", ""))),
-        }
-        for row in rtc.get("criteria", [])
-    ]
+    rtc = status.get("run_time_control", {})
+    criteria = criteria_rows_from_rtc(rtc)
     return {
-        "case": payload["case"],
-        "solver": payload.get("solver"),
-        "solver_error": payload.get("solver_error"),
+        "case": status["case"],
+        "solver": status.get("solver"),
+        "solver_error": status.get("solver_error"),
         "criteria_count": len(criteria),
         "criteria": criteria,
         "criteria_start": rtc.get("criteria_start"),
@@ -232,7 +216,7 @@ def criteria_payload(
         "passed": rtc.get("passed", 0),
         "failed": rtc.get("failed", 0),
         "unknown": rtc.get("unknown", 0),
-        "eta_to_criteria_start": payload.get("eta_seconds_to_criteria_start"),
+        "eta_to_criteria_start": status.get("eta_seconds_to_criteria_start"),
     }
 
 
@@ -275,11 +259,8 @@ def report_payload(
         lightweight=lightweight,
         tail_bytes=tail_bytes,
     )
-    criteria = criteria_payload(
-        case_dir,
-        lightweight=lightweight,
-        tail_bytes=tail_bytes,
-    )
+    rtc = status.get("run_time_control", {})
+    criteria_rows = criteria_rows_from_rtc(rtc)
     eta_criteria = criteria_satisfaction_eta(status.get("run_time_control", {}).get("criteria", []))
     return {
         "case": status["case"],
@@ -296,11 +277,11 @@ def report_payload(
             "sec_per_iter": status.get("sec_per_iter"),
         },
         "criteria": {
-            "count": criteria.get("criteria_count"),
-            "passed": criteria.get("passed"),
-            "failed": criteria.get("failed"),
-            "unknown": criteria.get("unknown"),
-            "items": criteria.get("criteria"),
+            "count": len(criteria_rows),
+            "passed": rtc.get("passed", 0),
+            "failed": rtc.get("failed", 0),
+            "unknown": rtc.get("unknown", 0),
+            "items": criteria_rows,
         },
         "eta": {
             "criteria_seconds": eta_criteria,
@@ -308,6 +289,26 @@ def report_payload(
             "criteria_start_seconds": status.get("eta_seconds_to_criteria_start"),
         },
     }
+
+
+def criteria_rows_from_rtc(rtc: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": row.get("key"),
+            "value": row.get("live_value"),
+            "target": row.get("value"),
+            "tol": row.get("tolerance"),
+            "status": row.get("status"),
+            "met": row.get("status") == "pass",
+            "unmet": row.get("unmet_reason"),
+            "window": {
+                "samples": row.get("samples"),
+                "delta": row.get("live_delta"),
+            },
+            "source": criterion_source(str(row.get("key", ""))),
+        }
+        for row in rtc.get("criteria", [])
+    ]
 
 
 def converge_payload(

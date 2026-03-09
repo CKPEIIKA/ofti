@@ -7,6 +7,8 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
+from ofti.foam.subprocess_utils import run_trusted
+
 _RESIDUAL_RE = re.compile(
     r"Solving for\s+(?P<field>[^,\s]+).*?Initial residual = (?P<res>[0-9eE.+-]+)",
 )
@@ -23,6 +25,16 @@ _EXEC_TIME_RE = re.compile(
 )
 _DEFAULT_MAX_LOG_BYTES = 32 * 1024 * 1024
 _DEFAULT_TAIL_MAX_BYTES = 8 * 1024 * 1024
+_BASE_FILTER_TERMS = (
+    "Time =",
+    "ExecutionTime",
+    "Courant",
+    "deltaT",
+    "iteration",
+    "iter =",
+    "Solving for",
+)
+_MAX_FILTER_TERMS = 96
 
 
 def parse_residuals(text: str) -> dict[str, list[float]]:
@@ -90,8 +102,18 @@ class LogMetrics:
 
 
 def parse_log_metrics(text: str) -> LogMetrics:
-    metrics, _residuals = parse_log_metrics_and_residuals(text)
-    return metrics
+    times: list[float] = []
+    courants: list[float] = []
+    execution_times: list[float] = []
+    for line in text.splitlines():
+        _append_time_value(line, times)
+        _append_courant_value(line, courants)
+        _append_execution_time_value(line, execution_times)
+    return LogMetrics(
+        times=times,
+        courants=courants,
+        execution_times=execution_times,
+    )
 
 
 def parse_log_metrics_and_residuals(text: str) -> tuple[LogMetrics, dict[str, list[float]]]:
@@ -176,6 +198,23 @@ def read_log_text(path: Path, *, max_bytes: int | None = _DEFAULT_MAX_LOG_BYTES)
     return data.decode("utf-8", errors="ignore")
 
 
+def read_log_text_filtered(
+    path: Path,
+    *,
+    terms: list[str] | None = None,
+    max_bytes: int | None = None,
+) -> str:
+    selected_terms = _filter_terms(terms)
+    if max_bytes is not None:
+        text = read_log_text(path, max_bytes=max_bytes)
+        return _filter_lines(text, selected_terms)
+    external = _rg_filter_file(path, selected_terms)
+    if external is not None:
+        return external
+    text = read_log_text(path, max_bytes=max_bytes)
+    return _filter_lines(text, selected_terms)
+
+
 def read_log_tail_lines(
     path: Path,
     *,
@@ -223,6 +262,58 @@ def _read_tail_bytes(path: Path, *, max_bytes: int | None) -> tuple[bytes, bool]
             return handle.read(), False
         handle.seek(-max_bytes, 2)
         return handle.read(max_bytes), True
+
+
+def _filter_terms(terms: list[str] | None) -> list[str]:
+    selected: list[str] = [str(term).strip() for term in _BASE_FILTER_TERMS if str(term).strip()]
+    if terms:
+        selected.extend([term.strip() for term in terms if term.strip()])
+    unique: list[str] = []
+    seen: set[str] = set()
+    for term in selected:
+        lowered = term.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        unique.append(term)
+        if len(unique) >= _MAX_FILTER_TERMS:
+            break
+    return unique
+
+
+def _filter_lines(text: str, terms: list[str]) -> str:
+    if not terms:
+        return text
+    needles = [term.lower() for term in terms]
+    lines = [
+        line
+        for line in text.splitlines()
+        if any(needle in line.lower() for needle in needles)
+    ]
+    return "\n".join(lines)
+
+
+def _rg_filter_file(path: Path, terms: list[str]) -> str | None:
+    if not terms:
+        return None
+    command = ["rg", "-N", "-i", "-F"]
+    for term in terms:
+        command.extend(["-e", term])
+    command.append(str(path))
+    try:
+        result = run_trusted(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if result.returncode == 0:
+        return result.stdout
+    if result.returncode == 1:
+        return ""
+    return None
 
 
 async def tail_log_lines(path: Path, *, poll_interval: float = 0.25) -> AsyncIterator[str]:

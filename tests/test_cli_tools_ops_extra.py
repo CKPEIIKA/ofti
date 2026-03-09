@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import types
 from pathlib import Path
 
@@ -33,12 +34,13 @@ def test_common_resolve_log_source_fallbacks(tmp_path: Path, monkeypatch: pytest
     assert common.resolve_log_source(case) == solver_log.resolve()
 
     monkeypatch.setattr(case_source_service, "resolve_solver_name", lambda _case: (None, "no solver"))
+    solver_log.unlink()
     old_log = case / "log.old"
     new_log = case / "log.new"
     old_log.write_text("old\n")
     new_log.write_text("new\n")
-    old_log.touch()
-    new_log.touch()
+    os.utime(old_log, ns=(1_000_000_000, 1_000_000_000))
+    os.utime(new_log, ns=(2_000_000_000, 2_000_000_000))
     assert common.resolve_log_source(case) == new_log.resolve()
 
     empty_case = _make_case(tmp_path / "empty-case")
