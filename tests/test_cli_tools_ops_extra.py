@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import types
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
@@ -430,6 +431,65 @@ def test_watch_external_payload_passes_through_arguments(tmp_path: Path, monkeyp
     assert payload["ok"] is True
     assert seen["cmd"] == ["python", "watcher.py", "--foo", "bar"]
     assert seen["cwd"] == case
+
+
+def test_watch_start_payload_uses_runner_service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    case = _make_case(tmp_path / "case")
+    monkeypatch.setattr(watch_service.case_source_service, "require_case_dir", lambda _path: case)
+
+    dry = watch_service.start_payload(
+        case,
+        name="solver",
+        command=["simpleFoam"],
+        dry_run=True,
+        kind="solver",
+    )
+    assert dry["ok"] is True
+    assert dry["kind"] == "solver"
+
+    with pytest.raises(ValueError, match="unsupported job kind"):
+        watch_service.start_payload(
+            case,
+            name="solver",
+            command=["simpleFoam"],
+            kind="bad",
+        )
+
+    with pytest.raises(ValueError, match="command is required"):
+        watch_service.start_payload(
+            case,
+            name="solver",
+            command=[],
+            dry_run=False,
+        )
+
+    monkeypatch.setattr(watch_service, "register_job", lambda *_a, **_k: "job-42")
+
+    def _exec(case_path: Path, name: str, cmd: list[str], **kwargs: object) -> object:
+        register_job_fn = cast(
+            Callable[[Path, str, int, str, Path | None], str],
+            kwargs["register_job_fn"],
+        )
+        log_path = kwargs["log_path"]
+        assert isinstance(log_path, Path)
+        register_job_fn(case_path, name, 321, " ".join(cmd), log_path)
+        return watch_service.runner_service.RunResult(0, "", "", pid=321, log_path=log_path)
+
+    monkeypatch.setattr(watch_service.runner_service, "execute_case_command", _exec)
+
+    payload = watch_service.start_payload(
+        case,
+        name="watcher",
+        command=["python", "watcher.py"],
+        detached=False,
+        kind="watcher",
+        env={"FOO": "BAR"},
+    )
+    assert payload["ok"] is True
+    assert payload["job_id"] == "job-42"
+    assert payload["pid"] == 321
+    assert payload["kind"] == "watcher"
+    assert "FOO" in payload["env_keys"]
 
 
 def test_run_matrix_axis_parse_and_case_generation(

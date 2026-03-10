@@ -44,7 +44,11 @@ def test_cli_and_tui_stop_use_same_job_control_service(
     payload = watch.stop_payload(case, all_jobs=True, signal_name="TERM")
     assert payload["selected"] == 1
 
-    monkeypatch.setattr(job_control, "refresh_jobs", lambda _case: [{"id": "1", "name": "solver", "pid": 7, "status": "running"}])
+    monkeypatch.setattr(
+        job_control.watch_service,
+        "refresh_jobs",
+        lambda _case: [{"id": "1", "name": "solver", "pid": 7, "status": "running"}],
+    )
     monkeypatch.setattr(job_control, "build_menu", lambda *_a, **_k: _Menu(0))
     monkeypatch.setattr(job_control, "_show_message", lambda *_a, **_k: None)
     job_control.stop_job_screen(object(), case)

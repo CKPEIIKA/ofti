@@ -138,13 +138,16 @@ def test_run_current_solver_uses_runfunctions(tmp_path: Path) -> None:
     completed.stderr = ""
 
     with (
-            mock.patch("ofti.core.solver_checks.read_entry", return_value="simpleFoam;"),
-        mock.patch("ofti.tools.runner.run_trusted", return_value=completed) as run,
+        mock.patch("ofti.core.solver_checks.read_entry", return_value="simpleFoam;"),
+        mock.patch(
+            "ofti.tools.solver.run_ops.execute_case_command",
+            return_value=types.SimpleNamespace(returncode=0, stdout="ok\n", stderr=""),
+        ) as run,
     ):
         run_current_solver(screen, case_dir)
 
     assert run.called
-    assert run.call_args[0][0][0] == "simpleFoam"
+    assert run.call_args[0][2] == ["simpleFoam"]
 
 
 def test_remove_all_logs_uses_cleanfunctions(tmp_path: Path, monkeypatch) -> None:

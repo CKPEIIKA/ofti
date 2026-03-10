@@ -242,45 +242,52 @@ def test_job_control_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     messages: list[str] = []
     monkeypatch.setattr(job_control, "_show_message", lambda _s, text: messages.append(text))
 
-    monkeypatch.setattr(job_control, "refresh_jobs", lambda _case: [])
+    monkeypatch.setattr(job_control.watch_service, "refresh_jobs", lambda _case: [])
     job_control.stop_job_screen(screen, case)
     assert "No running jobs to stop." in messages[-1]
 
     monkeypatch.setattr(
-        job_control,
+        job_control.watch_service,
         "refresh_jobs",
         lambda _case: [{"id": "1", "name": "solver", "pid": "bad", "status": "running"}],
     )
     monkeypatch.setattr(job_control, "build_menu", lambda *_a, **_k: _Menu(0))
+    monkeypatch.setattr(
+        job_control.watch_service,
+        "stop_payload",
+        lambda *_a, **_k: {"failed": [{"pid": "bad", "error": "invalid pid"}], "stopped": []},
+    )
     job_control.stop_job_screen(screen, case)
     assert "invalid pid" in messages[-1]
 
     monkeypatch.setattr(
-        job_control,
+        job_control.watch_service,
         "refresh_jobs",
         lambda _case: [{"id": "1", "name": "solver", "pid": 42, "status": "running"}],
     )
-    monkeypatch.setattr(job_control.os, "kill", lambda *_a, **_k: None)
-    finished: list[str] = []
-    monkeypatch.setattr(job_control, "finish_job", lambda _case, job_id, *_a, **_k: finished.append(job_id))
+    monkeypatch.setattr(
+        job_control.watch_service,
+        "stop_payload",
+        lambda *_a, **_k: {"failed": [], "stopped": [{"pid": 42}]},
+    )
     job_control.stop_job_screen(screen, case)
     assert "Sent SIGTERM to pid 42." in messages[-1]
-    assert finished[-1] == "1"
 
     # Start background command (direct path without bashrc/runfunctions).
     monkeypatch.delenv("WM_PROJECT_DIR", raising=False)
-    original_popen_background = job_control._popen_background
     monkeypatch.setattr(job_control, "resolve_openfoam_bashrc", lambda: None)
     monkeypatch.setattr(job_control, "_expand_command", lambda cmd, _case: cmd)
-    monkeypatch.setattr(job_control, "_popen_background", lambda *_a, **_k: types.SimpleNamespace(pid=77))
-    started: list[tuple[str, int]] = []
+    started: list[tuple[str, list[str]]] = []
     monkeypatch.setattr(
-        job_control,
-        "register_job",
-        lambda _case, name, pid, *_a, **_k: started.append((name, pid)),
+        job_control.watch_service,
+        "start_payload",
+        lambda _case, **kwargs: (
+            started.append((str(kwargs.get("name")), list(kwargs.get("command", []))))
+            or {"pid": 77, "ok": True}
+        ),
     )
     job_control._start_background_command(screen, case, "blockMesh", ["blockMesh"])
-    assert started[-1] == ("blockMesh", 77)
+    assert started[-1] == ("blockMesh", ["blockMesh"])
 
     # Shell path with RunFunctions.
     monkeypatch.setenv("WM_PROJECT_DIR", "/wm")
@@ -298,16 +305,6 @@ def test_job_control_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     job_control._start_background_command(screen, case, "checkMesh", ["checkMesh"])
     assert "runApplication" in shell_cmds[-1]
 
-    # _popen_background uses log file and subprocess.
-    monkeypatch.setattr(job_control, "_popen_background", original_popen_background)
-
-    class _Popen:
-        def __init__(self, *_a, **_k) -> None:
-            self.pid = 123
-
-    monkeypatch.setattr(job_control.subprocess, "Popen", _Popen)
-    process = job_control._popen_background(["echo", "x"], case, "demo")
-    assert process.pid == 123
     assert job_control._log_path(case, "name with !").name == "log.namewith"
 
 

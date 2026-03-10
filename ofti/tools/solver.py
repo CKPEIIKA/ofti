@@ -23,18 +23,20 @@ from ofti.core.solver_status import (
     residual_spark_lines,
     solver_status_text,
 )
+from ofti.core.tool_output import CommandResult, format_command_result
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.subprocess_utils import resolve_executable
 from ofti.foamlib.logs import read_log_tail_lines
 from ofti.tools.cleaning_utils import _require_wm_project_dir
+from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.helpers import resolve_openfoam_bashrc, with_bashrc
 from ofti.tools.job_registry import finish_job, register_job
 from ofti.tools.runner import (
     _expand_shell_command,
-    _run_simple_tool,
     _show_message,
     _with_no_foam_hint,
 )
+from ofti.ui_curses.viewer import Viewer
 
 require_wm_project_dir = _require_wm_project_dir
 
@@ -64,13 +66,22 @@ def run_current_solver(stdscr: Any, case_path: Path) -> None:
         if ch not in (ord("y"), ord("Y")):
             return
         truncate_log(log_path)
-    _run_simple_tool(
-        stdscr,
-        case_path,
-        solver,
-        [solver],
-        allow_runfunctions=False,
+    try:
+        result = run_ops.execute_case_command(
+            case_path,
+            solver,
+            [solver],
+            background=False,
+        )
+    except ValueError as exc:
+        _show_message(stdscr, _with_no_foam_hint(f"Failed to run {solver}: {exc}"))
+        return
+
+    summary = format_command_result(
+        [f"$ cd {case_path}", f"$ {solver}"],
+        CommandResult(result.returncode, result.stdout, result.stderr),
     )
+    Viewer(stdscr, summary).display()
 
 
 def run_current_solver_live(stdscr: Any, case_path: Path) -> None:
