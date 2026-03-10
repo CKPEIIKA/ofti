@@ -247,7 +247,7 @@ def test_knife_scan_proc_solver_processes_relaxed_scope(tmp_path: Path) -> None:
     assert {int(row["pid"]) for row in rows} == {201, 202}
 
 
-def test_knife_current_payload_falls_back_to_relaxed_proc_scan(
+def test_knife_current_payload_uses_live_scan_to_relax_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -273,9 +273,12 @@ def test_knife_current_payload_falls_back_to_relaxed_proc_scan(
 
     monkeypatch.setattr(knife_service, "_scan_proc_solver_processes", _scan)
     payload = knife.current_payload(case)
+    assert seen == [True]
+    assert payload["jobs_running"] == 0
+    payload_live = knife.current_payload(case, live=True)
     assert seen == [True, False]
-    assert payload["jobs_running"] == 1
-    assert payload["untracked_processes"][0]["pid"] == 404
+    assert payload_live["jobs_running"] == 1
+    assert payload_live["untracked_processes"][0]["pid"] == 404
 
 
 def test_knife_current_live_and_report_payloads(
@@ -554,3 +557,278 @@ def test_dict_compare_dictionary_error_and_raw_key_scan(tmp_path: Path, monkeypa
     assert dict_compare._as_str_object_dict({"a": 1}) is not None
     assert dict_compare._as_str_object_dict({1: "bad"}) is None
     assert dict_compare._normalize_scalar("a ; b") == "a b"
+
+
+def test_knife_stop_payload_includes_untracked_solver_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    killed: list[int] = []
+
+    monkeypatch.setattr(
+        knife_service.watch_service,
+        "stop_payload",
+        lambda *_a, **_k: {
+            "case": str(case),
+            "kind": "solver",
+            "selected": 0,
+            "stopped": [],
+            "failed": [],
+            "signal": "TERM",
+        },
+    )
+    monkeypatch.setattr(knife_service, "refresh_jobs", lambda _case: [])
+    monkeypatch.setattr(
+        knife_service.process_scan_service,
+        "scan_proc_solver_processes",
+        lambda *_a, **_k: [
+            {
+                "pid": 900,
+                "ppid": 1,
+                "solver": "hy2Foam",
+                "role": "launcher",
+                "tracked": False,
+                "case": str(case.resolve()),
+                "command": "mpirun -np 6 hy2Foam -parallel",
+                "launcher_pid": 900,
+                "solver_pids": [901],
+                "discovery_source": "launcher",
+                "discovery_error": "",
+            },
+            {
+                "pid": 901,
+                "ppid": 900,
+                "solver": "hy2Foam",
+                "role": "solver",
+                "tracked": False,
+                "case": str(case.resolve()),
+                "command": "hy2Foam -parallel",
+                "launcher_pid": None,
+                "discovery_source": "launcher",
+                "discovery_error": "",
+            },
+        ],
+    )
+    monkeypatch.setattr(knife_service.os, "kill", lambda pid, _sig: killed.append(pid))
+    payload = knife.stop_payload(case)
+    assert payload["selected"] == 2
+    assert payload["untracked"]["selected"] == 2
+    assert sorted(killed) == [900, 901]
+    assert payload["untracked"]["launcher_pids"] == [900]
+
+
+def test_knife_campaign_rank_and_compare_payloads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "campaign"
+    case_a = _make_case(root / "case_10M")
+    _make_case(root / "case_10M_alt")
+    _make_case(root / "case_20M")
+
+    def _status(case_dir: Path, **_kwargs: object) -> dict[str, object]:
+        base = case_dir.name
+        if base == "case_10M":
+            criteria = [{"status": "pass", "tolerance": 1.0, "live_value": 0.5}]
+        elif base == "case_10M_alt":
+            criteria = [{"status": "fail", "tolerance": 1.0, "live_value": 1.5}]
+        else:
+            criteria = [{"status": "fail", "tolerance": 1.0, "live_value": 2.0}]
+        return {
+            "case": str(case_dir),
+            "running": True,
+            "latest_time": 1.0,
+            "latest_iteration": 10,
+            "latest_delta_t": 1e-9,
+            "sec_per_iter": 0.2,
+            "jobs_running": 1,
+            "run_time_control": {
+                "criteria": criteria,
+                "passed": sum(1 for row in criteria if row["status"] == "pass"),
+            },
+        }
+
+    monkeypatch.setattr(knife_service, "status_payload", _status)
+    monkeypatch.setattr(
+        knife_service,
+        "compare_payload",
+        lambda left, right, **_kwargs: {
+            "left_case": str(left),
+            "right_case": str(right),
+            "diff_count": 3,
+            "diffs": [],
+        },
+    )
+
+    ranked = knife.campaign_rank_payload(root)
+    assert ranked["count"] == 3
+    assert ranked["ranked"][0]["case"] == str(case_a.resolve())
+
+    compare = knife.campaign_compare_payload(root, group_by="speed")
+    assert compare["group_count"] >= 2
+    assert any(row["group"] == "10M" for row in compare["comparisons"])
+
+
+def test_knife_eta_payload_contains_mode_reason_and_confidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    monkeypatch.setattr(
+        knife_service,
+        "status_payload",
+        lambda *_a, **_k: {
+            "case": str(case.resolve()),
+            "running": True,
+            "eta_seconds_to_criteria_start": None,
+            "eta_seconds_to_end_time": 50.0,
+            "run_time_control": {
+                "criteria_start": 0.0,
+                "end_time": 1.0,
+                "criteria": [
+                    {
+                        "key": "c1",
+                        "status": "fail",
+                        "eta_seconds": None,
+                        "unmet_reason": "window",
+                    },
+                ],
+            },
+        },
+    )
+    payload = knife.eta_payload(case, mode="criteria")
+    assert payload["eta_mode"] == "end_time"
+    assert payload["eta_reason"] == "window"
+    assert payload["eta_confidence"] <= 0.4
+
+
+def test_knife_campaign_stop_keep_payload_branches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "campaign"
+    _make_case(root / "caseA")
+    _make_case(root / "caseB")
+    _make_case(root / "caseC")
+    monkeypatch.setattr(
+        knife_service,
+        "campaign_rank_payload",
+        lambda *_a, **_k: {
+            "case": str(root),
+            "ranked": [
+                {"case": str((root / "caseA").resolve())},
+                {"case": str((root / "caseB").resolve())},
+                {"case": str((root / "caseC").resolve())},
+            ],
+        },
+    )
+    calls: list[Path] = []
+    monkeypatch.setattr(
+        knife_service,
+        "stop_payload",
+        lambda case_path, **_k: calls.append(Path(case_path)) or {"case": str(case_path), "failed": []},
+    )
+    with pytest.raises(ValueError, match="worst must be > 0"):
+        knife.campaign_stop_worst_payload(root, worst=0)
+    with pytest.raises(ValueError, match="best must be > 0"):
+        knife.campaign_keep_best_payload(root, best=0)
+
+    dry_run = knife.campaign_stop_worst_payload(root, worst=2, dry_run=True)
+    assert dry_run["selected"] == 2
+    assert all(row["dry_run"] for row in dry_run["actions"])
+
+    applied = knife.campaign_keep_best_payload(root, best=1, dry_run=False)
+    assert applied["stopped"] == 2
+    assert len(calls) == 2
+
+
+def test_knife_campaign_summary_paths_and_group_helpers(tmp_path: Path) -> None:
+    root = tmp_path / "campaign"
+    case_a = _make_case(root / "caseA")
+    case_b = _make_case(root / "caseB")
+    summary = root / "summary.csv"
+    summary.parent.mkdir(parents=True, exist_ok=True)
+    summary.write_text(
+        "case,speed\n"
+        f"{case_a.name},15M\n"
+        f"{case_b.resolve()},20M\n"
+        "missing,30M\n",
+    )
+    paths = knife.campaign_case_paths(root, summary_csv=summary)
+    assert paths == [case_a.resolve(), case_b.resolve()]
+
+    rows = knife_service._summary_rows(summary)
+    assert knife_service._summary_row_for_case(case_a, rows) is not None
+    assert knife_service._campaign_group_value(case_a, group_by="speed", summary_rows=rows) == "15M"
+    assert knife_service._campaign_group_value(case_a, group_by="other", summary_rows=rows) == "all"
+
+
+def test_knife_eta_helpers_cover_modes() -> None:
+    details = knife_service.criteria_eta_details([], eta_to_criteria_start=None, eta_to_end_time=None)
+    assert details["reason"] == "criteria_already_met"
+
+    details = knife_service.criteria_eta_details(
+        [{"status": "fail", "key": "c1", "eta_seconds": 4.0, "unmet_reason": ""}],
+        eta_to_criteria_start=None,
+        eta_to_end_time=20.0,
+    )
+    assert details["eta_worst_seconds"] == 4.0
+    assert knife_service.select_eta(
+        requested_mode="criteria",
+        criteria_details=details,
+        eta_to_end_time=20.0,
+    )["mode"] == "criteria"
+
+    details_start = knife_service.criteria_eta_details(
+        [{"status": "fail", "key": "c2", "eta_seconds": None, "unmet_reason": "startup"}],
+        eta_to_criteria_start=12.0,
+        eta_to_end_time=40.0,
+    )
+    assert details_start["reason"] == "criteria_start_window"
+    assert knife_service.select_eta(
+        requested_mode="criteria",
+        criteria_details=details_start,
+        eta_to_end_time=40.0,
+    )["mode"] == "criteria_start"
+
+    unavailable = knife_service.select_eta(
+        requested_mode="endtime",
+        criteria_details={},
+        eta_to_end_time=None,
+    )
+    assert unavailable["mode"] == "unavailable"
+
+
+def test_knife_stop_untracked_non_case_and_error_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    non_case = tmp_path / "not-case"
+    non_case.mkdir()
+    payload = knife_service._stop_untracked_solver_processes(non_case, signal_name="TERM")
+    assert payload["reason"] == "case_dir_is_not_openfoam_case"
+
+    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    monkeypatch.setattr(knife_service, "refresh_jobs", lambda _case: [])
+    monkeypatch.setattr(
+        knife_service.process_scan_service,
+        "scan_proc_solver_processes",
+        lambda *_a, **_k: [
+            {
+                "pid": 1001,
+                "role": "solver",
+                "case": str(case.resolve()),
+                "launcher_pid": None,
+                "command": "hy2Foam -parallel",
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        knife_service.os,
+        "kill",
+        lambda *_a, **_k: (_ for _ in ()).throw(OSError("denied")),
+    )
+    failed = knife_service._stop_untracked_solver_processes(case, signal_name="TERM")
+    assert failed["selected"] == 1
+    assert failed["failed"][0]["error"] == "denied"

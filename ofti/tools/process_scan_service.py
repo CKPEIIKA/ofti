@@ -1,10 +1,32 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
 _MPI_LAUNCHERS = {"mpirun", "mpiexec", "mpiexec.hydra", "orterun", "srun"}
+_SHELL_LAUNCHERS = {"bash", "sh", "zsh", "dash", "ksh"}
+_DISCOVERY_CACHE_TTL_SECONDS = 600.0
+
+
+@dataclass(frozen=True)
+class ProcessCaseCacheEntry:
+    pid: int
+    ppid: int
+    command_head: str
+    case: Path
+    source: str
+    timestamp: float
+    proc_root: Path
+
+
+@dataclass(frozen=True)
+class ProcessCaseDiscovery:
+    case: Path | None
+    source: str
+    error: str
+    launcher_pid: int | None
 
 
 @dataclass(frozen=True)
@@ -13,6 +35,7 @@ class ProcEntry:
     ppid: int
     args: list[str]
     cwd: Path | None
+    cwd_error: str | None = None
 
 
 class ProcRow(TypedDict, total=False):
@@ -21,8 +44,15 @@ class ProcRow(TypedDict, total=False):
     solver: str | None
     role: str
     tracked: bool
-    case: str | None
+    case: str
     command: str
+    discovery_source: str
+    discovery_error: str
+    launcher_pid: int | None
+    solver_pids: list[int]
+
+
+_DISCOVERY_CACHE: dict[int, ProcessCaseCacheEntry] = {}
 
 
 def running_job_pids(jobs: list[dict[str, Any]]) -> list[int]:
@@ -44,9 +74,11 @@ def scan_proc_solver_processes(
     require_case_target: bool = True,
 ) -> list[ProcRow]:
     table = proc_table(proc_root)
+    _cleanup_discovery_cache()
     case_root = case_path.resolve()
     case_root_is_case = is_case_dir(case_root)
     solver_name = solver.lower() if solver else None
+    launcher_cases = launcher_case_map(table)
     launcher_pids = launcher_pids_for_case(table, solver_name, case_root)
     processes: list[ProcRow] = []
     for entry in table.values():
@@ -57,13 +89,17 @@ def scan_proc_solver_processes(
         role = process_role(entry.args, solver_name)
         if role is None:
             continue
-        inferred_case = infer_case_path(entry, table)
-        inferred_in_scope = inferred_case is not None and (
-            
-                inferred_case == case_root
-                if case_root_is_case
-                else path_within(inferred_case, case_root)
-            
+        discovery = discover_case(
+            entry,
+            table,
+            launcher_cases=launcher_cases,
+            proc_root=proc_root,
+        )
+        inferred_case = discovery.case
+        inferred_in_scope = inferred_case is not None and _in_scope_case(
+            inferred_case,
+            case_root,
+            case_root_is_case=case_root_is_case,
         )
         in_scope = (
             entry_targets_case(entry, case_root)
@@ -79,17 +115,21 @@ def scan_proc_solver_processes(
             solver_name,
         ):
             continue
-        processes.append(
-            {
-                "pid": entry.pid,
-                "ppid": entry.ppid,
-                "solver": solver or guess_solver_from_args(entry.args),
-                "role": role,
-                "tracked": entry.pid in tracked_pids,
-                "case": str(inferred_case) if inferred_case is not None else None,
-                "command": " ".join(entry.args),
-            },
-        )
+        row: ProcRow = {
+            "pid": entry.pid,
+            "ppid": entry.ppid,
+            "solver": solver or guess_solver_from_args(entry.args),
+            "role": role,
+            "tracked": entry.pid in tracked_pids,
+            "case": _case_to_text(inferred_case),
+            "command": " ".join(entry.args),
+            "discovery_source": discovery.source,
+            "discovery_error": discovery.error,
+            "launcher_pid": discovery.launcher_pid,
+        }
+        if role == "launcher":
+            row["solver_pids"] = solver_descendant_pids(entry.pid, table, solver_name)
+        processes.append(row)
     processes.sort(key=lambda item: int(item.get("pid", 0)))
     return processes
 
@@ -106,8 +146,8 @@ def proc_table(proc_root: Path) -> dict[int, ProcEntry]:
         pid = int(entry.name)
         args = read_proc_args(entry)
         ppid = read_proc_ppid(entry)
-        cwd = proc_cwd(entry)
-        table[pid] = ProcEntry(pid=pid, ppid=ppid, args=args, cwd=cwd)
+        cwd, cwd_error = proc_cwd_with_error(entry)
+        table[pid] = ProcEntry(pid=pid, ppid=ppid, args=args, cwd=cwd, cwd_error=cwd_error)
     return table
 
 
@@ -117,16 +157,25 @@ def launcher_pids_for_case(
     case_path: Path,
 ) -> set[int]:
     launcher_pids: set[int] = set()
+    case_root_is_case = is_case_dir(case_path)
     for entry in table.values():
         if not entry.args:
             continue
         base = Path(entry.args[0]).name.lower()
         if base not in _MPI_LAUNCHERS:
             continue
-        targeted = entry_targets_case(entry, case_path) or launcher_descendant_targets_case(
-            entry.pid,
-            table,
-            case_path,
+        inferred_case = infer_case_path(entry, table)
+        targeted = (
+            entry_targets_case(entry, case_path)
+            or launcher_descendant_targets_case(entry.pid, table, case_path)
+            or (
+                inferred_case is not None
+                and _in_scope_case(
+                    inferred_case,
+                    case_path,
+                    case_root_is_case=case_root_is_case,
+                )
+            )
         )
         if not targeted:
             continue
@@ -153,6 +202,22 @@ def launcher_has_solver_descendant(
         if process_role(child.args, solver) == "solver":
             return True
     return False
+
+
+def solver_descendant_pids(
+    pid: int,
+    table: dict[int, ProcEntry],
+    solver: str | None,
+) -> list[int]:
+    pids: list[int] = []
+    for child in table.values():
+        if not has_ancestor(child.pid, {pid}, table):
+            continue
+        if process_role(child.args, solver) != "solver":
+            continue
+        pids.append(child.pid)
+    pids.sort()
+    return pids
 
 
 def has_ancestor(pid: int, ancestors: set[int], table: dict[int, ProcEntry]) -> bool:
@@ -277,6 +342,10 @@ def infer_case_path(entry: ProcEntry, table: dict[int, ProcEntry]) -> Path | Non
         resolved = as_case_dir(candidate, checked=checked)
         if resolved is not None:
             return resolved
+        command_case = case_candidate_from_shell_args(cursor.args, cursor.cwd)
+        resolved = as_case_dir(command_case, checked=checked)
+        if resolved is not None:
+            return resolved
         if cursor.cwd is not None:
             resolved = as_case_dir(cursor.cwd, checked=checked)
             if resolved is not None:
@@ -304,6 +373,45 @@ def case_candidate_from_args(args: list[str], cwd: Path | None) -> Path | None:
     return None
 
 
+def case_candidate_from_shell_args(args: list[str], cwd: Path | None) -> Path | None:
+    if not args:
+        return None
+    base = Path(args[0]).name.lower()
+    if base not in _SHELL_LAUNCHERS:
+        return None
+    for idx, token in enumerate(args[:-1]):
+        if token not in {"-c", "-lc"}:
+            continue
+        command = args[idx + 1]
+        if not command:
+            continue
+        candidate = _shell_cd_candidate(command, cwd)
+        if candidate is not None:
+            return candidate
+    return None
+
+
+def _shell_cd_candidate(command: str, cwd: Path | None) -> Path | None:
+    lowered = command.replace("&&", ";")
+    chunks = [chunk.strip() for chunk in lowered.split(";")]
+    for chunk in chunks:
+        if not chunk.startswith("cd "):
+            continue
+        raw = chunk[3:].strip()
+        if not raw:
+            continue
+        token = raw.split()[0].strip()
+        if token.startswith(("'", '"')) and token.endswith(("'", '"')) and len(token) >= 2:
+            token = token[1:-1]
+        candidate = Path(token).expanduser()
+        if candidate.is_absolute():
+            return candidate
+        if cwd is not None:
+            return (cwd / candidate).resolve()
+        return candidate.resolve()
+    return None
+
+
 def as_case_dir(path: Path | None, *, checked: set[Path] | None = None) -> Path | None:
     if path is None:
         return None
@@ -323,11 +431,18 @@ def is_case_dir(path: Path) -> bool:
 
 
 def proc_cwd(proc_dir: Path) -> Path | None:
+    cwd, _error = proc_cwd_with_error(proc_dir)
+    return cwd
+
+
+def proc_cwd_with_error(proc_dir: Path) -> tuple[Path | None, str | None]:
     cwd_link = proc_dir / "cwd"
     try:
-        return cwd_link.resolve()
-    except OSError:
-        return None
+        return cwd_link.resolve(), None
+    except OSError as exc:
+        if exc.strerror:
+            return None, exc.strerror.lower()
+        return None, str(exc).lower()
 
 
 def launcher_descendant_targets_case(
@@ -365,3 +480,141 @@ def guess_solver_from_args(args: list[str]) -> str:
         if token.endswith("Foam"):
             return token
     return "unknown"
+
+
+def launcher_case_map(table: dict[int, ProcEntry]) -> dict[int, Path]:
+    rows: dict[int, Path] = {}
+    for entry in table.values():
+        if not entry.args:
+            continue
+        if Path(entry.args[0]).name.lower() not in _MPI_LAUNCHERS:
+            continue
+        case_path = infer_case_path(entry, table)
+        if case_path is None:
+            continue
+        rows[entry.pid] = case_path
+    return rows
+
+
+def discover_case(
+    entry: ProcEntry,
+    table: dict[int, ProcEntry],
+    *,
+    launcher_cases: dict[int, Path],
+    proc_root: Path,
+) -> ProcessCaseDiscovery:
+    inferred = infer_case_path(entry, table)
+    if inferred is not None:
+        source = "procfs"
+        launcher_pid = launcher_pid_for_entry(entry, table)
+        if launcher_pid is not None and entry.pid != launcher_pid:
+            source = "launcher"
+        _cache_discovery(entry, inferred, source, proc_root=proc_root)
+        return ProcessCaseDiscovery(
+            case=inferred,
+            source=source,
+            error="",
+            launcher_pid=launcher_pid,
+        )
+    launcher_pid = launcher_pid_for_entry(entry, table)
+    if launcher_pid is not None:
+        launcher_case = launcher_cases.get(launcher_pid)
+        if launcher_case is not None:
+            _cache_discovery(entry, launcher_case, "launcher", proc_root=proc_root)
+            return ProcessCaseDiscovery(
+                case=launcher_case,
+                source="launcher",
+                error="",
+                launcher_pid=launcher_pid,
+            )
+    cached = _cache_lookup(entry, proc_root=proc_root)
+    if cached is not None:
+        return ProcessCaseDiscovery(
+            case=cached.case,
+            source="registry",
+            error="",
+            launcher_pid=launcher_pid,
+        )
+    error = entry.cwd_error or "case_not_found"
+    return ProcessCaseDiscovery(
+        case=None,
+        source="procfs",
+        error=error,
+        launcher_pid=launcher_pid,
+    )
+
+
+def launcher_pid_for_entry(entry: ProcEntry, table: dict[int, ProcEntry]) -> int | None:
+    if entry.args and Path(entry.args[0]).name.lower() in _MPI_LAUNCHERS:
+        return entry.pid
+    cursor = entry
+    visited: set[int] = set()
+    while cursor.pid not in visited:
+        visited.add(cursor.pid)
+        parent_pid = cursor.ppid
+        if parent_pid <= 0 or parent_pid == cursor.pid:
+            break
+        parent = table.get(parent_pid)
+        if parent is None:
+            break
+        if parent.args and Path(parent.args[0]).name.lower() in _MPI_LAUNCHERS:
+            return parent.pid
+        cursor = parent
+    return None
+
+
+def _cache_lookup(entry: ProcEntry, *, proc_root: Path) -> ProcessCaseCacheEntry | None:
+    cached = _DISCOVERY_CACHE.get(entry.pid)
+    if cached is None:
+        return None
+    if cached.proc_root != proc_root.resolve():
+        return None
+    if cached.ppid != entry.ppid:
+        return None
+    if cached.command_head != _command_head(entry.args):
+        return None
+    if (time.time() - cached.timestamp) > _DISCOVERY_CACHE_TTL_SECONDS:
+        _DISCOVERY_CACHE.pop(entry.pid, None)
+        return None
+    return cached
+
+
+def _cache_discovery(entry: ProcEntry, case_path: Path, source: str, *, proc_root: Path) -> None:
+    _DISCOVERY_CACHE[entry.pid] = ProcessCaseCacheEntry(
+        pid=entry.pid,
+        ppid=entry.ppid,
+        command_head=_command_head(entry.args),
+        case=case_path,
+        source=source,
+        timestamp=time.time(),
+        proc_root=proc_root.resolve(),
+    )
+
+
+def _cleanup_discovery_cache() -> None:
+    now = time.time()
+    expired = [
+        pid
+        for pid, row in _DISCOVERY_CACHE.items()
+        if (now - row.timestamp) > _DISCOVERY_CACHE_TTL_SECONDS
+    ]
+    for pid in expired:
+        _DISCOVERY_CACHE.pop(pid, None)
+
+
+def _command_head(args: list[str]) -> str:
+    if not args:
+        return ""
+    return " ".join(args[:4])
+
+
+def _case_to_text(case_path: Path | None) -> str:
+    if case_path is None:
+        return ""
+    return str(case_path)
+
+
+def _in_scope_case(case_path: Path, case_root: Path, *, case_root_is_case: bool) -> bool:
+    if case_root_is_case:
+        return case_path == case_root
+    return path_within(case_path, case_root)

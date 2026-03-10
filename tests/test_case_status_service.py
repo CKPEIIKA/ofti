@@ -5,7 +5,7 @@ from pathlib import Path
 from ofti.tools import case_status_service as svc
 
 
-def test_current_payload_relaxes_proc_target_when_solver_is_unknown(tmp_path: Path) -> None:
+def test_current_payload_uses_single_scan_path_for_unknown_solver(tmp_path: Path) -> None:
     case = tmp_path / "case"
     case.mkdir()
     calls: list[bool] = []
@@ -39,8 +39,20 @@ def test_current_payload_relaxes_proc_target_when_solver_is_unknown(tmp_path: Pa
         running_job_pids_fn=lambda _jobs: [],
         scan_proc_solver_processes_fn=_scan,
     )
-    assert payload["jobs_running"] == 1
-    assert payload["untracked_processes"][0]["pid"] == 404
+    assert payload["jobs_running"] == 0
+    assert payload["untracked_processes"] == []
+    assert calls == [True]
+
+    payload_live = svc.current_payload(
+        case,
+        resolve_solver_name_fn=lambda _case: (None, "system/controlDict not found"),
+        refresh_jobs_fn=lambda _case: [],
+        running_job_pids_fn=lambda _jobs: [],
+        scan_proc_solver_processes_fn=_scan,
+        live=True,
+    )
+    assert payload_live["jobs_running"] == 1
+    assert payload_live["untracked_processes"][0]["pid"] == 404
     assert calls == [True, False]
 
 
