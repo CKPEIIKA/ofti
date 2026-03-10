@@ -85,14 +85,16 @@ def test_run_current_solver_fallback(tmp_path: Path, monkeypatch) -> None:
 
     called = []
 
-    def fake_run_simple(_stdscr, _case, name, cmd, **_kwargs):
+    def fake_run_solver(_case, name, cmd, **_kwargs):
         called.append((name, cmd))
+        return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
-    monkeypatch.setattr("ofti.tools.solver._run_simple_tool", fake_run_simple)
+    monkeypatch.setattr("ofti.tools.solver.run_ops.execute_case_command", fake_run_solver)
     monkeypatch.delenv("WM_PROJECT_DIR", raising=False)
     monkeypatch.setenv("OFTI_USE_RUNFUNCTIONS", "0")
     _reset_config()
     monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_args, **_kwargs: "simpleFoam;")
+    monkeypatch.setattr("ofti.tools.solver.Viewer.display", lambda *_a, **_k: None)
 
     from ofti.tools.solver import run_current_solver
 

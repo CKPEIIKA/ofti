@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ from ofti.tools import (
     tool_dicts_postprocess,
     yplus,
 )
+from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import (
     _no_foam_active,
@@ -42,6 +44,7 @@ from ofti.tools.runner import (
     load_tool_presets,
     tool_status_mode,
 )
+from ofti.tools.tool_aliases import STATIC_TOOL_ALIAS_GROUPS
 from ofti.ui.help import menu_hint, tools_help, tools_physics_help
 from ofti.ui_curses.blockmesh_helper import blockmesh_helper_screen
 from ofti.ui_curses.boundary_matrix import boundary_matrix_screen
@@ -69,12 +72,13 @@ rerun_last_tool = shell_tools.rerun_last_tool
 job_status_poll_screen = shell_tools.job_status_poll_screen
 run_tool_background_screen = job_control.run_tool_background_screen
 stop_job_screen = job_control.stop_job_screen
+pause_job_screen = job_control.pause_job_screen
+resume_job_screen = job_control.resume_job_screen
 residual_timeline_screen = logs_analysis.residual_timeline_screen
 run_checkmesh = run.run_checkmesh
 run_current_solver = solver.run_current_solver
 run_current_solver_live = solver.run_current_solver_live
 run_current_solver_parallel = solver.run_current_solver_parallel
-run_decomposepar = run.run_decomposepar
 run_shell_script_screen = shell_tools.run_shell_script_screen
 renumber_mesh_screen = mesh_utils.renumber_mesh_screen
 transform_points_screen = mesh_utils.transform_points_screen
@@ -106,6 +110,20 @@ def run_tool_by_name(
     *,
     background: bool = False,
 ) -> bool:
+    resolved = _resolve_catalog_tool(case_path, name)
+    if resolved is not None:
+        display_name, command = resolved
+        if background:
+            job_control.start_tool_background(
+                stdscr,
+                case_path,
+                _normalize_tool_name(display_name),
+                command,
+            )
+            return True
+        _run_simple_tool(stdscr, case_path, display_name, command)
+        return True
+
     aliases = _tool_aliases(stdscr, case_path)
     key = _normalize_tool_name(name)
     alias = aliases.get(key)
@@ -124,6 +142,20 @@ def run_tool_by_name(
         return True
     alias.handler()
     return True
+
+
+def _resolve_catalog_tool(case_path: Path, name: str) -> tuple[str, list[str]] | None:
+    resolved = run_ops.resolve_tool(case_path, name)
+    if resolved is not None:
+        return resolved
+    normalized = _normalize_tool_name(name)
+    if normalized.startswith("post:"):
+        token = normalized.split(":", 1)[1]
+        return run_ops.resolve_tool(case_path, f"[post] {token}")
+    if normalized.startswith("post."):
+        token = normalized.split(".", 1)[1]
+        return run_ops.resolve_tool(case_path, f"[post] {token}")
+    return None
 
 
 def _run_snappy_staged(stdscr: Any, case_path: Path) -> None:
@@ -146,114 +178,70 @@ def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, _ToolAlias]:
             background_cmd = existing.background_cmd
         aliases[key] = _ToolAlias(handler=handler, background_cmd=background_cmd, display_name=name)
 
-    def run_simple(name: str, cmd: list[str]) -> Callable[[], None]:
-        return lambda: _run_simple_tool(stdscr, case_path, name, list(cmd))
+    def add_many(
+        names: tuple[str, ...],
+        handler: Callable[[], None],
+        background_cmd: list[str] | None = None,
+    ) -> None:
+        for name in names:
+            add(name, handler, background_cmd)
 
-    base_tools = [
-        ("blockMesh", ["blockMesh"]),
-        ("snappyHexMesh", ["snappyHexMesh"]),
-        ("decomposePar", ["decomposePar"]),
-        ("reconstructPar", ["reconstructPar"]),
-    ]
-    extra_tools = load_tool_presets(case_path)
-    post_tools = load_postprocessing_presets(case_path)
+    def bind(func: Callable[[Any, Path], None]) -> Callable[[], None]:
+        return partial(func, stdscr, case_path)
 
-    for name, cmd in base_tools + extra_tools:
-        add(name, run_simple(name, list(cmd)), background_cmd=list(cmd))
-
-    for name, cmd in post_tools:
-        add(name, run_simple(name, list(cmd)), background_cmd=list(cmd))
-        add(f"post.{name}", run_simple(name, list(cmd)), background_cmd=list(cmd))
-        add(f"post:{name}", run_simple(name, list(cmd)), background_cmd=list(cmd))
-        add(f"post.{name}", run_simple(name, cmd))
-        add(f"post:{name}", run_simple(name, cmd))
-
-    add("rerun", lambda: rerun_last_tool(stdscr, case_path))
-    add("last", lambda: rerun_last_tool(stdscr, case_path))
-    add("highspeed", lambda: high_speed_helper_screen(stdscr, case_path))
-    add("high_speed", lambda: high_speed_helper_screen(stdscr, case_path))
-    add("highspeedhelper", lambda: high_speed_helper_screen(stdscr, case_path))
-    add("boundarymatrix", lambda: boundary_matrix_screen(stdscr, case_path))
-    add("boundary-matrix", lambda: boundary_matrix_screen(stdscr, case_path))
-    add("initialconditions", lambda: initial_conditions_screen(stdscr, case_path))
-    add("initial-conditions", lambda: initial_conditions_screen(stdscr, case_path))
-    add("thermowizard", lambda: thermophysical_wizard_screen(stdscr, case_path))
-    add("thermo-wizard", lambda: thermophysical_wizard_screen(stdscr, case_path))
-    add("blockmeshhelper", lambda: blockmesh_helper_screen(stdscr, case_path))
-    add("blockmesh-helper", lambda: blockmesh_helper_screen(stdscr, case_path))
-    add(
-        "snappystaged",
-        lambda: _run_snappy_staged(stdscr, case_path),
-    )
-    add(
-        "snappy-staged",
-        lambda: _run_snappy_staged(stdscr, case_path),
-    )
-    add("pipelineedit", lambda: pipeline_editor_screen(stdscr, case_path))
-    add("pipeline-edit", lambda: pipeline_editor_screen(stdscr, case_path))
-    add("pipelinerun", lambda: pipeline_runner_screen(stdscr, case_path))
-    add("pipeline-run", lambda: pipeline_runner_screen(stdscr, case_path))
-    add("parametricwizard", lambda: foamlib_parametric_study_screen(stdscr, case_path))
-    add("parametric-wizard", lambda: foamlib_parametric_study_screen(stdscr, case_path))
-    add("fieldsummary", lambda: field_summary_screen(stdscr, case_path))
-    add("field-summary", lambda: field_summary_screen(stdscr, case_path))
-    add(
-        "postprocessingbrowser",
-        lambda: postprocessing_browser_screen(stdscr, case_path),
-    )
-    add(
-        "postprocessing-browser",
-        lambda: postprocessing_browser_screen(stdscr, case_path),
-    )
-    add("samplingsets", lambda: sampling_sets_screen(stdscr, case_path))
-    add("sampling-sets", lambda: sampling_sets_screen(stdscr, case_path))
-    add("runparallel", lambda: run_current_solver_parallel(stdscr, case_path))
-    add("run-parallel", lambda: run_current_solver_parallel(stdscr, case_path))
-    add("meshquality", lambda: run_checkmesh(stdscr, case_path))
-    add("mesh-quality", lambda: run_checkmesh(stdscr, case_path))
-    add("physicshelpers", lambda: physics_tools_screen(stdscr, case_path))
-    add("physics-helpers", lambda: physics_tools_screen(stdscr, case_path))
-    add("runscript", lambda: run_shell_script_screen(stdscr, case_path))
-    add("postprocess", lambda: post_process_prompt(stdscr, case_path))
-    add("foamcalc", lambda: foam_calc_prompt(stdscr, case_path))
-    add("runcurrentsolver", lambda: run_current_solver(stdscr, case_path))
-    add("runlive", lambda: run_current_solver_live(stdscr, case_path))
-    add("removelogs", lambda: remove_all_logs(stdscr, case_path))
-    add("cleantimedirs", lambda: clean_time_directories(stdscr, case_path))
-    add("blockmesh", lambda: run.run_blockmesh(stdscr, case_path))
-    add("decomposepar", lambda: run_decomposepar(stdscr, case_path))
-    add("reconstruct_manager", lambda: reconstruct_manager_screen(stdscr, case_path))
-    add("reconstructmanager", lambda: reconstruct_manager_screen(stdscr, case_path))
-    add("timedir_pruner", lambda: time_directory_pruner_screen(stdscr, case_path))
-    add("timedirpruner", lambda: time_directory_pruner_screen(stdscr, case_path))
-    add("safestop", lambda: safe_stop_screen(stdscr, case_path))
-    add("solveresume", lambda: solver_resurrection_screen(stdscr, case_path))
-    add("clone", lambda: clone_case(stdscr, case_path))
-    add("yplus", lambda: yplus_screen(stdscr, case_path))
-    add("checkmesh", lambda: run_checkmesh(stdscr, case_path))
-    add("logs", lambda: logs_screen(stdscr, case_path))
-    add("viewlogs", lambda: logs_screen(stdscr, case_path))
-    add("residuals", lambda: residual_timeline_screen(stdscr, case_path))
-    add("residual_timeline", lambda: residual_timeline_screen(stdscr, case_path))
-    add("probes", lambda: probes_viewer_screen(stdscr, case_path))
-    add("probesviewer", lambda: probes_viewer_screen(stdscr, case_path))
-    add("loganalysis", lambda: log_analysis_screen(stdscr, case_path))
-    add("paraview", lambda: open_paraview_screen(stdscr, case_path))
-    add("diagnostics", lambda: diagnostics_screen(stdscr, case_path))
-    add("casedoctor", lambda: case_doctor.case_doctor_screen(stdscr, case_path))
-    add("jobstatus", lambda: job_status_poll_screen(stdscr, case_path))
-    add("jobstart", lambda: run_tool_background_screen(stdscr, case_path))
-    add("jobstop", lambda: stop_job_screen(stdscr, case_path))
-    add("clitools", lambda: cli_tools_screen(stdscr, case_path))
-    add("cli-tools", lambda: cli_tools_screen(stdscr, case_path))
-    add("knife", lambda: cli_knife_screen(stdscr, case_path))
-    add("plot", lambda: cli_plot_screen(stdscr, case_path))
-    add("watch", lambda: cli_watch_screen(stdscr, case_path))
-    add("run", lambda: cli_run_screen(stdscr, case_path))
-    add("renumbermesh", lambda: renumber_mesh_screen(stdscr, case_path))
-    add("transformpoints", lambda: transform_points_screen(stdscr, case_path))
-    add("cfmesh", lambda: cfmesh_screen(stdscr, case_path))
-    add("sampling", lambda: sampling_sets_screen(stdscr, case_path))
+    handlers: dict[str, Callable[[], None]] = {
+        "rerun": bind(rerun_last_tool),
+        "highspeed": bind(high_speed_helper_screen),
+        "boundarymatrix": bind(boundary_matrix_screen),
+        "initialconditions": bind(initial_conditions_screen),
+        "thermowizard": bind(thermophysical_wizard_screen),
+        "blockmeshhelper": bind(blockmesh_helper_screen),
+        "snappystaged": bind(_run_snappy_staged),
+        "pipelineedit": bind(pipeline_editor_screen),
+        "pipelinerun": bind(pipeline_runner_screen),
+        "parametricwizard": bind(foamlib_parametric_study_screen),
+        "fieldsummary": bind(field_summary_screen),
+        "postprocessingbrowser": bind(postprocessing_browser_screen),
+        "samplingsets": bind(sampling_sets_screen),
+        "runparallel": bind(run_current_solver_parallel),
+        "meshquality": bind(run_checkmesh),
+        "physicshelpers": bind(physics_tools_screen),
+        "runscript": bind(run_shell_script_screen),
+        "postprocess": bind(post_process_prompt),
+        "foamcalc": bind(foam_calc_prompt),
+        "runcurrentsolver": bind(run_current_solver),
+        "runlive": bind(run_current_solver_live),
+        "removelogs": bind(remove_all_logs),
+        "cleantimedirs": bind(clean_time_directories),
+        "reconstruct_manager": bind(reconstruct_manager_screen),
+        "timedir_pruner": bind(time_directory_pruner_screen),
+        "safestop": bind(safe_stop_screen),
+        "solveresume": bind(solver_resurrection_screen),
+        "clone": bind(clone_case),
+        "yplus": bind(yplus_screen),
+        "logs": bind(logs_screen),
+        "residuals": bind(residual_timeline_screen),
+        "probes": bind(probes_viewer_screen),
+        "loganalysis": bind(log_analysis_screen),
+        "paraview": bind(open_paraview_screen),
+        "diagnostics": bind(diagnostics_screen),
+        "casedoctor": bind(case_doctor.case_doctor_screen),
+        "jobstatus": bind(job_status_poll_screen),
+        "jobstart": bind(run_tool_background_screen),
+        "jobstop": bind(stop_job_screen),
+        "jobpause": bind(pause_job_screen),
+        "jobresume": bind(resume_job_screen),
+        "clitools": bind(cli_tools_screen),
+        "knife": bind(cli_knife_screen),
+        "plot": bind(cli_plot_screen),
+        "watch": bind(cli_watch_screen),
+        "run": bind(cli_run_screen),
+        "renumbermesh": bind(renumber_mesh_screen),
+        "transformpoints": bind(transform_points_screen),
+        "cfmesh": bind(cfmesh_screen),
+    }
+    for names in STATIC_TOOL_ALIAS_GROUPS:
+        add_many(names, handlers[names[0]])
 
     return aliases
 

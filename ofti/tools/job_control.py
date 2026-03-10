@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import os
 import shlex
-import subprocess
 from pathlib import Path
 from typing import Any
 
 from ofti.foam.config import get_config
-from ofti.tools import job_control_service
-from ofti.tools.helpers import resolve_openfoam_bashrc, with_bashrc
+from ofti.tools import watch_service
+from ofti.tools.cli_tools import run as run_ops
+from ofti.tools.helpers import resolve_openfoam_bashrc
 from ofti.tools.input_prompts import prompt_command_line
-from ofti.tools.job_registry import finish_job, refresh_jobs, register_job
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import (
     _expand_command,
@@ -18,7 +17,6 @@ from ofti.tools.runner import (
     _show_message,
     _with_no_foam_hint,
 )
-from ofti.tools.tool_catalog import tool_catalog
 
 
 def run_tool_background_screen(stdscr: Any, case_path: Path) -> None:
@@ -43,13 +41,11 @@ def run_tool_background_screen(stdscr: Any, case_path: Path) -> None:
 
 
 def stop_job_screen(stdscr: Any, case_path: Path) -> None:
-    jobs = [job for job in refresh_jobs(case_path) if job.get("status") == "running"]
+    jobs = _running_jobs(case_path)
     if not jobs:
         _show_message(stdscr, "No running jobs to stop.")
         return
-    labels = [f"{job.get('name','job')} pid={job.get('pid','?')}" for job in jobs] + [
-        "Back",
-    ]
+    labels = [_job_label(job) for job in jobs] + ["Back"]
     menu = build_menu(
         stdscr,
         "Stop job",
@@ -60,32 +56,41 @@ def stop_job_screen(stdscr: Any, case_path: Path) -> None:
     if choice == -1 or choice == len(labels) - 1:
         return
     job = jobs[choice]
-    control = job_control_service.stop_jobs(
+    payload = watch_service.stop_payload(
         case_path,
-        [job],
-        job_id=None,
+        job_id=str(job.get("id", "")),
         name=None,
-        all_jobs=True,
+        all_jobs=False,
+        kind="any",
         signal_name="TERM",
-        kill_fn=os.kill,
-        finish_job_fn=finish_job,
     )
-    if control["failed"]:
-        row = control["failed"][0]
+    failed = list(payload.get("failed", []))
+    stopped = list(payload.get("stopped", []))
+    if failed:
+        row = failed[0]
         _show_message(
             stdscr,
             f"Failed to stop pid {row.get('pid', '?')}: {row.get('error', 'unknown')}",
         )
         return
-    if control["stopped"]:
-        row = control["stopped"][0]
+    if stopped:
+        row = stopped[0]
         _show_message(stdscr, f"Sent SIGTERM to pid {row.get('pid', '?')}.")
         return
     _show_message(stdscr, "No job stopped.")
 
 
 def _background_tool_catalog(case_path: Path) -> list[tuple[str, list[str]]]:
-    base = tool_catalog(case_path)
+    base: list[tuple[str, list[str]]] = []
+    try:
+        payload = run_ops.tool_catalog_payload(case_path)
+    except ValueError:
+        payload = {"tools": []}
+    for display in payload["tools"]:
+        resolved = run_ops.resolve_tool(case_path, display)
+        if resolved is None:
+            continue
+        base.append((resolved[0], resolved[1]))
     custom = [("[custom] command", [])]
     return base + custom
 
@@ -111,12 +116,21 @@ def _start_background_command(
         return
 
     try:
-        process = _popen_background(expanded, case_path, name)
-    except OSError as exc:
+        payload = watch_service.start_payload(
+            case_path,
+            name=name,
+            command=expanded,
+            detached=True,
+            log_file=str(_log_path(case_path, name)),
+            kind="solver",
+        )
+    except ValueError as exc:
         _show_message(stdscr, _with_no_foam_hint(f"Failed to run {name}: {exc}"))
         return
-    register_job(case_path, name, process.pid, " ".join(expanded), _log_path(case_path, name))
-    _show_message(stdscr, f"Started {name} (pid {process.pid}).")
+    _show_message(
+        stdscr,
+        f"Started {name} (pid {payload.get('pid', '?')}).",
+    )
 
 
 def start_tool_background(stdscr: Any, case_path: Path, name: str, cmd: list[str]) -> None:
@@ -129,27 +143,110 @@ def _start_background_shell(
     name: str,
     shell_cmd: str,
 ) -> None:
-    shell_cmd = with_bashrc(_expand_shell_command(shell_cmd, case_path))
+    shell_cmd = _expand_shell_command(shell_cmd, case_path)
     try:
-        process = _popen_background(["bash", "--noprofile", "--norc", "-c", shell_cmd], case_path, name)
-    except OSError as exc:
+        payload = watch_service.start_payload(
+            case_path,
+            name=name,
+            command=["bash", "--noprofile", "--norc", "-c", shell_cmd],
+            detached=True,
+            log_file=str(_log_path(case_path, name)),
+            kind="solver",
+        )
+    except ValueError as exc:
         _show_message(stdscr, _with_no_foam_hint(f"Failed to run {name}: {exc}"))
         return
-    register_job(case_path, name, process.pid, shell_cmd, _log_path(case_path, name))
-    _show_message(stdscr, f"Started {name} (pid {process.pid}).")
-
-
-def _popen_background(cmd: list[str], case_path: Path, name: str) -> subprocess.Popen[str]:
-    log_path = _log_path(case_path, name)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = log_path.open("a", encoding="utf-8", errors="ignore")
-    return subprocess.Popen(  # noqa: S603
-        cmd,
-        cwd=case_path,
-        stdout=handle,
-        stderr=handle,
-        text=True,
+    _show_message(
+        stdscr,
+        f"Started {name} (pid {payload.get('pid', '?')}).",
     )
+
+
+def pause_job_screen(stdscr: Any, case_path: Path) -> None:
+    _job_action_screen(
+        stdscr,
+        case_path,
+        title="Pause job",
+        success_prefix="Paused",
+        run_action=lambda selected: watch_service.pause_payload(
+            case_path,
+            job_id=selected,
+            all_jobs=False,
+            kind="any",
+        ),
+        key="paused",
+        empty_message="No running jobs to pause.",
+    )
+
+
+def resume_job_screen(stdscr: Any, case_path: Path) -> None:
+    _job_action_screen(
+        stdscr,
+        case_path,
+        title="Resume job",
+        success_prefix="Resumed",
+        run_action=lambda selected: watch_service.resume_payload(
+            case_path,
+            job_id=selected,
+            all_jobs=False,
+            kind="any",
+        ),
+        key="resumed",
+        empty_message="No running jobs to resume.",
+    )
+
+
+def _running_jobs(case_path: Path) -> list[dict[str, Any]]:
+    rows = [watch_service._job_with_schema(case_path, job) for job in watch_service.refresh_jobs(case_path)]
+    return [job for job in rows if bool(job.get("running"))]
+
+
+def _job_label(job: dict[str, Any]) -> str:
+    return (
+        f"{job.get('name', 'job')} pid={job.get('pid', '?')} "
+        f"status={job.get('status', 'unknown')}"
+    )
+
+
+def _job_action_screen(
+    stdscr: Any,
+    case_path: Path,
+    *,
+    title: str,
+    success_prefix: str,
+    run_action,
+    key: str,
+    empty_message: str,
+) -> None:
+    jobs = _running_jobs(case_path)
+    if not jobs:
+        _show_message(stdscr, empty_message)
+        return
+    labels = [_job_label(job) for job in jobs] + ["Back"]
+    menu = build_menu(stdscr, title, labels, menu_key=f"menu:{_sanitize_title(title)}")
+    choice = menu.navigate()
+    if choice == -1 or choice == len(labels) - 1:
+        return
+    selected = str(jobs[choice].get("id", ""))
+    payload = run_action(selected)
+    failed = list(payload.get("failed", []))
+    changed = list(payload.get(key, []))
+    if failed:
+        row = failed[0]
+        _show_message(
+            stdscr,
+            f"Failed to update pid {row.get('pid', '?')}: {row.get('error', 'unknown')}",
+        )
+        return
+    if changed:
+        row = changed[0]
+        _show_message(stdscr, f"{success_prefix} pid {row.get('pid', '?')}.")
+        return
+    _show_message(stdscr, "No job updated.")
+
+
+def _sanitize_title(title: str) -> str:
+    return "".join(ch.lower() if ch.isalnum() else "_" for ch in title).strip("_")
 
 
 def _log_path(case_path: Path, name: str) -> Path:

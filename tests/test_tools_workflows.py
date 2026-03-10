@@ -90,15 +90,15 @@ def test_run_tool_by_name_dispatches_simple_tool(tmp_path: Path, monkeypatch) ->
     case_dir = tmp_path / "case"
     case_dir.mkdir()
     screen = FakeScreen()
-    called: list[str] = []
+    called: list[tuple[str, list[str]]] = []
 
-    def fake_run_blockmesh(_stdscr, _case):
-        called.append("blockMesh")
+    def fake_run_simple(_stdscr, _case, name: str, cmd: list[str], **_kwargs: object) -> None:
+        called.append((name, list(cmd)))
 
-    monkeypatch.setattr("ofti.tools.run.run_blockmesh", fake_run_blockmesh)
+    monkeypatch.setattr("ofti.tools.menus._run_simple_tool", fake_run_simple)
 
     assert run_tool_by_name(screen, case_dir, "blockMesh") is True
-    assert called == ["blockMesh"]
+    assert called == [("blockMesh", ["blockMesh"])]
 
 
 def test_rerun_last_tool_replays_shell(tmp_path: Path, monkeypatch) -> None:

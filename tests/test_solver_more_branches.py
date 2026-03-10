@@ -35,7 +35,11 @@ def test_run_current_solver_guard_branches(monkeypatch: pytest.MonkeyPatch, tmp_
     monkeypatch.setattr(solver, "resolve_solver_name", lambda _case: ("simpleFoam", None))
     monkeypatch.setattr(solver, "_ensure_zero_dir", lambda *_a, **_k: False)
     called: list[bool] = []
-    monkeypatch.setattr(solver, "_run_simple_tool", lambda *_a, **_k: called.append(True))
+    monkeypatch.setattr(
+        solver.run_ops,
+        "execute_case_command",
+        lambda *_a, **_k: called.append(True),
+    )
     solver.run_current_solver(_Screen(), case)
     assert called == []
 
@@ -56,7 +60,12 @@ def test_run_current_solver_log_prompt_and_execute(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(solver, "_ensure_zero_dir", lambda *_a, **_k: True)
     monkeypatch.setattr(solver, "validate_initial_fields", lambda _case: [])
     called: list[str] = []
-    monkeypatch.setattr(solver, "_run_simple_tool", lambda *_a, **_k: called.append("run"))
+    
+    def _run_solver(*_a: object, **_k: object) -> object:
+        called.append("run")
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(solver.run_ops, "execute_case_command", _run_solver)
     monkeypatch.setattr(solver, "truncate_log", lambda _path: called.append("truncate"))
 
     solver.run_current_solver(_Screen(keys=[ord("n")]), case)

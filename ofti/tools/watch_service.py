@@ -9,8 +9,15 @@ import time
 from pathlib import Path
 from typing import Any, Literal
 
+from ofti.foam.subprocess_utils import run_trusted
 from ofti.foamlib.logs import read_log_tail_lines
-from ofti.tools import case_source_service, job_control_service, process_scan_service
+from ofti.tools import (
+    case_source_service,
+    job_control_service,
+    process_scan_service,
+    runner_service,
+)
+from ofti.tools.helpers import with_bashrc
 from ofti.tools.job_registry import finish_job, load_jobs, refresh_jobs, register_job, save_jobs
 
 signal = _signal
@@ -49,6 +56,82 @@ def jobs_payload(
         "kind": selected_kind or "any",
         "jobs": shaped,
     }
+
+
+def start_payload(
+    case_dir: Path,
+    *,
+    name: str,
+    command: list[str],
+    detached: bool = True,
+    log_file: str | None = None,
+    dry_run: bool = False,
+    kind: str = _SOLVER_KIND,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    case_path = case_source_service.require_case_dir(case_dir)
+    normalized_kind = _normalize_kind_filter(kind) or _SOLVER_KIND
+    if normalized_kind not in {_SOLVER_KIND, _WATCHER_KIND}:
+        raise ValueError(f"unsupported job kind: {kind}")
+    resolved_command = normalize_external_command(list(command))
+    if not resolved_command and not dry_run:
+        raise ValueError("command is required")
+    log_path = _external_log_path(case_path, name=name, raw=log_file)
+    payload: dict[str, Any] = {
+        "case": str(case_path),
+        "name": name,
+        "kind": normalized_kind,
+        "command": resolved_command,
+        "detached": detached,
+        "log_path": str(log_path),
+        "dry_run": dry_run,
+    }
+    if env:
+        payload["env_keys"] = sorted(env)
+    if dry_run:
+        payload["ok"] = True
+        return payload
+
+    holder: dict[str, str] = {}
+
+    def _register(
+        register_case: Path,
+        register_name: str,
+        pid: int,
+        command_text: str,
+        log: Path | None,
+    ) -> str:
+        job_id = register_job(
+            register_case,
+            register_name,
+            pid,
+            command_text,
+            log,
+            kind=normalized_kind,
+            detached=detached,
+        )
+        holder["job_id"] = job_id
+        return job_id
+
+    result = runner_service.execute_case_command(
+        case_path,
+        name,
+        resolved_command,
+        background=True,
+        detached=detached,
+        log_path=log_path,
+        extra_env=env,
+        with_bashrc_fn=with_bashrc,
+        run_trusted_fn=run_trusted,
+        popen_fn=subprocess.Popen,
+        register_job_fn=_register,
+    )
+    if result.pid is None:
+        raise ValueError("missing background pid")
+    payload["pid"] = int(result.pid)
+    payload["job_id"] = holder.get("job_id")
+    payload["ok"] = True
+    return payload
 
 
 def interval_payload(case_dir: Path, *, seconds: float | None = None) -> dict[str, Any]:

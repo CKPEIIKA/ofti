@@ -14,6 +14,7 @@ from ofti.foam.config import get_config, key_in
 from ofti.foam.exceptions import QuitAppError
 from ofti.foam.subprocess_utils import run_trusted
 from ofti.tools.helpers import resolve_openfoam_bashrc, with_bashrc
+from ofti.tools.tool_aliases import STATIC_TOOL_ALIAS_NAMES
 from ofti.ui.status import status_message
 from ofti.ui_curses.viewer import Viewer
 
@@ -150,81 +151,7 @@ def _tool_alias_keys(case_path: Path) -> list[str]:
         keys.append(_normalize_tool_name(f"post.{name}"))
         keys.append(_normalize_tool_name(f"post:{name}"))
 
-    keys += [
-        _normalize_tool_name("checkmesh"),
-        _normalize_tool_name("meshquality"),
-        _normalize_tool_name("mesh-quality"),
-        _normalize_tool_name("logs"),
-        _normalize_tool_name("viewlogs"),
-        _normalize_tool_name("residuals"),
-        _normalize_tool_name("residual_timeline"),
-        _normalize_tool_name("probes"),
-        _normalize_tool_name("probesviewer"),
-        _normalize_tool_name("highspeed"),
-        _normalize_tool_name("high_speed"),
-        _normalize_tool_name("highspeedhelper"),
-        _normalize_tool_name("physicshelpers"),
-        _normalize_tool_name("physics-helpers"),
-        _normalize_tool_name("boundarymatrix"),
-        _normalize_tool_name("boundary-matrix"),
-        _normalize_tool_name("initialconditions"),
-        _normalize_tool_name("initial-conditions"),
-        _normalize_tool_name("thermowizard"),
-        _normalize_tool_name("thermo-wizard"),
-        _normalize_tool_name("blockmeshhelper"),
-        _normalize_tool_name("blockmesh-helper"),
-        _normalize_tool_name("snappystaged"),
-        _normalize_tool_name("snappy-staged"),
-        _normalize_tool_name("pipelineedit"),
-        _normalize_tool_name("pipeline-edit"),
-        _normalize_tool_name("pipelinerun"),
-        _normalize_tool_name("pipeline-run"),
-        _normalize_tool_name("parametricwizard"),
-        _normalize_tool_name("parametric-wizard"),
-        _normalize_tool_name("fieldsummary"),
-        _normalize_tool_name("field-summary"),
-        _normalize_tool_name("clitools"),
-        _normalize_tool_name("cli-tools"),
-        _normalize_tool_name("knife"),
-        _normalize_tool_name("plot"),
-        _normalize_tool_name("watch"),
-        _normalize_tool_name("run"),
-        _normalize_tool_name("postprocessingbrowser"),
-        _normalize_tool_name("postprocessing-browser"),
-        _normalize_tool_name("samplingsets"),
-        _normalize_tool_name("sampling-sets"),
-        _normalize_tool_name("runparallel"),
-        _normalize_tool_name("run-parallel"),
-    ]
-
-    keys.extend(
-        [
-            _normalize_tool_name("rerun"),
-            _normalize_tool_name("last"),
-            _normalize_tool_name("runScript"),
-            _normalize_tool_name("postProcess"),
-            _normalize_tool_name("foamCalc"),
-            _normalize_tool_name("runCurrentSolver"),
-            _normalize_tool_name("runLive"),
-            _normalize_tool_name("runParallel"),
-            _normalize_tool_name("removeLogs"),
-            _normalize_tool_name("cleanTimeDirs"),
-            _normalize_tool_name("cleanCase"),
-            _normalize_tool_name("reconstructManager"),
-            _normalize_tool_name("timeDirPruner"),
-            _normalize_tool_name("safeStop"),
-            _normalize_tool_name("solveResume"),
-            _normalize_tool_name("clone"),
-            _normalize_tool_name("yPlus"),
-            _normalize_tool_name("jobStatus"),
-            _normalize_tool_name("caseDoctor"),
-            _normalize_tool_name("renumberMesh"),
-            _normalize_tool_name("transformPoints"),
-            _normalize_tool_name("cfMesh"),
-            _normalize_tool_name("jobStart"),
-            _normalize_tool_name("jobStop"),
-        ],
-    )
+    keys.extend(_normalize_tool_name(name) for name in STATIC_TOOL_ALIAS_NAMES)
 
     return keys
 
