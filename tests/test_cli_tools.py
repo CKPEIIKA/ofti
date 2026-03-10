@@ -54,6 +54,7 @@ def test_knife_group_help_lists_new_commands(capsys) -> None:
     assert "criteria" in out
     assert "eta" in out
     assert "report" in out
+    assert "campaign" in out
 
 
 def test_run_tool_list_outputs_catalog_json(tmp_path, capsys) -> None:
@@ -304,11 +305,56 @@ def test_knife_new_commands_json(tmp_path, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
     assert payload["mode"] == "endtime"
+    assert payload["eta_mode"] in {"end_time", "unavailable"}
+    assert "eta_reason" in payload
 
     code = cli_tools.main(["knife", "report", str(case), "--format", "json"])
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
     assert payload["case"] == str(case.resolve())
+
+
+def test_knife_campaign_commands_json(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "campaign_list_payload",
+        lambda *_a, **_k: {"case": "/root", "count": 1, "cases": ["/root/caseA"]},
+    )
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "campaign_rank_payload",
+        lambda *_a, **_k: {
+            "case": "/root",
+            "count": 1,
+            "ranked": [{"case": "/root/caseA", "criteria_met": 1, "criteria_total": 1, "criteria_worst_ratio": 0.1}],
+        },
+    )
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "campaign_stop_worst_payload",
+        lambda *_a, **_k: {
+            "case": "/root",
+            "selected": 1,
+            "dry_run": True,
+            "targets": ["/root/caseA"],
+            "actions": [],
+        },
+    )
+
+    code = cli_tools.main(["knife", "campaign", "list", "/root", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["count"] == 1
+
+    code = cli_tools.main(["knife", "campaign", "rank", "/root", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["count"] == 1
+
+    code = cli_tools.main(["knife", "campaign", "stop", "/root", "--worst", "1", "--dry-run", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["dry_run"] is True
 
 
 def test_watch_start_uses_watcher_preset_when_available(monkeypatch, capsys) -> None:

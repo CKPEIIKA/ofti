@@ -56,34 +56,14 @@ def current_payload(
     jobs = refresh_jobs_fn(case_path)
     active_jobs = [job for job in jobs if job.get("status") in {"running", "paused"}]
     tracked_pids = set(running_job_pids_fn(active_jobs))
-    untracked: list[SolverProcessRow] = []
-    if solver and solver_error is None:
-        untracked = scan_proc_solver_processes_fn(
-            case_path,
-            solver,
-            tracked_pids=tracked_pids,
-        )
-        if live and not untracked:
-            untracked = scan_proc_solver_processes_fn(
-                case_path,
-                solver,
-                tracked_pids=tracked_pids,
-                require_case_target=False,
-            )
-    elif solver_error is not None:
-        untracked = scan_proc_solver_processes_fn(
-            case_path,
-            None,
-            tracked_pids=tracked_pids,
-        )
-        if not untracked:
-            untracked = scan_proc_solver_processes_fn(
-                case_path,
-                None,
-                tracked_pids=tracked_pids,
-                require_case_target=False,
-            )
-    running_count = len(active_jobs) if active_jobs else len(untracked)
+    solver_query = solver if solver and solver_error is None else None
+    untracked = scan_proc_solver_processes_fn(
+        case_path,
+        solver_query,
+        tracked_pids=tracked_pids,
+        require_case_target=not live,
+    )
+    running_count = len(active_jobs) if active_jobs else untracked_running_count(untracked)
     return {
         "case": str(case_path),
         "solver": solver,
@@ -147,7 +127,7 @@ def status_payload(
     latest_time_value = runtime["latest_time"]
     has_live_pids = bool(live_processes)
     running_heuristic = has_live_pids or bool(runtime["log_fresh"])
-    running_count = len(active_jobs) if active_jobs else len(untracked_live)
+    running_count = len(active_jobs) if active_jobs else untracked_running_count(untracked_live)
     return {
         "case": str(case_path),
         "solver": solver,
@@ -191,3 +171,24 @@ def _runtime_snapshot(
         )
     except TypeError:
         return runtime_control_snapshot_fn(case_path, solver)
+
+
+def untracked_running_count(rows: list[SolverProcessRow]) -> int:
+    if not rows:
+        return 0
+    launcher_pids = {
+        int(row["pid"])
+        for row in rows
+        if str(row.get("role")) == "launcher" and int(row.get("pid", 0)) > 0
+    }
+    solver_pids = {
+        int(row["pid"])
+        for row in rows
+        if str(row.get("role")) == "solver"
+        and int(row.get("pid", 0)) > 0
+        and (
+            (launcher_pid := row.get("launcher_pid")) is None
+            or (isinstance(launcher_pid, int) and launcher_pid <= 0)
+        )
+    }
+    return len(launcher_pids) + len(solver_pids)

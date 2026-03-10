@@ -64,6 +64,8 @@ def test_scan_proc_solver_processes_filters_tracked(tmp_path: Path) -> None:
         include_tracked=False,
     )
     assert {int(row["pid"]) for row in rows} == {100}
+    assert rows[0]["launcher_pid"] == 100
+    assert rows[0]["solver_pids"] == [101]
 
     rows_all = svc.scan_proc_solver_processes(
         case,
@@ -73,6 +75,8 @@ def test_scan_proc_solver_processes_filters_tracked(tmp_path: Path) -> None:
         include_tracked=True,
     )
     assert {int(row["pid"]) for row in rows_all} == {100, 101}
+    solver_row = next(row for row in rows_all if int(row["pid"]) == 101)
+    assert solver_row["launcher_pid"] == 100
 
 
 def test_launcher_graph_helpers_scope_case(tmp_path: Path) -> None:
@@ -112,6 +116,8 @@ def test_scan_proc_solver_processes_infers_case_from_processor_cwd(tmp_path: Pat
     )
     assert len(rows) == 1
     assert rows[0]["case"] == str(case.resolve())
+    assert rows[0]["discovery_source"] in {"procfs", "launcher"}
+    assert rows[0]["discovery_error"] == ""
 
 
 def test_read_proc_args_falls_back_to_comm(tmp_path: Path) -> None:
@@ -126,3 +132,94 @@ def test_read_proc_args_falls_back_to_comm(tmp_path: Path) -> None:
         comm="hy2Foam",
     )
     assert svc.read_proc_args(proc_dir) == ["hy2Foam"]
+
+
+def test_scan_processes_reports_unknown_case_with_explicit_error(tmp_path: Path) -> None:
+    svc._DISCOVERY_CACHE.clear()
+    case = _make_case(tmp_path / "case")
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    _write_proc_entry(
+        proc_root,
+        pid=400,
+        ppid=1,
+        cmdline=b"hy2Foam\x00-parallel\x00",
+        cwd=None,
+    )
+    rows = svc.scan_proc_solver_processes(
+        case,
+        None,
+        tracked_pids=set(),
+        proc_root=proc_root,
+        require_case_target=False,
+    )
+    assert len(rows) == 1
+    assert rows[0]["case"] == ""
+    assert rows[0]["discovery_source"] == "procfs"
+    assert rows[0]["discovery_error"] != ""
+
+
+def test_scan_processes_infers_case_from_shell_cd_parent(tmp_path: Path) -> None:
+    svc._DISCOVERY_CACHE.clear()
+    case = _make_case(tmp_path / "case")
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    _write_proc_entry(
+        proc_root,
+        pid=500,
+        ppid=1,
+        cmdline=f"bash\x00-lc\x00cd {case} && mpirun -np 6 hy2Foam -parallel\x00".encode(),
+        cwd=None,
+    )
+    _write_proc_entry(
+        proc_root,
+        pid=501,
+        ppid=500,
+        cmdline=b"hy2Foam\x00-parallel\x00",
+        cwd=None,
+    )
+    rows = svc.scan_proc_solver_processes(
+        case.parent,
+        None,
+        tracked_pids=set(),
+        proc_root=proc_root,
+        require_case_target=True,
+    )
+    assert {row["pid"] for row in rows} == {501}
+    assert rows[0]["case"] == str(case.resolve())
+    assert rows[0]["launcher_pid"] is None
+    assert rows[0]["discovery_source"] in {"procfs", "launcher"}
+
+
+def test_scan_processes_uses_registry_cache_for_same_pid(tmp_path: Path) -> None:
+    svc._DISCOVERY_CACHE.clear()
+    case = _make_case(tmp_path / "case")
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    proc_dir = _write_proc_entry(
+        proc_root,
+        pid=700,
+        ppid=1,
+        cmdline=b"hy2Foam\x00-parallel\x00",
+        cwd=case,
+    )
+    rows = svc.scan_proc_solver_processes(
+        case,
+        None,
+        tracked_pids=set(),
+        proc_root=proc_root,
+        require_case_target=True,
+    )
+    assert rows[0]["case"] == str(case.resolve())
+    assert rows[0]["discovery_source"] == "procfs"
+
+    (proc_dir / "cwd").unlink()
+    rows_cached = svc.scan_proc_solver_processes(
+        case,
+        None,
+        tracked_pids=set(),
+        proc_root=proc_root,
+        require_case_target=False,
+    )
+    assert rows_cached[0]["case"] == str(case.resolve())
+    assert rows_cached[0]["discovery_source"] == "registry"

@@ -211,8 +211,15 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     run.add_argument("--json", action="store_true", help="Print result as JSON")
     run.set_defaults(func=_watch_start)
 
-    stop = knife_sub.add_parser("stop", help="Alias of watch stop")
+    stop = knife_sub.add_parser("stop", help="Stop solver jobs (tracked and untracked)")
     stop.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    stop.add_argument(
+        "--case",
+        dest="case_override",
+        default=None,
+        type=Path,
+        help="Target case directory (overrides positional case_dir)",
+    )
     stop.add_argument("--job-id", default=None)
     stop.add_argument("--name", default=None)
     stop.add_argument("--all", action="store_true")
@@ -223,7 +230,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Signal used to stop job(s); TERM is gentle and default",
     )
     stop.add_argument("--json", action="store_true")
-    stop.set_defaults(func=_watch_stop)
+    stop.set_defaults(func=_knife_stop)
 
     pause = knife_sub.add_parser("pause", help="Alias of watch pause")
     pause.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
@@ -328,6 +335,75 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     report.add_argument("--tail-bytes", type=int, default=None)
     report.add_argument("--json", action="store_true", help="Alias for --format json")
     report.set_defaults(func=_knife_report)
+
+    campaign = knife_sub.add_parser(
+        "campaign",
+        help="Manage grouped case sets",
+    )
+    campaign.set_defaults(func=_help_handler(campaign))
+    campaign_sub = campaign.add_subparsers(dest="campaign_command", required=False)
+
+    campaign_list = campaign_sub.add_parser("list", help="List campaign case directories")
+    campaign_list.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    campaign_list.add_argument("--glob", default="*")
+    campaign_list.add_argument("--summary-csv", default=None, type=Path)
+    campaign_list.add_argument("--json", action="store_true")
+    campaign_list.set_defaults(func=_knife_campaign_list)
+
+    campaign_status = campaign_sub.add_parser("status", help="Show campaign case status summary")
+    campaign_status.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    campaign_status.add_argument("--glob", default="*")
+    campaign_status.add_argument("--summary-csv", default=None, type=Path)
+    campaign_status.add_argument("--tail-bytes", type=int, default=256 * 1024)
+    campaign_status.add_argument("--json", action="store_true")
+    campaign_status.set_defaults(func=_knife_campaign_status)
+
+    campaign_rank = campaign_sub.add_parser("rank", help="Rank campaign cases")
+    campaign_rank.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    campaign_rank.add_argument("--by", choices=["convergence"], default="convergence")
+    campaign_rank.add_argument("--glob", default="*")
+    campaign_rank.add_argument("--summary-csv", default=None, type=Path)
+    campaign_rank.add_argument("--tail-bytes", type=int, default=256 * 1024)
+    campaign_rank.add_argument("--json", action="store_true")
+    campaign_rank.set_defaults(func=_knife_campaign_rank)
+
+    campaign_stop = campaign_sub.add_parser("stop", help="Stop worst N ranked cases")
+    campaign_stop.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    campaign_stop.add_argument("--worst", type=int, required=True)
+    campaign_stop.add_argument("--glob", default="*")
+    campaign_stop.add_argument("--summary-csv", default=None, type=Path)
+    campaign_stop.add_argument(
+        "--signal",
+        default="TERM",
+        choices=["TERM", "INT", "QUIT", "KILL"],
+    )
+    campaign_stop.add_argument("--dry-run", action="store_true")
+    campaign_stop.add_argument("--tail-bytes", type=int, default=256 * 1024)
+    campaign_stop.add_argument("--json", action="store_true")
+    campaign_stop.set_defaults(func=_knife_campaign_stop)
+
+    campaign_keep = campaign_sub.add_parser("keep", help="Keep best N ranked cases")
+    campaign_keep.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    campaign_keep.add_argument("--best", type=int, required=True)
+    campaign_keep.add_argument("--glob", default="*")
+    campaign_keep.add_argument("--summary-csv", default=None, type=Path)
+    campaign_keep.add_argument(
+        "--signal",
+        default="TERM",
+        choices=["TERM", "INT", "QUIT", "KILL"],
+    )
+    campaign_keep.add_argument("--dry-run", action="store_true")
+    campaign_keep.add_argument("--tail-bytes", type=int, default=256 * 1024)
+    campaign_keep.add_argument("--json", action="store_true")
+    campaign_keep.set_defaults(func=_knife_campaign_keep)
+
+    campaign_compare = campaign_sub.add_parser("compare", help="Compare grouped campaign cases")
+    campaign_compare.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    campaign_compare.add_argument("--group-by", choices=["speed"], default="speed")
+    campaign_compare.add_argument("--glob", default="*")
+    campaign_compare.add_argument("--summary-csv", default=None, type=Path)
+    campaign_compare.add_argument("--json", action="store_true")
+    campaign_compare.set_defaults(func=_knife_campaign_compare)
 
     plot_criteria = knife_sub.add_parser("plot-criteria", help="Alias of plot criteria")
     plot_criteria.add_argument("source", nargs="?", default=Path.cwd(), type=Path)
@@ -856,11 +932,44 @@ def _knife_current(args: argparse.Namespace) -> int:
         for process in payload["untracked_processes"]:
             print(
                 f"- pid={process['pid']} solver={process['solver']} "
-                f"case={process.get('case')} cmd={process['command']}",
+                f"role={process.get('role')} case={process.get('case')} "
+                f"launcher_pid={process.get('launcher_pid')} cmd={process['command']}",
             )
     else:
         print("untracked_solver_processes=none")
     return 0
+
+
+def _knife_stop(args: argparse.Namespace) -> int:
+    case_dir = getattr(args, "case_override", None) or args.case_dir
+    payload = knife_ops.stop_payload(
+        case_dir,
+        job_id=args.job_id,
+        name=args.name,
+        all_jobs=bool(args.all),
+        signal_name=str(getattr(args, "signal", "TERM")),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if not payload["failed"] else 1
+    print(f"case={payload['case']}")
+    print(f"signal={payload.get('signal')}")
+    print(f"selected={payload['selected']}")
+    if payload["stopped"]:
+        print("stopped:")
+        for row in payload["stopped"]:
+            print(
+                f"- pid={row['pid']} kind={row.get('kind', 'solver')} "
+                f"name={row.get('name', 'job')}",
+            )
+    if payload["failed"]:
+        print("failed:")
+        for row in payload["failed"]:
+            print(
+                f"- pid={row.get('pid')} kind={row.get('kind', 'solver')} "
+                f"error={row['error']}",
+            )
+    return 0 if not payload["failed"] else 1
 
 
 def _knife_converge(args: argparse.Namespace) -> int:
@@ -968,6 +1077,9 @@ def _knife_eta(args: argparse.Namespace) -> int:
         return 0
     print(f"case={payload['case']}")
     print(f"mode={payload['mode']}")
+    print(f"eta_mode={payload.get('eta_mode')}")
+    print(f"eta_reason={payload.get('eta_reason')}")
+    print(f"eta_confidence={payload.get('eta_confidence')}")
     print(f"eta_seconds={payload['eta_seconds']}")
     print(f"eta_criteria_seconds={payload['eta_criteria_seconds']}")
     print(f"eta_end_time_seconds={payload['eta_end_time_seconds']}")
@@ -985,6 +1097,126 @@ def _knife_report(args: argparse.Namespace) -> int:
         print(knife_ops.report_markdown(payload))
         return 0
     print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0
+
+
+def _knife_campaign_list(args: argparse.Namespace) -> int:
+    payload = knife_ops.campaign_list_payload(
+        args.case_dir,
+        case_glob=str(getattr(args, "glob", "*")),
+        summary_csv=getattr(args, "summary_csv", None),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(f"case={payload['case']}")
+    print(f"count={payload['count']}")
+    for case in payload["cases"]:
+        print(f"- {case}")
+    return 0
+
+
+def _knife_campaign_status(args: argparse.Namespace) -> int:
+    payload = knife_ops.campaign_status_payload(
+        args.case_dir,
+        case_glob=str(getattr(args, "glob", "*")),
+        summary_csv=getattr(args, "summary_csv", None),
+        tail_bytes=int(getattr(args, "tail_bytes", 256 * 1024)),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(f"case={payload['case']}")
+    print(f"count={payload['count']}")
+    for row in payload["cases"]:
+        print(
+            f"- {row['case']}: running={row['running']} "
+            f"criteria={row['criteria_met']}/{row['criteria_total']} "
+            f"worst_ratio={row['criteria_worst_ratio']}",
+        )
+    return 0
+
+
+def _knife_campaign_rank(args: argparse.Namespace) -> int:
+    payload = knife_ops.campaign_rank_payload(
+        args.case_dir,
+        by=str(getattr(args, "by", "convergence")),
+        case_glob=str(getattr(args, "glob", "*")),
+        summary_csv=getattr(args, "summary_csv", None),
+        tail_bytes=int(getattr(args, "tail_bytes", 256 * 1024)),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(f"case={payload['case']}")
+    print(f"count={payload['count']}")
+    for idx, row in enumerate(payload["ranked"], start=1):
+        print(
+            f"{idx}. {row['case']} criteria={row['criteria_met']}/{row['criteria_total']} "
+            f"ratio={row['criteria_worst_ratio']}",
+        )
+    return 0
+
+
+def _knife_campaign_stop(args: argparse.Namespace) -> int:
+    payload = knife_ops.campaign_stop_worst_payload(
+        args.case_dir,
+        worst=int(getattr(args, "worst", 0)),
+        case_glob=str(getattr(args, "glob", "*")),
+        summary_csv=getattr(args, "summary_csv", None),
+        signal_name=str(getattr(args, "signal", "TERM")),
+        dry_run=bool(getattr(args, "dry_run", False)),
+        tail_bytes=int(getattr(args, "tail_bytes", 256 * 1024)),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        failed = [item for item in payload["actions"] if item.get("failed")]
+        return 0 if not failed else 1
+    print(f"case={payload['case']}")
+    print(f"selected={payload['selected']} dry_run={payload['dry_run']}")
+    for target in payload["targets"]:
+        print(f"- {target}")
+    failed = [item for item in payload["actions"] if item.get("failed")]
+    return 0 if not failed else 1
+
+
+def _knife_campaign_keep(args: argparse.Namespace) -> int:
+    payload = knife_ops.campaign_keep_best_payload(
+        args.case_dir,
+        best=int(getattr(args, "best", 0)),
+        case_glob=str(getattr(args, "glob", "*")),
+        summary_csv=getattr(args, "summary_csv", None),
+        signal_name=str(getattr(args, "signal", "TERM")),
+        dry_run=bool(getattr(args, "dry_run", False)),
+        tail_bytes=int(getattr(args, "tail_bytes", 256 * 1024)),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        failed = [item for item in payload["actions"] if item.get("failed")]
+        return 0 if not failed else 1
+    print(f"case={payload['case']}")
+    print(f"kept={payload['kept']} stopped={payload['stopped']} dry_run={payload['dry_run']}")
+    for target in payload["targets"]:
+        print(f"- {target}")
+    failed = [item for item in payload["actions"] if item.get("failed")]
+    return 0 if not failed else 1
+
+
+def _knife_campaign_compare(args: argparse.Namespace) -> int:
+    payload = knife_ops.campaign_compare_payload(
+        args.case_dir,
+        group_by=str(getattr(args, "group_by", "speed")),
+        case_glob=str(getattr(args, "glob", "*")),
+        summary_csv=getattr(args, "summary_csv", None),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(f"case={payload['case']}")
+    print(f"group_by={payload['group_by']} groups={payload['group_count']}")
+    for key, values in payload["groups"].items():
+        print(f"- {key}: {len(values)} case(s)")
+    print(f"comparisons={len(payload['comparisons'])}")
     return 0
 
 
