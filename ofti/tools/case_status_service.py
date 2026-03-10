@@ -17,6 +17,7 @@ class CurrentPayload(TypedDict):
     jobs_total: int
     jobs_running: int
     jobs_tracked_running: int
+    jobs_registry_running: int
     untracked_processes: list[SolverProcessRow]
 
 
@@ -38,6 +39,7 @@ class CaseStatusPayload(TypedDict):
     jobs_total: int
     jobs_running: int
     jobs_tracked_running: int
+    jobs_registry_running: int
     jobs: list[dict[str, Any]]
     tracked_solver_processes: list[SolverProcessRow]
     untracked_solver_processes: list[SolverProcessRow]
@@ -63,7 +65,8 @@ def current_payload(
         tracked_pids=tracked_pids,
         require_case_target=not live,
     )
-    running_count = len(active_jobs) if active_jobs else untracked_running_count(untracked)
+    untracked_count = untracked_running_count(untracked)
+    running_count = len(active_jobs) + untracked_count
     return {
         "case": str(case_path),
         "solver": solver,
@@ -71,7 +74,8 @@ def current_payload(
         "jobs": active_jobs,
         "jobs_total": len(jobs),
         "jobs_running": running_count,
-        "jobs_tracked_running": len(active_jobs),
+        "jobs_tracked_running": running_count,
+        "jobs_registry_running": len(active_jobs),
         "untracked_processes": untracked,
     }
 
@@ -127,7 +131,8 @@ def status_payload(
     latest_time_value = runtime["latest_time"]
     has_live_pids = bool(live_processes)
     running_heuristic = has_live_pids or bool(runtime["log_fresh"])
-    running_count = len(active_jobs) if active_jobs else untracked_running_count(untracked_live)
+    untracked_count = untracked_running_count(untracked_live)
+    running_count = len(active_jobs) + untracked_count
     return {
         "case": str(case_path),
         "solver": solver,
@@ -147,7 +152,8 @@ def status_payload(
         "running": running_heuristic,
         "jobs_total": len(jobs),
         "jobs_running": running_count,
-        "jobs_tracked_running": len(active_jobs),
+        "jobs_tracked_running": running_count,
+        "jobs_registry_running": len(active_jobs),
         "jobs": jobs,
         "tracked_solver_processes": tracked_live,
         "untracked_solver_processes": untracked_live,

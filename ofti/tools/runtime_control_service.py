@@ -40,6 +40,16 @@ COMMENT_BLOCK_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 COMMENT_LINE_RE = re.compile(r"//.*?$", re.MULTILINE)
 KEY_TOKEN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_./:-]*$")
 FLOAT_RE = re.compile(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?")
+_GENERIC_CRITERION_TOKENS = {
+    "functions",
+    "function",
+    "conditions",
+    "condition",
+    "runtimecontrol",
+    "control",
+    "criteria",
+    "criterion",
+}
 
 
 class CriterionRow(TypedDict, total=False):
@@ -491,12 +501,12 @@ def criterion_status(
     *,
     log_lines: list[str] | None = None,
 ) -> tuple[str, str | None]:
-    needle = key.lower()
+    needles = criterion_needles(key)
     lines = log_lines if log_lines is not None else log_text.splitlines()
     for raw in reversed(lines):
         line = raw.strip()
         lower = line.lower()
-        if needle not in lower:
+        if not any(needle in lower for needle in needles):
             continue
         if any(token in lower for token in ("not satisfied", "fail", "failed", "false", "exceed")):
             return "fail", line
@@ -529,7 +539,7 @@ def enrich_criteria(
         live_value = observed[-1] if observed else None
         live_delta = rolling_band(observed[-6:]) if observed else None
         sample_count = len(observed)
-        measured = live_delta if delta_mode else live_value
+        measured = live_delta if delta_mode and live_delta is not None else live_value
 
         status = str(row.get("status", "unknown")).strip().lower()
         if measured is not None and tolerance is not None and status == "unknown":
@@ -541,6 +551,7 @@ def enrich_criteria(
             criteria_start=criteria_start,
             latest_time=latest_time,
             samples=sample_count,
+            minimum_samples=4 if delta_mode else 1,
         )
         eta_value = criterion_eta_seconds(
             observed,
@@ -566,9 +577,9 @@ def criterion_observations(
     *,
     log_lines: list[str] | None = None,
 ) -> list[float]:
-    if not key:
+    needles = criterion_needles(key)
+    if not needles:
         return []
-    needle = key.lower()
     values: list[float] = []
     lines = log_lines if log_lines is not None else log_text.splitlines()
     for raw in lines:
@@ -576,13 +587,51 @@ def criterion_observations(
         if not line:
             continue
         lower = line.lower()
-        if needle not in lower:
-            continue
-        number_text = first_float(line)
-        value = to_float(number_text)
-        if value is not None:
+        for needle in needles:
+            at = lower.find(needle)
+            if at < 0:
+                continue
+            value = float_after_index(line, at)
+            if value is None:
+                value = to_float(first_float(line))
+            if value is None:
+                break
             values.append(value)
+            break
     return values
+
+
+def criterion_needles(key: str) -> list[str]:
+    if not key:
+        return []
+    needles: list[str] = []
+    full = key.strip().lower()
+    if full:
+        needles.append(full)
+    tokens = re.split(r"[./:\-]+", full)
+    compact: list[str] = []
+    for token in tokens:
+        cleaned = "".join(ch for ch in token if ch.isalnum() or ch in {"_", "+"}).strip("_")
+        if len(cleaned) < 3:
+            continue
+        if cleaned in _GENERIC_CRITERION_TOKENS:
+            continue
+        compact.append(cleaned)
+        if cleaned not in needles:
+            needles.append(cleaned)
+    for idx in range(1, len(compact)):
+        joined = f"{compact[idx - 1]} {compact[idx]}"
+        if joined not in needles:
+            needles.append(joined)
+    # Longest needles first avoid generic token capturing unrelated numbers.
+    needles.sort(key=len, reverse=True)
+    return needles
+
+
+def float_after_index(text: str, index: int) -> float | None:
+    if index < 0 or index >= len(text):
+        return None
+    return to_float(first_float(text[index:]))
 
 
 def first_float(text: str) -> str | None:
@@ -623,6 +672,7 @@ def criterion_unmet_reason(
     criteria_start: float | None,
     latest_time: float | None,
     samples: int,
+    minimum_samples: int = 4,
 ) -> str | None:
     if status == "pass":
         return None
@@ -631,7 +681,7 @@ def criterion_unmet_reason(
         return reason
     if criteria_start is not None and latest_time is not None and latest_time < criteria_start:
         return "startup"
-    if samples < 4:
+    if samples < minimum_samples:
         return "not_enough_samples"
     return "window"
 

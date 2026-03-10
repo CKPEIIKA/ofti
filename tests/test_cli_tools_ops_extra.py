@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import types
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -429,3 +430,267 @@ def test_watch_external_payload_passes_through_arguments(tmp_path: Path, monkeyp
     assert payload["ok"] is True
     assert seen["cmd"] == ["python", "watcher.py", "--foo", "bar"]
     assert seen["cwd"] == case
+
+
+def test_run_matrix_axis_parse_and_case_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    axes = run.parse_matrix_axes(
+        [
+            "application=simpleFoam,pisoFoam",
+            "constant/chemistryProperties:modifiedTemperature=on,off",
+        ],
+        default_dict="system/controlDict",
+    )
+    assert len(axes) == 2
+    assert axes[0]["dict_path"] == "system/controlDict"
+    assert axes[1]["entry"] == "modifiedTemperature"
+
+    with pytest.raises(ValueError, match="invalid matrix axis"):
+        run.parse_matrix_axes(["broken"], default_dict="system/controlDict")
+
+    monkeypatch.setattr(
+        run,
+        "_create_matrix_case",
+        lambda *_a, **_k: None,
+    )
+    payload = run.matrix_case_payload(case, axes=axes, dry_run=False)
+    assert payload["case_count"] == 4
+    assert payload["cases"][0]["case"].startswith(str(case.parent))
+    assert (
+        "system/controlDict:application" in payload["cases"][0]["values"]
+        or "constant/chemistryProperties:modifiedTemperature" in payload["cases"][0]["values"]
+    )
+
+
+def test_run_queue_payload_dry_run_and_active_flow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case_a = _make_case(tmp_path / "caseA")
+    case_b = _make_case(tmp_path / "caseB")
+    monkeypatch.setattr(run, "solver_command", lambda _case, **_k: ("simpleFoam", ["simpleFoam"]))
+    dry = run.queue_payload(
+        cases=[case_a, case_b],
+        max_parallel=2,
+        dry_run=True,
+    )
+    assert dry["count"] == 2
+    assert dry["planned"][0]["name"] == "simpleFoam"
+
+    pids = iter([101, 202])
+    monkeypatch.setattr(
+        run,
+        "execute_case_command",
+        lambda case, _name, _cmd, **_k: run.RunResult(
+            0,
+            "",
+            "",
+            pid=next(pids),
+            log_path=case / "log.simpleFoam",
+        ),
+    )
+    poll = {"calls": 0}
+
+    def _pid_running(pid: int) -> bool:
+        poll["calls"] += 1
+        return poll["calls"] <= 2 and pid in {101, 202}
+
+    monkeypatch.setattr(run, "_pid_running", _pid_running)
+    monkeypatch.setattr(run.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        run,
+        "status_row_payload",
+        lambda case, **_k: {
+            "case": str(case),
+            "state": "done",
+            "latest_time": 1.0,
+            "eta_seconds": 0.0,
+            "stop_reason": "end_time_reached",
+        },
+    )
+
+    queue = run.queue_payload(
+        cases=[case_a, case_b],
+        max_parallel=1,
+        dry_run=False,
+    )
+    assert queue["ok"] is True
+    assert len(queue["started"]) == 2
+    assert len(queue["finished"]) == 2
+
+
+def test_run_status_set_payload_and_reason_helpers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "set"
+    case_a = _make_case(root / "caseA")
+    case_b = _make_case(root / "caseB")
+    summary = root / "summary.csv"
+    summary.parent.mkdir(parents=True, exist_ok=True)
+    summary.write_text("case\ncaseA\n")
+
+    monkeypatch.setattr(
+        knife_service,
+        "status_payload",
+        lambda case, **_k: {
+            "case": str(case),
+            "running": case.name == "caseB",
+            "latest_time": 1.0,
+            "eta_seconds_to_end_time": 5.0,
+            "solver_error": None,
+            "log_fresh": False,
+            "jobs_running": 1 if case.name == "caseB" else 0,
+            "run_time_control": {
+                "failed": 0,
+                "end_time": 1.0,
+                "criteria": [],
+            },
+        },
+    )
+    rows = run.resolve_case_set(
+        set_dir=root,
+        explicit_cases=[],
+        case_glob="case*",
+        summary_csv=Path("summary.csv"),
+    )
+    assert rows == [case_a.resolve()]
+    status = run.status_set_payload(
+        set_dir=root,
+        explicit_cases=[case_a, case_b],
+        case_glob="case*",
+        summary_csv=None,
+        lightweight=True,
+    )
+    assert status["count"] == 2
+    states = {Path(row["case"]).name: row["state"] for row in status["rows"]}
+    assert states["caseA"] == "done"
+    assert states["caseB"] == "running"
+
+
+def test_run_matrix_and_catalog_helper_branches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    monkeypatch.setattr(run, "tool_catalog_payload", lambda _case: {"case": str(case), "tools": ["a", "b"]})
+    assert run.tool_catalog_names(case) == ["a", "b"]
+
+    out = run.write_tool_catalog_json(case, output_path=Path("meta/catalog.json"))
+    assert out == (case / "meta" / "catalog.json").resolve()
+    assert out.is_file()
+
+    axes = run.parse_matrix_axes(["   ", "application=simpleFoam"], default_dict="system/controlDict")
+    assert len(axes) == 1
+
+    with pytest.raises(ValueError, match="dict path"):
+        run.parse_matrix_axes([":entry=v"], default_dict="system/controlDict")
+    with pytest.raises(ValueError, match="entry"):
+        run.parse_matrix_axes(["system/controlDict:=v"], default_dict="system/controlDict")
+    with pytest.raises(ValueError, match="values"):
+        run.parse_matrix_axes(["application="], default_dict="system/controlDict")
+    with pytest.raises(ValueError, match="at least one --param axis"):
+        run.parse_matrix_axes([], default_dict="system/controlDict")
+
+    combo = [
+        (cast(run.MatrixAxis, {"dict_path": "system/controlDict", "entry": "application", "values": ["a"]}), "a"),
+        (cast(run.MatrixAxis, {"dict_path": "constant/chemistryProperties", "entry": "application", "values": ["b"]}), "b"),
+    ]
+    name = run.matrix_case_name("base", combo)
+    assert "system_controlDict_application-a" in name
+    assert "constant_chemistryProperties_application-b" in name
+
+
+def test_run_queue_and_case_set_error_branches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    with pytest.raises(ValueError, match="max_parallel must be > 0"):
+        run.queue_payload(cases=[case], max_parallel=0)
+
+    monkeypatch.setattr(run, "solver_command", lambda _case, **_k: ("simpleFoam", ["simpleFoam"]))
+    monkeypatch.setattr(
+        run,
+        "execute_case_command",
+        lambda *_a, **_k: (_ for _ in ()).throw(ValueError("start failed")),
+    )
+    monkeypatch.setattr(run.time, "sleep", lambda _sec: None)
+    failed = run.queue_payload(cases=[case], max_parallel=1, dry_run=False)
+    assert failed["ok"] is False
+    assert failed["failed_to_start"][0]["error"] == "start failed"
+
+    monkeypatch.setattr(
+        run,
+        "execute_case_command",
+        lambda *_a, **_k: run.RunResult(0, "", "", pid=None, log_path=None),
+    )
+    missing_pid = run.queue_payload(cases=[case], max_parallel=1, dry_run=False)
+    assert missing_pid["ok"] is False
+    assert "missing background pid" in missing_pid["failed_to_start"][0]["error"]
+
+    root = tmp_path / "set"
+    case_a = _make_case(root / "caseA")
+    _make_case(root / "caseB")
+    resolved = run.resolve_case_set(
+        set_dir=root,
+        explicit_cases=[],
+        case_glob="case*",
+        summary_csv=None,
+    )
+    assert case_a.resolve() in resolved
+    assert run._cases_from_summary_csv(root, root / "missing.csv") == []
+
+
+def test_run_state_reason_and_create_case_helpers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert run._sanitize_token("__bad  value__") == "bad_value"
+    assert run._case_state({"running": False, "solver_error": "x", "run_time_control": {}}) == "error"
+    assert run._case_state({"running": False, "solver_error": None, "run_time_control": {"failed": 1}}) == "failed"
+    assert run._case_state({"running": False, "solver_error": None, "run_time_control": {}, "log_fresh": True}) == "recent"
+    assert run._case_state({"running": False, "solver_error": None, "run_time_control": {}, "log_fresh": False}) == "stopped"
+
+    assert run._stop_reason({"solver_error": "missing", "run_time_control": {}}, state="error") == "missing"
+    assert run._stop_reason(
+        {"solver_error": None, "run_time_control": {"criteria": [{"status": "fail", "unmet_reason": "window"}]}},
+        state="failed",
+    ) == "window"
+    assert run._stop_reason(
+        {"solver_error": None, "latest_time": 2.0, "run_time_control": {"criteria": [], "end_time": 1.0}},
+        state="done",
+    ) == "end_time_reached"
+    assert run._stop_reason({"solver_error": None, "run_time_control": {"criteria": []}}, state="failed") == "criteria_failed"
+    assert run._stop_reason({"solver_error": None, "run_time_control": {"criteria": []}}, state="stopped") == "stopped"
+
+    template = _make_case(tmp_path / "template")
+    dest = tmp_path / "dest"
+    axis = cast(
+        run.MatrixAxis,
+        {"dict_path": "system/controlDict", "entry": "application", "values": ["simpleFoam"]},
+    )
+    combo = [(axis, "simpleFoam")]
+
+    def _copy_without_dict(_src: Path, _dst: Path, **_kwargs: object) -> None:
+        _dst.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(run, "copy_case_directory", _copy_without_dict)
+    with pytest.raises(ValueError, match="dictionary not found"):
+        run._create_matrix_case(template, dest, combo)
+
+    def _copy_with_dict(_src: Path, _dst: Path, **_kwargs: object) -> None:
+        (_dst / "system").mkdir(parents=True, exist_ok=True)
+        (_dst / "system" / "controlDict").write_text("application simpleFoam;\n")
+
+    monkeypatch.setattr(run, "copy_case_directory", _copy_with_dict)
+    monkeypatch.setattr(run, "write_entry", lambda *_a, **_k: False)
+    monkeypatch.setattr(run.openfoam, "write_entry", lambda *_a, **_k: True)
+    run._create_matrix_case(template, tmp_path / "dest-ok", combo)
+
+    monkeypatch.setattr(run.openfoam, "write_entry", lambda *_a, **_k: False)
+    with pytest.raises(ValueError, match="failed to set"):
+        run._create_matrix_case(template, tmp_path / "dest-fail", combo)

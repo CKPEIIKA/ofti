@@ -40,6 +40,7 @@ def test_current_payload_uses_single_scan_path_for_unknown_solver(tmp_path: Path
         scan_proc_solver_processes_fn=_scan,
     )
     assert payload["jobs_running"] == 0
+    assert payload["jobs_registry_running"] == 0
     assert payload["untracked_processes"] == []
     assert calls == [True]
 
@@ -52,6 +53,7 @@ def test_current_payload_uses_single_scan_path_for_unknown_solver(tmp_path: Path
         live=True,
     )
     assert payload_live["jobs_running"] == 1
+    assert payload_live["jobs_registry_running"] == 0
     assert payload_live["untracked_processes"][0]["pid"] == 404
     assert calls == [True, False]
 
@@ -111,7 +113,9 @@ def test_status_payload_uses_runtime_and_live_process_data(tmp_path: Path) -> No
     assert payload["solver_status"] == "running"
     assert payload["latest_time"] == 0.123
     assert payload["running"] is True
-    assert payload["jobs_running"] == 1
+    assert payload["jobs_running"] == 2
+    assert payload["jobs_registry_running"] == 1
+    assert payload["jobs_tracked_running"] == 2
     assert len(payload["tracked_solver_processes"]) == 1
     assert len(payload["untracked_solver_processes"]) == 1
 

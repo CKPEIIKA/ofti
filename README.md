@@ -104,6 +104,9 @@ ofti watch stop CASE --signal TERM
 ofti watch log CASE --lines 80 --json
 ofti run tool --list --case CASE --json
 ofti run solver CASE --dry-run --json
+ofti run matrix CASE --param application=simpleFoam,pisoFoam --no-launch --json
+ofti run queue --set CASE_SET --glob 'case_*' --max-parallel 6 --json
+ofti run status --set CASE_SET --fast --json
 ```
 
 For very large logs, analysis/tail commands read recent log windows to stay
@@ -125,7 +128,7 @@ Current repo checks:
 
 - `ruff check`
 - `ty check`
-- `pytest` with coverage gate `--cov-fail-under=75`
+- `pytest` with coverage gate `--cov-fail-under=80`
 
 ## MODES
 
