@@ -5,6 +5,8 @@ import json
 import sys
 import time
 from collections.abc import Callable
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from pathlib import Path
 from textwrap import dedent
 from typing import cast
@@ -44,6 +46,12 @@ def build_parser() -> argparse.ArgumentParser:
               ofti run solver CASE --parallel 8 --dry-run
             """,
         ),
+    )
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="store_true",
+        help="Show version and exit",
     )
     parser.set_defaults(func=_help_handler(parser))
     groups = parser.add_subparsers(dest="group", required=False)
@@ -731,14 +739,92 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     solver.add_argument("--json", action="store_true", help="Print result as JSON")
     solver.set_defaults(func=_run_solver)
 
+    matrix = run_sub.add_parser(
+        "matrix",
+        help="Generate matrix cases from parameter axes and optionally launch them",
+    )
+    matrix.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    matrix.add_argument(
+        "--param",
+        action="append",
+        default=[],
+        help=(
+            "Matrix axis: [DICT:]ENTRY=v1,v2. "
+            "Examples: application=simpleFoam,pisoFoam "
+            "or constant/chemistryProperties:modifiedTemperature=on,off"
+        ),
+    )
+    matrix.add_argument(
+        "--dict",
+        dest="default_dict",
+        default="system/controlDict",
+        help="Default dictionary path for --param axes without DICT:",
+    )
+    matrix.add_argument("--output-root", type=Path, default=None)
+    matrix.add_argument("--solver", default=None)
+    matrix.add_argument("--parallel", type=int, default=0)
+    matrix.add_argument("--mpi", default=None)
+    matrix.add_argument("--max-parallel", type=int, default=1)
+    matrix.add_argument("--poll-interval", type=float, default=0.25)
+    matrix.add_argument("--dry-run", action="store_true")
+    matrix.add_argument(
+        "--no-launch",
+        action="store_true",
+        help="Generate cases only (do not launch solver queue)",
+    )
+    matrix.add_argument("--json", action="store_true", help="Print result as JSON")
+    matrix.set_defaults(func=_run_matrix)
+
+    queue = run_sub.add_parser(
+        "queue",
+        help="Run a case set in batches with bounded parallelism",
+    )
+    queue.add_argument("cases", nargs="*", type=Path)
+    queue.add_argument("--set", dest="set_dir", default=Path.cwd(), type=Path)
+    queue.add_argument("--glob", default="*")
+    queue.add_argument("--summary-csv", default=None, type=Path)
+    queue.add_argument("--solver", default=None)
+    queue.add_argument("--parallel", type=int, default=0)
+    queue.add_argument("--mpi", default=None)
+    queue.add_argument("--max-parallel", type=int, required=True)
+    queue.add_argument("--poll-interval", type=float, default=0.25)
+    queue.add_argument("--dry-run", action="store_true")
+    queue.add_argument("--json", action="store_true", help="Print result as JSON")
+    queue.set_defaults(func=_run_queue)
+
+    status = run_sub.add_parser(
+        "status",
+        help="Show compact status table for a case set",
+    )
+    status.add_argument("cases", nargs="*", type=Path)
+    status.add_argument("--set", dest="set_dir", default=Path.cwd(), type=Path)
+    status.add_argument("--glob", default="*")
+    status.add_argument("--summary-csv", default=None, type=Path)
+    status_mode = status.add_mutually_exclusive_group()
+    status_mode.add_argument("--fast", action="store_true", help="Use lightweight status parsing")
+    status_mode.add_argument("--full", action="store_true", help="Parse full logs (slower)")
+    status.add_argument("--tail-bytes", type=int, default=None)
+    status.add_argument("--json", action="store_true", help="Print result as JSON")
+    status.set_defaults(func=_run_status)
+
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if bool(getattr(args, "version", False)):
+        print(f"ofti {ofti_version()}")
+        return 0
     try:
         return int(args.func(args))
     except ValueError as exc:
         print(f"ofti: {exc}", file=sys.stderr)
         return 2
+
+
+def ofti_version() -> str:
+    try:
+        return package_version("ofti")
+    except PackageNotFoundError:
+        return "dev"
 
 
 def _knife_doctor(args: argparse.Namespace) -> int:
@@ -1817,6 +1903,122 @@ def _follow_log_path(log_path: Path, *, interval: float) -> int:
     except OSError as exc:
         print(f"Failed to follow {log_path}: {exc}", file=sys.stderr)
         return 1
+
+
+def _run_matrix(args: argparse.Namespace) -> int:
+    axes = run_ops.parse_matrix_axes(
+        list(getattr(args, "param", [])),
+        default_dict=str(getattr(args, "default_dict", "system/controlDict")),
+    )
+    generated = run_ops.matrix_case_payload(
+        args.case_dir,
+        axes=axes,
+        output_root=getattr(args, "output_root", None),
+        dry_run=bool(getattr(args, "dry_run", False)),
+    )
+    launch = not bool(getattr(args, "no_launch", False))
+    queue_result: dict[str, object] | None = None
+    if launch:
+        case_paths = [Path(str(row["case"])) for row in generated["cases"]]
+        queue_result = run_ops.queue_payload(
+            cases=case_paths,
+            solver=getattr(args, "solver", None),
+            parallel=int(getattr(args, "parallel", 0)),
+            mpi=getattr(args, "mpi", None),
+            max_parallel=int(getattr(args, "max_parallel", 1)),
+            poll_interval=float(getattr(args, "poll_interval", 0.25)),
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
+    payload: dict[str, object] = {
+        **generated,
+        "launch": launch,
+        "queue": queue_result,
+    }
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        if queue_result and queue_result.get("ok") is False:
+            return 1
+        return 0
+    print(f"template_case={payload['template_case']}")
+    print(
+        f"case_count={payload['case_count']} launch={payload['launch']} "
+        f"dry_run={payload['dry_run']}",
+    )
+    for row in generated["cases"]:
+        print(f"- {row['case']}")
+    if queue_result:
+        print(
+            f"queue max_parallel={queue_result['max_parallel']} "
+            f"started={len(queue_result['started'])} "
+            f"failed_to_start={len(queue_result['failed_to_start'])}",
+        )
+        if queue_result["failed_to_start"]:
+            for row in queue_result["failed_to_start"]:
+                print(f"  failed {row['case']}: {row['error']}")
+    if queue_result and queue_result.get("ok") is False:
+        return 1
+    return 0
+
+
+def _run_queue(args: argparse.Namespace) -> int:
+    cases = run_ops.resolve_case_set(
+        set_dir=args.set_dir,
+        explicit_cases=list(getattr(args, "cases", [])),
+        case_glob=str(getattr(args, "glob", "*")),
+        summary_csv=getattr(args, "summary_csv", None),
+    )
+    payload = run_ops.queue_payload(
+        cases=cases,
+        solver=getattr(args, "solver", None),
+        parallel=int(getattr(args, "parallel", 0)),
+        mpi=getattr(args, "mpi", None),
+        max_parallel=int(getattr(args, "max_parallel", 1)),
+        poll_interval=float(getattr(args, "poll_interval", 0.25)),
+        dry_run=bool(getattr(args, "dry_run", False)),
+    )
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if bool(payload.get("ok", True)) else 1
+    print(
+        f"count={payload['count']} max_parallel={payload['max_parallel']} "
+        f"dry_run={payload['dry_run']}",
+    )
+    print(
+        f"started={len(payload['started'])} finished={len(payload['finished'])} "
+        f"failed_to_start={len(payload['failed_to_start'])}",
+    )
+    for row in payload["finished"]:
+        print(f"- {row['case']}: state={row['state']} latest_time={row['latest_time']}")
+    if payload["failed_to_start"]:
+        for row in payload["failed_to_start"]:
+            print(f"failed {row['case']}: {row['error']}")
+    return 0 if bool(payload.get("ok", True)) else 1
+
+
+def _run_status(args: argparse.Namespace) -> int:
+    payload = run_ops.status_set_payload(
+        set_dir=args.set_dir,
+        explicit_cases=list(getattr(args, "cases", [])),
+        case_glob=str(getattr(args, "glob", "*")),
+        summary_csv=getattr(args, "summary_csv", None),
+        lightweight=not bool(getattr(args, "full", False)),
+        tail_bytes=getattr(args, "tail_bytes", None),
+    )
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(f"set={payload['set_dir']} count={payload['count']}")
+    print("STATE   LATEST_TIME   ETA(s)    STOP_REASON   CASE")
+    for row in payload["rows"]:
+        state = str(row.get("state", "unknown"))
+        latest = row.get("latest_time")
+        eta = row.get("eta_seconds")
+        reason = str(row.get("stop_reason") or "-")
+        case = str(row.get("case"))
+        latest_text = f"{latest}" if latest is not None else "-"
+        eta_text = f"{eta:.2f}" if isinstance(eta, (int, float)) else "-"
+        print(f"{state:<7} {latest_text:<12} {eta_text:<8} {reason:<12} {case}")
+    return 0
 
 
 def _run_tool(args: argparse.Namespace) -> int:  # noqa: C901, PLR0911

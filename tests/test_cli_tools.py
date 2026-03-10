@@ -31,12 +31,26 @@ def test_run_tool_list_outputs_catalog(tmp_path, capsys) -> None:
     assert "blockMesh" in out
 
 
+def test_run_group_help_lists_new_subcommands(capsys) -> None:
+    code = cli_tools.main(["run"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "{tool,solver,matrix,queue,status}" in out
+
+
 def test_cli_tools_without_args_prints_short_help(capsys) -> None:
     code = cli_tools.main([])
     out = capsys.readouterr().out
     assert code == 0
     assert "Non-interactive OFTI utilities" in out
     assert "{knife,plot,watch,run}" in out
+
+
+def test_cli_tools_version_flag(capsys) -> None:
+    code = cli_tools.main(["--version"])
+    out = capsys.readouterr().out.strip()
+    assert code == 0
+    assert out.startswith("ofti ")
 
 
 def test_cli_group_without_subcommand_prints_help(capsys) -> None:
@@ -75,6 +89,83 @@ def test_run_tool_catalog_payload_matches_list_json(tmp_path) -> None:
 
     assert payload["case"] == str(case.resolve())
     assert "blockMesh" in payload["tools"]
+
+
+def test_run_matrix_queue_status_cli_json(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "parse_matrix_axes",
+        lambda _params, **_k: [{"dict_path": "system/controlDict", "entry": "application", "values": ["a"]}],
+    )
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "matrix_case_payload",
+        lambda _case, **_k: {
+            "template_case": "/case",
+            "output_root": "/set",
+            "axis_count": 1,
+            "case_count": 1,
+            "axes": [{"dict_path": "system/controlDict", "entry": "application", "values": ["a"]}],
+            "cases": [{"case": "/set/case__application-a", "values": {"application": "a"}, "created": True}],
+            "dry_run": False,
+        },
+    )
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "queue_payload",
+        lambda **_k: {
+            "count": 1,
+            "max_parallel": 1,
+            "poll_interval": 0.25,
+            "dry_run": False,
+            "planned": [],
+            "started": [{"case": "/set/case__application-a"}],
+            "finished": [],
+            "failed_to_start": [],
+            "ok": True,
+        },
+    )
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "resolve_case_set",
+        lambda **_k: [Path("/set/caseA")],
+    )
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "status_set_payload",
+        lambda **_k: {
+            "set_dir": "/set",
+            "glob": "*",
+            "summary_csv": None,
+            "count": 1,
+            "rows": [
+                {
+                    "case": "/set/caseA",
+                    "state": "running",
+                    "latest_time": 1.0,
+                    "eta_seconds": 2.0,
+                    "stop_reason": "",
+                    "jobs_running": 1,
+                },
+            ],
+        },
+    )
+
+    code = cli_tools.main(["run", "matrix", "/case", "--param", "application=a", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["case_count"] == 1
+    assert payload["queue"]["ok"] is True
+
+    code = cli_tools.main(["run", "queue", "--set", "/set", "--max-parallel", "2", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["max_parallel"] == 1
+
+    code = cli_tools.main(["run", "status", "--set", "/set", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["rows"][0]["state"] == "running"
 
 
 def test_tui_run_export_tool_catalog_json_default_path(tmp_path, monkeypatch) -> None:

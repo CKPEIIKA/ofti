@@ -172,6 +172,57 @@ def test_runtime_control_marks_startup_unmet_reason(tmp_path: Path) -> None:
     assert rows[0]["unmet_reason"] == "startup"
 
 
+def test_runtime_control_observes_nested_runtime_criteria_values(tmp_path: Path) -> None:
+    case = _make_case(tmp_path / "case")
+    (case / "system" / "controlDict").write_text(
+        "\n".join(
+            [
+                "startTime 0;",
+                "endTime 5;",
+                "functions",
+                "{",
+                "  autoStop",
+                "  {",
+                "    type runTimeControl;",
+                "    timeStart 0.0;",
+                "    conditions",
+                "    {",
+                "      residualGate",
+                "      {",
+                "        type average;",
+                "        value 0.01;",
+                "      }",
+                "    }",
+                "  }",
+                "}",
+            ],
+        ),
+    )
+    (case / "log.hy2Foam").write_text(
+        "\n".join(
+            [
+                "Time = 0.1",
+                "ExecutionTime = 1.0 s",
+                "residualGate value = 0.02",
+                "Time = 0.2",
+                "ExecutionTime = 2.0 s",
+                "residualGate value = 0.005",
+            ],
+        ),
+    )
+    snapshot = svc.runtime_control_snapshot(
+        case,
+        "hy2Foam",
+        resolve_log_source_fn=lambda source: source / "log.hy2Foam",
+    )
+    rows = snapshot["run_time_control"]["criteria"]
+    assert rows
+    row = rows[0]
+    assert row["samples"] >= 2
+    assert row["status"] in {"pass", "fail"}
+    assert row["unmet_reason"] in {None, "window", "startup"}
+
+
 def test_runtime_control_snapshot_full_uses_filtered_log_reader(
     tmp_path: Path,
     monkeypatch,
