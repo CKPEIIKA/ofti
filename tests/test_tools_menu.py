@@ -214,11 +214,11 @@ def test_run_tool_by_name_cli_tools_alias(tmp_path: Path) -> None:
     case_dir.mkdir()
     screen = FakeScreen(keys=[ord("h")])
 
-    with mock.patch("ofti.tools.menus.cli_tools_screen") as cli_screen:
+    with mock.patch("ofti.tools.menus.case_operations_screen") as case_ops_screen:
         handled = run_tool_by_name(screen, case_dir, "cli-tools")
 
     assert handled is True
-    cli_screen.assert_called_once_with(screen, case_dir)
+    case_ops_screen.assert_called_once_with(screen, case_dir)
 
 
 def test_run_tool_by_name_cli_group_aliases(tmp_path: Path) -> None:
@@ -227,10 +227,10 @@ def test_run_tool_by_name_cli_group_aliases(tmp_path: Path) -> None:
     screen = FakeScreen(keys=[ord("h")])
 
     with (
-        mock.patch("ofti.tools.menus.cli_knife_screen") as knife_screen,
-        mock.patch("ofti.tools.menus.cli_plot_screen") as plot_screen,
-        mock.patch("ofti.tools.menus.cli_watch_screen") as watch_screen,
-        mock.patch("ofti.tools.menus.cli_run_screen") as run_screen,
+        mock.patch("ofti.tools.menus.case_operations_screen") as knife_screen,
+        mock.patch("ofti.tools.menus.residual_timeline_screen") as plot_screen,
+        mock.patch("ofti.tools.menus.job_status_poll_screen") as watch_screen,
+        mock.patch("ofti.tools.menus.run_current_solver") as run_screen,
     ):
         assert run_tool_by_name(screen, case_dir, "knife") is True
         assert run_tool_by_name(screen, case_dir, "plot") is True
@@ -269,7 +269,7 @@ def test_tools_screen_runs_simple_and_special_entries(tmp_path: Path, monkeypatc
     monkeypatch.setattr(menus, "_run_simple_tool", lambda *_a, **_k: calls.append("simple"))
     monkeypatch.setattr(menus, "diagnostics_screen", lambda *_a, **_k: calls.append("diagnostics"))
     monkeypatch.setattr(menus.case_doctor, "case_doctor_screen", lambda *_a, **_k: calls.append("doctor"))
-    monkeypatch.setattr(menus, "cli_tools_screen", lambda *_a, **_k: calls.append("cli"))
+    monkeypatch.setattr(menus, "case_operations_screen", lambda *_a, **_k: calls.append("caseops"))
     monkeypatch.setattr(menus, "run_shell_script_screen", lambda *_a, **_k: calls.append("script"))
     monkeypatch.setattr(menus, "clone_case", lambda *_a, **_k: calls.append("clone"))
     monkeypatch.setattr(menus, "job_status_poll_screen", lambda *_a, **_k: calls.append("jobstatus"))
@@ -288,7 +288,7 @@ def test_tools_screen_runs_simple_and_special_entries(tmp_path: Path, monkeypatc
         "simple",
         "diagnostics",
         "doctor",
-        "cli",
+        "caseops",
         "script",
         "clone",
         "jobstatus",

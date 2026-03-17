@@ -27,8 +27,18 @@ ofti /path/to/case
 Install from the repo root:
 
 ```bash
-pip install .
-# or
+# uv (recommended)
+uv tool install .
+# or for local project venv:
+uv venv
+uv pip install -e .
+
+# pip
+python -m pip install .
+# or editable for development:
+python -m pip install -e .
+
+# pipx (isolated app install)
 pipx install .
 ```
 

@@ -163,3 +163,26 @@ def test_status_payload_forwards_lightweight_runtime_options(tmp_path: Path) -> 
     assert payload["latest_time"] == 0.1
     assert seen["lightweight"] is True
     assert seen["max_log_bytes"] == 1234
+
+
+def test_untracked_running_count_dedupes_solver_under_launcher() -> None:
+    rows: list[svc.SolverProcessRow] = [
+        {
+            "pid": 100,
+            "ppid": 1,
+            "solver": "hy2Foam",
+            "role": "launcher",
+            "tracked": False,
+            "command": "bash -lc hy2Foam -parallel",
+        },
+        {
+            "pid": 101,
+            "ppid": 100,
+            "solver": "hy2Foam",
+            "role": "solver",
+            "tracked": False,
+            "launcher_pid": 100,
+            "command": "hy2Foam -parallel",
+        },
+    ]
+    assert svc.untracked_running_count(rows) == 1

@@ -153,6 +153,7 @@ def test_knife_proc_parsing_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert knife._proc_cwd(proc_root / "999") is None
     assert knife._process_role([], "simplefoam") is None
     assert knife._process_role(["bash"], "simplefoam") is None
+    assert knife._process_role(["bash", "-lc", "hy2Foam -parallel"], "hy2foam") == "launcher"
     assert knife._process_role(["mpirun"], "simplefoam") == "launcher"
     assert knife._token_matches_solver("a && /opt/simpleFoam;", "simplefoam") is True
 
@@ -343,6 +344,63 @@ def test_knife_current_live_and_report_payloads(
     md = knife.report_markdown(report)
     assert "## Criteria" in md
     assert "criteria_seconds: 12.0" in md
+
+
+def test_knife_adopt_payload_registers_untracked_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    case_str = str(case.resolve())
+    monkeypatch.setattr(
+        knife_service,
+        "current_payload",
+        lambda _case, **_kwargs: {
+            "case": case_str,
+            "solver": "hy2Foam",
+            "solver_error": None,
+            "jobs": [],
+            "jobs_total": 0,
+            "jobs_running": 1,
+            "jobs_tracked_running": 1,
+            "jobs_registry_running": 0,
+            "untracked_processes": [
+                {
+                    "pid": 900,
+                    "ppid": 1,
+                    "solver": "hy2Foam",
+                    "role": "launcher",
+                    "tracked": False,
+                    "case": case_str,
+                    "command": "bash -lc hy2Foam -parallel",
+                },
+                {
+                    "pid": 901,
+                    "ppid": 900,
+                    "solver": "hy2Foam",
+                    "role": "solver",
+                    "tracked": False,
+                    "launcher_pid": 900,
+                    "case": case_str,
+                    "command": "hy2Foam -parallel",
+                },
+            ],
+        },
+    )
+    monkeypatch.setattr(knife_service, "refresh_jobs", lambda _case: [])
+    captured: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        knife_service,
+        "register_job",
+        lambda _case, name, pid, *_a, **_k: captured.append((name, pid)) or f"job-{pid}",
+    )
+
+    payload = knife.adopt_payload(case)
+
+    assert payload["selected"] == 1
+    assert payload["failed"] == []
+    assert payload["adopted"][0]["pid"] == 900
+    assert captured == [("hy2Foam-launcher", 900)]
 
 
 def test_knife_report_payload_uses_single_status_call(

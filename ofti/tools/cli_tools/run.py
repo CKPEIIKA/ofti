@@ -4,12 +4,14 @@ import csv
 import itertools
 import json
 import os
+import re
 import subprocess
 import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TypedDict
 
+from ofti.core.case import read_number_of_subdomains
 from ofti.core.case_copy import copy_case_directory
 from ofti.core.entry_io import write_entry
 from ofti.core.solver_checks import resolve_solver_name, validate_initial_fields
@@ -90,6 +92,7 @@ def solver_command(
 
     cmd = [chosen_solver]
     if parallel > 1:
+        _sync_parallel_subdomains(case_path, requested=parallel)
         launcher = mpi or detect_mpi_launcher()
         if not launcher:
             raise ValueError("MPI launcher not found (tried mpirun, mpiexec).")
@@ -137,6 +140,75 @@ def detect_mpi_launcher() -> str | None:
         except FileNotFoundError:
             continue
     return None
+
+
+def _sync_parallel_subdomains(case_path: Path, *, requested: int) -> None:
+    decompose_dict = case_path / "system" / "decomposeParDict"
+    if not decompose_dict.is_file():
+        raise ValueError(
+            "Missing system/decomposeParDict for parallel run. "
+            "Create it first or run without --parallel.",
+        )
+    configured = read_number_of_subdomains(decompose_dict)
+    if configured is None:
+        configured = _read_subdomains_fallback(decompose_dict)
+    if configured == requested:
+        return
+    if write_entry(decompose_dict, "numberOfSubdomains", str(requested)):
+        return
+    if _write_subdomains_fallback(decompose_dict, requested=requested):
+        return
+    if configured is None:
+        raise ValueError(
+            "numberOfSubdomains missing or invalid in system/decomposeParDict, "
+            f"and automatic update to {requested} failed.",
+        )
+    raise ValueError(
+        "decomposeParDict specifies "
+        f"{configured} processors, requested {requested}, "
+        "and automatic update failed.",
+    )
+
+
+_SUBDOMAINS_RE = re.compile(
+    r"(^|\n)(?P<prefix>\s*numberOfSubdomains\s+)(?P<value>[0-9]+)(?P<suffix>\s*;)",
+    re.MULTILINE,
+)
+
+
+def _read_subdomains_fallback(decompose_dict: Path) -> int | None:
+    try:
+        text = decompose_dict.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    match = _SUBDOMAINS_RE.search(text)
+    if match is None:
+        return None
+    try:
+        return int(match.group("value"))
+    except ValueError:
+        return None
+
+
+def _write_subdomains_fallback(decompose_dict: Path, *, requested: int) -> bool:
+    try:
+        text = decompose_dict.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    if _SUBDOMAINS_RE.search(text):
+        updated = _SUBDOMAINS_RE.sub(
+            lambda m: f"{m.group(1)}{m.group('prefix')}{requested}{m.group('suffix')}",
+            text,
+            count=1,
+        )
+    else:
+        suffix = "" if text.endswith("\n") else "\n"
+        updated = f"{text}{suffix}numberOfSubdomains {requested};\n"
+    try:
+        decompose_dict.write_text(updated, encoding="utf-8")
+    except OSError:
+        return False
+    return True
 
 
 def _normalize_name(value: str) -> str:

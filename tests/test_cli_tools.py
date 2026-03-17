@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 
 from ofti.app import cli_tools
-from ofti.tools import cli_tools_screens
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import watch as watch_ops
 from ofti.tools.cli_tools.run import RunResult
@@ -43,11 +42,18 @@ def test_cli_tools_without_args_prints_short_help(capsys) -> None:
     out = capsys.readouterr().out
     assert code == 0
     assert "Non-interactive OFTI utilities" in out
-    assert "{knife,plot,watch,run}" in out
+    assert "{knife,plot,watch,run,version}" in out
 
 
 def test_cli_tools_version_flag(capsys) -> None:
     code = cli_tools.main(["--version"])
+    out = capsys.readouterr().out.strip()
+    assert code == 0
+    assert out.startswith("ofti ")
+
+
+def test_cli_tools_version_subcommand(capsys) -> None:
+    code = cli_tools.main(["version"])
     out = capsys.readouterr().out.strip()
     assert code == 0
     assert out.startswith("ofti ")
@@ -168,21 +174,16 @@ def test_run_matrix_queue_status_cli_json(monkeypatch, capsys) -> None:
     assert payload["rows"][0]["state"] == "running"
 
 
-def test_tui_run_export_tool_catalog_json_default_path(tmp_path, monkeypatch) -> None:
+def test_run_write_tool_catalog_json_default_path(tmp_path) -> None:
     case = _make_case(tmp_path / "case")
-    messages: list[str] = []
-
-    monkeypatch.setattr(cli_tools_screens, "prompt_line", lambda *_args, **_kwargs: "")
-    monkeypatch.setattr(cli_tools_screens, "_show_message", lambda _screen, text: messages.append(text))
-
-    cli_tools_screens._export_tool_catalog_json(object(), case)
+    export_path = cli_tools.run_ops.write_tool_catalog_json(case)
 
     exported = case / ".ofti" / "tool_catalog.json"
+    assert export_path == exported.resolve()
     assert exported.is_file()
     payload = json.loads(exported.read_text())
     assert payload["case"] == str(case.resolve())
     assert "blockMesh" in payload["tools"]
-    assert messages and "Exported" in messages[0]
 
 
 def test_knife_preflight_reports_ok_for_minimal_case(tmp_path, capsys) -> None:
@@ -823,6 +824,27 @@ def test_knife_current_includes_untracked_solver_processes(tmp_path, monkeypatch
 
     assert payload["jobs_running"] == 1
     assert payload["untracked_processes"][0]["pid"] == 777
+
+
+def test_knife_adopt_cli_json(tmp_path, capsys, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.knife_ops.adopt_payload",
+        lambda _case: {
+            "case": str(case),
+            "selected": 1,
+            "adopted": [{"id": "1-777", "pid": 777, "name": "hy2Foam", "role": "solver"}],
+            "failed": [],
+            "skipped": [],
+            "jobs_running_before": 0,
+            "jobs_running_after": 1,
+        },
+    )
+    code = cli_tools.main(["knife", "adopt", str(case), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["selected"] == 1
+    assert payload["adopted"][0]["pid"] == 777
 
 
 def test_knife_set_json_output(tmp_path, capsys, monkeypatch) -> None:

@@ -135,6 +135,7 @@ MENU_HINTS: dict[str, dict[str, str]] = {
         "Re-run last tool": "Run the last tool again with the same args.",
         "Diagnostics": "Environment + case checks.",
         "Case doctor": "Check required files, mesh, syntax.",
+        "Case operations": "Preflight/status/compare actions in native TUI.",
         "Run shell script": "Execute a shell script from the case folder.",
         "Clone case": "Copy case and clean mesh/time/logs.",
         "Job status": "View tracked background jobs.",

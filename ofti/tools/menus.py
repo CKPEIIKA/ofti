@@ -10,7 +10,6 @@ from ofti.tools import (
     case_doctor,
     case_ops,
     cleaning_ops,
-    cli_tools_screens,
     diagnostics,
     job_control,
     logs_analysis,
@@ -26,12 +25,15 @@ from ofti.tools import (
     shell_tools,
     solver,
     solver_control,
+    status_render_service,
     time_pruner,
     tool_dicts_foamcalc,
     tool_dicts_postprocess,
     yplus,
 )
+from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import run as run_ops
+from ofti.tools.input_prompts import prompt_line
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import (
     _no_foam_active,
@@ -52,6 +54,7 @@ from ofti.ui_curses.high_speed import high_speed_helper_screen
 from ofti.ui_curses.initial_conditions import initial_conditions_screen
 from ofti.ui_curses.snappy_toggle import snappy_staged_screen
 from ofti.ui_curses.thermo_wizard import thermophysical_wizard_screen
+from ofti.ui_curses.viewer import Viewer
 
 clean_time_directories = cleaning_ops.clean_time_directories
 clone_case = case_ops.clone_case
@@ -89,11 +92,6 @@ postprocessing_browser_screen = postprocessing.postprocessing_browser_screen
 solver_resurrection_screen = solver_control.solver_resurrection_screen
 time_directory_pruner_screen = time_pruner.time_directory_pruner_screen
 yplus_screen = yplus.yplus_screen
-cli_tools_screen = cli_tools_screens.cli_tools_screen
-cli_knife_screen = cli_tools_screens.cli_knife_screen
-cli_plot_screen = cli_tools_screens.cli_plot_screen
-cli_watch_screen = cli_tools_screens.cli_watch_screen
-cli_run_screen = cli_tools_screens.cli_run_screen
 
 
 @dataclass
@@ -164,6 +162,118 @@ def _run_snappy_staged(stdscr: Any, case_path: Path) -> None:
         run_tool_by_name(stdscr, case_path, "snappyHexMesh")
 
 
+_CASE_OP_LABELS = [
+    "Preflight",
+    "Case doctor",
+    "Status",
+    "Compare dictionaries",
+    "Back",
+]
+
+
+def _case_operations_menu(
+    stdscr: Any,
+    *,
+    command_handler: Callable[[str], str | None] | None,
+    command_suggestions: Callable[[], list[str]] | None,
+) -> int:
+    menu = build_menu(
+        stdscr,
+        "Case operations",
+        _CASE_OP_LABELS,
+        menu_key="menu:case_ops",
+        command_handler=command_handler,
+        command_suggestions=command_suggestions,
+    )
+    return menu.navigate()
+
+
+def _show_case_preflight(stdscr: Any, case_path: Path) -> None:
+    try:
+        payload = knife_ops.preflight_payload(case_path)
+    except ValueError as exc:
+        _show_message(stdscr, str(exc))
+        return
+    lines = [f"case={payload['case']}"]
+    for key, value in payload["checks"].items():
+        lines.append(f"{key}={'ok' if value else 'missing'}")
+    if payload["solver_error"]:
+        lines.append(f"solver_error={payload['solver_error']}")
+    lines.append(f"ok={payload['ok']}")
+    Viewer(stdscr, "\n".join(lines)).display()
+
+
+def _show_case_status(stdscr: Any, case_path: Path) -> None:
+    try:
+        payload = knife_ops.status_payload(case_path)
+    except ValueError as exc:
+        _show_message(stdscr, str(exc))
+        return
+    lines = status_render_service.case_status_lines(payload)
+    Viewer(stdscr, "\n".join(lines)).display()
+
+
+def _compare_lines(payload: dict[str, Any]) -> list[str]:
+    lines = [
+        f"left_case={payload['left_case']}",
+        f"right_case={payload['right_case']}",
+        f"diff_count={payload['diff_count']}",
+    ]
+    for diff in payload["diffs"]:
+        lines.append("")
+        lines.append(diff["rel_path"])
+        if diff["error"]:
+            lines.append(f"  error: {diff['error']}")
+        if diff["missing_in_left"]:
+            lines.append(f"  missing_in_left: {', '.join(diff['missing_in_left'])}")
+        if diff["missing_in_right"]:
+            lines.append(f"  missing_in_right: {', '.join(diff['missing_in_right'])}")
+        for row in diff.get("value_diffs", [])[:20]:
+            lines.append(f"  {row['key']}: left={row['left']} right={row['right']}")
+        if len(diff.get("value_diffs", [])) > 20:
+            lines.append(f"  value_diff_more={len(diff['value_diffs']) - 20}")
+    return lines
+
+
+def _show_case_compare(stdscr: Any, case_path: Path) -> None:
+    other = prompt_line(stdscr, "Compare with case path: ")
+    if not other:
+        return
+    try:
+        payload = knife_ops.compare_payload(case_path, Path(other))
+    except ValueError as exc:
+        _show_message(stdscr, str(exc))
+        return
+    Viewer(stdscr, "\n".join(_compare_lines(payload))).display()
+
+
+def case_operations_screen(
+    stdscr: Any,
+    case_path: Path,
+    *,
+    command_handler: Callable[[str], str | None] | None = None,
+    command_suggestions: Callable[[], list[str]] | None = None,
+) -> None:
+    while True:
+        choice = _case_operations_menu(
+            stdscr,
+            command_handler=command_handler,
+            command_suggestions=command_suggestions,
+        )
+        if choice in (-1, len(_CASE_OP_LABELS) - 1):
+            return
+        if choice == 0:
+            _show_case_preflight(stdscr, case_path)
+            continue
+        if choice == 1:
+            case_doctor.case_doctor_screen(stdscr, case_path)
+            continue
+        if choice == 2:
+            _show_case_status(stdscr, case_path)
+            continue
+        _show_case_compare(stdscr, case_path)
+
+
 def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, _ToolAlias]:
     aliases: dict[str, _ToolAlias] = {}
 
@@ -231,11 +341,11 @@ def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, _ToolAlias]:
         "jobstop": bind(stop_job_screen),
         "jobpause": bind(pause_job_screen),
         "jobresume": bind(resume_job_screen),
-        "clitools": bind(cli_tools_screen),
-        "knife": bind(cli_knife_screen),
-        "plot": bind(cli_plot_screen),
-        "watch": bind(cli_watch_screen),
-        "run": bind(cli_run_screen),
+        "clitools": bind(case_operations_screen),
+        "knife": bind(case_operations_screen),
+        "plot": bind(residual_timeline_screen),
+        "watch": bind(job_status_poll_screen),
+        "run": bind(run_current_solver),
         "renumbermesh": bind(renumber_mesh_screen),
         "transformpoints": bind(transform_points_screen),
         "cfmesh": bind(cfmesh_screen),
@@ -249,7 +359,7 @@ def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, _ToolAlias]:
 TOOLS_SPECIAL_HINTS = [
     "Environment and installation checks",
     "Case doctor checks required files, mesh, and syntax",
-    "CLI tools: knife, plot, watch, run",
+    "Case operations: preflight, doctor, status, compare",
     "Run a shell script from case folder",
     "Clone case directory and clean mesh/time/logs",
     "View tracked solver jobs (no external tools)",
@@ -280,7 +390,7 @@ def tools_screen(  # noqa: C901
     labels = ["Re-run last tool"] + [name for name, _ in simple_tools] + [
         "Diagnostics",
         "Case doctor",
-        "CLI tools",
+        "Case operations",
         "Run shell script",
         "Clone case",
         "Job status",
@@ -357,7 +467,7 @@ def tools_screen(  # noqa: C901
         elif special_index == 1:
             case_doctor.case_doctor_screen(stdscr, case_path)
         elif special_index == 2:
-            cli_tools_screen(
+            case_operations_screen(
                 stdscr,
                 case_path,
                 command_handler=command_handler,

@@ -285,15 +285,19 @@ def process_role(args: list[str], solver: str | None) -> str | None:
     if not args:
         return None
     base = Path(args[0]).name.lower()
-    if base in _MPI_LAUNCHERS:
-        return "launcher"
-    if solver is None:
+    role: str | None = None
+    if base in _MPI_LAUNCHERS or (
+        solver is not None
+        and base in _SHELL_LAUNCHERS
+        and _shell_command_matches_solver(args, solver)
+    ):
+        role = "launcher"
+    elif solver is None:
         if looks_like_solver_args(args):
-            return "solver"
-        return None
-    if args_match_solver(args, solver):
-        return "solver"
-    return None
+            role = "solver"
+    elif args_match_solver(args, solver):
+        role = "solver"
+    return role
 
 
 def args_match_solver(args: list[str], solver: str) -> bool:
@@ -306,6 +310,44 @@ def token_matches_solver(text: str, solver: str) -> bool:
         return True
     cleaned = text.replace(";", " ").replace("&&", " ")
     return any(Path(token).name.lower() == solver for token in cleaned.split())
+
+
+def _shell_command_matches_solver(args: list[str], solver: str) -> bool:
+    if not args:
+        return False
+    base = Path(args[0]).name.lower()
+    if base not in _SHELL_LAUNCHERS:
+        return False
+    solver_name = solver.lower()
+    for idx, token in enumerate(args[:-1]):
+        if token not in {"-c", "-lc"}:
+            continue
+        command = args[idx + 1]
+        if not command:
+            continue
+        if token_matches_solver(command, solver_name):
+            return True
+    return False
+
+
+def _shell_command_has_any_solver(args: list[str]) -> bool:
+    if not args:
+        return False
+    base = Path(args[0]).name.lower()
+    if base not in _SHELL_LAUNCHERS:
+        return False
+    for idx, token in enumerate(args[:-1]):
+        if token not in {"-c", "-lc"}:
+            continue
+        command = args[idx + 1]
+        if not command:
+            continue
+        cleaned = command.replace(";", " ").replace("&&", " ")
+        for part in cleaned.split():
+            name = Path(part.strip("'\"")).name
+            if name.endswith("Foam"):
+                return True
+    return False
 
 
 def targets_case(proc_dir: Path, args: list[str], case_path: Path) -> bool:
@@ -427,7 +469,10 @@ def as_case_dir(path: Path | None, *, checked: set[Path] | None = None) -> Path 
 
 
 def is_case_dir(path: Path) -> bool:
-    return (path / "system" / "controlDict").is_file()
+    try:
+        return (path / "system" / "controlDict").is_file()
+    except OSError:
+        return False
 
 
 def proc_cwd(proc_dir: Path) -> Path | None:
@@ -558,6 +603,8 @@ def launcher_pid_for_entry(entry: ProcEntry, table: dict[int, ProcEntry]) -> int
         if parent is None:
             break
         if parent.args and Path(parent.args[0]).name.lower() in _MPI_LAUNCHERS:
+            return parent.pid
+        if _shell_command_has_any_solver(parent.args):
             return parent.pid
         cursor = parent
     return None

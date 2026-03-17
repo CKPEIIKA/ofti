@@ -10,6 +10,9 @@ from ofti.app.app import run_tui
 from ofti.app.cli_tools import main as cli_tools_main
 from ofti.foam.openfoam import OpenFOAMError
 
+_CLI_TOOLS_GROUPS = {"knife", "plot", "watch", "run", "version"}
+_CLI_VERSION_FLAGS = {"-V", "--version"}
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -39,7 +42,10 @@ def main(argv: list[str] | None = None) -> int:
         ofti [--debug] [CASE_DIR]
     """
     args_in = list(argv) if argv is not None else sys.argv[1:]
-    if args_in and args_in[0] in {"knife", "plot", "watch", "run"}:
+    use_cli_tools = args_in and (
+        args_in[0] in _CLI_TOOLS_GROUPS or any(flag in args_in for flag in _CLI_VERSION_FLAGS)
+    )
+    if use_cli_tools:
         return cli_tools_main(args_in)
 
     parser = build_parser()

@@ -22,3 +22,19 @@ def test_cli_main_delegates_tool_subcommand(monkeypatch) -> None:
 
     assert code == 7
     tool_main.assert_called_once_with(["knife", "status"])
+
+
+def test_cli_main_delegates_version_flag() -> None:
+    with mock.patch("ofti.app.cli.cli_tools_main", return_value=0) as tool_main:
+        code = cli.main(["--version"])
+
+    assert code == 0
+    tool_main.assert_called_once_with(["--version"])
+
+
+def test_cli_main_delegates_version_subcommand() -> None:
+    with mock.patch("ofti.app.cli.cli_tools_main", return_value=0) as tool_main:
+        code = cli.main(["version"])
+
+    assert code == 0
+    tool_main.assert_called_once_with(["version"])
