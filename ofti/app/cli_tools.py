@@ -175,6 +175,13 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Adopt untracked solver processes into OFTI job registry",
     )
     adopt.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    adopt.add_argument(
+        "--recursive",
+        "--all-untracked",
+        action="store_true",
+        dest="recursive",
+        help="Adopt untracked processes for all child cases under case_dir",
+    )
     adopt.add_argument("--json", action="store_true")
     adopt.set_defaults(func=_knife_adopt)
 
@@ -218,6 +225,12 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     launch.add_argument("--solver", default=None)
     launch.add_argument("--parallel", type=int, default=0)
     launch.add_argument("--mpi", default=None)
+    launch.add_argument(
+        "--sync-subdomains",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="For parallel runs, sync decomposeParDict numberOfSubdomains to --parallel",
+    )
     launch.add_argument("--json", action="store_true", help="Print result as JSON")
     launch.set_defaults(func=_watch_start)
 
@@ -226,6 +239,12 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     run.add_argument("--solver", default=None)
     run.add_argument("--parallel", type=int, default=0)
     run.add_argument("--mpi", default=None)
+    run.add_argument(
+        "--sync-subdomains",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="For parallel runs, sync decomposeParDict numberOfSubdomains to --parallel",
+    )
     run.add_argument("--json", action="store_true", help="Print result as JSON")
     run.set_defaults(func=_watch_start)
 
@@ -555,6 +574,12 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     start.add_argument("--parallel", type=int, default=0)
     start.add_argument("--mpi", default=None)
     start.add_argument(
+        "--sync-subdomains",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="For parallel runs, sync decomposeParDict numberOfSubdomains to --parallel",
+    )
+    start.add_argument(
         "--watcher",
         nargs="*",
         default=None,
@@ -633,6 +658,12 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     run.add_argument("--solver", default=None)
     run.add_argument("--parallel", type=int, default=0)
     run.add_argument("--mpi", default=None)
+    run.add_argument(
+        "--sync-subdomains",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="For parallel runs, sync decomposeParDict numberOfSubdomains to --parallel",
+    )
     run.add_argument("--json", action="store_true", help="Print result as JSON")
     run.set_defaults(func=_watch_run)
 
@@ -744,6 +775,12 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     solver.add_argument("--solver", default=None)
     solver.add_argument("--parallel", type=int, default=0)
     solver.add_argument("--mpi", default=None, help="MPI launcher (default: mpirun/mpiexec)")
+    solver.add_argument(
+        "--sync-subdomains",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="For parallel runs, sync decomposeParDict numberOfSubdomains to --parallel",
+    )
     solver.add_argument("--background", action="store_true")
     solver.add_argument("--dry-run", action="store_true")
     solver.add_argument("--json", action="store_true", help="Print result as JSON")
@@ -1042,11 +1079,30 @@ def _knife_current(args: argparse.Namespace) -> int:
 
 
 def _knife_adopt(args: argparse.Namespace) -> int:
-    payload = knife_ops.adopt_payload(args.case_dir)
+    payload = _knife_adopt_payload(
+        args.case_dir,
+        recursive=bool(getattr(args, "recursive", False)),
+    )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if not payload["failed"] else 1
+    _print_knife_adopt(payload)
+    return 0 if not payload["failed"] else 1
+
+
+def _knife_adopt_payload(case_dir: Path, *, recursive: bool) -> dict[str, object]:
+    try:
+        return knife_ops.adopt_payload(case_dir, recursive=recursive)
+    except TypeError:
+        return knife_ops.adopt_payload(case_dir)
+
+
+def _print_knife_adopt(payload: dict[str, object]) -> None:
     print(f"case={payload['case']}")
+    if "scope" in payload:
+        print(f"scope={payload.get('scope')}")
+    if "cases_total" in payload:
+        print(f"cases_total={payload.get('cases_total')}")
     print(f"selected={payload['selected']}")
     print(f"adopted={len(payload['adopted'])}")
     if payload["adopted"]:
@@ -1054,17 +1110,20 @@ def _knife_adopt(args: argparse.Namespace) -> int:
         for row in payload["adopted"]:
             print(
                 f"- id={row.get('id')} pid={row.get('pid')} "
-                f"role={row.get('role')} name={row.get('name')}",
+                f"role={row.get('role')} name={row.get('name')} case={row.get('case')}",
             )
     if payload["skipped"]:
         print("skipped:")
         for row in payload["skipped"]:
-            print(f"- pid={row.get('pid')} reason={row.get('reason')}")
+            print(
+                f"- pid={row.get('pid')} reason={row.get('reason')} case={row.get('case')}",
+            )
     if payload["failed"]:
         print("failed:")
         for row in payload["failed"]:
-            print(f"- pid={row.get('pid')} error={row.get('error')}")
-    return 0 if not payload["failed"] else 1
+            print(
+                f"- pid={row.get('pid')} error={row.get('error')} case={row.get('case')}",
+            )
 
 
 def _knife_stop(args: argparse.Namespace) -> int:
@@ -2131,11 +2190,13 @@ def _run_solver(args: argparse.Namespace) -> int:
 
 
 def _run_solver_with_mode(args: argparse.Namespace, *, background: bool) -> int:
+    sync_subdomains = bool(getattr(args, "sync_subdomains", True))
     display, cmd = run_ops.solver_command(
         args.case_dir,
         solver=args.solver,
         parallel=int(args.parallel),
         mpi=args.mpi,
+        sync_subdomains=sync_subdomains,
     )
     if getattr(args, "dry_run", False):
         cmd_text = run_ops.dry_run_command(cmd)
@@ -2147,6 +2208,7 @@ def _run_solver_with_mode(args: argparse.Namespace, *, background: bool) -> int:
                         "name": display,
                         "command": cmd_text,
                         "dry_run": True,
+                        "sync_subdomains": sync_subdomains,
                     },
                     indent=2,
                     sort_keys=True,
@@ -2181,6 +2243,7 @@ def _run_solver_with_mode(args: argparse.Namespace, *, background: bool) -> int:
             "log_file": str(log_path) if log_path is not None else None,
             "pid_file": str(pid_path) if pid_path is not None else None,
             "env": extra_env,
+            "sync_subdomains": sync_subdomains,
             "returncode": result.returncode,
             "pid": result.pid,
             "log_path": str(result.log_path) if result.log_path else None,

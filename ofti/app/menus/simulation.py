@@ -4,7 +4,18 @@ from pathlib import Path
 from typing import Any
 
 from ofti.app.menu_utils import menu_choice
+from ofti.app.menus.case_tools import (
+    adopt_untracked_screen,
+    run_convergence_check_screen,
+    run_stability_check_screen,
+    show_case_status_screen,
+    show_current_jobs_screen,
+    show_eta_forecast_screen,
+    show_runtime_criteria_screen,
+    show_runtime_report_screen,
+)
 from ofti.app.state import AppState, Screen
+from ofti.tools.job_control import pause_job_screen, resume_job_screen, stop_job_screen
 from ofti.tools.parametric import foamlib_parametric_study_screen
 from ofti.tools.pipeline import pipeline_editor_screen, pipeline_runner_screen
 from ofti.tools.solver import (
@@ -30,6 +41,17 @@ def simulation_menu(
         "Run case pipeline",
         "Run solver",
         "Run solver parallel",
+        "Case status",
+        "Current jobs (live)",
+        "Runtime criteria",
+        "ETA forecast",
+        "Runtime report",
+        "Convergence check",
+        "Stability check",
+        "Adopt untracked processes",
+        "Stop tracked job",
+        "Pause tracked job",
+        "Resume tracked job",
         "Safe stop",
         "Resume solver",
         "Parametric wizard",
@@ -41,7 +63,7 @@ def simulation_menu(
     control_dict = case_path / "system" / "controlDict"
     decompose_dict = case_path / "system" / "decomposeParDict"
     if not control_dict.is_file():
-        for idx in (2, 4, 5):
+        for idx in (2, 15, 16):
             disabled.add(idx)
             disabled_reasons[idx] = (
                 "Simulation requires system/controlDict; create a sample config in Config Manager."
@@ -54,8 +76,9 @@ def simulation_menu(
         )
         disabled_helpers[3] = "config"
     if state.no_foam:
-        disabled.update(range(len(options) - 1))
-        for idx in range(len(options) - 1):
+        no_foam_sensitive = (0, 1, 2, 3, 15, 16, 17)
+        disabled.update(no_foam_sensitive)
+        for idx in no_foam_sensitive:
             disabled_reasons.setdefault(
                 idx,
                 "OpenFOAM environment not initialized; run :foamenv to enable simulation features.",
@@ -90,8 +113,30 @@ def simulation_menu(
         elif choice == 3:
             run_current_solver_parallel(stdscr, case_path)
         elif choice == 4:
-            safe_stop_screen(stdscr, case_path)
+            show_case_status_screen(stdscr, case_path)
         elif choice == 5:
-            solver_resurrection_screen(stdscr, case_path)
+            show_current_jobs_screen(stdscr, case_path, live=True)
         elif choice == 6:
+            show_runtime_criteria_screen(stdscr, case_path)
+        elif choice == 7:
+            show_eta_forecast_screen(stdscr, case_path)
+        elif choice == 8:
+            show_runtime_report_screen(stdscr, case_path)
+        elif choice == 9:
+            run_convergence_check_screen(stdscr, case_path)
+        elif choice == 10:
+            run_stability_check_screen(stdscr, case_path)
+        elif choice == 11:
+            adopt_untracked_screen(stdscr, case_path)
+        elif choice == 12:
+            stop_job_screen(stdscr, case_path)
+        elif choice == 13:
+            pause_job_screen(stdscr, case_path)
+        elif choice == 14:
+            resume_job_screen(stdscr, case_path)
+        elif choice == 15:
+            safe_stop_screen(stdscr, case_path)
+        elif choice == 16:
+            solver_resurrection_screen(stdscr, case_path)
+        elif choice == 17:
             foamlib_parametric_study_screen(stdscr, case_path)

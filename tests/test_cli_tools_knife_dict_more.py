@@ -403,6 +403,78 @@ def test_knife_adopt_payload_registers_untracked_rows(
     assert captured == [("hy2Foam-launcher", 900)]
 
 
+def test_knife_adopt_payload_bulk_adopts_child_cases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    case_a = _make_case(root / "caseA", solver="hy2Foam")
+    case_b = _make_case(root / "nested" / "caseB", solver="hy2Foam")
+    case_a_str = str(case_a.resolve())
+    case_b_str = str(case_b.resolve())
+
+    monkeypatch.setattr(
+        knife_service,
+        "current_payload",
+        lambda _case, **_kwargs: {
+            "case": str(root.resolve()),
+            "solver": None,
+            "solver_error": "no controlDict",
+            "jobs": [],
+            "jobs_total": 0,
+            "jobs_running": 2,
+            "jobs_tracked_running": 0,
+            "jobs_registry_running": 0,
+            "untracked_processes": [
+                {
+                    "pid": 700,
+                    "ppid": 1,
+                    "solver": "hy2Foam",
+                    "role": "launcher",
+                    "tracked": False,
+                    "case": case_a_str,
+                    "command": "bash -lc hy2Foam -parallel",
+                },
+                {
+                    "pid": 701,
+                    "ppid": 700,
+                    "solver": "hy2Foam",
+                    "role": "solver",
+                    "tracked": False,
+                    "launcher_pid": 700,
+                    "case": case_a_str,
+                    "command": "hy2Foam -parallel",
+                },
+                {
+                    "pid": 800,
+                    "ppid": 1,
+                    "solver": "hy2Foam",
+                    "role": "launcher",
+                    "tracked": False,
+                    "case": case_b_str,
+                    "command": "bash -lc hy2Foam -parallel",
+                },
+            ],
+        },
+    )
+    monkeypatch.setattr(knife_service, "refresh_jobs", lambda _case: [])
+    adopted_calls: list[tuple[Path, int]] = []
+    monkeypatch.setattr(
+        knife_service,
+        "register_job",
+        lambda case_path, _name, pid, *_a, **_k: adopted_calls.append((case_path, pid)) or f"job-{pid}",
+    )
+
+    payload = knife.adopt_payload(root)
+
+    assert payload["scope"] == "tree"
+    assert payload["selected"] == 2
+    assert payload["failed"] == []
+    assert {row["case"] for row in payload["adopted"]} == {case_a_str, case_b_str}
+    assert {pid for _case, pid in adopted_calls} == {700, 800}
+
+
 def test_knife_report_payload_uses_single_status_call(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

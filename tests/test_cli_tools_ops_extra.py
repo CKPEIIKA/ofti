@@ -120,6 +120,35 @@ def test_run_solver_command_parallel_requires_decompose_dict(
         run.solver_command(case, solver="simpleFoam", parallel=2, mpi="mpirun")
 
 
+def test_run_solver_command_parallel_reports_actionable_sync_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    decompose = case / "system" / "decomposeParDict"
+    decompose.write_text("numberOfSubdomains 6;\n")
+    monkeypatch.setattr(run, "validate_initial_fields", lambda _case: [])
+    monkeypatch.setattr(run, "detect_mpi_launcher", lambda: "mpirun")
+    monkeypatch.setattr(run, "write_entry", lambda *_a, **_k: True)
+    monkeypatch.setattr(run, "_write_subdomains_fallback", lambda *_a, **_k: False)
+
+    with pytest.raises(ValueError, match="Parallel launch blocked: requested 2 ranks"):
+        run.solver_command(case, solver="simpleFoam", parallel=2, mpi="mpirun")
+
+
+def test_run_solver_command_parallel_no_sync_fails_fast_with_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    decompose = case / "system" / "decomposeParDict"
+    decompose.write_text("numberOfSubdomains 6;\n")
+    monkeypatch.setattr(run, "validate_initial_fields", lambda _case: [])
+
+    with pytest.raises(ValueError, match="Run with --sync-subdomains"):
+        run.solver_command(case, solver="simpleFoam", parallel=2, sync_subdomains=False)
+
+
 def test_run_execute_case_command_foreground_unsets_shell_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

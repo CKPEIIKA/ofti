@@ -14,6 +14,7 @@ from ofti.tools.postprocessing import postprocessing_browser_screen, sampling_se
 from ofti.tools.reconstruct import reconstruct_manager_screen
 from ofti.tools.shell_tools import run_shell_script_screen
 from ofti.tools.tool_dicts_foamcalc import foam_calc_prompt
+from ofti.tools.yplus import yplus_screen
 from ofti.ui_curses.help import postprocessing_help
 
 
@@ -34,6 +35,7 @@ def postprocessing_menu(
         "Field summary",
         "Sampling & sets",
         "Probes viewer",
+        "yPlus estimator",
         "foamCalc",
         "Run shell script",
         "Back",
@@ -90,6 +92,8 @@ def postprocessing_menu(
         elif choice == 7:
             probes_viewer_screen(stdscr, case_path)
         elif choice == 8:
-            foam_calc_prompt(stdscr, case_path)
+            yplus_screen(stdscr, case_path)
         elif choice == 9:
+            foam_calc_prompt(stdscr, case_path)
+        elif choice == 10:
             run_shell_script_screen(stdscr, case_path)

@@ -175,7 +175,6 @@ def test_command_and_browser_callbacks_dispatch(monkeypatch: pytest.MonkeyPatch,
     monkeypatch.setattr(app, "simulation_menu", lambda *_a, **_k: called.append("sim"))
     monkeypatch.setattr(app, "postprocessing_menu", lambda *_a, **_k: called.append("post"))
     monkeypatch.setattr(app, "clean_case_menu", lambda *_a, **_k: called.append("clean"))
-    monkeypatch.setattr(app, "tools_screen", lambda *_a, **_k: called.append("tools"))
     monkeypatch.setattr(app, "diagnostics_screen", lambda *_a, **_k: called.append("diag"))
     monkeypatch.setattr(app, "config_menu", lambda *_a, **_k: called.append("config"))
     monkeypatch.setattr(app, "fzf_enabled", lambda: True)
@@ -198,4 +197,5 @@ def test_command_and_browser_callbacks_dispatch(monkeypatch: pytest.MonkeyPatch,
     browser.view_file(screen, case)
     browser.handle_command(screen, case, state, ":check")
 
-    assert {"check", "tools", "diag", "mesh", "physics", "sim", "post", "clean", "config"} <= set(called)
+    assert {"check", "diag", "mesh", "physics", "sim", "post", "clean", "config"} <= set(called)
+    assert called.count("sim") >= 2

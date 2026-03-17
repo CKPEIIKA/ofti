@@ -6,6 +6,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+from ofti.app.menus import case_tools as shared_case_tools
 from ofti.tools import (
     case_doctor,
     case_ops,
@@ -25,15 +26,12 @@ from ofti.tools import (
     shell_tools,
     solver,
     solver_control,
-    status_render_service,
     time_pruner,
     tool_dicts_foamcalc,
     tool_dicts_postprocess,
     yplus,
 )
-from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import run as run_ops
-from ofti.tools.input_prompts import prompt_line
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import (
     _no_foam_active,
@@ -54,7 +52,6 @@ from ofti.ui_curses.high_speed import high_speed_helper_screen
 from ofti.ui_curses.initial_conditions import initial_conditions_screen
 from ofti.ui_curses.snappy_toggle import snappy_staged_screen
 from ofti.ui_curses.thermo_wizard import thermophysical_wizard_screen
-from ofti.ui_curses.viewer import Viewer
 
 clean_time_directories = cleaning_ops.clean_time_directories
 clone_case = case_ops.clone_case
@@ -188,65 +185,6 @@ def _case_operations_menu(
     return menu.navigate()
 
 
-def _show_case_preflight(stdscr: Any, case_path: Path) -> None:
-    try:
-        payload = knife_ops.preflight_payload(case_path)
-    except ValueError as exc:
-        _show_message(stdscr, str(exc))
-        return
-    lines = [f"case={payload['case']}"]
-    for key, value in payload["checks"].items():
-        lines.append(f"{key}={'ok' if value else 'missing'}")
-    if payload["solver_error"]:
-        lines.append(f"solver_error={payload['solver_error']}")
-    lines.append(f"ok={payload['ok']}")
-    Viewer(stdscr, "\n".join(lines)).display()
-
-
-def _show_case_status(stdscr: Any, case_path: Path) -> None:
-    try:
-        payload = knife_ops.status_payload(case_path)
-    except ValueError as exc:
-        _show_message(stdscr, str(exc))
-        return
-    lines = status_render_service.case_status_lines(payload)
-    Viewer(stdscr, "\n".join(lines)).display()
-
-
-def _compare_lines(payload: dict[str, Any]) -> list[str]:
-    lines = [
-        f"left_case={payload['left_case']}",
-        f"right_case={payload['right_case']}",
-        f"diff_count={payload['diff_count']}",
-    ]
-    for diff in payload["diffs"]:
-        lines.append("")
-        lines.append(diff["rel_path"])
-        if diff["error"]:
-            lines.append(f"  error: {diff['error']}")
-        if diff["missing_in_left"]:
-            lines.append(f"  missing_in_left: {', '.join(diff['missing_in_left'])}")
-        if diff["missing_in_right"]:
-            lines.append(f"  missing_in_right: {', '.join(diff['missing_in_right'])}")
-        for row in diff.get("value_diffs", [])[:20]:
-            lines.append(f"  {row['key']}: left={row['left']} right={row['right']}")
-        if len(diff.get("value_diffs", [])) > 20:
-            lines.append(f"  value_diff_more={len(diff['value_diffs']) - 20}")
-    return lines
-
-
-def _show_case_compare(stdscr: Any, case_path: Path) -> None:
-    other = prompt_line(stdscr, "Compare with case path: ")
-    if not other:
-        return
-    try:
-        payload = knife_ops.compare_payload(case_path, Path(other))
-    except ValueError as exc:
-        _show_message(stdscr, str(exc))
-        return
-    Viewer(stdscr, "\n".join(_compare_lines(payload))).display()
-
-
 def case_operations_screen(
     stdscr: Any,
     case_path: Path,
@@ -263,15 +201,15 @@ def case_operations_screen(
         if choice in (-1, len(_CASE_OP_LABELS) - 1):
             return
         if choice == 0:
-            _show_case_preflight(stdscr, case_path)
+            shared_case_tools.show_preflight_screen(stdscr, case_path)
             continue
         if choice == 1:
             case_doctor.case_doctor_screen(stdscr, case_path)
             continue
         if choice == 2:
-            _show_case_status(stdscr, case_path)
+            shared_case_tools.show_case_status_screen(stdscr, case_path)
             continue
-        _show_case_compare(stdscr, case_path)
+        shared_case_tools.compare_dictionaries_screen(stdscr, case_path)
 
 
 def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, _ToolAlias]:

@@ -15,7 +15,6 @@ from ofti.app.menus.simulation import simulation_menu
 from ofti.app.state import AppState, Screen
 from ofti.core.case_meta import case_metadata, case_metadata_quick
 from ofti.foam.config import fzf_enabled
-from ofti.tools.menus import tools_screen
 from ofti.ui.help import main_menu_help, menu_hint
 from ofti.ui.menu import RootMenu
 from ofti.ui_curses.layout import case_banner_lines, case_overview_lines
@@ -26,7 +25,7 @@ CheckScreen = Callable[[Any, Path, AppState], None]
 SearchScreen = Callable[[Any, Path, AppState], None]
 
 
-def main_menu_screen(  # noqa: C901
+def main_menu_screen(
     stdscr: Any,
     case_path: Path,
     state: AppState,
@@ -46,7 +45,6 @@ def main_menu_screen(  # noqa: C901
         "Post-Processing",
         "Clean case",
         "Config Manager",
-        "Tools",
     ]
     menu_options = list(categories)
     quit_index = len(menu_options)
@@ -136,14 +134,6 @@ def main_menu_screen(  # noqa: C901
             command_handler=menu_command,
             command_suggestions=menu_suggestions,
         )
-    if choice == 6:
-        tools_screen(
-            stdscr,
-            case_path,
-            command_handler=menu_command,
-            command_suggestions=menu_suggestions,
-        )
-        return Screen.MAIN_MENU
     return Screen.MAIN_MENU
 
 

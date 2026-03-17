@@ -7,6 +7,7 @@ from ofti.app.menu_utils import menu_choice
 from ofti.app.state import AppState, Screen
 from ofti.ui_curses.boundary_matrix import boundary_matrix_screen
 from ofti.ui_curses.help import physics_help
+from ofti.ui_curses.high_speed import high_speed_helper_screen
 from ofti.ui_curses.initial_conditions import initial_conditions_screen
 from ofti.ui_curses.thermo_wizard import thermophysical_wizard_screen
 
@@ -26,6 +27,7 @@ def physics_menu(
         "Boundary matrix",
         "Initial conditions",
         "Thermophysical wizard",
+        "High-speed helper",
         "Check syntax",
         "Back",
     ]
@@ -34,6 +36,7 @@ def physics_menu(
         lambda: boundary_matrix_screen(stdscr, case_path),
         lambda: initial_conditions_screen(stdscr, case_path),
         lambda: thermophysical_wizard_screen(stdscr, case_path),
+        lambda: high_speed_helper_screen(stdscr, case_path),
         lambda: check_syntax_screen(stdscr, case_path, state),
     ]
     while True:
