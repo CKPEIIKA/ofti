@@ -39,7 +39,6 @@ def command_suggestions(case_path: Path) -> list[str]:
     base = [
         "check",
         "tools",
-        "clitools",
         "knife",
         "plot",
         "watch",
@@ -194,7 +193,7 @@ def handle_command(
     if action.kind == CommandKind.HELP:
         callbacks.show_message(
             stdscr,
-            "Commands: :check, :tools, :clitools, :knife, :plot, :watch, :run, :solver, "
+            "Commands: :check, :tools, :knife, :plot, :watch, :run, :solver, "
             ":diag, :tasks, :search, :cancel <name>, :foamenv, :clone <name>, :tool <name>, :quit",
         )
         return "handled"

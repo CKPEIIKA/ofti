@@ -129,6 +129,26 @@ def test_knife_plain_and_json_branches(
     assert "No tracked running jobs." in out
     assert "untracked_solver_processes=none" in out
 
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "adopt_payload",
+        lambda _case: {
+            "case": "case",
+            "selected": 1,
+            "adopted": [{"id": "1-777", "pid": 777, "name": "hy2Foam", "role": "solver"}],
+            "failed": [],
+            "skipped": [],
+            "jobs_running_before": 0,
+            "jobs_running_after": 1,
+        },
+    )
+    assert cli_tools._knife_adopt(_ns(case_dir=Path(), json=True)) == 0
+    assert json.loads(capsys.readouterr().out)["selected"] == 1
+    assert cli_tools._knife_adopt(_ns(case_dir=Path(), json=False)) == 0
+    out = capsys.readouterr().out
+    assert "adopted=1" in out
+    assert "adopted_rows:" in out
+
 
 def test_converge_plot_residuals_and_watch_external(
     monkeypatch: pytest.MonkeyPatch,

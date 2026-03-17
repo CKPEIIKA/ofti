@@ -187,8 +187,41 @@ def test_scan_processes_infers_case_from_shell_cd_parent(tmp_path: Path) -> None
     )
     assert {row["pid"] for row in rows} == {501}
     assert rows[0]["case"] == str(case.resolve())
-    assert rows[0]["launcher_pid"] is None
+    assert rows[0]["launcher_pid"] == 500
     assert rows[0]["discovery_source"] in {"procfs", "launcher"}
+
+
+def test_scan_processes_marks_shell_wrapper_as_launcher_when_solver_known(tmp_path: Path) -> None:
+    svc._DISCOVERY_CACHE.clear()
+    case = _make_case(tmp_path / "case")
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    _write_proc_entry(
+        proc_root,
+        pid=610,
+        ppid=1,
+        cmdline=f"bash\x00-lc\x00cd {case} && hy2Foam -parallel\x00".encode(),
+        cwd=None,
+    )
+    _write_proc_entry(
+        proc_root,
+        pid=611,
+        ppid=610,
+        cmdline=b"hy2Foam\x00-parallel\x00",
+        cwd=case,
+    )
+    rows = svc.scan_proc_solver_processes(
+        case,
+        "hy2Foam",
+        tracked_pids=set(),
+        proc_root=proc_root,
+        require_case_target=True,
+        include_tracked=True,
+    )
+    by_pid = {int(row["pid"]): row for row in rows}
+    assert by_pid[610]["role"] == "launcher"
+    assert by_pid[611]["role"] == "solver"
+    assert by_pid[611]["launcher_pid"] == 610
 
 
 def test_scan_processes_uses_registry_cache_for_same_pid(tmp_path: Path) -> None:

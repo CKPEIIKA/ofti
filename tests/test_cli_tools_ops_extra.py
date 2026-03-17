@@ -81,6 +81,7 @@ def test_run_solver_command_validates_errors(tmp_path: Path, monkeypatch: pytest
 
 def test_run_solver_command_parallel_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     case = _make_case(tmp_path / "case")
+    (case / "system" / "decomposeParDict").write_text("numberOfSubdomains 4;\n")
     monkeypatch.setattr(run, "validate_initial_fields", lambda _case: [])
 
     display, cmd = run.solver_command(case, solver="simpleFoam", parallel=4, mpi="mpirun")
@@ -90,6 +91,33 @@ def test_run_solver_command_parallel_modes(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(run, "detect_mpi_launcher", lambda: None)
     with pytest.raises(ValueError, match="MPI launcher not found"):
         run.solver_command(case, solver="simpleFoam", parallel=2)
+
+
+def test_run_solver_command_parallel_syncs_number_of_subdomains(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    decompose = case / "system" / "decomposeParDict"
+    decompose.write_text("numberOfSubdomains 6;\n")
+    monkeypatch.setattr(run, "validate_initial_fields", lambda _case: [])
+    monkeypatch.setattr(run, "detect_mpi_launcher", lambda: "mpirun")
+
+    display, cmd = run.solver_command(case, solver="simpleFoam", parallel=2)
+
+    assert display == "simpleFoam-parallel"
+    assert cmd == ["mpirun", "-np", "2", "simpleFoam", "-parallel"]
+    assert "numberOfSubdomains 2;" in decompose.read_text()
+
+
+def test_run_solver_command_parallel_requires_decompose_dict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    monkeypatch.setattr(run, "validate_initial_fields", lambda _case: [])
+    with pytest.raises(ValueError, match="Missing system/decomposeParDict"):
+        run.solver_command(case, solver="simpleFoam", parallel=2, mpi="mpirun")
 
 
 def test_run_execute_case_command_foreground_unsets_shell_env(

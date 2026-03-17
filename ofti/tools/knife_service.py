@@ -28,7 +28,7 @@ from ofti.tools import (
     watch_service,
 )
 from ofti.tools.case_doctor import build_case_doctor_report
-from ofti.tools.job_registry import refresh_jobs
+from ofti.tools.job_registry import refresh_jobs, register_job
 from ofti.tools.process_scan_service import ProcEntry
 
 _DELTA_T_RE = runtime_control_service.DELTA_T_RE
@@ -65,6 +65,90 @@ def current_payload(case_dir: Path, *, live: bool = False) -> case_status_servic
 
 def current_live_payload(case_dir: Path) -> case_status_service.CurrentPayload:
     return current_payload(case_dir, live=True)
+
+
+def adopt_payload(case_dir: Path) -> dict[str, Any]:
+    case_path = case_source_service.require_case_dir(case_dir)
+    snapshot = current_payload(case_path, live=True)
+    case_str = str(case_path.resolve())
+    jobs = refresh_jobs(case_path)
+    active_jobs = [job for job in jobs if job.get("status") in {"running", "paused"}]
+    tracked_pids = set(_running_job_pids(active_jobs))
+    launcher_pids = {
+        int(row["pid"])
+        for row in snapshot["untracked_processes"]
+        if str(row.get("case", "")) == case_str
+        and str(row.get("role")) == "launcher"
+        and int(row.get("pid", 0)) > 0
+    }
+
+    selected: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for row in snapshot["untracked_processes"]:
+        pid = int(row.get("pid", 0) or 0)
+        if pid <= 0:
+            continue
+        if str(row.get("case", "")) != case_str:
+            continue
+        role = str(row.get("role", "solver"))
+        launcher_pid = row.get("launcher_pid")
+        if role == "solver" and isinstance(launcher_pid, int) and launcher_pid in launcher_pids:
+            # The launcher process represents this solver subtree.
+            continue
+        if pid in tracked_pids:
+            skipped.append({"pid": pid, "reason": "already_tracked"})
+            continue
+        selected.append(
+            {
+                "pid": pid,
+                "role": role,
+                "solver": row.get("solver"),
+                "command": str(row.get("command") or ""),
+                "launcher_pid": launcher_pid if isinstance(launcher_pid, int) else None,
+            },
+        )
+
+    adopted: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    for row in selected:
+        pid = int(row["pid"])
+        command = str(row.get("command") or "")
+        role = str(row.get("role") or "solver")
+        solver_name = str(row.get("solver") or "solver")
+        name = solver_name if role == "solver" else f"{solver_name}-launcher"
+        try:
+            job_id = register_job(
+                case_path,
+                name,
+                pid,
+                command,
+                None,
+                kind="solver",
+                detached=True,
+                extra={"adopted": True, "role": role},
+            )
+        except OSError as exc:
+            failed.append({"pid": pid, "error": str(exc)})
+            continue
+        adopted.append(
+            {
+                "id": job_id,
+                "pid": pid,
+                "name": name,
+                "role": role,
+                "command": command,
+            },
+        )
+
+    return {
+        "case": case_str,
+        "selected": len(selected),
+        "adopted": adopted,
+        "failed": failed,
+        "skipped": skipped,
+        "jobs_running_before": len(active_jobs),
+        "jobs_running_after": len(active_jobs) + len(adopted),
+    }
 
 
 def compare_payload(

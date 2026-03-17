@@ -60,6 +60,8 @@ def build_parser() -> argparse.ArgumentParser:
     _build_plot_parser(groups)
     _build_watch_parser(groups)
     _build_run_parser(groups)
+    version_cmd = groups.add_parser("version", help="Show version and exit")
+    version_cmd.set_defaults(func=_version_command)
     return parser
 
 
@@ -167,6 +169,14 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     )
     current.add_argument("--json", action="store_true")
     current.set_defaults(func=_knife_current)
+
+    adopt = knife_sub.add_parser(
+        "adopt",
+        help="Adopt untracked solver processes into OFTI job registry",
+    )
+    adopt.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    adopt.add_argument("--json", action="store_true")
+    adopt.set_defaults(func=_knife_adopt)
 
     case_status = knife_sub.add_parser("case-status", help="Alias of knife status")
     case_status.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
@@ -827,6 +837,11 @@ def ofti_version() -> str:
         return "dev"
 
 
+def _version_command(_args: argparse.Namespace) -> int:
+    print(f"ofti {ofti_version()}")
+    return 0
+
+
 def _knife_doctor(args: argparse.Namespace) -> int:
     payload = knife_ops.doctor_payload(args.case_dir)
     if args.json:
@@ -1024,6 +1039,32 @@ def _knife_current(args: argparse.Namespace) -> int:
     else:
         print("untracked_solver_processes=none")
     return 0
+
+
+def _knife_adopt(args: argparse.Namespace) -> int:
+    payload = knife_ops.adopt_payload(args.case_dir)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if not payload["failed"] else 1
+    print(f"case={payload['case']}")
+    print(f"selected={payload['selected']}")
+    print(f"adopted={len(payload['adopted'])}")
+    if payload["adopted"]:
+        print("adopted_rows:")
+        for row in payload["adopted"]:
+            print(
+                f"- id={row.get('id')} pid={row.get('pid')} "
+                f"role={row.get('role')} name={row.get('name')}",
+            )
+    if payload["skipped"]:
+        print("skipped:")
+        for row in payload["skipped"]:
+            print(f"- pid={row.get('pid')} reason={row.get('reason')}")
+    if payload["failed"]:
+        print("failed:")
+        for row in payload["failed"]:
+            print(f"- pid={row.get('pid')} error={row.get('error')}")
+    return 0 if not payload["failed"] else 1
 
 
 def _knife_stop(args: argparse.Namespace) -> int:

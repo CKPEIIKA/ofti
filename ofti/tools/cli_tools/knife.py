@@ -10,6 +10,7 @@ doctor_payload = service.doctor_payload
 doctor_exit_code = service.doctor_exit_code
 current_payload = service.current_payload
 current_live_payload = service.current_live_payload
+adopt_payload = service.adopt_payload
 compare_payload = service.compare_payload
 copy_payload = service.copy_payload
 initials_payload = service.initials_payload
