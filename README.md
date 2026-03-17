@@ -129,12 +129,53 @@ ofti run queue --set CASE_SET --glob 'case_*' --max-parallel 6 --backend foamlib
 ofti run status --set CASE_SET --fast --json
 ```
 
+### Knife Workflows (New)
+
+Campaign-wide live status from repo root:
+
+```bash
+ofti knife current --root . --recursive --live --json
+```
+
+- `jobs_tracked_running`: tracked jobs from OFTI registry only.
+- `jobs_running`: tracked + live untracked solver processes.
+- `jobs_total`: tracked jobs + currently discovered untracked running processes.
+
+Bulk-adopt externally launched runs under repo root:
+
+```bash
+ofti knife adopt --root . --all-untracked --json
+```
+
+Equivalent explicit form:
+
+```bash
+ofti knife adopt --root . --recursive --json
+```
+
+Safe parallel launcher defaults (can be disabled explicitly):
+
+```bash
+ofti knife run CASE --parallel 2 --sync-subdomains --prepare-parallel --json
+```
+
+- `--sync-subdomains` updates `system/decomposeParDict:numberOfSubdomains`.
+- `--prepare-parallel` runs parallel prelaunch (`decomposePar -force`, optional cleanup).
+- Optional opt-out flags: `--no-sync-subdomains`, `--no-prepare-parallel`.
+
+Runtime criteria now respect explicit runTimeControl gate messages in logs:
+
+- `Conditions not met` prevents premature auto-pass from numeric-only checks.
+- Criteria stay `unknown`/unmet until gate lines report conditions are met.
+
 For very large logs, analysis/tail commands read recent log windows to stay
 responsive.
 
 External watcher integration (for example `scripts/oftools/ofwatch`) is
 expected to run through tool presets in `ofti.tools` and can be executed with
 `ofti run tool <name> --case CASE`.
+
+More command-level examples: `docs/knife_tools.md`
 
 ## UNIX CLI CONTRACT
 

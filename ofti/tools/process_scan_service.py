@@ -580,13 +580,22 @@ def discover_case(
             error="",
             launcher_pid=launcher_pid,
         )
-    error = entry.cwd_error or "case_not_found"
+    error = discovery_error_text(entry.cwd_error)
     return ProcessCaseDiscovery(
         case=None,
         source="procfs",
         error=error,
         launcher_pid=launcher_pid,
     )
+
+
+def discovery_error_text(cwd_error: str | None) -> str:
+    if not cwd_error:
+        return "case_not_found"
+    lowered = cwd_error.lower()
+    if "permission denied" in lowered or "operation not permitted" in lowered:
+        return "case_not_found"
+    return cwd_error
 
 
 def launcher_pid_for_entry(entry: ProcEntry, table: dict[int, ProcEntry]) -> int | None:

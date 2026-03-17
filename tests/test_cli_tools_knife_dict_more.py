@@ -392,7 +392,9 @@ def test_knife_current_scope_payload_tree_aggregates_jobs_and_untracked(
     assert len(payload["jobs"]) == 1
     assert payload["jobs"][0]["pid"] == 111
     assert payload["jobs"][0]["case"] == str(case_a.resolve())
+    assert payload["jobs_total"] == 3
     assert payload["jobs_running"] == 2
+    assert payload["jobs_tracked_running"] == 1
     assert payload["untracked_processes"][0]["pid"] == 333
     assert all(int(row["pid"]) != 444 for row in payload["untracked_processes"])
 

@@ -223,6 +223,48 @@ def test_runtime_control_observes_nested_runtime_criteria_values(tmp_path: Path)
     assert row["unmet_reason"] in {None, "window", "startup"}
 
 
+def test_criterion_status_handles_conditions_met_and_not_met_lines() -> None:
+    log_lines = [
+        "runTimeControl: residualGate condition met",
+        "runTimeControl: residualGate condition not met",
+    ]
+    status, evidence = svc.criterion_status("residualGate", "\n".join(log_lines), log_lines=log_lines)
+    assert status == "fail"
+    assert evidence == "runTimeControl: residualGate condition not met"
+
+
+def test_runtime_control_does_not_auto_pass_when_conditions_not_met(tmp_path: Path) -> None:
+    case = _make_case(tmp_path / "case")
+    (case / "system" / "controlDict").write_text(
+        "\n".join(
+            [
+                "startTime 0;",
+                "endTime 2;",
+                "residualTolerance 0.01;",
+            ],
+        ),
+    )
+    (case / "log.hy2Foam").write_text(
+        "\n".join(
+            [
+                "Time = 0.1",
+                "ExecutionTime = 0.1 s",
+                "residualTolerance value = 0.005",
+                "runTimeControl: Conditions not met",
+            ],
+        ),
+    )
+    snapshot = svc.runtime_control_snapshot(
+        case,
+        "hy2Foam",
+        resolve_log_source_fn=lambda source: source / "log.hy2Foam",
+    )
+    rows = snapshot["run_time_control"]["criteria"]
+    assert rows
+    assert rows[0]["status"] == "unknown"
+    assert rows[0]["unmet_reason"] == "window"
+
+
 def test_runtime_control_snapshot_full_uses_filtered_log_reader(
     tmp_path: Path,
     monkeypatch,
