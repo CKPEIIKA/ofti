@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ofti"
-version = "0.1.3"
+version = "0.1.4"
 description = "Curses-based OpenFOAM case editor"
 readme = "README.md"
 authors = [{name = "OpenFOAM TUI maintainers"}]
@@ -17,7 +17,7 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
 ]
 dependencies = [
-    "foamlib==1.5.5",
+    "foamlib[preprocessing,postprocessing]==1.5.7",
 ]
 
 [project.scripts]

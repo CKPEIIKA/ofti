@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import cast
 from unittest import mock
 
-from ofti.tools.solver import _tail_process_log, run_current_solver_live
+from ofti.tools.solver import (
+    _tail_process_log,
+    run_current_solver_live,
+    run_current_solver_live_custom_log,
+)
 
 
 class FakeScreen:
@@ -141,6 +145,47 @@ def test_run_current_solver_live_skips_runfunctions(tmp_path: Path, monkeypatch)
     run_current_solver_live(screen, case_dir)
 
     assert runner.called
+
+
+def test_run_current_solver_live_custom_log(tmp_path: Path, monkeypatch) -> None:
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    _write_control_dict(case_dir)
+    _write_zero_fields(case_dir)
+
+    screen = FakeScreen(keys=[ord("h")])
+    monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_args, **_kw: "simpleFoam;")
+    monkeypatch.setattr("ofti.tools.solver.require_wm_project_dir", lambda *_args, **_kw: None)
+    monkeypatch.setattr("ofti.tools.solver.resolve_openfoam_bashrc", lambda: None)
+    monkeypatch.setattr("ofti.tools.solver.prompt_line", lambda *_a, **_k: "logs/custom.log")
+    runner = mock.Mock()
+    monkeypatch.setattr("ofti.tools.solver._run_solver_live_cmd", runner)
+
+    run_current_solver_live_custom_log(screen, case_dir)
+
+    assert runner.called
+    assert runner.call_args.kwargs["log_path"] == case_dir.resolve() / "logs/custom.log"
+
+
+def test_run_current_solver_live_custom_log_rejects_path_escape(tmp_path: Path, monkeypatch) -> None:
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    _write_control_dict(case_dir)
+    _write_zero_fields(case_dir)
+
+    screen = FakeScreen(keys=[ord("h")])
+    messages: list[str] = []
+    monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_args, **_kw: "simpleFoam;")
+    monkeypatch.setattr("ofti.tools.solver.require_wm_project_dir", lambda *_args, **_kw: None)
+    monkeypatch.setattr("ofti.tools.solver.prompt_line", lambda *_a, **_k: "../escape.log")
+    monkeypatch.setattr("ofti.tools.solver._show_message", lambda *_a, **_k: messages.append(_a[1]))
+    runner = mock.Mock()
+    monkeypatch.setattr("ofti.tools.solver._run_solver_live_cmd", runner)
+
+    run_current_solver_live_custom_log(screen, case_dir)
+
+    assert not runner.called
+    assert messages and "inside the case directory" in messages[-1]
 
 
 def test_tail_process_log_stops_on_back(tmp_path: Path) -> None:

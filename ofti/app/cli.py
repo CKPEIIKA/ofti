@@ -31,6 +31,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable debug logging and more verbose error reporting",
     )
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="store_true",
+        help="Show version and exit",
+    )
     return parser
 
 
@@ -50,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(args_in)
+    if bool(getattr(args, "version", False)):
+        return cli_tools_main(["--version"])
 
     try:
         run_tui(str(args.case_dir), debug=args.debug)

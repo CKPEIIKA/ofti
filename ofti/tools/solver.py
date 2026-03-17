@@ -30,6 +30,7 @@ from ofti.foamlib.logs import read_log_tail_lines
 from ofti.tools.cleaning_utils import _require_wm_project_dir
 from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.helpers import resolve_openfoam_bashrc, with_bashrc
+from ofti.tools.input_prompts import prompt_line
 from ofti.tools.job_registry import finish_job, register_job
 from ofti.tools.runner import (
     _expand_shell_command,
@@ -86,42 +87,48 @@ def run_current_solver(stdscr: Any, case_path: Path) -> None:
 
 def run_current_solver_live(stdscr: Any, case_path: Path) -> None:
     """Run the solver and tail its log file live with a split-screen view."""
-    solver, error = resolve_solver_name(case_path)
-    if error:
-        _show_message(stdscr, _with_no_foam_hint(error))
-        return
+    solver = _prepare_solver_run(stdscr, case_path)
     if solver is None:
-        _show_message(stdscr, _with_no_foam_hint("Could not determine solver name."))
         return
-    if not _ensure_zero_dir(stdscr, case_path):
+    log_path = _prepare_solver_log_path(stdscr, case_path, solver)
+    if log_path is None:
         return
-    errors = validate_initial_fields(case_path)
-    if errors:
-        _show_message(stdscr, "\n".join(["Cannot run solver:", *errors]))
-        return
+    _run_current_solver_live_with_log(stdscr, case_path, solver, log_path)
 
-    log_path = case_path / f"log.{solver}"
-    if log_path.exists():
-        if remove_empty_log(log_path):
-            pass
-        else:
-            stdscr.clear()
-            stdscr.addstr(
-                f"Log {log_path.name} already exists. Rerun solver and overwrite log? [y/N]: ",
-            )
-            stdscr.refresh()
-            ch = stdscr.getch()
-            if ch not in (ord("y"), ord("Y")):
-                return
-            truncate_log(log_path)
+
+def run_current_solver_live_custom_log(stdscr: Any, case_path: Path) -> None:
+    solver = _prepare_solver_run(stdscr, case_path)
+    if solver is None:
+        return
+    stdscr.clear()
+    raw_log_path = prompt_line(stdscr, f"Log path inside case (default log.{solver}): ")
+    if raw_log_path is None:
+        return
+    log_path = _prepare_solver_log_path(stdscr, case_path, solver, raw_log_path)
+    if log_path is None:
+        return
+    _run_current_solver_live_with_log(stdscr, case_path, solver, log_path)
+
+
+def _run_current_solver_live_with_log(
+    stdscr: Any,
+    case_path: Path,
+    solver: str,
+    log_path: Path,
+) -> None:
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        _show_message(stdscr, f"Failed to create log directory {log_path.parent}: {exc}")
+        return
 
     bashrc = resolve_openfoam_bashrc()
     if bashrc:
         shell_cmd = solver
-        _run_solver_live_shell(stdscr, case_path, solver, shell_cmd)
+        _run_solver_live_shell(stdscr, case_path, solver, shell_cmd, log_path=log_path)
         return
 
-    _run_solver_live_cmd(stdscr, case_path, solver, [solver])
+    _run_solver_live_cmd(stdscr, case_path, solver, [solver], log_path=log_path)
 
 
 def run_current_solver_parallel(stdscr: Any, case_path: Path) -> None:
@@ -129,17 +136,8 @@ def run_current_solver_parallel(stdscr: Any, case_path: Path) -> None:
     if setup is None:
         return
     solver, subdomains = setup
-    log_path = case_path / f"log.{solver}"
-    if log_path.exists() and not remove_empty_log(log_path):
-        stdscr.clear()
-        stdscr.addstr(
-            f"Log {log_path.name} already exists. Rerun solver and overwrite log? [y/N]: ",
-        )
-        stdscr.refresh()
-        ch = stdscr.getch()
-        if ch not in (ord("y"), ord("Y")):
-            return
-        truncate_log(log_path)
+    if _prepare_solver_log_path(stdscr, case_path, solver) is None:
+        return
     mpi_exec = _resolve_mpi_launcher(stdscr)
     if not mpi_exec:
         return
@@ -147,12 +145,20 @@ def run_current_solver_parallel(stdscr: Any, case_path: Path) -> None:
     _run_solver_live_cmd(stdscr, case_path, solver, cmd)
 
 
-def _run_solver_live_shell(stdscr: Any, case_path: Path, solver: str, shell_cmd: str) -> None:
+def _run_solver_live_shell(
+    stdscr: Any,
+    case_path: Path,
+    solver: str,
+    shell_cmd: str,
+    *,
+    log_path: Path | None = None,
+) -> None:
     command = with_bashrc(_expand_shell_command(shell_cmd, case_path))
-    log_path = case_path / f"log.{solver}"
+    target_log = log_path if log_path is not None else case_path / f"log.{solver}"
+    target_log.parent.mkdir(parents=True, exist_ok=True)
     with suppress(OSError):
-        log_path.write_text("")
-    with log_path.open("a", encoding="utf-8", errors="ignore") as handle:
+        target_log.write_text("")
+    with target_log.open("a", encoding="utf-8", errors="ignore") as handle:
         try:
             bash_path = resolve_executable("bash")
         except FileNotFoundError as exc:
@@ -166,8 +172,8 @@ def _run_solver_live_shell(stdscr: Any, case_path: Path, solver: str, shell_cmd:
             text=True,
             env=_clean_env(case_path),
         )
-        job_id = register_job(case_path, solver, process.pid, command, log_path)
-        _tail_process_log(stdscr, case_path, solver, process, log_path, job_id)
+        job_id = register_job(case_path, solver, process.pid, command, target_log)
+        _tail_process_log(stdscr, case_path, solver, process, target_log, job_id)
 
 
 def _run_solver_live_cmd(
@@ -175,11 +181,14 @@ def _run_solver_live_cmd(
     case_path: Path,
     solver: str,
     cmd: list[str],
+    *,
+    log_path: Path | None = None,
 ) -> None:
-    log_path = case_path / f"log.{solver}"
+    target_log = log_path if log_path is not None else case_path / f"log.{solver}"
+    target_log.parent.mkdir(parents=True, exist_ok=True)
     with suppress(OSError):
-        log_path.write_text("")
-    with log_path.open("a", encoding="utf-8", errors="ignore") as handle:
+        target_log.write_text("")
+    with target_log.open("a", encoding="utf-8", errors="ignore") as handle:
         process = subprocess.Popen(  # noqa: S603
             cmd,
             cwd=case_path,
@@ -188,8 +197,8 @@ def _run_solver_live_cmd(
             text=True,
             env=_clean_env(case_path),
         )
-        job_id = register_job(case_path, solver, process.pid, " ".join(cmd), log_path)
-        _tail_process_log(stdscr, case_path, solver, process, log_path, job_id)
+        job_id = register_job(case_path, solver, process.pid, " ".join(cmd), target_log)
+        _tail_process_log(stdscr, case_path, solver, process, target_log, job_id)
 
 
 def solver_status_line(case_path: Path) -> str | None:
@@ -326,16 +335,8 @@ def _prepare_parallel_run(
     stdscr: Any,
     case_path: Path,
 ) -> tuple[str, int] | None:
-    solver, error = resolve_solver_name(case_path)
-    if error:
-        _show_message(stdscr, _with_no_foam_hint(error))
-        return None
-    assert solver is not None
-    if not _ensure_zero_dir(stdscr, case_path):
-        return None
-    errors = validate_initial_fields(case_path)
-    if errors:
-        _show_message(stdscr, "\n".join(["Cannot run solver:", *errors]))
+    solver = _prepare_solver_run(stdscr, case_path)
+    if solver is None:
         return None
     decompose_dict = case_path / "system" / "decomposeParDict"
     if not decompose_dict.is_file():
@@ -365,7 +366,67 @@ def _resolve_mpi_launcher(stdscr: Any) -> str | None:
             return None
 
 
- 
+def _prepare_solver_run(stdscr: Any, case_path: Path) -> str | None:
+    solver, error = resolve_solver_name(case_path)
+    if error:
+        _show_message(stdscr, _with_no_foam_hint(error))
+        return None
+    if solver is None:
+        _show_message(stdscr, _with_no_foam_hint("Could not determine solver name."))
+        return None
+    if not _ensure_zero_dir(stdscr, case_path):
+        return None
+    errors = validate_initial_fields(case_path)
+    if errors:
+        _show_message(stdscr, "\n".join(["Cannot run solver:", *errors]))
+        return None
+    return solver
+
+
+def _prepare_solver_log_path(
+    stdscr: Any,
+    case_path: Path,
+    solver: str,
+    raw_log_path: str | None = None,
+) -> Path | None:
+    try:
+        log_path = _resolve_solver_log_path(case_path, solver, raw_log_path)
+    except ValueError as exc:
+        _show_message(stdscr, str(exc))
+        return None
+    if log_path.exists() and not remove_empty_log(log_path):
+        try:
+            shown_log = log_path.relative_to(case_path.resolve())
+        except ValueError:
+            shown_log = log_path
+        stdscr.clear()
+        stdscr.addstr(
+            f"Log {shown_log} already exists. Rerun solver and overwrite log? [y/N]: ",
+        )
+        stdscr.refresh()
+        ch = stdscr.getch()
+        if ch not in (ord("y"), ord("Y")):
+            return None
+        truncate_log(log_path)
+    return log_path
+
+
+def _resolve_solver_log_path(
+    case_path: Path,
+    solver: str,
+    raw_log_path: str | None,
+) -> Path:
+    raw = (raw_log_path or "").strip()
+    relative_path = Path(raw) if raw else Path(f"log.{solver}")
+    if relative_path.is_absolute():
+        raise ValueError("Log path must be relative to the case directory.")
+    resolved_case = case_path.resolve()
+    resolved_log = (resolved_case / relative_path).resolve()
+    try:
+        resolved_log.relative_to(resolved_case)
+    except ValueError as exc:
+        raise ValueError("Log path must stay inside the case directory.") from exc
+    return resolved_log
 
 
 def _clean_env(case_path: Path) -> dict[str, str]:

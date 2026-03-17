@@ -38,3 +38,9 @@ def test_cli_main_delegates_version_subcommand() -> None:
 
     assert code == 0
     tool_main.assert_called_once_with(["version"])
+
+
+def test_cli_help_mentions_version_and_noninteractive_tools() -> None:
+    help_text = cli.build_parser().format_help()
+    assert "--version" in help_text
+    assert "knife|plot|watch|run" in help_text

@@ -95,3 +95,41 @@ def test_knife_status_payload_delegates_to_case_status_service(
     assert callable(kwargs["latest_solver_job_fn"])
     assert callable(kwargs["solver_status_text_fn"])
     assert callable(kwargs["latest_time_fn"])
+
+
+def test_knife_current_scope_payload_tree_scan_uses_proc_scope(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repo"
+    case = root / "caseA"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "controlDict").write_text("application hy2Foam;\n")
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "ofti.tools.knife_service.refresh_jobs",
+        lambda _case: [{"pid": 10, "status": "running", "name": "hy2Foam"}],
+    )
+
+    def _scan(
+        case_path: Path,
+        solver: str | None,
+        *,
+        tracked_pids: set[int],
+        require_case_target: bool = True,
+        **_kwargs: object,
+    ) -> list[dict[str, object]]:
+        seen["case_path"] = case_path
+        seen["solver"] = solver
+        seen["tracked"] = tracked_pids
+        seen["require_case_target"] = require_case_target
+        return []
+
+    monkeypatch.setattr("ofti.tools.knife_service._scan_proc_solver_processes", _scan)
+    payload = knife.current_scope_payload(root, live=True, recursive=True)
+    assert payload["scope"] == "tree"
+    assert seen["case_path"] == root.resolve()
+    assert seen["solver"] is None
+    assert seen["tracked"] == {10}
+    assert seen["require_case_target"] is False

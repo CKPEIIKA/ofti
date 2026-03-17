@@ -34,7 +34,7 @@ def test_run_group_help_lists_new_subcommands(capsys) -> None:
     code = cli_tools.main(["run"])
     out = capsys.readouterr().out
     assert code == 0
-    assert "{tool,solver,matrix,queue,status}" in out
+    assert "{tool,solver,matrix,parametric,queue,status}" in out
 
 
 def test_cli_tools_without_args_prints_short_help(capsys) -> None:
@@ -172,6 +172,54 @@ def test_run_matrix_queue_status_cli_json(monkeypatch, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
     assert payload["rows"][0]["state"] == "running"
+
+
+def test_run_parametric_cli_json(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "parse_sweep_values",
+        lambda _values: ["simpleFoam", "pisoFoam"],
+    )
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "parse_grid_axes",
+        lambda _axes, **_k: [],
+    )
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "parametric_case_payload",
+        lambda *_a, **_k: {
+            "case": "/case",
+            "mode": "single",
+            "dict_path": "system/controlDict",
+            "entry": "application",
+            "values": ["simpleFoam", "pisoFoam"],
+            "csv_path": None,
+            "grid_axes": [],
+            "output_root": "/set",
+            "created_count": 2,
+            "created": ["/set/case_a", "/set/case_b"],
+            "run_solver": False,
+            "queue": None,
+        },
+    )
+
+    code = cli_tools.main(
+        [
+            "run",
+            "parametric",
+            "/case",
+            "--entry",
+            "application",
+            "--values",
+            "simpleFoam,pisoFoam",
+            "--json",
+        ],
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["mode"] == "single"
+    assert payload["created_count"] == 2
 
 
 def test_run_write_tool_catalog_json_default_path(tmp_path) -> None:
@@ -893,6 +941,72 @@ def test_knife_adopt_cli_recursive_passes_flag(tmp_path, capsys, monkeypatch) ->
     assert payload["scope"] == "tree"
 
 
+def test_knife_current_cli_root_recursive_uses_scope_payload(tmp_path, capsys, monkeypatch) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    seen: dict[str, object] = {}
+
+    def _current_scope(case_dir: Path, **kwargs: object) -> dict[str, object]:
+        seen["case_dir"] = case_dir
+        seen.update(kwargs)
+        return {
+            "case": str(case_dir),
+            "scope": "tree",
+            "cases_total": 2,
+            "cases": [str(root / "caseA"), str(root / "caseB")],
+            "solver": None,
+            "solver_error": None,
+            "jobs": [],
+            "jobs_total": 0,
+            "jobs_running": 0,
+            "jobs_tracked_running": 0,
+            "jobs_registry_running": 0,
+            "untracked_processes": [],
+        }
+
+    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.current_scope_payload", _current_scope)
+    code = cli_tools.main(["knife", "current", "--root", str(root), "--recursive", "--live", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert seen["case_dir"] == root
+    assert seen["recursive"] is True
+    assert seen["live"] is True
+    assert payload["scope"] == "tree"
+
+
+def test_knife_adopt_cli_root_all_untracked_passes_flag(tmp_path, capsys, monkeypatch) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    seen: dict[str, object] = {}
+
+    def _adopt(case_dir: Path, *, recursive: bool = False, all_untracked: bool = False) -> dict[str, object]:
+        seen["case_dir"] = case_dir
+        seen["recursive"] = recursive
+        seen["all_untracked"] = all_untracked
+        return {
+            "case": str(case_dir),
+            "scope": "tree",
+            "recursive": True,
+            "all_untracked": True,
+            "cases_total": 0,
+            "cases": [],
+            "selected": 0,
+            "adopted": [],
+            "failed": [],
+            "skipped": [],
+            "jobs_running_before": 0,
+            "jobs_running_after": 0,
+        }
+
+    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.adopt_payload", _adopt)
+    code = cli_tools.main(["knife", "adopt", "--root", str(root), "--all-untracked", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert seen["case_dir"] == root
+    assert seen["all_untracked"] is True
+    assert payload["scope"] == "tree"
+
+
 def test_knife_set_json_output(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.setattr(
@@ -923,6 +1037,64 @@ def test_run_tool_help_mentions_presets(capsys) -> None:
     assert "--json" in out
 
 
+def test_run_solver_parallel_clean_processors_calls_prepare(tmp_path, capsys, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case", solver="rhoSimpleFoam")
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.run_ops.solver_command",
+        lambda _case, **_kwargs: ("rhoSimpleFoam-parallel", ["mpirun", "-np", "2", "rhoSimpleFoam", "-parallel"]),
+    )
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.run_ops.prepare_parallel_case",
+        lambda _case, **kwargs: seen.setdefault("prepare", kwargs) or {
+            "parallel": kwargs["parallel"],
+            "clean_processors": kwargs["clean_processors"],
+            "decompose_command": "decomposePar -force",
+            "cleaned_processors": [],
+            "decompose_returncode": 0,
+            "dry_run": False,
+            "applied": True,
+        },
+    )
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.run_ops.execute_solver_case_command",
+        lambda *_args, **_kwargs: RunResult(0, "", "", pid=None, log_path=Path(_args[0]) / "log.rhoSimpleFoam"),
+    )
+    code = cli_tools.main(
+        ["run", "solver", str(case), "--parallel", "2", "--clean-processors", "--json"],
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    prepare = seen["prepare"]
+    assert isinstance(prepare, dict)
+    assert prepare["clean_processors"] is True
+    assert payload["clean_processors"] is True
+
+
+def test_run_solver_parallel_no_prepare_skips_prepare(tmp_path, capsys, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case", solver="rhoSimpleFoam")
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.run_ops.solver_command",
+        lambda _case, **_kwargs: ("rhoSimpleFoam-parallel", ["mpirun", "-np", "2", "rhoSimpleFoam", "-parallel"]),
+    )
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.run_ops.prepare_parallel_case",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("prepare should be skipped")),
+    )
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.run_ops.execute_solver_case_command",
+        lambda *_args, **_kwargs: RunResult(0, "", "", pid=None, log_path=Path(_args[0]) / "log.rhoSimpleFoam"),
+    )
+    code = cli_tools.main(
+        ["run", "solver", str(case), "--parallel", "2", "--no-prepare-parallel", "--json"],
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["prepare_parallel"] is False
+    assert payload["parallel_setup"] is None
+
+
 def test_knife_converge_cli_json(tmp_path, capsys, monkeypatch) -> None:
     log_path = tmp_path / "log.hy2Foam"
     log_path.write_text("Time = 1\n")
@@ -946,6 +1118,55 @@ def test_knife_converge_cli_json(tmp_path, capsys, monkeypatch) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert code == 1
     assert payload["strict_ok"] is False
+
+
+def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monkeypatch) -> None:
+    root = tmp_path / "set"
+    case = _make_case(root / "caseA")
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.run_ops.resolve_case_set",
+        lambda **_kwargs: [case],
+    )
+
+    def _queue_payload(**kwargs: object) -> dict[str, object]:
+        seen.update(kwargs)
+        return {
+            "count": 1,
+            "max_parallel": 1,
+            "dry_run": False,
+            "backend": kwargs.get("backend", "process"),
+            "planned": [],
+            "started": [],
+            "finished": [],
+            "failed_to_start": [],
+            "ok": True,
+        }
+
+    monkeypatch.setattr("ofti.app.cli_tools.run_ops.queue_payload", _queue_payload)
+
+    code = cli_tools.main(
+        [
+            "run",
+            "queue",
+            "--set",
+            str(root),
+            "--max-parallel",
+            "1",
+            "--backend",
+            "foamlib-async",
+            "--no-prepare-parallel",
+            "--clean-processors",
+            "--json",
+        ],
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert seen["backend"] == "foamlib-async"
+    assert seen["prepare_parallel"] is False
+    assert seen["clean_processors"] is True
+    assert payload["backend"] == "foamlib-async"
 
 
 def test_watch_external_cli_dry_run_json(tmp_path, capsys, monkeypatch) -> None:

@@ -352,6 +352,61 @@ def test_knife_new_flag_forwarding_and_new_handlers(
     assert json.loads(capsys.readouterr().out)["solver"] == "simpleFoam"
 
 
+def test_knife_current_scope_and_adopt_all_untracked_handlers(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    seen_current: dict[str, object] = {}
+    seen_adopt: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "current_scope_payload",
+        lambda case_dir, **kwargs: seen_current.update({"case_dir": case_dir, **kwargs}) or {
+            "case": str(case_dir),
+            "scope": "tree",
+            "cases_total": 1,
+            "cases": [str(case_dir)],
+            "solver": None,
+            "solver_error": None,
+            "jobs": [],
+            "jobs_total": 0,
+            "jobs_running": 0,
+            "jobs_tracked_running": 0,
+            "jobs_registry_running": 0,
+            "untracked_processes": [],
+        },
+    )
+    assert cli_tools._knife_current(_ns(case_dir=Path("/x"), root=Path("/repo"), recursive=True, live=True, json=True)) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["scope"] == "tree"
+    assert seen_current["recursive"] is True
+    assert seen_current["live"] is True
+
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "adopt_payload",
+        lambda case_dir, **kwargs: seen_adopt.update({"case_dir": case_dir, **kwargs}) or {
+            "case": str(case_dir),
+            "scope": "tree",
+            "recursive": True,
+            "all_untracked": True,
+            "cases_total": 0,
+            "cases": [],
+            "selected": 0,
+            "adopted": [],
+            "failed": [],
+            "skipped": [],
+            "jobs_running_before": 0,
+            "jobs_running_after": 0,
+        },
+    )
+    assert cli_tools._knife_adopt(_ns(case_dir=Path("/x"), root=Path("/repo"), recursive=False, all_untracked=True, json=True)) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["all_untracked"] is True
+    assert seen_adopt["all_untracked"] is True
+
+
 def test_knife_criteria_eta_and_report_handlers(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

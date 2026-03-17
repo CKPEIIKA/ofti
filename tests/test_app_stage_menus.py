@@ -191,3 +191,55 @@ def test_postprocessing_menu_yplus(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     monkeypatch.setattr("ofti.app.menus.postprocessing.yplus_screen", lambda *_a, **_k: calls.append("yplus"))
     assert postprocessing_menu(object(), case, AppState()) == Screen.MAIN_MENU
     assert calls == ["yplus"]
+
+
+def test_simulation_menu_disables_parametric_without_preprocessing_extras(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    case = tmp_path / "case"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "controlDict").write_text("application hy2Foam;\n")
+    (case / "system" / "decomposeParDict").write_text("numberOfSubdomains 2;\n")
+    captured: dict[str, object] = {}
+
+    def _menu_choice(*_args, **kwargs):
+        captured["disabled"] = set(kwargs.get("disabled_indices", set()))
+        captured["reasons"] = dict(kwargs.get("disabled_reasons", {}))
+        return -1
+
+    monkeypatch.setattr("ofti.app.menus.simulation.preprocessing_available", lambda: False)
+    monkeypatch.setattr("ofti.app.menus.simulation.menu_choice", _menu_choice)
+    monkeypatch.setattr("ofti.app.menus.simulation.solver_job_running", lambda _case: False)
+    monkeypatch.setattr("ofti.app.menus.simulation.solver_status_line", lambda _case: "idle")
+    assert simulation_menu(object(), case, AppState()) == Screen.MAIN_MENU
+    disabled = captured["disabled"]
+    assert isinstance(disabled, set)
+    assert 18 in disabled
+    reasons = captured["reasons"]
+    assert isinstance(reasons, dict)
+    assert "preprocessing extras" in str(reasons[18])
+
+
+def test_postprocessing_menu_disables_tables_without_postprocessing_extras(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    case = tmp_path / "case"
+    (case / "system").mkdir(parents=True)
+    captured: dict[str, object] = {}
+
+    def _menu_choice(*_args, **kwargs):
+        captured["disabled"] = set(kwargs.get("disabled_indices", set()))
+        captured["reasons"] = dict(kwargs.get("disabled_reasons", {}))
+        return -1
+
+    monkeypatch.setattr("ofti.app.menus.postprocessing.postprocessing_tables_available", lambda: False)
+    monkeypatch.setattr("ofti.app.menus.postprocessing.menu_choice", _menu_choice)
+    assert postprocessing_menu(object(), case, AppState()) == Screen.MAIN_MENU
+    disabled = captured["disabled"]
+    assert isinstance(disabled, set)
+    assert 5 in disabled
+    reasons = captured["reasons"]
+    assert isinstance(reasons, dict)
+    assert "postprocessing extras" in str(reasons[5])

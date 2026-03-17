@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import time
 from collections.abc import Mapping
@@ -13,11 +14,17 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from ofti.core.case import read_number_of_subdomains
-from ofti.core.case_copy import copy_case_directory
 from ofti.core.entry_io import write_entry
 from ofti.core.solver_checks import resolve_solver_name, validate_initial_fields
-from ofti.foam import openfoam
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
+from ofti.foamlib import runner as foamlib_runner
+from ofti.foamlib.adapter import FoamlibUnavailableError
+from ofti.foamlib.parametric import (
+    build_matrix_cases,
+    build_parametric_cases,
+    build_parametric_cases_from_csv,
+    build_parametric_cases_from_grid,
+)
 from ofti.tools import knife_service, runner_service
 from ofti.tools.helpers import with_bashrc
 from ofti.tools.job_registry import register_job
@@ -34,6 +41,12 @@ class ToolCatalogPayload(TypedDict):
 
 
 class MatrixAxis(TypedDict):
+    dict_path: str
+    entry: str
+    values: list[str]
+
+
+class GridAxis(TypedDict):
     dict_path: str
     entry: str
     values: list[str]
@@ -106,6 +119,53 @@ def solver_command(
     return display, cmd
 
 
+def prepare_parallel_case(
+    case_dir: Path,
+    *,
+    parallel: int,
+    clean_processors: bool = False,
+    extra_env: dict[str, str] | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    case_path = require_case_dir(case_dir)
+    if parallel <= 1:
+        return {
+            "parallel": int(parallel),
+            "clean_processors": bool(clean_processors),
+            "decompose_command": None,
+            "cleaned_processors": [],
+            "decompose_returncode": None,
+            "dry_run": bool(dry_run),
+            "applied": False,
+        }
+    cleaned = _list_processor_dirs(case_path) if clean_processors else []
+    decompose_cmd = ["decomposePar", "-force"]
+    payload: dict[str, Any] = {
+        "parallel": int(parallel),
+        "clean_processors": bool(clean_processors),
+        "decompose_command": dry_run_command(decompose_cmd),
+        "cleaned_processors": [str(path) for path in cleaned],
+        "decompose_returncode": None,
+        "dry_run": bool(dry_run),
+        "applied": not bool(dry_run),
+    }
+    if dry_run:
+        return payload
+    if clean_processors:
+        _remove_processor_dirs(cleaned)
+    result = execute_case_command(
+        case_path,
+        "decomposePar",
+        decompose_cmd,
+        background=False,
+        extra_env=extra_env,
+    )
+    payload["decompose_returncode"] = int(result.returncode)
+    if int(result.returncode) != 0:
+        raise ValueError(_decompose_failure_message(result))
+    return payload
+
+
 def execute_case_command(
     case_dir: Path,
     name: str,
@@ -132,6 +192,74 @@ def execute_case_command(
         popen_fn=subprocess.Popen,
         register_job_fn=register_job,
     )
+
+
+def execute_solver_case_command(
+    case_dir: Path,
+    name: str,
+    cmd: list[str],
+    *,
+    parallel: int = 0,
+    mpi: str | None = None,
+    background: bool,
+    detached: bool = True,
+    log_path: Path | None = None,
+    pid_path: Path | None = None,
+    extra_env: dict[str, str] | None = None,
+) -> RunResult:
+    case_path = require_case_dir(case_dir)
+    solver = _solver_token_from_command(cmd, parallel=parallel)
+    if _requires_solver_subprocess(
+        background=background,
+        extra_env=extra_env,
+        parallel=parallel,
+        mpi=mpi,
+        solver=solver,
+    ):
+        return execute_case_command(
+            case_path,
+            name,
+            cmd,
+            background=False,
+            detached=detached,
+            log_path=log_path,
+            pid_path=pid_path,
+            extra_env=extra_env,
+        )
+
+    assert solver is not None
+    chosen_log = _resolve_solver_log_path(case_path, name=name, log_path=log_path)
+    try:
+        foamlib_runner.run_case(
+            case_path,
+            solver,
+            parallel=parallel > 1,
+            cpus=parallel if parallel > 1 else None,
+            check=True,
+            log=str(chosen_log),
+        )
+    except Exception as exc:
+        if isinstance(exc, FoamlibUnavailableError):
+            return execute_case_command(
+                case_path,
+                name,
+                cmd,
+                background=False,
+                detached=detached,
+                log_path=log_path,
+                pid_path=pid_path,
+                extra_env=extra_env,
+            )
+        if isinstance(exc, subprocess.CalledProcessError):
+            return RunResult(
+                int(exc.returncode),
+                "",
+                f"{exc}\nSee log: {chosen_log}",
+                pid=None,
+                log_path=chosen_log,
+            )
+        return RunResult(1, "", f"{exc}\nSee log: {chosen_log}", pid=None, log_path=chosen_log)
+    return RunResult(0, "", "", pid=None, log_path=chosen_log)
 
 
 def dry_run_command(cmd: list[str]) -> str:
@@ -261,6 +389,69 @@ def _write_subdomains_fallback(decompose_dict: Path, *, requested: int) -> bool:
     return True
 
 
+def _list_processor_dirs(case_path: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in case_path.iterdir()
+        if path.is_dir() and path.name.startswith("processor")
+    )
+
+
+def _remove_processor_dirs(paths: list[Path]) -> None:
+    for path in paths:
+        try:
+            shutil.rmtree(path)
+        except OSError as exc:
+            raise ValueError(f"Failed to remove stale processor directory {path}: {exc}") from exc
+
+
+def _decompose_failure_message(result: RunResult) -> str:
+    summary = "decomposePar failed before solver launch"
+    details = (result.stderr or result.stdout or "").strip()
+    if not details:
+        return f"{summary} (exit {result.returncode})."
+    lines = [line for line in details.splitlines() if line.strip()]
+    short = "\n".join(lines[:8])
+    return f"{summary} (exit {result.returncode}).\n{short}"
+
+
+def _resolve_solver_log_path(case_path: Path, *, name: str, log_path: Path | None) -> Path:
+    if log_path is not None:
+        resolved = log_path if log_path.is_absolute() else case_path / log_path
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        return resolved
+    safe = runner_service.safe_name(name)
+    resolved = case_path / f"log.{safe}"
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    return resolved
+
+
+def _solver_token_from_command(cmd: list[str], *, parallel: int) -> str | None:
+    if parallel > 1:
+        if len(cmd) >= 2 and cmd[-1] == "-parallel":
+            return str(cmd[-2])
+        return None
+    if len(cmd) == 1:
+        return str(cmd[0])
+    return None
+
+
+def _requires_solver_subprocess(
+    *,
+    background: bool,
+    extra_env: dict[str, str] | None,
+    parallel: int,
+    mpi: str | None,
+    solver: str | None,
+) -> bool:
+    return bool(
+        background
+        or extra_env
+        or (parallel > 1 and mpi)
+        or not solver,
+    )
+
+
 def _normalize_name(value: str) -> str:
     lowered = value.strip().lower()
     return "".join(ch for ch in lowered if ch.isalnum() or ch in {"-", "_", ".", ":"})
@@ -295,6 +486,118 @@ def parse_matrix_axes(raw_axes: list[str], *, default_dict: str) -> list[MatrixA
     return axes
 
 
+def parse_sweep_values(raw_values: list[str]) -> list[str]:
+    values: list[str] = []
+    for token in raw_values:
+        for value in token.split(","):
+            item = value.strip()
+            if item:
+                values.append(item)
+    return values
+
+
+def parse_grid_axes(raw_axes: list[str], *, default_dict: str) -> list[GridAxis]:
+    return [
+        {
+            "dict_path": axis["dict_path"],
+            "entry": axis["entry"],
+            "values": list(axis["values"]),
+        }
+        for axis in parse_matrix_axes(raw_axes, default_dict=default_dict)
+    ]
+
+
+def parametric_case_payload(
+    case_dir: Path,
+    *,
+    dict_path: str,
+    entry: str | None,
+    values: list[str],
+    csv_path: Path | None,
+    grid_axes: list[GridAxis],
+    output_root: Path | None = None,
+    run_solver: bool = False,
+    solver: str | None = None,
+    parallel: int = 0,
+    mpi: str | None = None,
+    max_parallel: int = 1,
+    poll_interval: float = 0.25,
+    queue_backend: str = "process",
+    prepare_parallel: bool = True,
+    clean_processors: bool = False,
+) -> dict[str, Any]:
+    case_path = require_case_dir(case_dir)
+    mode = _parametric_mode(csv_path, grid_axes)
+    root = output_root.resolve() if output_root is not None else case_path.parent.resolve()
+    created: list[Path]
+    if mode == "csv":
+        assert csv_path is not None
+        created = build_parametric_cases_from_csv(
+            case_path,
+            csv_path,
+            output_root=root,
+        )
+    elif mode == "grid":
+        created = build_parametric_cases_from_grid(
+            case_path,
+            list(grid_axes),
+            output_root=root,
+        )
+    else:
+        if not entry:
+            raise ValueError("--entry is required for single-entry parametric mode")
+        if not values:
+            raise ValueError("--values is required for single-entry parametric mode")
+        created = build_parametric_cases(
+            case_path,
+            Path(dict_path),
+            entry,
+            values,
+            output_root=root,
+        )
+    queue_result: dict[str, Any] | None = None
+    if run_solver and created:
+        queue_result = queue_payload(
+            cases=created,
+            solver=solver,
+            parallel=parallel,
+            mpi=mpi,
+            max_parallel=max_parallel,
+            poll_interval=poll_interval,
+            dry_run=False,
+            backend=queue_backend,
+            prepare_parallel=prepare_parallel,
+            clean_processors=clean_processors,
+        )
+    return {
+        "case": str(case_path.resolve()),
+        "mode": mode,
+        "dict_path": dict_path,
+        "entry": entry,
+        "values": list(values),
+        "csv_path": str(csv_path) if csv_path is not None else None,
+        "grid_axes": list(grid_axes),
+        "output_root": str(root),
+        "created_count": len(created),
+        "created": [str(path.resolve()) for path in created],
+        "run_solver": run_solver,
+        "queue": queue_result,
+        "queue_backend": queue_backend,
+        "prepare_parallel": bool(prepare_parallel),
+        "clean_processors": bool(clean_processors),
+    }
+
+
+def _parametric_mode(csv_path: Path | None, grid_axes: list[GridAxis]) -> str:
+    if csv_path is not None and grid_axes:
+        raise ValueError("choose only one mode: --csv or --grid-axis")
+    if csv_path is not None:
+        return "csv"
+    if grid_axes:
+        return "grid"
+    return "single"
+
+
 def matrix_case_payload(
     case_dir: Path,
     *,
@@ -316,10 +619,16 @@ def matrix_case_payload(
         }
         if destination.exists():
             raise ValueError(f"destination already exists: {destination}")
-        if not dry_run:
-            _create_matrix_case(template, destination, combo)
-            row["created"] = True
         created_rows.append(row)
+    if not dry_run:
+        build_matrix_cases(
+            template,
+            [dict(axis) for axis in axes],
+            output_root=root,
+            case_name_fn=lambda combo: matrix_case_name(template.name, _matrix_combo(combo)),
+        )
+        for row in created_rows:
+            row["created"] = True
     return {
         "template_case": str(template),
         "output_root": str(root),
@@ -331,7 +640,7 @@ def matrix_case_payload(
     }
 
 
-def queue_payload(  # noqa: C901
+def queue_payload(
     *,
     cases: list[Path],
     solver: str | None = None,
@@ -340,9 +649,14 @@ def queue_payload(  # noqa: C901
     max_parallel: int = 1,
     poll_interval: float = 0.25,
     dry_run: bool = False,
+    backend: str = "process",
+    prepare_parallel: bool = True,
+    clean_processors: bool = False,
 ) -> dict[str, Any]:
     if max_parallel <= 0:
         raise ValueError("max_parallel must be > 0")
+    if backend not in {"process", "foamlib-async", "foamlib-slurm"}:
+        raise ValueError("backend must be one of: process, foamlib-async, foamlib-slurm")
     normalized_cases = [require_case_dir(path) for path in cases]
     plan: list[dict[str, Any]] = []
     for case_path in normalized_cases:
@@ -357,6 +671,7 @@ def queue_payload(  # noqa: C901
                 "case": str(case_path),
                 "name": display,
                 "command": dry_run_command(cmd),
+                "solver_cmd": _solver_token_from_command(cmd, parallel=parallel),
             },
         )
     payload: dict[str, Any] = {
@@ -364,19 +679,68 @@ def queue_payload(  # noqa: C901
         "max_parallel": max_parallel,
         "poll_interval": poll_interval,
         "dry_run": dry_run,
+        "backend": backend,
+        "prepare_parallel": bool(prepare_parallel),
+        "clean_processors": bool(clean_processors),
         "planned": plan,
         "started": [],
         "finished": [],
         "failed_to_start": [],
         "ok": True,
     }
+    if prepare_parallel and parallel > 1:
+        for row in plan:
+            row_case = Path(str(row["case"]))
+            try:
+                row["parallel_setup"] = prepare_parallel_case(
+                    row_case,
+                    parallel=parallel,
+                    clean_processors=clean_processors,
+                    dry_run=True,
+                )
+            except ValueError as exc:
+                row["parallel_setup_error"] = str(exc)
     if dry_run:
         return payload
+    if backend == "process":
+        _queue_process_backend(
+            payload,
+            plan=plan,
+            solver=solver,
+            parallel=parallel,
+            mpi=mpi,
+            poll_interval=poll_interval,
+            prepare_parallel=prepare_parallel,
+            clean_processors=clean_processors,
+        )
+    else:
+        _queue_foamlib_backend(
+            payload,
+            plan=plan,
+            parallel=parallel,
+            max_parallel=max_parallel,
+            backend=backend,
+            prepare_parallel=prepare_parallel,
+            clean_processors=clean_processors,
+        )
+    return payload
 
+
+def _queue_process_backend(
+    payload: dict[str, Any],
+    *,
+    plan: list[dict[str, Any]],
+    solver: str | None,
+    parallel: int,
+    mpi: str | None,
+    poll_interval: float,
+    prepare_parallel: bool,
+    clean_processors: bool,
+) -> None:
     pending = list(plan)
     active: list[dict[str, Any]] = []
     while pending or active:
-        while pending and len(active) < max_parallel:
+        while pending and len(active) < int(payload["max_parallel"]):
             row = pending.pop(0)
             case_path = Path(str(row["case"]))
             # Rebuild command from current case to avoid stale snapshots.
@@ -386,6 +750,18 @@ def queue_payload(  # noqa: C901
                 parallel=parallel,
                 mpi=mpi,
             )
+            if parallel > 1 and "-parallel" in command and prepare_parallel:
+                try:
+                    prepare_parallel_case(
+                        case_path,
+                        parallel=parallel,
+                        clean_processors=clean_processors,
+                        dry_run=False,
+                    )
+                except ValueError as exc:
+                    payload["failed_to_start"].append({"case": str(case_path), "error": str(exc)})
+                    payload["ok"] = False
+                    continue
             try:
                 result = execute_case_command(
                     case_path,
@@ -434,7 +810,157 @@ def queue_payload(  # noqa: C901
                 },
             )
         active = still_active
-    return payload
+
+
+def _queue_foamlib_backend(
+    payload: dict[str, Any],
+    *,
+    plan: list[dict[str, Any]],
+    parallel: int,
+    max_parallel: int,
+    backend: str,
+    prepare_parallel: bool,
+    clean_processors: bool,
+) -> None:
+    by_solver, ready_cases = _queue_collect_foamlib_cases(
+        payload,
+        plan=plan,
+        parallel=parallel,
+        prepare_parallel=prepare_parallel,
+        clean_processors=clean_processors,
+    )
+    for solver_cmd, case_group in by_solver.items():
+        failures, error = _queue_run_foamlib_group(
+            case_group,
+            solver_cmd=solver_cmd,
+            parallel=parallel,
+            max_parallel=max_parallel,
+            backend=backend,
+        )
+        if error is not None:
+            for case_path in case_group:
+                payload["failed_to_start"].append({"case": str(case_path), "error": str(error)})
+            payload["ok"] = False
+            continue
+        failed_map = {str(path.resolve()) for path in failures}
+        _queue_append_foamlib_finished(payload, case_group=case_group, failed_map=failed_map)
+    _queue_fill_foamlib_missing_finished(payload, ready_cases=ready_cases)
+
+
+def _queue_collect_foamlib_cases(
+    payload: dict[str, Any],
+    *,
+    plan: list[dict[str, Any]],
+    parallel: int,
+    prepare_parallel: bool,
+    clean_processors: bool,
+) -> tuple[dict[str, list[Path]], list[Path]]:
+    by_solver: dict[str, list[Path]] = {}
+    ready_cases: list[Path] = []
+    for row in plan:
+        case_path = Path(str(row["case"]))
+        solver_cmd = str(row.get("solver_cmd") or "").strip()
+        if not solver_cmd:
+            payload["failed_to_start"].append(
+                {
+                    "case": str(case_path),
+                    "error": "unable to resolve solver command for foamlib backend",
+                },
+            )
+            payload["ok"] = False
+            continue
+        if prepare_parallel and parallel > 1:
+            try:
+                prepare_parallel_case(
+                    case_path,
+                    parallel=parallel,
+                    clean_processors=clean_processors,
+                    dry_run=False,
+                )
+            except ValueError as exc:
+                payload["failed_to_start"].append({"case": str(case_path), "error": str(exc)})
+                payload["ok"] = False
+                continue
+        by_solver.setdefault(solver_cmd, []).append(case_path)
+        ready_cases.append(case_path)
+        payload["started"].append(
+            {
+                "case": str(case_path),
+                "pid": None,
+                "name": str(row.get("name") or solver_cmd),
+                "log_path": "",
+                "started_at": time.time(),
+            },
+        )
+    return by_solver, ready_cases
+
+
+def _queue_run_foamlib_group(
+    case_group: list[Path],
+    *,
+    solver_cmd: str,
+    parallel: int,
+    max_parallel: int,
+    backend: str,
+) -> tuple[list[Path], Exception | None]:
+    try:
+        failures = foamlib_runner.run_cases_async(
+            case_group,
+            cmd=solver_cmd,
+            parallel=parallel > 1,
+            cpus=parallel if parallel > 1 else None,
+            check=False,
+            log=True,
+            max_parallel=max_parallel,
+            slurm=backend == "foamlib-slurm",
+            fallback=True,
+        )
+    except Exception as exc:
+        return [], exc
+    return failures, None
+
+
+def _queue_append_foamlib_finished(
+    payload: dict[str, Any],
+    *,
+    case_group: list[Path],
+    failed_map: set[str],
+) -> None:
+    for case_path in case_group:
+        status_row = status_row_payload(case_path)
+        row: dict[str, Any] = {
+            "case": str(case_path),
+            "pid": None,
+            "state": status_row["state"],
+            "stop_reason": status_row["stop_reason"],
+            "latest_time": status_row["latest_time"],
+            "eta_seconds": status_row["eta_seconds"],
+        }
+        payload["finished"].append(row)
+        if str(case_path.resolve()) in failed_map:
+            payload["ok"] = False
+
+
+def _queue_fill_foamlib_missing_finished(
+    payload: dict[str, Any],
+    *,
+    ready_cases: list[Path],
+) -> None:
+    finished_cases = {str(Path(str(row["case"])).resolve()) for row in payload["finished"]}
+    for case_path in ready_cases:
+        key = str(case_path.resolve())
+        if key in finished_cases:
+            continue
+        payload["finished"].append(
+            {
+                "case": str(case_path),
+                "pid": None,
+                "state": "unknown",
+                "stop_reason": "not finished",
+                "latest_time": None,
+                "eta_seconds": None,
+            },
+        )
 
 
 def status_set_payload(
@@ -553,29 +1079,6 @@ def _sanitize_token(value: str) -> str:
     return safe.strip("_") or "value"
 
 
-def _create_matrix_case(
-    template_case: Path,
-    destination: Path,
-    combo: list[tuple[MatrixAxis, str]],
-) -> None:
-    copy_case_directory(
-        template_case,
-        destination,
-        include_runtime_artifacts=False,
-        drop_mesh=False,
-        keep_zero_directory=True,
-    )
-    for axis, value in combo:
-        dict_path = destination / axis["dict_path"]
-        if not dict_path.is_file():
-            raise ValueError(f"dictionary not found in generated case: {dict_path}")
-        if write_entry(dict_path, axis["entry"], value):
-            continue
-        if openfoam.write_entry(dict_path, axis["entry"], value):
-            continue
-        raise ValueError(f"failed to set {axis['entry']} in {dict_path}")
-
-
 def _cases_from_summary_csv(root: Path, summary_csv: Path) -> list[Path]:
     rows: list[Path] = []
     try:
@@ -597,6 +1100,24 @@ def _cases_from_summary_csv(root: Path, summary_csv: Path) -> list[Path]:
     except OSError:
         return []
     return rows
+
+
+def _matrix_combo(
+    combo: list[tuple[dict[str, Any], str]],
+) -> list[tuple[MatrixAxis, str]]:
+    result: list[tuple[MatrixAxis, str]] = []
+    for axis, value in combo:
+        result.append(
+            (
+                {
+                    "dict_path": str(axis["dict_path"]),
+                    "entry": str(axis["entry"]),
+                    "values": [str(item) for item in axis.get("values", [])],
+                },
+                value,
+            ),
+        )
+    return result
 
 
 def _case_state(payload: Mapping[str, Any]) -> str:

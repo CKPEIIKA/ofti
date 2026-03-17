@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import types
 from collections.abc import Callable
 from pathlib import Path
@@ -213,6 +214,48 @@ def test_run_execute_case_command_background_registers_job(
     stdout = seen["stdout"]
     assert hasattr(stdout, "closed")
     assert stdout.closed is True
+
+
+def test_run_prepare_parallel_case_dry_run_and_apply(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    (case / "processor0").mkdir()
+    (case / "processor1").mkdir()
+    seen: dict[str, object] = {}
+
+    def _exec(*_a: object, **kwargs: object) -> run.RunResult:
+        seen["kwargs"] = kwargs
+        return run.RunResult(0, "", "", pid=None, log_path=None)
+
+    monkeypatch.setattr(run, "execute_case_command", _exec)
+
+    dry = run.prepare_parallel_case(case, parallel=2, clean_processors=True, dry_run=True)
+    assert dry["clean_processors"] is True
+    assert len(cast(list[str], dry["cleaned_processors"])) == 2
+    assert (case / "processor0").is_dir()
+
+    applied = run.prepare_parallel_case(case, parallel=2, clean_processors=True, dry_run=False)
+    assert applied["decompose_returncode"] == 0
+    assert not (case / "processor0").exists()
+    assert not (case / "processor1").exists()
+    kwargs = cast(dict[str, object], seen["kwargs"])
+    assert kwargs["background"] is False
+
+
+def test_run_prepare_parallel_case_reports_decompose_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    monkeypatch.setattr(
+        run,
+        "execute_case_command",
+        lambda *_a, **_k: run.RunResult(1, "", "bad decompose", pid=None, log_path=None),
+    )
+    with pytest.raises(ValueError, match="decomposePar failed"):
+        run.prepare_parallel_case(case, parallel=2, clean_processors=False, dry_run=False)
 
 
 def test_run_detect_mpi_launcher_tries_multiple(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -568,11 +611,7 @@ def test_run_matrix_axis_parse_and_case_generation(
     with pytest.raises(ValueError, match="invalid matrix axis"):
         run.parse_matrix_axes(["broken"], default_dict="system/controlDict")
 
-    monkeypatch.setattr(
-        run,
-        "_create_matrix_case",
-        lambda *_a, **_k: None,
-    )
+    monkeypatch.setattr(run, "build_matrix_cases", lambda *_a, **_k: [])
     payload = run.matrix_case_payload(case, axes=axes, dry_run=False)
     assert payload["case_count"] == 4
     assert payload["cases"][0]["case"].startswith(str(case.parent))
@@ -580,6 +619,82 @@ def test_run_matrix_axis_parse_and_case_generation(
         "system/controlDict:application" in payload["cases"][0]["values"]
         or "constant/chemistryProperties:modifiedTemperature" in payload["cases"][0]["values"]
     )
+
+
+def test_run_parametric_helpers_and_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    assert run.parse_sweep_values(["a,b", " c ", ""]) == ["a", "b", "c"]
+    grid_axes = run.parse_grid_axes(
+        ["application=simpleFoam,pisoFoam"],
+        default_dict="system/controlDict",
+    )
+    assert grid_axes[0]["dict_path"] == "system/controlDict"
+
+    monkeypatch.setattr(run, "build_parametric_cases", lambda *_a, **_k: [case.parent / "single_1"])
+    single = run.parametric_case_payload(
+        case,
+        dict_path="system/controlDict",
+        entry="application",
+        values=["simpleFoam"],
+        csv_path=None,
+        grid_axes=[],
+        run_solver=False,
+    )
+    assert single["mode"] == "single"
+    assert single["created_count"] == 1
+
+    monkeypatch.setattr(run, "build_parametric_cases_from_csv", lambda *_a, **_k: [case.parent / "csv_1"])
+    csv_payload = run.parametric_case_payload(
+        case,
+        dict_path="system/controlDict",
+        entry=None,
+        values=[],
+        csv_path=Path("study.csv"),
+        grid_axes=[],
+        run_solver=False,
+    )
+    assert csv_payload["mode"] == "csv"
+
+    monkeypatch.setattr(run, "build_parametric_cases_from_grid", lambda *_a, **_k: [case.parent / "grid_1"])
+    monkeypatch.setattr(
+        run,
+        "queue_payload",
+        lambda **_k: {
+            "count": 1,
+            "max_parallel": 1,
+            "poll_interval": 0.25,
+            "dry_run": False,
+            "planned": [],
+            "started": [],
+            "finished": [],
+            "failed_to_start": [],
+            "ok": True,
+        },
+    )
+    grid_payload = run.parametric_case_payload(
+        case,
+        dict_path="system/controlDict",
+        entry=None,
+        values=[],
+        csv_path=None,
+        grid_axes=[{"dict_path": "system/controlDict", "entry": "application", "values": ["simpleFoam"]}],
+        run_solver=True,
+    )
+    assert grid_payload["mode"] == "grid"
+    assert cast(dict[str, object], grid_payload["queue"])["ok"] is True
+
+    with pytest.raises(ValueError, match="choose only one mode"):
+        run.parametric_case_payload(
+            case,
+            dict_path="system/controlDict",
+            entry="application",
+            values=["simpleFoam"],
+            csv_path=Path("study.csv"),
+            grid_axes=[{"dict_path": "system/controlDict", "entry": "application", "values": ["x"]}],
+        )
 
 
 def test_run_queue_payload_dry_run_and_active_flow(
@@ -762,6 +877,76 @@ def test_run_queue_and_case_set_error_branches(
     assert run._cases_from_summary_csv(root, root / "missing.csv") == []
 
 
+def test_run_queue_backend_validation_and_foamlib_async_flow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case_a = _make_case(tmp_path / "caseA")
+    case_b = _make_case(tmp_path / "caseB")
+    with pytest.raises(ValueError, match="backend must be one of"):
+        run.queue_payload(cases=[case_a], max_parallel=1, backend="bad")
+
+    monkeypatch.setattr(run, "solver_command", lambda _case, **_k: ("simpleFoam", ["simpleFoam"]))
+    seen: dict[str, object] = {}
+
+    def _run_cases_async(case_paths, **kwargs):
+        seen["paths"] = list(case_paths)
+        seen["kwargs"] = dict(kwargs)
+        return [case_b]
+
+    monkeypatch.setattr(run.foamlib_runner, "run_cases_async", _run_cases_async)
+    monkeypatch.setattr(
+        run,
+        "status_row_payload",
+        lambda case, **_k: {
+            "case": str(case),
+            "state": "done",
+            "latest_time": 1.0,
+            "eta_seconds": 0.0,
+            "stop_reason": "end_time_reached",
+        },
+    )
+    payload = run.queue_payload(
+        cases=[case_a, case_b],
+        max_parallel=2,
+        backend="foamlib-async",
+        dry_run=False,
+    )
+    assert payload["backend"] == "foamlib-async"
+    assert len(cast(list[object], payload["started"])) == 2
+    assert len(cast(list[object], payload["finished"])) == 2
+    assert payload["ok"] is False
+    kwargs = cast(dict[str, object], seen["kwargs"])
+    assert kwargs["slurm"] is False
+    assert kwargs["max_parallel"] == 2
+
+
+def test_run_queue_backend_prepare_parallel_failure_records_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    monkeypatch.setattr(
+        run,
+        "solver_command",
+        lambda _case, **_k: ("simpleFoam-parallel", ["mpirun", "-np", "2", "simpleFoam", "-parallel"]),
+    )
+    monkeypatch.setattr(
+        run,
+        "prepare_parallel_case",
+        lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad decompose")),
+    )
+    payload = run.queue_payload(
+        cases=[case],
+        parallel=2,
+        max_parallel=1,
+        backend="foamlib-async",
+        dry_run=False,
+    )
+    assert payload["ok"] is False
+    assert cast(list[dict[str, str]], payload["failed_to_start"])[0]["error"] == "bad decompose"
+
+
 def test_run_state_reason_and_create_case_helpers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -784,30 +969,100 @@ def test_run_state_reason_and_create_case_helpers(
     assert run._stop_reason({"solver_error": None, "run_time_control": {"criteria": []}}, state="failed") == "criteria_failed"
     assert run._stop_reason({"solver_error": None, "run_time_control": {"criteria": []}}, state="stopped") == "stopped"
 
-    template = _make_case(tmp_path / "template")
-    dest = tmp_path / "dest"
-    axis = cast(
-        run.MatrixAxis,
-        {"dict_path": "system/controlDict", "entry": "application", "values": ["simpleFoam"]},
+    combo = run._matrix_combo(
+        [
+            (
+                {"dict_path": "system/controlDict", "entry": "application", "values": ["simpleFoam"]},
+                "simpleFoam",
+            ),
+        ],
     )
-    combo = [(axis, "simpleFoam")]
+    assert combo[0][0]["dict_path"] == "system/controlDict"
+    assert combo[0][0]["entry"] == "application"
+    assert combo[0][1] == "simpleFoam"
 
-    def _copy_without_dict(_src: Path, _dst: Path, **_kwargs: object) -> None:
-        _dst.mkdir(parents=True, exist_ok=True)
 
-    monkeypatch.setattr(run, "copy_case_directory", _copy_without_dict)
-    with pytest.raises(ValueError, match="dictionary not found"):
-        run._create_matrix_case(template, dest, combo)
+def test_run_execute_solver_case_command_foamlib_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    seen: dict[str, object] = {}
 
-    def _copy_with_dict(_src: Path, _dst: Path, **_kwargs: object) -> None:
-        (_dst / "system").mkdir(parents=True, exist_ok=True)
-        (_dst / "system" / "controlDict").write_text("application simpleFoam;\n")
+    def _run_case(*args: object, **kwargs: object) -> None:
+        seen["args"] = args
+        seen["kwargs"] = kwargs
 
-    monkeypatch.setattr(run, "copy_case_directory", _copy_with_dict)
-    monkeypatch.setattr(run, "write_entry", lambda *_a, **_k: False)
-    monkeypatch.setattr(run.openfoam, "write_entry", lambda *_a, **_k: True)
-    run._create_matrix_case(template, tmp_path / "dest-ok", combo)
+    monkeypatch.setattr(run.foamlib_runner, "run_case", _run_case)
 
-    monkeypatch.setattr(run.openfoam, "write_entry", lambda *_a, **_k: False)
-    with pytest.raises(ValueError, match="failed to set"):
-        run._create_matrix_case(template, tmp_path / "dest-fail", combo)
+    result = run.execute_solver_case_command(
+        case,
+        "simpleFoam",
+        ["simpleFoam"],
+        background=False,
+    )
+    assert result.returncode == 0
+    assert result.log_path == case / "log.simpleFoam"
+    assert seen["args"] == (case.resolve(), "simpleFoam")
+    kwargs = cast(dict[str, object], seen["kwargs"])
+    assert kwargs["parallel"] is False
+    assert kwargs["cpus"] is None
+
+
+def test_run_execute_solver_case_command_fallback_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    seen: dict[str, object] = {}
+
+    def _fallback(*args: object, **kwargs: object) -> run.RunResult:
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+        return run.RunResult(0, "ok\n", "", pid=None, log_path=None)
+
+    monkeypatch.setattr(run, "execute_case_command", _fallback)
+
+    custom_mpi = run.execute_solver_case_command(
+        case,
+        "simpleFoam-parallel",
+        ["mpirun", "-np", "2", "simpleFoam", "-parallel"],
+        parallel=2,
+        mpi="mpirun",
+        background=False,
+    )
+    assert custom_mpi.returncode == 0
+    assert cast(dict[str, object], seen["kwargs"])["background"] is False
+
+    def _raise_unavailable(*_args: object, **_kwargs: object) -> None:
+        raise run.FoamlibUnavailableError()
+
+    monkeypatch.setattr(run.foamlib_runner, "run_case", _raise_unavailable)
+    _ = run.execute_solver_case_command(
+        case,
+        "simpleFoam",
+        ["simpleFoam"],
+        background=False,
+    )
+    assert cast(tuple[object, ...], seen["args"])[0] == case.resolve()
+
+
+def test_run_execute_solver_case_command_maps_called_process_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+
+    def _run_case(*_args: object, **_kwargs: object) -> None:
+        raise subprocess.CalledProcessError(7, ["simpleFoam"])
+
+    monkeypatch.setattr(run.foamlib_runner, "run_case", _run_case)
+    result = run.execute_solver_case_command(
+        case,
+        "simpleFoam",
+        ["simpleFoam"],
+        background=False,
+    )
+    assert result.returncode == 7
+    assert result.log_path == case / "log.simpleFoam"
+    assert "See log" in result.stderr
