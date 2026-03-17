@@ -485,6 +485,37 @@ def test_run_solver_with_mode_json_result(
     assert payload["dry_run"] is False
 
 
+def test_run_solver_with_mode_forwards_sync_subdomains_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    seen: dict[str, object] = {}
+
+    def _solver_command(*_args: object, **kwargs: object) -> tuple[str, list[str]]:
+        seen["sync_subdomains"] = kwargs.get("sync_subdomains")
+        return ("simpleFoam", ["simpleFoam"])
+
+    monkeypatch.setattr(cli_tools.run_ops, "solver_command", _solver_command)
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "execute_case_command",
+        lambda *_args, **_kwargs: RunResult(0, "ok", "", pid=None, log_path=None),
+    )
+    args = _ns(
+        case_dir=case,
+        solver=None,
+        parallel=2,
+        mpi="mpirun",
+        sync_subdomains=False,
+        json=False,
+        dry_run=False,
+    )
+    assert cli_tools._run_solver_with_mode(args, background=False) == 0
+    assert seen["sync_subdomains"] is False
+
+
 def test_knife_converge_plain_and_json(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

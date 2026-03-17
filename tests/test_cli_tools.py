@@ -731,6 +731,24 @@ def test_run_solver_dry_run_json(tmp_path, capsys, monkeypatch) -> None:
     assert "rhoSimpleFoam" in payload["command"]
 
 
+def test_run_solver_dry_run_json_no_sync_subdomains(tmp_path, capsys, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case", solver="rhoSimpleFoam")
+    seen: dict[str, object] = {}
+
+    def _solver_command(_case: Path, **kwargs: object) -> tuple[str, list[str]]:
+        seen["sync_subdomains"] = kwargs.get("sync_subdomains")
+        return ("rhoSimpleFoam", ["rhoSimpleFoam"])
+
+    monkeypatch.setattr("ofti.app.cli_tools.run_ops.solver_command", _solver_command)
+    code = cli_tools.main(
+        ["run", "solver", str(case), "--dry-run", "--json", "--no-sync-subdomains"],
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert seen["sync_subdomains"] is False
+    assert payload["sync_subdomains"] is False
+
+
 def test_watch_attach_forwards_job_id_to_log_handler(tmp_path, monkeypatch) -> None:
     case = _make_case(tmp_path / "case")
     captured: dict[str, object] = {}
@@ -845,6 +863,34 @@ def test_knife_adopt_cli_json(tmp_path, capsys, monkeypatch) -> None:
     assert code == 0
     assert payload["selected"] == 1
     assert payload["adopted"][0]["pid"] == 777
+
+
+def test_knife_adopt_cli_recursive_passes_flag(tmp_path, capsys, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    seen: dict[str, object] = {}
+
+    def _adopt(_case: Path, *, recursive: bool = False) -> dict[str, object]:
+        seen["recursive"] = recursive
+        return {
+            "case": str(case),
+            "scope": "tree",
+            "recursive": recursive,
+            "cases_total": 1,
+            "cases": [str(case)],
+            "selected": 0,
+            "adopted": [],
+            "failed": [],
+            "skipped": [],
+            "jobs_running_before": 0,
+            "jobs_running_after": 0,
+        }
+
+    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.adopt_payload", _adopt)
+    code = cli_tools.main(["knife", "adopt", str(case), "--recursive", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert seen["recursive"] is True
+    assert payload["scope"] == "tree"
 
 
 def test_knife_set_json_output(tmp_path, capsys, monkeypatch) -> None:

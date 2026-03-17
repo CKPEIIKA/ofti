@@ -36,7 +36,6 @@ from ofti.foam.openfoam_env import ensure_environment
 from ofti.foamlib.adapter import available as foamlib_available
 from ofti.tools.case_ops import clone_case
 from ofti.tools.diagnostics import diagnostics_screen
-from ofti.tools.menus import tools_screen
 from ofti.tools.solver import run_current_solver_live
 from ofti.ui.adapter import CursesAdapter
 from ofti.ui.router import ScreenRouter
@@ -115,11 +114,12 @@ def _screen_check(stdscr: Any, case_path: Path, state: AppState) -> Screen:
 
 
 def _screen_tools(stdscr: Any, case_path: Path, state: AppState) -> Screen:
-    state.transition(Screen.TOOLS, action="tools")
+    state.transition(Screen.TOOLS, action="tools->simulation")
     callbacks = _command_callbacks()
-    tools_screen(
+    simulation_menu(
         stdscr,
         case_path,
+        state,
         command_handler=lambda cmd: handle_command(stdscr, case_path, state, cmd, callbacks),
         command_suggestions=lambda: command_suggestions(case_path),
     )
@@ -356,13 +356,7 @@ def _command_callbacks() -> CommandCallbacks:
         )
 
     def tools_menu_wrapper(stdscr: Any, path: Path, app_state: AppState) -> None:
-        callbacks = _command_callbacks()
-        tools_screen(
-            stdscr,
-            path,
-            command_handler=lambda cmd: handle_command(stdscr, path, app_state, cmd, callbacks),
-            command_suggestions=lambda: command_suggestions(path),
-        )
+        simulation_menu_wrapper(stdscr, path, app_state)
 
     def diagnostics_menu_wrapper(stdscr: Any, path: Path, app_state: AppState) -> None:
         callbacks = _command_callbacks()

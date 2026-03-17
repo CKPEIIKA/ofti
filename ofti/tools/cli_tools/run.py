@@ -5,6 +5,7 @@ import itertools
 import json
 import os
 import re
+import shlex
 import subprocess
 import time
 from collections.abc import Mapping
@@ -76,6 +77,7 @@ def solver_command(
     solver: str | None = None,
     parallel: int = 0,
     mpi: str | None = None,
+    sync_subdomains: bool = True,
 ) -> tuple[str, list[str]]:
     case_path = require_case_dir(case_dir)
     chosen_solver = solver
@@ -92,7 +94,10 @@ def solver_command(
 
     cmd = [chosen_solver]
     if parallel > 1:
-        _sync_parallel_subdomains(case_path, requested=parallel)
+        if sync_subdomains:
+            _sync_parallel_subdomains(case_path, requested=parallel)
+        else:
+            _require_parallel_subdomains(case_path, requested=parallel)
         launcher = mpi or detect_mpi_launcher()
         if not launcher:
             raise ValueError("MPI launcher not found (tried mpirun, mpiexec).")
@@ -149,24 +154,69 @@ def _sync_parallel_subdomains(case_path: Path, *, requested: int) -> None:
             "Missing system/decomposeParDict for parallel run. "
             "Create it first or run without --parallel.",
         )
-    configured = read_number_of_subdomains(decompose_dict)
-    if configured is None:
-        configured = _read_subdomains_fallback(decompose_dict)
+    initial = _read_subdomains_value(decompose_dict)
+    if initial == requested:
+        return
+    write_entry(decompose_dict, "numberOfSubdomains", str(requested))
+    updated = _read_subdomains_value(decompose_dict)
+    if updated == requested:
+        return
+    _write_subdomains_fallback(decompose_dict, requested=requested)
+    final = _read_subdomains_value(decompose_dict)
+    if final == requested:
+        return
+    configured = final if final is not None else updated if updated is not None else initial
+    raise ValueError(_subdomains_sync_error(case_path, requested=requested, configured=configured))
+
+
+def _require_parallel_subdomains(case_path: Path, *, requested: int) -> None:
+    decompose_dict = case_path / "system" / "decomposeParDict"
+    if not decompose_dict.is_file():
+        raise ValueError(
+            "Missing system/decomposeParDict for parallel run. "
+            "Create it first or run without --parallel.",
+        )
+    configured = _read_subdomains_value(decompose_dict)
     if configured == requested:
         return
-    if write_entry(decompose_dict, "numberOfSubdomains", str(requested)):
-        return
-    if _write_subdomains_fallback(decompose_dict, requested=requested):
-        return
-    if configured is None:
-        raise ValueError(
-            "numberOfSubdomains missing or invalid in system/decomposeParDict, "
-            f"and automatic update to {requested} failed.",
-        )
     raise ValueError(
-        "decomposeParDict specifies "
-        f"{configured} processors, requested {requested}, "
-        "and automatic update failed.",
+        _subdomains_precheck_error(case_path, requested=requested, configured=configured),
+    )
+
+
+def _read_subdomains_value(decompose_dict: Path) -> int | None:
+    configured = read_number_of_subdomains(decompose_dict)
+    if configured is not None:
+        return configured
+    return _read_subdomains_fallback(decompose_dict)
+
+
+def _subdomains_sync_error(case_path: Path, *, requested: int, configured: int | None) -> str:
+    detected = "missing or invalid" if configured is None else str(configured)
+    fix_cmd = (
+        f"cd {shlex.quote(str(case_path))} && "
+        "foamDictionary system/decomposeParDict "
+        f"-entry numberOfSubdomains -set {requested}"
+    )
+    return (
+        "Parallel launch blocked: requested "
+        f"{requested} ranks but system/decomposeParDict has {detected}. "
+        "Automatic sync failed. "
+        f"Fix with: {fix_cmd}"
+    )
+
+
+def _subdomains_precheck_error(case_path: Path, *, requested: int, configured: int | None) -> str:
+    detected = "missing or invalid" if configured is None else str(configured)
+    fix_cmd = (
+        f"cd {shlex.quote(str(case_path))} && "
+        "foamDictionary system/decomposeParDict "
+        f"-entry numberOfSubdomains -set {requested}"
+    )
+    return (
+        "Parallel launch blocked: requested "
+        f"{requested} ranks but system/decomposeParDict has {detected}. "
+        f"Run with --sync-subdomains or fix manually: {fix_cmd}"
     )
 
 

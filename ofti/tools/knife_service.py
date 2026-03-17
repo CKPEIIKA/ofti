@@ -67,50 +67,68 @@ def current_live_payload(case_dir: Path) -> case_status_service.CurrentPayload:
     return current_payload(case_dir, live=True)
 
 
-def adopt_payload(case_dir: Path) -> dict[str, Any]:
-    case_path = case_source_service.require_case_dir(case_dir)
-    snapshot = current_payload(case_path, live=True)
-    case_str = str(case_path.resolve())
-    jobs = refresh_jobs(case_path)
-    active_jobs = [job for job in jobs if job.get("status") in {"running", "paused"}]
-    tracked_pids = set(_running_job_pids(active_jobs))
-    launcher_pids = {
-        int(row["pid"])
-        for row in snapshot["untracked_processes"]
-        if str(row.get("case", "")) == case_str
-        and str(row.get("role")) == "launcher"
-        and int(row.get("pid", 0)) > 0
-    }
+def adopt_payload(case_dir: Path, *, recursive: bool = False) -> dict[str, Any]:
+    scope_root = case_source_service.require_case_dir(case_dir)
+    root_is_case = process_scan_service.is_case_dir(scope_root)
+    recursive_effective = recursive or not root_is_case
+    snapshot = current_payload(scope_root, live=True)
+    rows_by_case = _adopt_rows_by_case(
+        snapshot["untracked_processes"],
+        scope_root=scope_root,
+        root_is_case=root_is_case,
+        recursive=recursive_effective,
+    )
+    case_paths = set(rows_by_case)
+    if root_is_case:
+        case_paths.add(scope_root)
 
     selected: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
-    for row in snapshot["untracked_processes"]:
-        pid = int(row.get("pid", 0) or 0)
-        if pid <= 0:
-            continue
-        if str(row.get("case", "")) != case_str:
-            continue
-        role = str(row.get("role", "solver"))
-        launcher_pid = row.get("launcher_pid")
-        if role == "solver" and isinstance(launcher_pid, int) and launcher_pid in launcher_pids:
-            # The launcher process represents this solver subtree.
-            continue
-        if pid in tracked_pids:
-            skipped.append({"pid": pid, "reason": "already_tracked"})
-            continue
-        selected.append(
-            {
+    adopted: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    jobs_running_before = 0
+    for case_path in sorted(case_paths, key=str):
+        jobs = refresh_jobs(case_path)
+        active_jobs = [job for job in jobs if job.get("status") in {"running", "paused"}]
+        jobs_running_before += len(active_jobs)
+        tracked_pids = set(_running_job_pids(active_jobs))
+        case_rows = rows_by_case.get(case_path, [])
+        launcher_pids = {
+            int(row["pid"])
+            for row in case_rows
+            if str(row.get("role")) == "launcher" and int(row.get("pid", 0)) > 0
+        }
+
+        for row in case_rows:
+            pid = int(row.get("pid", 0) or 0)
+            if pid <= 0:
+                continue
+            role = str(row.get("role", "solver"))
+            launcher_pid = _to_positive_int(row.get("launcher_pid"))
+            if role == "solver" and launcher_pid is not None and launcher_pid in launcher_pids:
+                # The launcher process represents this solver subtree.
+                continue
+            if pid in tracked_pids:
+                skipped.append(
+                    {
+                        "case": str(case_path),
+                        "pid": pid,
+                        "reason": "already_tracked",
+                    },
+                )
+                continue
+            selected_row = {
+                "case": str(case_path),
                 "pid": pid,
                 "role": role,
                 "solver": row.get("solver"),
                 "command": str(row.get("command") or ""),
-                "launcher_pid": launcher_pid if isinstance(launcher_pid, int) else None,
-            },
-        )
+                "launcher_pid": launcher_pid,
+            }
+            selected.append(selected_row)
 
-    adopted: list[dict[str, Any]] = []
-    failed: list[dict[str, Any]] = []
     for row in selected:
+        case_path = Path(str(row["case"]))
         pid = int(row["pid"])
         command = str(row.get("command") or "")
         role = str(row.get("role") or "solver")
@@ -128,10 +146,17 @@ def adopt_payload(case_dir: Path) -> dict[str, Any]:
                 extra={"adopted": True, "role": role},
             )
         except OSError as exc:
-            failed.append({"pid": pid, "error": str(exc)})
+            failed.append(
+                {
+                    "case": str(case_path),
+                    "pid": pid,
+                    "error": str(exc),
+                },
+            )
             continue
         adopted.append(
             {
+                "case": str(case_path),
                 "id": job_id,
                 "pid": pid,
                 "name": name,
@@ -141,14 +166,61 @@ def adopt_payload(case_dir: Path) -> dict[str, Any]:
         )
 
     return {
-        "case": case_str,
+        "case": str(scope_root),
+        "scope": "tree" if recursive_effective else "case",
+        "recursive": recursive_effective,
+        "cases_total": len(case_paths),
+        "cases": [str(path) for path in sorted(case_paths, key=str)],
         "selected": len(selected),
         "adopted": adopted,
         "failed": failed,
         "skipped": skipped,
-        "jobs_running_before": len(active_jobs),
-        "jobs_running_after": len(active_jobs) + len(adopted),
+        "jobs_running_before": jobs_running_before,
+        "jobs_running_after": jobs_running_before + len(adopted),
     }
+
+
+def _adopt_rows_by_case(
+    rows: list[dict[str, Any]],
+    *,
+    scope_root: Path,
+    root_is_case: bool,
+    recursive: bool,
+) -> dict[Path, list[dict[str, Any]]]:
+    by_case: dict[Path, list[dict[str, Any]]] = {}
+    for row in rows:
+        case_path = _adopt_case_path(row)
+        if case_path is None:
+            continue
+        if root_is_case and not recursive:
+            if case_path != scope_root:
+                continue
+        elif not _path_within(case_path, scope_root):
+            continue
+        if case_path not in by_case:
+            by_case[case_path] = []
+        by_case[case_path].append(row)
+    return by_case
+
+
+def _adopt_case_path(row: dict[str, Any]) -> Path | None:
+    case_raw = str(row.get("case") or "").strip()
+    if not case_raw:
+        return None
+    try:
+        return Path(case_raw).expanduser().resolve()
+    except OSError:
+        return None
+
+
+def _to_positive_int(value: Any) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    if number <= 0:
+        return None
+    return number
 
 
 def compare_payload(
