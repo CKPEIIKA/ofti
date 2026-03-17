@@ -50,6 +50,8 @@ _GENERIC_CRITERION_TOKENS = {
     "criteria",
     "criterion",
 }
+_CONDITIONS_NOT_MET_TOKENS = ("conditions not met", "condition not met")
+_CONDITIONS_MET_TOKENS = ("conditions met", "condition met")
 
 
 class CriterionRow(TypedDict, total=False):
@@ -242,6 +244,7 @@ def runtime_log_terms(case_path: Path) -> list[str]:
             terms.append(cond_type)
         if field:
             terms.append(field)
+    terms.extend(["runTimeControl", "condition", "conditions"])
     return terms
 
 
@@ -508,9 +511,13 @@ def criterion_status(
         lower = line.lower()
         if not any(needle in lower for needle in needles):
             continue
+        if line_reports_conditions_not_met(lower):
+            return "fail", line
+        if line_reports_conditions_met(lower):
+            return "pass", line
         if any(token in lower for token in ("not satisfied", "fail", "failed", "false", "exceed")):
             return "fail", line
-        if any(token in lower for token in ("satisfied", "pass", "passed", "true", "ok")):
+        if any(token in lower for token in ("satisfied", "pass", "passed", "true")):
             return "pass", line
         return "unknown", line
     return "unknown", None
@@ -528,6 +535,7 @@ def enrich_criteria(
     if not rows:
         return rows
     lines = log_lines if log_lines is not None else log_text.splitlines()
+    gate_status, gate_evidence = runtime_conditions_gate(lines)
     for row in rows:
         key = str(row.get("key", "")).strip()
         value = str(row.get("value", "")).strip()
@@ -543,7 +551,14 @@ def enrich_criteria(
 
         status = str(row.get("status", "unknown")).strip().lower()
         if measured is not None and tolerance is not None and status == "unknown":
-            status = "pass" if criterion_matches(measured, tolerance, comparator) else "fail"
+            if criterion_matches(measured, tolerance, comparator):
+                if gate_status == "unmet":
+                    if row.get("evidence") is None and gate_evidence:
+                        row["evidence"] = gate_evidence
+                else:
+                    status = "pass"
+            else:
+                status = "fail"
 
         unmet_reason = criterion_unmet_reason(
             status=status,
@@ -569,6 +584,27 @@ def enrich_criteria(
         row["unmet_reason"] = unmet_reason
         row["samples"] = sample_count
     return rows
+
+
+def runtime_conditions_gate(lines: list[str]) -> tuple[str | None, str | None]:
+    for raw in reversed(lines):
+        line = raw.strip()
+        lower = line.lower()
+        if line_reports_conditions_not_met(lower):
+            return "unmet", line
+        if line_reports_conditions_met(lower):
+            return "met", line
+    return None, None
+
+
+def line_reports_conditions_not_met(lower_line: str) -> bool:
+    return any(token in lower_line for token in _CONDITIONS_NOT_MET_TOKENS)
+
+
+def line_reports_conditions_met(lower_line: str) -> bool:
+    if line_reports_conditions_not_met(lower_line):
+        return False
+    return any(token in lower_line for token in _CONDITIONS_MET_TOKENS)
 
 
 def criterion_observations(
@@ -728,6 +764,8 @@ def reason_from_evidence(evidence: str | None) -> str | None:
         return "startup"
     if "not enough" in lower or "insufficient" in lower:
         return "not_enough_samples"
+    if "not met" in lower:
+        return "window"
     if "window" in lower:
         return "window"
     return None

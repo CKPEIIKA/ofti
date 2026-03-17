@@ -74,7 +74,7 @@ def current_payload(
         "jobs": active_jobs,
         "jobs_total": len(jobs),
         "jobs_running": running_count,
-        "jobs_tracked_running": running_count,
+        "jobs_tracked_running": len(active_jobs),
         "jobs_registry_running": len(active_jobs),
         "untracked_processes": untracked,
     }
@@ -152,7 +152,7 @@ def status_payload(
         "running": running_heuristic,
         "jobs_total": len(jobs),
         "jobs_running": running_count,
-        "jobs_tracked_running": running_count,
+        "jobs_tracked_running": len(active_jobs),
         "jobs_registry_running": len(active_jobs),
         "jobs": jobs,
         "tracked_solver_processes": tracked_live,

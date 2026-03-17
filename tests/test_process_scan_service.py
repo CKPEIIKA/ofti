@@ -159,6 +159,40 @@ def test_scan_processes_reports_unknown_case_with_explicit_error(tmp_path: Path)
     assert rows[0]["discovery_error"] != ""
 
 
+def test_scan_processes_permission_denied_cwd_maps_to_case_not_found(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    svc._DISCOVERY_CACHE.clear()
+    case = _make_case(tmp_path / "case")
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    _write_proc_entry(
+        proc_root,
+        pid=401,
+        ppid=1,
+        cmdline=b"hy2Foam\x00-parallel\x00",
+        cwd=None,
+    )
+    original = svc.proc_cwd_with_error
+
+    def _proc_cwd_with_error(proc_dir: Path) -> tuple[Path | None, str | None]:
+        if proc_dir.name == "401":
+            return None, "permission denied"
+        return original(proc_dir)
+
+    monkeypatch.setattr(svc, "proc_cwd_with_error", _proc_cwd_with_error)
+    rows = svc.scan_proc_solver_processes(
+        case,
+        None,
+        tracked_pids=set(),
+        proc_root=proc_root,
+        require_case_target=False,
+    )
+    assert len(rows) == 1
+    assert rows[0]["discovery_error"] == "case_not_found"
+
+
 def test_scan_processes_infers_case_from_shell_cd_parent(tmp_path: Path) -> None:
     svc._DISCOVERY_CACHE.clear()
     case = _make_case(tmp_path / "case")

@@ -115,7 +115,7 @@ def test_status_payload_uses_runtime_and_live_process_data(tmp_path: Path) -> No
     assert payload["running"] is True
     assert payload["jobs_running"] == 2
     assert payload["jobs_registry_running"] == 1
-    assert payload["jobs_tracked_running"] == 2
+    assert payload["jobs_tracked_running"] == 1
     assert len(payload["tracked_solver_processes"]) == 1
     assert len(payload["untracked_solver_processes"]) == 1
 

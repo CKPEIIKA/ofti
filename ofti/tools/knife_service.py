@@ -106,7 +106,8 @@ def current_scope_payload(
         },
     )
     case_rows = sorted({str(path) for path in case_paths} | set(cases_from_untracked))
-    running_count = len(active_jobs) + case_status_service.untracked_running_count(untracked)
+    untracked_count = case_status_service.untracked_running_count(untracked)
+    running_count = len(active_jobs) + untracked_count
     return {
         "case": str(scope_root),
         "scope": "tree",
@@ -116,9 +117,9 @@ def current_scope_payload(
         "solver": None,
         "solver_error": None,
         "jobs": active_jobs,
-        "jobs_total": len(jobs_all),
+        "jobs_total": len(jobs_all) + untracked_count,
         "jobs_running": running_count,
-        "jobs_tracked_running": running_count,
+        "jobs_tracked_running": len(active_jobs),
         "jobs_registry_running": len(active_jobs),
         "untracked_processes": untracked,
     }

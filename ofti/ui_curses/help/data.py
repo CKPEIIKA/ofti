@@ -24,11 +24,14 @@ CONTEXT_HELP: dict[str, list[str]] = {
         "Edit pipeline lets you add/reorder steps from tools.",
         "Run solver (live) shows progress + last log lines.",
         "Run solver (custom log) lets you choose a log path inside the case.",
-        "Run solver (parallel) uses mpirun with decomposeParDict.",
+        "Run solver (parallel) uses mpirun with safe prep defaults.",
+        "Safe prep includes sync-subdomains and decomposePar prelaunch.",
         "Case status/current jobs and runtime checks reuse knife shared services.",
+        "Current jobs can scan repo root recursively for campaign-wide live status.",
         "Runtime criteria/ETA/report are read-only diagnostics from logs/control.",
         "Convergence/stability checks are log-driven smoke diagnostics.",
-        "Adopt/stop/pause/resume tracked jobs are in this stage.",
+        "Adopt supports bulk mode from repo root for untracked detached runs.",
+        "Stop/pause/resume tracked jobs are in this stage.",
         "Parametric wizard creates cases for multiple values.",
     ],
     "postprocessing": [
@@ -110,15 +113,21 @@ MENU_HINTS: dict[str, dict[str, str]] = {
         "Run case pipeline": "Execute pipeline steps in order.",
         "Run solver": "Run solver with live log tail.",
         "Run solver (custom log)": "Run solver live and write to a chosen log path.",
-        "Run solver parallel": "mpirun with decomposeParDict.",
+        "Run solver parallel": "mpirun with sync-subdomains + optional prelaunch decomposePar.",
         "Case status": "Show solver/time/control summary for this case.",
-        "Current jobs (live)": "Show tracked jobs and live untracked processes.",
+        "Current jobs (live)": (
+            "Show tracked jobs plus live untracked processes "
+            "(supports repo-root recursive scope)."
+        ),
         "Runtime criteria": "List normalized runtime criteria rows and status.",
         "ETA forecast": "Estimate ETA from criteria/endTime trends.",
         "Runtime report": "Show a compact status+metrics+criteria report.",
         "Convergence check": "Run log-based convergence quality checks.",
         "Stability check": "Run windowed signal stability check on solver log.",
-        "Adopt untracked processes": "Register discovered solver processes in jobs.json.",
+        "Adopt untracked processes": (
+            "Register discovered solver processes in jobs.json "
+            "(including bulk campaign adoption)."
+        ),
         "Stop tracked job": "Stop one tracked running job.",
         "Pause tracked job": "Pause one tracked running job.",
         "Resume tracked job": "Resume one paused tracked job.",
