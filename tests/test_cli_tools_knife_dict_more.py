@@ -346,6 +346,57 @@ def test_knife_current_live_and_report_payloads(
     assert "criteria_seconds: 12.0" in md
 
 
+def test_knife_current_scope_payload_tree_aggregates_jobs_and_untracked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    case_a = _make_case(root / "a", solver="hy2Foam")
+    case_b = _make_case(root / "b", solver="hy2Foam")
+    outside = _make_case(tmp_path / "outside", solver="hy2Foam")
+
+    def _refresh(case_path: Path) -> list[dict[str, object]]:
+        if case_path == case_a.resolve():
+            return [{"id": "a-1", "pid": 111, "status": "running", "name": "hy2Foam"}]
+        if case_path == case_b.resolve():
+            return [{"id": "b-1", "pid": 222, "status": "finished", "name": "hy2Foam"}]
+        return []
+
+    monkeypatch.setattr(knife_service, "refresh_jobs", _refresh)
+    monkeypatch.setattr(
+        knife_service,
+        "_scan_proc_solver_processes",
+        lambda _case, _solver, **_k: [
+            {
+                "pid": 333,
+                "solver": "hy2Foam",
+                "role": "solver",
+                "tracked": False,
+                "case": str(case_b.resolve()),
+                "command": "hy2Foam -parallel",
+            },
+            {
+                "pid": 444,
+                "solver": "hy2Foam",
+                "role": "solver",
+                "tracked": False,
+                "case": str(outside.resolve()),
+                "command": "hy2Foam -parallel",
+            },
+        ],
+    )
+
+    payload = knife.current_scope_payload(root, live=True, recursive=True)
+    assert payload["scope"] == "tree"
+    assert payload["cases_total"] == 2
+    assert len(payload["jobs"]) == 1
+    assert payload["jobs"][0]["pid"] == 111
+    assert payload["jobs"][0]["case"] == str(case_a.resolve())
+    assert payload["jobs_running"] == 2
+    assert payload["untracked_processes"][0]["pid"] == 333
+    assert all(int(row["pid"]) != 444 for row in payload["untracked_processes"])
+
+
 def test_knife_adopt_payload_registers_untracked_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -416,7 +467,7 @@ def test_knife_adopt_payload_bulk_adopts_child_cases(
 
     monkeypatch.setattr(
         knife_service,
-        "current_payload",
+        "current_scope_payload",
         lambda _case, **_kwargs: {
             "case": str(root.resolve()),
             "solver": None,

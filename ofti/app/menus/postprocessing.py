@@ -5,12 +5,17 @@ from typing import Any
 
 from ofti.app.menu_utils import has_processor_dirs, menu_choice
 from ofti.app.state import AppState, Screen
+from ofti.foamlib.postprocessing import available as postprocessing_tables_available
 from ofti.tools.case_ops import open_paraview_screen
 from ofti.tools.logs_analysis import residual_timeline_screen
 from ofti.tools.logs_fields import field_summary_screen
 from ofti.tools.logs_probes import probes_viewer_screen
 from ofti.tools.logs_view import logs_screen
-from ofti.tools.postprocessing import postprocessing_browser_screen, sampling_sets_screen
+from ofti.tools.postprocessing import (
+    postprocessing_browser_screen,
+    postprocessing_tables_screen,
+    sampling_sets_screen,
+)
 from ofti.tools.reconstruct import reconstruct_manager_screen
 from ofti.tools.shell_tools import run_shell_script_screen
 from ofti.tools.tool_dicts_foamcalc import foam_calc_prompt
@@ -32,6 +37,7 @@ def postprocessing_menu(
         "Open ParaView",
         "Residual timeline",
         "PostProcessing browser",
+        "PostProcessing tables",
         "Field summary",
         "Sampling & sets",
         "Probes viewer",
@@ -56,11 +62,17 @@ def postprocessing_menu(
         disabled_helpers[0] = "diagnostics"
     foamcalc_dict = case_path / "system" / "foamCalcDict"
     if not foamcalc_dict.is_file():
-        disabled.add(8)
-        disabled_reasons[8] = (
+        disabled.add(10)
+        disabled_reasons[10] = (
             "foamCalc requires system/foamCalcDict; create it via Config Manager."
         )
-        disabled_helpers[8] = "config"
+        disabled_helpers[10] = "config"
+    if not postprocessing_tables_available():
+        disabled.add(5)
+        disabled_reasons.setdefault(
+            5,
+            "PostProcessing tables requires foamlib postprocessing extras.",
+        )
     while True:
         choice = menu_choice(
             stdscr,
@@ -71,6 +83,8 @@ def postprocessing_menu(
             command_handler=command_handler,
             command_suggestions=command_suggestions,
             disabled_indices=disabled,
+            disabled_reasons=disabled_reasons,
+            disabled_helpers=disabled_helpers,
             help_lines=postprocessing_help(),
         )
         if choice in (-1, len(options) - 1):
@@ -86,14 +100,16 @@ def postprocessing_menu(
         elif choice == 4:
             postprocessing_browser_screen(stdscr, case_path)
         elif choice == 5:
-            field_summary_screen(stdscr, case_path)
+            postprocessing_tables_screen(stdscr, case_path)
         elif choice == 6:
-            sampling_sets_screen(stdscr, case_path)
+            field_summary_screen(stdscr, case_path)
         elif choice == 7:
-            probes_viewer_screen(stdscr, case_path)
+            sampling_sets_screen(stdscr, case_path)
         elif choice == 8:
-            yplus_screen(stdscr, case_path)
+            probes_viewer_screen(stdscr, case_path)
         elif choice == 9:
-            foam_calc_prompt(stdscr, case_path)
+            yplus_screen(stdscr, case_path)
         elif choice == 10:
+            foam_calc_prompt(stdscr, case_path)
+        elif choice == 11:
             run_shell_script_screen(stdscr, case_path)

@@ -441,7 +441,7 @@ def test_run_solver_with_mode_branches(
 
     monkeypatch.setattr(
         cli_tools.run_ops,
-        "execute_case_command",
+        "execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(0, "", "", pid=777, log_path=case / "log.simpleFoam"),
     )
     args = _ns(case_dir=case, solver=None, parallel=0, mpi=None, json=False, dry_run=False)
@@ -450,7 +450,7 @@ def test_run_solver_with_mode_branches(
 
     monkeypatch.setattr(
         cli_tools.run_ops,
-        "execute_case_command",
+        "execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(1, "stdout\n", "stderr\n", pid=None, log_path=None),
     )
     args = _ns(case_dir=case, solver=None, parallel=0, mpi=None, json=False, dry_run=False)
@@ -476,7 +476,7 @@ def test_run_solver_with_mode_json_result(
     monkeypatch.setattr(cli_tools.run_ops, "dry_run_command", lambda _cmd: "simpleFoam")
     monkeypatch.setattr(
         cli_tools.run_ops,
-        "execute_case_command",
+        "execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(0, "ok", "", pid=None, log_path=None),
     )
     args = _ns(case_dir=case, solver=None, parallel=0, mpi=None, json=True, dry_run=False)
@@ -500,7 +500,7 @@ def test_run_solver_with_mode_forwards_sync_subdomains_flag(
     monkeypatch.setattr(cli_tools.run_ops, "solver_command", _solver_command)
     monkeypatch.setattr(
         cli_tools.run_ops,
-        "execute_case_command",
+        "execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(0, "ok", "", pid=None, log_path=None),
     )
     args = _ns(

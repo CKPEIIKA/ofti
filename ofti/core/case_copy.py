@@ -6,6 +6,11 @@ from pathlib import Path
 
 _RUNTIME_DIR_NAMES = {"postProcessing", ".ofti", "__pycache__"}
 
+try:  # pragma: no cover - optional dependency
+    from foamlib import FoamCase
+except Exception:  # pragma: no cover - optional dependency
+    FoamCase = None  # type: ignore[assignment]
+
 
 def copy_case_directory(
     source_case: Path,
@@ -15,6 +20,36 @@ def copy_case_directory(
     drop_mesh: bool = False,
     keep_zero_directory: bool = True,
 ) -> Path:
+    source_path, dest_path = _resolve_copy_paths(source_case, destination)
+
+    # Prefer foamlib clone for the default "clean copy" semantics.
+    if (
+        FoamCase is not None
+        and not include_runtime_artifacts
+        and keep_zero_directory
+        and not drop_mesh
+    ):
+        try:
+            cloned = FoamCase(source_path).clone(dest_path)
+            cloned_path = Path(getattr(cloned, "path", dest_path)).expanduser().resolve()
+            if cloned_path.is_dir():
+                _strip_runtime_artifacts(cloned_path, keep_zero_directory=keep_zero_directory)
+                return cloned_path
+        except Exception:
+            if dest_path.exists():
+                shutil.rmtree(dest_path, ignore_errors=True)
+
+    ignore = _build_copy_ignore(
+        source_path,
+        include_runtime_artifacts=include_runtime_artifacts,
+        drop_mesh=drop_mesh,
+        keep_zero_directory=keep_zero_directory,
+    )
+    shutil.copytree(source_path, dest_path, symlinks=True, ignore=ignore)
+    return dest_path
+
+
+def _resolve_copy_paths(source_case: Path, destination: Path) -> tuple[Path, Path]:
     source_path = source_case.expanduser().resolve()
     if not source_path.is_dir():
         raise ValueError(f"source case directory not found: {source_path}")
@@ -30,18 +65,8 @@ def copy_case_directory(
     try:
         dest_path.relative_to(source_path)
     except ValueError:
-        pass
-    else:
-        raise ValueError(f"destination must be outside source case: {dest_path}")
-
-    ignore = _build_copy_ignore(
-        source_path,
-        include_runtime_artifacts=include_runtime_artifacts,
-        drop_mesh=drop_mesh,
-        keep_zero_directory=keep_zero_directory,
-    )
-    shutil.copytree(source_path, dest_path, symlinks=True, ignore=ignore)
-    return dest_path
+        return source_path, dest_path
+    raise ValueError(f"destination must be outside source case: {dest_path}")
 
 
 def _build_copy_ignore(
@@ -93,3 +118,16 @@ def _is_time_dir_name(name: str) -> bool:
     except ValueError:
         return False
     return value >= 0
+
+
+def _strip_runtime_artifacts(destination: Path, *, keep_zero_directory: bool) -> None:
+    for entry in destination.iterdir():
+        if not _is_runtime_artifact_name(entry.name, keep_zero_directory=keep_zero_directory):
+            continue
+        try:
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+        except OSError:
+            continue

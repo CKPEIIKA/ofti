@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core import postprocessing as postprocessing_core
+from ofti.foamlib import postprocessing as foam_postprocessing
 from ofti.foamlib.parametric import build_parametric_cases
 from ofti.foamlib.runner import run_cases
 from ofti.tools.input_prompts import prompt_line
@@ -43,6 +44,63 @@ def postprocessing_browser_screen(stdscr: Any, case_path: Path) -> None:
         _show_message(stdscr, f"Failed to read {path.name}: {exc}")
         return
     Viewer(stdscr, text).display()
+
+
+def postprocessing_tables_screen(stdscr: Any, case_path: Path) -> None:
+    if not foam_postprocessing.available():
+        reason = (
+            foam_postprocessing.availability_error()
+            or "foamlib postprocessing extras unavailable."
+        )
+        _show_message(
+            stdscr,
+            "\n".join(
+                [
+                    "PostProcessing table loader is unavailable.",
+                    reason,
+                    "Install extras: uv pip install 'foamlib[postprocessing]'",
+                ],
+            ),
+        )
+        return
+    try:
+        sources = foam_postprocessing.list_table_sources(case_path)
+    except (OSError, RuntimeError, ValueError) as exc:
+        _show_message(stdscr, f"Failed to discover table sources: {exc}")
+        return
+    if not sources:
+        _show_message(stdscr, "No postProcessing table sources found.")
+        return
+    labels = [
+        _table_source_label(row)
+        for row in sources
+    ] + ["Back"]
+    menu = build_menu(
+        stdscr,
+        "PostProcessing tables",
+        labels,
+        menu_key="menu:postprocessing_tables",
+        item_hint="Load selected table source with foamlib.",
+    )
+    choice = menu.navigate()
+    if choice in (-1, len(labels) - 1):
+        return
+    selected = sources[choice]
+    source_id = str(selected["id"])
+    try:
+        loaded = foam_postprocessing.load_table_source(case_path, source_id)
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+        _show_message(stdscr, f"Failed to load table source {source_id}: {exc}")
+        return
+    lines = [
+        f"Source: {source_id}",
+        f"Rows: {loaded['rows']}",
+        f"Columns: {', '.join(loaded['columns']) if loaded['columns'] else '<none>'}",
+        "",
+        "Preview:",
+        str(loaded["preview"]),
+    ]
+    Viewer(stdscr, "\n".join(lines)).display()
 
 
 def sampling_sets_screen(stdscr: Any, case_path: Path) -> None:
@@ -134,3 +192,13 @@ def _prompt_line(stdscr: Any, prompt: str) -> str:
     if value is None:
         return ""
     return value
+
+
+def _table_source_label(row: dict[str, Any]) -> str:
+    folder = str(row.get("folder") or "")
+    file_name = str(row.get("file_name") or "")
+    time_count = int(row.get("time_count") or 0)
+    path_text = "/".join(part for part in (folder, file_name) if part)
+    if not path_text:
+        path_text = str(row.get("id") or "<source>")
+    return f"{path_text} (times={time_count})"

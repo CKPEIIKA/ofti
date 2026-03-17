@@ -63,15 +63,85 @@ def current_payload(case_dir: Path, *, live: bool = False) -> case_status_servic
     )
 
 
+def current_scope_payload(
+    case_dir: Path,
+    *,
+    live: bool = False,
+    recursive: bool = False,
+) -> dict[str, Any]:
+    scope_root = case_source_service.require_case_dir(case_dir)
+    root_is_case = process_scan_service.is_case_dir(scope_root)
+    recursive_effective = recursive or not root_is_case
+    if not recursive_effective:
+        return dict(current_payload(scope_root, live=live))
+
+    case_paths = _discover_case_dirs(scope_root)
+    jobs_all: list[dict[str, Any]] = []
+    active_jobs: list[dict[str, Any]] = []
+    for case_path in case_paths:
+        jobs = refresh_jobs(case_path)
+        for job in jobs:
+            row = dict(job)
+            row["case"] = str(case_path)
+            jobs_all.append(row)
+            if row.get("status") in {"running", "paused"}:
+                active_jobs.append(row)
+    tracked_pids = set(_running_job_pids(active_jobs))
+    untracked = _scan_proc_solver_processes(
+        scope_root,
+        None,
+        tracked_pids=tracked_pids,
+        require_case_target=not live,
+    )
+    untracked = [
+        row
+        for row in untracked
+        if (case_path := _adopt_case_path(row)) is not None and _path_within(case_path, scope_root)
+    ]
+    cases_from_untracked = sorted(
+        {
+            str(case_path)
+            for row in untracked
+            if (case_path := _adopt_case_path(row)) is not None
+        },
+    )
+    case_rows = sorted({str(path) for path in case_paths} | set(cases_from_untracked))
+    running_count = len(active_jobs) + case_status_service.untracked_running_count(untracked)
+    return {
+        "case": str(scope_root),
+        "scope": "tree",
+        "recursive": True,
+        "cases_total": len(case_rows),
+        "cases": case_rows,
+        "solver": None,
+        "solver_error": None,
+        "jobs": active_jobs,
+        "jobs_total": len(jobs_all),
+        "jobs_running": running_count,
+        "jobs_tracked_running": running_count,
+        "jobs_registry_running": len(active_jobs),
+        "untracked_processes": untracked,
+    }
+
+
 def current_live_payload(case_dir: Path) -> case_status_service.CurrentPayload:
     return current_payload(case_dir, live=True)
 
 
-def adopt_payload(case_dir: Path, *, recursive: bool = False) -> dict[str, Any]:
+def adopt_payload(
+    case_dir: Path,
+    *,
+    recursive: bool = False,
+    all_untracked: bool = False,
+) -> dict[str, Any]:
     scope_root = case_source_service.require_case_dir(case_dir)
     root_is_case = process_scan_service.is_case_dir(scope_root)
-    recursive_effective = recursive or not root_is_case
-    snapshot = current_payload(scope_root, live=True)
+    recursive_effective = recursive or all_untracked or not root_is_case
+    snapshot = current_scope_payload(
+        scope_root,
+        live=True,
+        recursive=recursive_effective,
+    )
     rows_by_case = _adopt_rows_by_case(
         snapshot["untracked_processes"],
         scope_root=scope_root,
@@ -169,6 +239,7 @@ def adopt_payload(case_dir: Path, *, recursive: bool = False) -> dict[str, Any]:
         "case": str(scope_root),
         "scope": "tree" if recursive_effective else "case",
         "recursive": recursive_effective,
+        "all_untracked": bool(all_untracked),
         "cases_total": len(case_paths),
         "cases": [str(path) for path in sorted(case_paths, key=str)],
         "selected": len(selected),
@@ -178,6 +249,32 @@ def adopt_payload(case_dir: Path, *, recursive: bool = False) -> dict[str, Any]:
         "jobs_running_before": jobs_running_before,
         "jobs_running_after": jobs_running_before + len(adopted),
     }
+
+
+def _discover_case_dirs(scope_root: Path) -> list[Path]:
+    root = scope_root.resolve()
+    cases: set[Path] = set()
+    if process_scan_service.is_case_dir(root):
+        cases.add(root)
+
+    for dir_path, dir_names, _file_names in os.walk(root):
+        path = Path(dir_path)
+        _prune_case_walk(dir_names)
+        if process_scan_service.is_case_dir(path):
+            cases.add(path.resolve())
+    return sorted(cases, key=str)
+
+
+def _prune_case_walk(dir_names: list[str]) -> None:
+    pruned = [
+        name
+        for name in dir_names
+        if not (
+            name.startswith("processor")
+            or name in {".git", ".venv", "__pycache__", "postProcessing", ".mypy_cache"}
+        )
+    ]
+    dir_names[:] = pruned
 
 
 def _adopt_rows_by_case(

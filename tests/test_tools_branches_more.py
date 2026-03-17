@@ -358,6 +358,41 @@ def test_postprocessing_browser_sampling_and_presets(
     assert "Failures" in shown[-1]
 
 
+def test_postprocessing_tables_screen_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    shown: list[str] = []
+
+    monkeypatch.setattr(postprocessing, "_show_message", lambda *_a, **_k: shown.append(_a[1]))
+    monkeypatch.setattr(postprocessing.foam_postprocessing, "available", lambda: False)
+    monkeypatch.setattr(
+        postprocessing.foam_postprocessing,
+        "availability_error",
+        lambda: "missing pandas",
+    )
+    postprocessing.postprocessing_tables_screen(_Screen(), case)
+    assert "unavailable" in shown[-1]
+
+    monkeypatch.setattr(postprocessing.foam_postprocessing, "available", lambda: True)
+    monkeypatch.setattr(
+        postprocessing.foam_postprocessing,
+        "list_table_sources",
+        lambda *_a, **_k: [{"id": "s1", "folder": "probes", "file_name": "U.dat", "time_count": 2}],
+    )
+    monkeypatch.setattr(postprocessing, "build_menu", _menu_sequence([0]))
+    monkeypatch.setattr(
+        postprocessing.foam_postprocessing,
+        "load_table_source",
+        lambda *_a, **_k: {"id": "s1", "rows": 3, "columns": ["t", "Ux"], "preview": "0 1\n1 2"},
+    )
+    monkeypatch.setattr(postprocessing.Viewer, "display", lambda self: shown.append(self.content))
+    postprocessing.postprocessing_tables_screen(_Screen(), case)
+    assert "Rows: 3" in shown[-1]
+
+
 def test_parametric_helpers_and_screen_error_paths(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -413,3 +448,50 @@ def test_parametric_helpers_and_screen_error_paths(
         False,
     )
     assert ok == ("system/controlDict", "entry", ["a"], False)
+
+
+def test_parametric_csv_and_grid_flows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    shown: list[str] = []
+
+    monkeypatch.setattr(parametric_tools.Viewer, "display", lambda self: shown.append(self.content))
+    monkeypatch.setattr(
+        parametric_tools,
+        "_select_parametric_mode",
+        lambda *_a, **_k: ("csv", None),
+    )
+    monkeypatch.setattr(
+        parametric_tools,
+        "_parametric_csv_form",
+        lambda *_a, **_k: ("study.csv", False),
+    )
+    monkeypatch.setattr(
+        parametric_tools,
+        "build_parametric_cases_from_csv",
+        lambda *_a, **_k: [case / "csv_variant"],
+    )
+    parametric_tools.foamlib_parametric_study_screen(_Screen(), case)
+    assert "csv_variant" in shown[-1]
+
+    monkeypatch.setattr(
+        parametric_tools,
+        "_select_parametric_mode",
+        lambda *_a, **_k: ("grid", None),
+    )
+    monkeypatch.setattr(
+        parametric_tools,
+        "_parametric_grid_form",
+        lambda *_a, **_k: ([{"dict_path": "system/controlDict", "entry": "application", "values": ["x"]}], True),
+    )
+    monkeypatch.setattr(
+        parametric_tools,
+        "build_parametric_cases_from_grid",
+        lambda *_a, **_k: [case / "grid_variant"],
+    )
+    monkeypatch.setattr(parametric_tools, "run_cases", lambda *_a, **_k: [])
+    parametric_tools.foamlib_parametric_study_screen(_Screen(), case)
+    assert "All cases completed." in shown[-1]

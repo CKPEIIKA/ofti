@@ -44,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
               ofti run tool --list --case CASE
               ofti run tool blockMesh --case CASE --background
               ofti run solver CASE --parallel 8 --dry-run
+              ofti run parametric CASE --entry application --values simpleFoam,pisoFoam
             """,
         ),
     )
@@ -163,6 +164,17 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     current = knife_sub.add_parser("current", help="Show currently tracked running jobs")
     current.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
     current.add_argument(
+        "--root",
+        type=Path,
+        default=None,
+        help="Scope root directory for campaign view (tracked + untracked across child cases)",
+    )
+    current.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Enable campaign-wide scan under scope root",
+    )
+    current.add_argument(
         "--live",
         action="store_true",
         help="Force live /proc scan for untracked solver processes",
@@ -176,11 +188,20 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     )
     adopt.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
     adopt.add_argument(
+        "--root",
+        type=Path,
+        default=None,
+        help="Scope root directory for bulk adoption",
+    )
+    adopt.add_argument(
         "--recursive",
+        action="store_true",
+        help="Adopt untracked processes for all child cases under case_dir",
+    )
+    adopt.add_argument(
         "--all-untracked",
         action="store_true",
-        dest="recursive",
-        help="Adopt untracked processes for all child cases under case_dir",
+        help="Alias for bulk recursive adoption under scope root",
     )
     adopt.add_argument("--json", action="store_true")
     adopt.set_defaults(func=_knife_adopt)
@@ -231,6 +252,17 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         default=True,
         help="For parallel runs, sync decomposeParDict numberOfSubdomains to --parallel",
     )
+    launch.add_argument(
+        "--clean-processors",
+        action="store_true",
+        help="Remove stale processor* directories before parallel decompose",
+    )
+    launch.add_argument(
+        "--prepare-parallel",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run parallel prelaunch step (optional clean + decomposePar -force)",
+    )
     launch.add_argument("--json", action="store_true", help="Print result as JSON")
     launch.set_defaults(func=_watch_start)
 
@@ -244,6 +276,17 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         action=argparse.BooleanOptionalAction,
         default=True,
         help="For parallel runs, sync decomposeParDict numberOfSubdomains to --parallel",
+    )
+    run.add_argument(
+        "--clean-processors",
+        action="store_true",
+        help="Remove stale processor* directories before parallel decompose",
+    )
+    run.add_argument(
+        "--prepare-parallel",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run parallel prelaunch step (optional clean + decomposePar -force)",
     )
     run.add_argument("--json", action="store_true", help="Print result as JSON")
     run.set_defaults(func=_watch_start)
@@ -580,6 +623,17 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="For parallel runs, sync decomposeParDict numberOfSubdomains to --parallel",
     )
     start.add_argument(
+        "--clean-processors",
+        action="store_true",
+        help="Remove stale processor* directories before parallel decompose",
+    )
+    start.add_argument(
+        "--prepare-parallel",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run parallel prelaunch step (optional clean + decomposePar -force)",
+    )
+    start.add_argument(
         "--watcher",
         nargs="*",
         default=None,
@@ -663,6 +717,17 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         action=argparse.BooleanOptionalAction,
         default=True,
         help="For parallel runs, sync decomposeParDict numberOfSubdomains to --parallel",
+    )
+    run.add_argument(
+        "--clean-processors",
+        action="store_true",
+        help="Remove stale processor* directories before parallel decompose",
+    )
+    run.add_argument(
+        "--prepare-parallel",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run parallel prelaunch step (optional clean + decomposePar -force)",
     )
     run.add_argument("--json", action="store_true", help="Print result as JSON")
     run.set_defaults(func=_watch_run)
@@ -781,6 +846,17 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         default=True,
         help="For parallel runs, sync decomposeParDict numberOfSubdomains to --parallel",
     )
+    solver.add_argument(
+        "--clean-processors",
+        action="store_true",
+        help="Remove stale processor* directories before parallel decompose",
+    )
+    solver.add_argument(
+        "--prepare-parallel",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run parallel prelaunch step (optional clean + decomposePar -force)",
+    )
     solver.add_argument("--background", action="store_true")
     solver.add_argument("--dry-run", action="store_true")
     solver.add_argument("--json", action="store_true", help="Print result as JSON")
@@ -813,6 +889,23 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     matrix.add_argument("--mpi", default=None)
     matrix.add_argument("--max-parallel", type=int, default=1)
     matrix.add_argument("--poll-interval", type=float, default=0.25)
+    matrix.add_argument(
+        "--backend",
+        choices=["process", "foamlib-async", "foamlib-slurm"],
+        default="process",
+        help="Queue backend used when launching generated cases",
+    )
+    matrix.add_argument(
+        "--prepare-parallel",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run parallel prelaunch step (optional clean + decomposePar -force)",
+    )
+    matrix.add_argument(
+        "--clean-processors",
+        action="store_true",
+        help="Remove stale processor* directories before parallel decompose",
+    )
     matrix.add_argument("--dry-run", action="store_true")
     matrix.add_argument(
         "--no-launch",
@@ -821,6 +914,72 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     )
     matrix.add_argument("--json", action="store_true", help="Print result as JSON")
     matrix.set_defaults(func=_run_matrix)
+
+    parametric = run_sub.add_parser(
+        "parametric",
+        help="Generate parametric cases (single/csv/grid) and optionally launch them",
+    )
+    parametric.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    mode = parametric.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--csv",
+        type=Path,
+        default=None,
+        help="CSV path for foamlib preprocessing study (relative to case or absolute)",
+    )
+    mode.add_argument(
+        "--grid-axis",
+        action="append",
+        default=[],
+        help="Grid axis: [DICT:]ENTRY=v1,v2 (repeatable)",
+    )
+    parametric.add_argument(
+        "--dict",
+        dest="dict_path",
+        default="system/controlDict",
+        help="Dictionary path for single-entry mode (default: system/controlDict)",
+    )
+    parametric.add_argument(
+        "--entry",
+        default=None,
+        help="Dictionary entry for single-entry mode, e.g. application",
+    )
+    parametric.add_argument(
+        "--values",
+        action="append",
+        default=[],
+        help="Value list for single-entry mode (comma-separated, repeatable)",
+    )
+    parametric.add_argument("--output-root", type=Path, default=None)
+    parametric.add_argument(
+        "--run-solver",
+        action="store_true",
+        help="Run solver queue for generated cases",
+    )
+    parametric.add_argument("--solver", default=None)
+    parametric.add_argument("--parallel", type=int, default=0)
+    parametric.add_argument("--mpi", default=None)
+    parametric.add_argument("--max-parallel", type=int, default=1)
+    parametric.add_argument("--poll-interval", type=float, default=0.25)
+    parametric.add_argument(
+        "--backend",
+        choices=["process", "foamlib-async", "foamlib-slurm"],
+        default="process",
+        help="Queue backend used when --run-solver is enabled",
+    )
+    parametric.add_argument(
+        "--prepare-parallel",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run parallel prelaunch step (optional clean + decomposePar -force)",
+    )
+    parametric.add_argument(
+        "--clean-processors",
+        action="store_true",
+        help="Remove stale processor* directories before parallel decompose",
+    )
+    parametric.add_argument("--json", action="store_true", help="Print result as JSON")
+    parametric.set_defaults(func=_run_parametric)
 
     queue = run_sub.add_parser(
         "queue",
@@ -833,8 +992,25 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     queue.add_argument("--solver", default=None)
     queue.add_argument("--parallel", type=int, default=0)
     queue.add_argument("--mpi", default=None)
+    queue.add_argument(
+        "--backend",
+        choices=["process", "foamlib-async", "foamlib-slurm"],
+        default="process",
+        help="Queue backend for case launches",
+    )
     queue.add_argument("--max-parallel", type=int, required=True)
     queue.add_argument("--poll-interval", type=float, default=0.25)
+    queue.add_argument(
+        "--prepare-parallel",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run parallel prelaunch step (optional clean + decomposePar -force)",
+    )
+    queue.add_argument(
+        "--clean-processors",
+        action="store_true",
+        help="Remove stale processor* directories before parallel decompose",
+    )
     queue.add_argument("--dry-run", action="store_true")
     queue.add_argument("--json", action="store_true", help="Print result as JSON")
     queue.set_defaults(func=_run_queue)
@@ -1041,21 +1217,41 @@ def _knife_status(args: argparse.Namespace) -> int:
 
 
 def _knife_current(args: argparse.Namespace) -> int:
-    try:
-        payload = knife_ops.current_payload(
-            args.case_dir,
-            live=bool(getattr(args, "live", False)),
-        )
-    except TypeError:
-        payload = knife_ops.current_payload(args.case_dir)
+    payload = _knife_current_payload(args)
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
+    _print_knife_current(payload)
+    return 0
+
+
+def _knife_current_payload(args: argparse.Namespace) -> dict[str, object]:
+    scope_root = cast(Path, getattr(args, "root", None) or args.case_dir)
+    recursive = bool(getattr(args, "recursive", False))
+    live = bool(getattr(args, "live", False))
+    if recursive or getattr(args, "root", None) is not None:
+        return _knife_current_scope_payload(scope_root, live=live, recursive=recursive)
+    try:
+        return knife_ops.current_payload(
+            scope_root,
+            live=live,
+        )
+    except TypeError:
+        return knife_ops.current_payload(scope_root)
+
+
+def _print_knife_current(payload: dict[str, object]) -> None:
     print(f"case={payload['case']}")
+    if "scope" in payload:
+        print(f"scope={payload.get('scope')}")
+    if "cases_total" in payload:
+        print(f"cases_total={payload.get('cases_total')}")
     if payload["solver_error"]:
         print(f"solver_error={payload['solver_error']}")
-    else:
+    elif payload["solver"]:
         print(f"solver={payload['solver']}")
+    else:
+        print("solver=<mixed>")
     if not payload["jobs"]:
         print("No tracked running jobs.")
     else:
@@ -1075,13 +1271,29 @@ def _knife_current(args: argparse.Namespace) -> int:
             )
     else:
         print("untracked_solver_processes=none")
-    return 0
+
+
+def _knife_current_scope_payload(
+    case_dir: Path,
+    *,
+    live: bool,
+    recursive: bool,
+) -> dict[str, object]:
+    try:
+        return knife_ops.current_scope_payload(case_dir, live=live, recursive=recursive)
+    except (AttributeError, TypeError):
+        try:
+            return knife_ops.current_payload(case_dir, live=live)
+        except TypeError:
+            return knife_ops.current_payload(case_dir)
 
 
 def _knife_adopt(args: argparse.Namespace) -> int:
+    scope_root = cast(Path, getattr(args, "root", None) or args.case_dir)
     payload = _knife_adopt_payload(
-        args.case_dir,
+        scope_root,
         recursive=bool(getattr(args, "recursive", False)),
+        all_untracked=bool(getattr(args, "all_untracked", False)),
     )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -1090,11 +1302,23 @@ def _knife_adopt(args: argparse.Namespace) -> int:
     return 0 if not payload["failed"] else 1
 
 
-def _knife_adopt_payload(case_dir: Path, *, recursive: bool) -> dict[str, object]:
+def _knife_adopt_payload(
+    case_dir: Path,
+    *,
+    recursive: bool,
+    all_untracked: bool,
+) -> dict[str, object]:
     try:
-        return knife_ops.adopt_payload(case_dir, recursive=recursive)
+        return knife_ops.adopt_payload(
+            case_dir,
+            recursive=recursive,
+            all_untracked=all_untracked,
+        )
     except TypeError:
-        return knife_ops.adopt_payload(case_dir)
+        try:
+            return knife_ops.adopt_payload(case_dir, recursive=(recursive or all_untracked))
+        except TypeError:
+            return knife_ops.adopt_payload(case_dir)
 
 
 def _print_knife_adopt(payload: dict[str, object]) -> None:
@@ -2028,6 +2252,9 @@ def _run_matrix(args: argparse.Namespace) -> int:
             max_parallel=int(getattr(args, "max_parallel", 1)),
             poll_interval=float(getattr(args, "poll_interval", 0.25)),
             dry_run=bool(getattr(args, "dry_run", False)),
+            backend=str(getattr(args, "backend", "process")),
+            prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
+            clean_processors=bool(getattr(args, "clean_processors", False)),
         )
     payload: dict[str, object] = {
         **generated,
@@ -2049,6 +2276,7 @@ def _run_matrix(args: argparse.Namespace) -> int:
     if queue_result:
         print(
             f"queue max_parallel={queue_result['max_parallel']} "
+            f"backend={queue_result.get('backend', 'process')} "
             f"started={len(queue_result['started'])} "
             f"failed_to_start={len(queue_result['failed_to_start'])}",
         )
@@ -2057,6 +2285,56 @@ def _run_matrix(args: argparse.Namespace) -> int:
                 print(f"  failed {row['case']}: {row['error']}")
     if queue_result and queue_result.get("ok") is False:
         return 1
+    return 0
+
+
+def _run_parametric(args: argparse.Namespace) -> int:
+    values = run_ops.parse_sweep_values(list(getattr(args, "values", [])))
+    grid_axes = run_ops.parse_grid_axes(
+        list(getattr(args, "grid_axis", [])),
+        default_dict=str(getattr(args, "dict_path", "system/controlDict")),
+    )
+    payload = run_ops.parametric_case_payload(
+        args.case_dir,
+        dict_path=str(getattr(args, "dict_path", "system/controlDict")),
+        entry=getattr(args, "entry", None),
+        values=values,
+        csv_path=getattr(args, "csv", None),
+        grid_axes=grid_axes,
+        output_root=getattr(args, "output_root", None),
+        run_solver=bool(getattr(args, "run_solver", False)),
+        solver=getattr(args, "solver", None),
+        parallel=int(getattr(args, "parallel", 0)),
+        mpi=getattr(args, "mpi", None),
+        max_parallel=int(getattr(args, "max_parallel", 1)),
+        poll_interval=float(getattr(args, "poll_interval", 0.25)),
+        queue_backend=str(getattr(args, "backend", "process")),
+        prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
+        clean_processors=bool(getattr(args, "clean_processors", False)),
+    )
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        queue = cast(dict[str, object] | None, payload.get("queue"))
+        if queue and queue.get("ok") is False:
+            return 1
+        return 0
+    print(f"case={payload['case']}")
+    print(
+        f"mode={payload['mode']} created={payload['created_count']} "
+        f"run_solver={payload['run_solver']}",
+    )
+    for path in cast(list[str], payload["created"]):
+        print(f"- {path}")
+    queue = cast(dict[str, object] | None, payload.get("queue"))
+    if queue:
+        print(
+            f"queue max_parallel={queue['max_parallel']} "
+            f"backend={queue.get('backend', 'process')} "
+            f"started={len(cast(list[object], queue['started']))} "
+            f"failed_to_start={len(cast(list[object], queue['failed_to_start']))}",
+        )
+        if queue.get("ok") is False:
+            return 1
     return 0
 
 
@@ -2075,13 +2353,16 @@ def _run_queue(args: argparse.Namespace) -> int:
         max_parallel=int(getattr(args, "max_parallel", 1)),
         poll_interval=float(getattr(args, "poll_interval", 0.25)),
         dry_run=bool(getattr(args, "dry_run", False)),
+        backend=str(getattr(args, "backend", "process")),
+        prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
+        clean_processors=bool(getattr(args, "clean_processors", False)),
     )
     if bool(getattr(args, "json", False)):
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if bool(payload.get("ok", True)) else 1
     print(
         f"count={payload['count']} max_parallel={payload['max_parallel']} "
-        f"dry_run={payload['dry_run']}",
+        f"backend={payload.get('backend', 'process')} dry_run={payload['dry_run']}",
     )
     print(
         f"started={len(payload['started'])} finished={len(payload['finished'])} "
@@ -2191,42 +2472,119 @@ def _run_solver(args: argparse.Namespace) -> int:
 
 def _run_solver_with_mode(args: argparse.Namespace, *, background: bool) -> int:
     sync_subdomains = bool(getattr(args, "sync_subdomains", True))
+    clean_processors = bool(getattr(args, "clean_processors", False))
+    prepare_parallel = bool(getattr(args, "prepare_parallel", True))
+    parallel = int(getattr(args, "parallel", 0))
     display, cmd = run_ops.solver_command(
         args.case_dir,
         solver=args.solver,
-        parallel=int(args.parallel),
+        parallel=parallel,
         mpi=args.mpi,
         sync_subdomains=sync_subdomains,
     )
     if getattr(args, "dry_run", False):
-        cmd_text = run_ops.dry_run_command(cmd)
-        if getattr(args, "json", False):
-            print(
-                json.dumps(
-                    {
-                        "case": str(Path(args.case_dir).resolve()),
-                        "name": display,
-                        "command": cmd_text,
-                        "dry_run": True,
-                        "sync_subdomains": sync_subdomains,
-                    },
-                    indent=2,
-                    sort_keys=True,
-                ),
-            )
-            return 0
-        print(cmd_text)
+        return _run_solver_dry_run(
+            args,
+            display=display,
+            cmd=cmd,
+            parallel=parallel,
+            sync_subdomains=sync_subdomains,
+            clean_processors=clean_processors,
+            prepare_parallel=prepare_parallel,
+        )
+    return _run_solver_execute(
+        args,
+        background=background,
+        display=display,
+        cmd=cmd,
+        parallel=parallel,
+        sync_subdomains=sync_subdomains,
+        clean_processors=clean_processors,
+        prepare_parallel=prepare_parallel,
+    )
+
+
+def _run_solver_dry_run(
+    args: argparse.Namespace,
+    *,
+    display: str,
+    cmd: list[str],
+    parallel: int,
+    sync_subdomains: bool,
+    clean_processors: bool,
+    prepare_parallel: bool,
+) -> int:
+    parallel_setup = _parallel_setup_payload(
+        args.case_dir,
+        cmd=cmd,
+        parallel=parallel,
+        clean_processors=clean_processors,
+        prepare_parallel=prepare_parallel,
+        dry_run=True,
+        extra_env=None,
+    )
+    cmd_text = run_ops.dry_run_command(cmd)
+    if getattr(args, "json", False):
+        print(
+            json.dumps(
+                {
+                    "case": str(Path(args.case_dir).resolve()),
+                    "name": display,
+                    "command": cmd_text,
+                    "dry_run": True,
+                    "sync_subdomains": sync_subdomains,
+                    "clean_processors": clean_processors,
+                    "prepare_parallel": prepare_parallel,
+                    "parallel_setup": parallel_setup,
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+        )
         return 0
+    print(cmd_text)
+    if parallel_setup is not None:
+        print(
+            f"# pre: decompose={parallel_setup.get('decompose_command')} "
+            f"clean_processors={clean_processors}",
+        )
+    elif parallel > 1 and "-parallel" in cmd:
+        print("# pre: skipped (--no-prepare-parallel)")
+    return 0
+
+
+def _run_solver_execute(
+    args: argparse.Namespace,
+    *,
+    background: bool,
+    display: str,
+    cmd: list[str],
+    parallel: int,
+    sync_subdomains: bool,
+    clean_processors: bool,
+    prepare_parallel: bool,
+) -> int:
     detached = not bool(getattr(args, "no_detach", False))
     log_path_raw = getattr(args, "log_file", None)
     pid_path_raw = getattr(args, "pid_file", None)
     log_path = Path(log_path_raw) if isinstance(log_path_raw, str) and log_path_raw else None
     pid_path = Path(pid_path_raw) if isinstance(pid_path_raw, str) and pid_path_raw else None
     extra_env = _parse_env_assignments(getattr(args, "env", []))
-    result = run_ops.execute_case_command(
+    parallel_setup = _parallel_setup_payload(
+        args.case_dir,
+        cmd=cmd,
+        parallel=parallel,
+        clean_processors=clean_processors,
+        prepare_parallel=prepare_parallel,
+        dry_run=False,
+        extra_env=extra_env,
+    )
+    result = run_ops.execute_solver_case_command(
         args.case_dir,
         display,
         cmd,
+        parallel=parallel,
+        mpi=args.mpi,
         background=background,
         detached=detached,
         log_path=log_path,
@@ -2244,6 +2602,9 @@ def _run_solver_with_mode(args: argparse.Namespace, *, background: bool) -> int:
             "pid_file": str(pid_path) if pid_path is not None else None,
             "env": extra_env,
             "sync_subdomains": sync_subdomains,
+            "clean_processors": clean_processors,
+            "prepare_parallel": prepare_parallel,
+            "parallel_setup": parallel_setup,
             "returncode": result.returncode,
             "pid": result.pid,
             "log_path": str(result.log_path) if result.log_path else None,
@@ -2261,6 +2622,30 @@ def _run_solver_with_mode(args: argparse.Namespace, *, background: bool) -> int:
     if result.stderr:
         print(result.stderr, file=sys.stderr, end="")
     return result.returncode
+
+
+def _parallel_setup_payload(
+    case_dir: Path,
+    *,
+    cmd: list[str],
+    parallel: int,
+    clean_processors: bool,
+    prepare_parallel: bool,
+    dry_run: bool,
+    extra_env: dict[str, str] | None,
+) -> dict[str, object] | None:
+    if not (parallel > 1 and "-parallel" in cmd and prepare_parallel):
+        return None
+    return cast(
+        dict[str, object],
+        run_ops.prepare_parallel_case(
+            case_dir,
+            parallel=parallel,
+            clean_processors=clean_processors,
+            extra_env=extra_env,
+            dry_run=dry_run,
+        ),
+    )
 
 
 def _parse_env_assignments(raw_values: object) -> dict[str, str]:
