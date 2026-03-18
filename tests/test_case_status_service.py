@@ -186,3 +186,18 @@ def test_untracked_running_count_dedupes_solver_under_launcher() -> None:
         },
     ]
     assert svc.untracked_running_count(rows) == 1
+
+
+def test_untracked_running_count_counts_solver_when_launcher_row_missing() -> None:
+    rows: list[svc.SolverProcessRow] = [
+        {
+            "pid": 301,
+            "ppid": 1,
+            "solver": "hy2Foam",
+            "role": "solver",
+            "tracked": False,
+            "launcher_pid": 300,
+            "command": "hy2Foam -parallel",
+        },
+    ]
+    assert svc.untracked_running_count(rows) == 1

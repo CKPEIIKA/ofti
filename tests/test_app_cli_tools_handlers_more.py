@@ -288,6 +288,7 @@ def test_watch_stop_signal_and_pause_resume_handlers(
 def test_knife_new_flag_forwarding_and_new_handlers(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     compare_seen: dict[str, object] = {}
     status_seen: dict[str, object] = {}
@@ -323,6 +324,9 @@ def test_knife_new_flag_forwarding_and_new_handlers(
     monkeypatch.setattr(cli_tools.knife_ops, "compare_payload", _compare)
     monkeypatch.setattr(cli_tools.knife_ops, "status_payload", _status)
     monkeypatch.setattr(cli_tools.knife_ops, "current_payload", _current)
+    case = tmp_path / "case"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "controlDict").write_text("application simpleFoam;\n")
 
     assert (
         cli_tools._knife_compare(
@@ -347,7 +351,7 @@ def test_knife_new_flag_forwarding_and_new_handlers(
     assert status_seen["tail_bytes"] == 4096
     assert json.loads(capsys.readouterr().out)["case"] == "case"
 
-    assert cli_tools._knife_current(_ns(case_dir=Path(), live=True, json=True)) == 0
+    assert cli_tools._knife_current(_ns(case_dir=case, live=True, json=True)) == 0
     assert current_seen["live"] is True
     assert json.loads(capsys.readouterr().out)["solver"] == "simpleFoam"
 
