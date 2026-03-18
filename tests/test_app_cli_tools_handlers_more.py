@@ -150,6 +150,120 @@ def test_knife_plain_and_json_branches(
     assert "adopted_rows:" in out
 
 
+def test_receipt_handlers_and_run_solver_recording(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    receipt_path = tmp_path / "receipt.json"
+    restored_dir = tmp_path / "restored"
+    restored_receipt = restored_dir / ".ofti" / "restored_from_receipt.json"
+    monkeypatch.setattr(
+        cli_tools.receipt_ops,
+        "write_case_run_receipt",
+        lambda *_a, **_k: receipt_path,
+    )
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "solver_command",
+        lambda *_a, **_k: ("simpleFoam", ["simpleFoam"]),
+    )
+    monkeypatch.setattr(cli_tools.run_ops, "dry_run_command", lambda _cmd: "simpleFoam")
+
+    args = _ns(
+        case_dir=Path("/case"),
+        solver=None,
+        parallel=0,
+        mpi=None,
+        sync_subdomains=True,
+        prepare_parallel=True,
+        clean_processors=False,
+        receipt_file=None,
+        record_inputs_copy=True,
+        json=True,
+    )
+    assert cli_tools._knife_receipt_write(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["receipt"] == str(receipt_path)
+    assert payload["recorded_inputs_copy"] is True
+
+    monkeypatch.setattr(
+        cli_tools.receipt_ops,
+        "verify_run_receipt",
+        lambda *_a, **_k: {
+            "receipt": str(receipt_path),
+            "case": "/case",
+            "ok": False,
+            "expected_tree_hash": "a",
+            "actual_tree_hash": "b",
+            "openfoam": {"match": True},
+            "missing_files": [],
+            "changed_files": [{"path": "system/controlDict"}],
+            "extra_files": ["system/newDict"],
+        },
+    )
+    assert cli_tools._knife_receipt_verify(_ns(receipt=receipt_path, case_dir=None, json=False)) == 1
+    out = capsys.readouterr().out
+    assert "changed_files:" in out
+    assert "extra_files:" in out
+
+    monkeypatch.setattr(
+        cli_tools.receipt_ops,
+        "restore_run_receipt",
+        lambda *_a, **_k: {
+            "receipt": str(receipt_path),
+            "destination": str(restored_dir),
+            "selected_roots": ["system", "constant"],
+            "restored_receipt": str(restored_receipt),
+            "restored": ["system", "constant", "0"],
+            "ok": True,
+        },
+    )
+    assert cli_tools._knife_receipt_restore(
+        _ns(receipt=receipt_path, destination=restored_dir, only=["system"], skip=["0"], json=True),
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["destination"] == str(restored_dir)
+    assert payload["selected_roots"] == ["system", "constant"]
+
+    monkeypatch.setattr(cli_tools, "_parallel_setup_payload", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "execute_solver_case_command",
+        lambda *_a, **_k: cli_tools.run_ops.RunResult(
+            0,
+            "",
+            "",
+            pid=4321,
+            log_path=Path("/case/log.simpleFoam"),
+        ),
+    )
+    assert cli_tools._run_solver_execute(
+        _ns(
+            case_dir=Path("/case"),
+            mpi=None,
+            no_detach=False,
+            log_file=None,
+            pid_file=None,
+            env=[],
+            json=True,
+            write_receipt=True,
+            record_inputs_copy=False,
+            receipt_file=None,
+        ),
+        background=True,
+        display="simpleFoam",
+        cmd=["simpleFoam"],
+        parallel=0,
+        sync_subdomains=True,
+        clean_processors=False,
+        prepare_parallel=True,
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["receipt_path"] == str(receipt_path)
+    assert payload["write_receipt"] is True
+
+
 def test_converge_plot_residuals_and_watch_external(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

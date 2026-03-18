@@ -26,6 +26,10 @@ CONTEXT_HELP: dict[str, list[str]] = {
         "Run solver (custom log) lets you choose a log path inside the case.",
         "Run solver (parallel) uses mpirun with safe prep defaults.",
         "Safe prep includes sync-subdomains and decomposePar prelaunch.",
+        (
+            "CLI runs can write immutable receipts; "
+            "add --record-inputs-copy for restore-grade snapshots."
+        ),
         "Case status/current jobs and runtime checks reuse knife shared services.",
         "Current jobs can scan repo root recursively for campaign-wide live status.",
         "Runtime criteria/ETA/report are read-only diagnostics from logs/control.",
@@ -51,6 +55,7 @@ CONTEXT_HELP: dict[str, list[str]] = {
         "Preflight/doctor/status checks are available here for setup phase.",
         "Initial fields summary shows internalField and boundary patch values.",
         "Set dictionary entry writes one key path directly into a dictionary file.",
+        "CLI receipt verify/restore can check or recreate recorded case inputs.",
     ],
     "tools": [
         "Run OpenFOAM tools or presets.",

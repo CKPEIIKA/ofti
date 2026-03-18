@@ -112,6 +112,9 @@ ofti knife initials CASE --json
 ofti knife copy CASE_COPY --case CASE
 ofti knife current --root REPO --recursive --live --json
 ofti knife adopt --root REPO --all-untracked --json
+ofti knife receipt write CASE --record-inputs-copy --json
+ofti knife receipt verify runs/.../receipt.json --json
+ofti knife receipt restore runs/.../receipt.json --to RESTORED_CASE --json
 ofti watch jobs CASE --json
 ofti watch pause CASE --all
 ofti watch resume CASE --all
@@ -119,6 +122,8 @@ ofti watch stop CASE --signal TERM
 ofti watch log CASE --lines 80 --json
 ofti run tool --list --case CASE --json
 ofti run solver CASE --dry-run --json
+ofti run solver CASE --write-receipt --json
+ofti run solver CASE --write-receipt --record-inputs-copy --json
 ofti run solver CASE --parallel 8 --clean-processors --json
 ofti run solver CASE --parallel 8 --no-prepare-parallel --json
 ofti run matrix CASE --param application=simpleFoam,pisoFoam --no-launch --json
@@ -170,6 +175,30 @@ Runtime criteria now respect explicit runTimeControl gate messages in logs:
 
 For very large logs, analysis/tail commands read recent log windows to stay
 responsive.
+
+Run receipts for reproducible runs:
+
+```bash
+ofti run solver CASE --write-receipt --json
+ofti run solver CASE --write-receipt --record-inputs-copy --json
+ofti knife receipt write CASE --record-inputs-copy --json
+ofti knife receipt verify runs/.../receipt.json --json
+ofti knife receipt restore runs/.../receipt.json --to RESTORED_CASE --json
+ofti knife receipt restore runs/.../receipt.json --to CASE_COPY --only system,constant --json
+```
+
+- `--write-receipt` writes an immutable receipt JSON under `./runs/` in the
+  directory where you launch the command.
+- Hash-only receipts are verification-grade: they let you detect drift.
+- `--record-inputs-copy` upgrades the receipt to restore-grade by copying
+  `system/`, `constant/`, and `0/` next to the receipt.
+- `--receipt-file` overrides the destination explicitly; relative paths resolve
+  from the current working directory.
+- `knife receipt verify` checks the current case against recorded hashes.
+- `knife receipt restore` recreates inputs only when the receipt includes the
+  recorded input copy.
+- `knife receipt restore --only/--skip` lets you restore only selected roots
+  from `system`, `constant`, and `0`.
 
 External watcher integration (for example `scripts/oftools/ofwatch`) is
 expected to run through tool presets in `ofti.tools` and can be executed with
