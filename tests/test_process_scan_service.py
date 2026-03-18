@@ -225,6 +225,47 @@ def test_scan_processes_infers_case_from_shell_cd_parent(tmp_path: Path) -> None
     assert rows[0]["discovery_source"] in {"procfs", "launcher"}
 
 
+def test_shell_cd_candidate_uses_last_cd_and_handles_quoted_abs_path() -> None:
+    candidate = svc._shell_cd_candidate(
+        "cd '/abs/first' && cd '/abs/second' && mpirun -np 4 hy2Foam -parallel",
+        None,
+    )
+    assert candidate == Path("/abs/second")
+
+
+def test_scan_processes_infers_case_from_shell_with_multiple_cd_segments(tmp_path: Path) -> None:
+    svc._DISCOVERY_CACHE.clear()
+    case = _make_case(tmp_path / "repo" / "caseB")
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    _write_proc_entry(
+        proc_root,
+        pid=520,
+        ppid=1,
+        cmdline=(
+            f"bash\x00-lc\x00cd '/tmp' && cd '{case}' && mpirun -np 2 hy2Foam -parallel\x00"
+        ).encode(),
+        cwd=None,
+    )
+    _write_proc_entry(
+        proc_root,
+        pid=521,
+        ppid=520,
+        cmdline=b"hy2Foam\x00-parallel\x00",
+        cwd=None,
+    )
+    rows = svc.scan_proc_solver_processes(
+        case.parent,
+        None,
+        tracked_pids=set(),
+        proc_root=proc_root,
+        require_case_target=True,
+    )
+    assert {row["pid"] for row in rows} == {521}
+    assert rows[0]["case"] == str(case.resolve())
+    assert rows[0]["launcher_pid"] == 520
+
+
 def test_scan_processes_marks_shell_wrapper_as_launcher_when_solver_known(tmp_path: Path) -> None:
     svc._DISCOVERY_CACHE.clear()
     case = _make_case(tmp_path / "case")

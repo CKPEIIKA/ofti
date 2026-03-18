@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -436,22 +437,30 @@ def case_candidate_from_shell_args(args: list[str], cwd: Path | None) -> Path | 
 def _shell_cd_candidate(command: str, cwd: Path | None) -> Path | None:
     lowered = command.replace("&&", ";")
     chunks = [chunk.strip() for chunk in lowered.split(";")]
+    current_dir = cwd.resolve() if cwd is not None else None
+    latest_candidate: Path | None = None
     for chunk in chunks:
-        if not chunk.startswith("cd "):
+        if not chunk:
             continue
-        raw = chunk[3:].strip()
-        if not raw:
+        try:
+            parts = shlex.split(chunk)
+        except ValueError:
+            parts = chunk.split()
+        if not parts or parts[0] != "cd" or len(parts) < 2:
             continue
-        token = raw.split()[0].strip()
-        if token.startswith(("'", '"')) and token.endswith(("'", '"')) and len(token) >= 2:
-            token = token[1:-1]
-        candidate = Path(token).expanduser()
+        path_arg = parts[1].strip()
+        if not path_arg or path_arg == "-":
+            continue
+        candidate = Path(path_arg).expanduser()
         if candidate.is_absolute():
-            return candidate
-        if cwd is not None:
-            return (cwd / candidate).resolve()
-        return candidate.resolve()
-    return None
+            resolved = candidate.resolve()
+        elif current_dir is not None:
+            resolved = (current_dir / candidate).resolve()
+        else:
+            resolved = candidate.resolve()
+        latest_candidate = resolved
+        current_dir = resolved
+    return latest_candidate
 
 
 def as_case_dir(path: Path | None, *, checked: set[Path] | None = None) -> Path | None:

@@ -1229,8 +1229,16 @@ def _knife_current_payload(args: argparse.Namespace) -> dict[str, object]:
     scope_root = cast(Path, getattr(args, "root", None) or args.case_dir)
     recursive = bool(getattr(args, "recursive", False))
     live = bool(getattr(args, "live", False))
-    if recursive or getattr(args, "root", None) is not None:
-        return _knife_current_scope_payload(scope_root, live=live, recursive=recursive)
+    has_root_override = getattr(args, "root", None) is not None
+    scope_is_case = (scope_root / "system" / "controlDict").is_file()
+    auto_campaign_scope = live and not scope_is_case and not has_root_override and not recursive
+    if recursive or has_root_override or auto_campaign_scope:
+        recursive_effective = recursive or auto_campaign_scope
+        return _knife_current_scope_payload(
+            scope_root,
+            live=live,
+            recursive=recursive_effective,
+        )
     try:
         return knife_ops.current_payload(
             scope_root,

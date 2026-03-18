@@ -974,6 +974,39 @@ def test_knife_current_cli_root_recursive_uses_scope_payload(tmp_path, capsys, m
     assert payload["scope"] == "tree"
 
 
+def test_knife_current_cli_non_case_scope_auto_recurses(tmp_path, capsys, monkeypatch) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    seen: dict[str, object] = {}
+
+    def _current_scope(case_dir: Path, **kwargs: object) -> dict[str, object]:
+        seen["case_dir"] = case_dir
+        seen.update(kwargs)
+        return {
+            "case": str(case_dir),
+            "scope": "tree",
+            "cases_total": 0,
+            "cases": [],
+            "solver": None,
+            "solver_error": None,
+            "jobs": [],
+            "jobs_total": 0,
+            "jobs_running": 0,
+            "jobs_tracked_running": 0,
+            "jobs_registry_running": 0,
+            "untracked_processes": [],
+        }
+
+    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.current_scope_payload", _current_scope)
+    code = cli_tools.main(["knife", "current", str(root), "--live", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert seen["case_dir"] == root
+    assert seen["recursive"] is True
+    assert seen["live"] is True
+    assert payload["scope"] == "tree"
+
+
 def test_knife_adopt_cli_root_all_untracked_passes_flag(tmp_path, capsys, monkeypatch) -> None:
     root = tmp_path / "repo"
     root.mkdir()

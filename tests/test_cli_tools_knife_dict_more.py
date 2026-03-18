@@ -587,7 +587,7 @@ def test_knife_runtime_and_numeric_helpers(tmp_path: Path, monkeypatch: pytest.M
     snap = knife._runtime_control_snapshot(case, "simpleFoam")
     assert snap["latest_time"] == 1.0
     assert snap["latest_delta_t"] == 0.1
-    assert snap["latest_iteration"] == 3
+    assert snap["latest_iteration"] == 1
     assert snap["run_time_control"]["passed"] == 1
 
     monkeypatch.setattr(

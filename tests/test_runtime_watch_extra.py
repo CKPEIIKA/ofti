@@ -96,6 +96,8 @@ def test_runtime_control_eta_and_reason_helpers() -> None:
 
     assert rtc.latest_iteration("", 0) is None
     assert rtc.latest_iteration("", 3) == 3
+    assert rtc.latest_iteration("iter = 9", 0) == 9
+    assert rtc.latest_iteration("Time = 0.1\niter = 9", 1) == 1
     assert rtc.eta_seconds(None, 1.0, [0.1, 0.2], [1.0, 2.0]) is None
     assert rtc.eta_seconds(1.0, 0.5, [0.1, 0.2], [1.0, 2.0]) == 0.0
     assert rtc.eta_seconds(0.1, 0.5, [0.1], [1.0]) is None

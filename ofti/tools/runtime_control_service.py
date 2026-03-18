@@ -849,11 +849,11 @@ def is_log_fresh(log_path: Path | None, freshness_seconds: float = 90.0) -> bool
 
 
 def latest_iteration(text: str, fallback: int) -> int | None:
+    if fallback > 0:
+        return fallback
     match_values = [int(match.group("value")) for match in ITER_RE.finditer(text)]
     if match_values:
         return match_values[-1]
-    if fallback > 0:
-        return fallback
     return None
 
 

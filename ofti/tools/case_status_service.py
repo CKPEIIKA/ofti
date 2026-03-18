@@ -192,9 +192,10 @@ def untracked_running_count(rows: list[SolverProcessRow]) -> int:
         for row in rows
         if str(row.get("role")) == "solver"
         and int(row.get("pid", 0)) > 0
-        and (
-            (launcher_pid := row.get("launcher_pid")) is None
-            or (isinstance(launcher_pid, int) and launcher_pid <= 0)
+        and not (
+            isinstance(row.get("launcher_pid"), int)
+            and int(row.get("launcher_pid", 0)) > 0
+            and int(row.get("launcher_pid", 0)) in launcher_pids
         )
     }
     return len(launcher_pids) + len(solver_pids)

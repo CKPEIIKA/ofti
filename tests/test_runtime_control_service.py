@@ -65,7 +65,7 @@ def test_runtime_control_snapshot_reads_include_and_metrics(tmp_path: Path) -> N
     )
 
     assert snapshot["latest_time"] == 0.2
-    assert snapshot["latest_iteration"] == 7
+    assert snapshot["latest_iteration"] == 2
     assert snapshot["latest_delta_t"] == 0.01
     assert snapshot["run_time_control"]["end_time"] == 2.0
     assert snapshot["run_time_control"]["criteria_start"] == 0.5
@@ -326,7 +326,7 @@ def test_runtime_control_snapshot_full_uses_filtered_log_reader(
     terms = cast(list[str], seen["terms"])
     assert "residualTolerance" in terms
     assert "shockFlat" in terms
-    assert snapshot["latest_iteration"] == 12
+    assert snapshot["latest_iteration"] == 1
     assert snapshot["run_time_control"]["passed"] >= 1
 
 
