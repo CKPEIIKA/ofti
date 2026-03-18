@@ -11,6 +11,7 @@ from pathlib import Path
 from textwrap import dedent
 from typing import cast
 
+from ofti.core import run_receipt as receipt_ops
 from ofti.tools import status_render_service
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import plot as plot_ops
@@ -125,6 +126,79 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     )
     copy.add_argument("--json", action="store_true")
     copy.set_defaults(func=_knife_copy)
+
+    receipt = knife_sub.add_parser(
+        "receipt",
+        help="Write, verify, and restore immutable run receipts",
+    )
+    receipt.set_defaults(func=_help_handler(receipt))
+    receipt_sub = receipt.add_subparsers(dest="receipt_command", required=False)
+
+    receipt_write = receipt_sub.add_parser("write", help="Write a run receipt for a case")
+    receipt_write.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    receipt_write.add_argument("--solver", default=None)
+    receipt_write.add_argument("--parallel", type=int, default=0)
+    receipt_write.add_argument("--mpi", default=None)
+    receipt_write.add_argument(
+        "--sync-subdomains",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Recorded launch setting for parallel runs",
+    )
+    receipt_write.add_argument(
+        "--prepare-parallel",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Recorded launch setting for parallel runs",
+    )
+    receipt_write.add_argument(
+        "--clean-processors",
+        action="store_true",
+        help="Recorded launch setting for parallel runs",
+    )
+    receipt_write.add_argument(
+        "--receipt-file",
+        default=None,
+        type=Path,
+        help="Receipt JSON path (relative paths resolve from current working directory)",
+    )
+    receipt_write.add_argument(
+        "--record-inputs-copy",
+        action="store_true",
+        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
+    )
+    receipt_write.add_argument("--json", action="store_true")
+    receipt_write.set_defaults(func=_knife_receipt_write)
+
+    receipt_verify = receipt_sub.add_parser(
+        "verify",
+        help="Verify current case inputs against a recorded receipt",
+    )
+    receipt_verify.add_argument("receipt", type=Path)
+    receipt_verify.add_argument("--case", dest="case_dir", default=None, type=Path)
+    receipt_verify.add_argument("--json", action="store_true")
+    receipt_verify.set_defaults(func=_knife_receipt_verify)
+
+    receipt_restore = receipt_sub.add_parser(
+        "restore",
+        help="Restore case inputs from a receipt with recorded input copies",
+    )
+    receipt_restore.add_argument("receipt", type=Path)
+    receipt_restore.add_argument("--to", dest="destination", required=True, type=Path)
+    receipt_restore.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        help="Restore only selected roots: system, constant, 0 (repeatable or comma-separated)",
+    )
+    receipt_restore.add_argument(
+        "--skip",
+        action="append",
+        default=[],
+        help="Skip selected roots: system, constant, 0 (repeatable or comma-separated)",
+    )
+    receipt_restore.add_argument("--json", action="store_true")
+    receipt_restore.set_defaults(func=_knife_receipt_restore)
 
     initials = knife_sub.add_parser(
         "initials",
@@ -263,6 +337,22 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         default=True,
         help="Run parallel prelaunch step (optional clean + decomposePar -force)",
     )
+    launch.add_argument(
+        "--write-receipt",
+        action="store_true",
+        help="Write immutable launch receipt under ./runs/",
+    )
+    launch.add_argument(
+        "--record-inputs-copy",
+        action="store_true",
+        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
+    )
+    launch.add_argument(
+        "--receipt-file",
+        default=None,
+        type=Path,
+        help="Receipt JSON path (relative paths resolve from current working directory)",
+    )
     launch.add_argument("--json", action="store_true", help="Print result as JSON")
     launch.set_defaults(func=_watch_start)
 
@@ -287,6 +377,22 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Run parallel prelaunch step (optional clean + decomposePar -force)",
+    )
+    run.add_argument(
+        "--write-receipt",
+        action="store_true",
+        help="Write immutable launch receipt under ./runs/",
+    )
+    run.add_argument(
+        "--record-inputs-copy",
+        action="store_true",
+        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
+    )
+    run.add_argument(
+        "--receipt-file",
+        default=None,
+        type=Path,
+        help="Receipt JSON path (relative paths resolve from current working directory)",
     )
     run.add_argument("--json", action="store_true", help="Print result as JSON")
     run.set_defaults(func=_watch_start)
@@ -666,6 +772,22 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         metavar="KEY=VALUE",
         help="Extra environment variable for started process (repeatable)",
     )
+    start.add_argument(
+        "--write-receipt",
+        action="store_true",
+        help="Write immutable launch receipt under ./runs/",
+    )
+    start.add_argument(
+        "--record-inputs-copy",
+        action="store_true",
+        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
+    )
+    start.add_argument(
+        "--receipt-file",
+        default=None,
+        type=Path,
+        help="Receipt JSON path (relative paths resolve from current working directory)",
+    )
     start.add_argument("--dry-run", action="store_true", help="Show launch payload only")
     start.add_argument("--json", action="store_true", help="Print result as JSON")
     start.set_defaults(func=_watch_start)
@@ -728,6 +850,22 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Run parallel prelaunch step (optional clean + decomposePar -force)",
+    )
+    run.add_argument(
+        "--write-receipt",
+        action="store_true",
+        help="Write immutable launch receipt under ./runs/",
+    )
+    run.add_argument(
+        "--record-inputs-copy",
+        action="store_true",
+        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
+    )
+    run.add_argument(
+        "--receipt-file",
+        default=None,
+        type=Path,
+        help="Receipt JSON path (relative paths resolve from current working directory)",
     )
     run.add_argument("--json", action="store_true", help="Print result as JSON")
     run.set_defaults(func=_watch_run)
@@ -858,6 +996,26 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         help="Run parallel prelaunch step (optional clean + decomposePar -force)",
     )
     solver.add_argument("--background", action="store_true")
+    solver.add_argument("--no-detach", action="store_true")
+    solver.add_argument("--log-file", default=None)
+    solver.add_argument("--pid-file", default=None)
+    solver.add_argument("--env", action="append", default=[], metavar="KEY=VALUE")
+    solver.add_argument(
+        "--write-receipt",
+        action="store_true",
+        help="Write immutable launch receipt under ./runs/",
+    )
+    solver.add_argument(
+        "--record-inputs-copy",
+        action="store_true",
+        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
+    )
+    solver.add_argument(
+        "--receipt-file",
+        default=None,
+        type=Path,
+        help="Receipt JSON path (relative paths resolve from current working directory)",
+    )
     solver.add_argument("--dry-run", action="store_true")
     solver.add_argument("--json", action="store_true", help="Print result as JSON")
     solver.set_defaults(func=_run_solver)
@@ -1169,6 +1327,100 @@ def _knife_copy(args: argparse.Namespace) -> int:
     print(f"drop_mesh={payload['drop_mesh']}")
     print(f"ok={payload['ok']}")
     return 0
+
+
+def _knife_receipt_write(args: argparse.Namespace) -> int:
+    sync_subdomains = bool(getattr(args, "sync_subdomains", True))
+    clean_processors = bool(getattr(args, "clean_processors", False))
+    prepare_parallel = bool(getattr(args, "prepare_parallel", True))
+    parallel = int(getattr(args, "parallel", 0))
+    display, cmd = run_ops.solver_command(
+        args.case_dir,
+        solver=args.solver,
+        parallel=parallel,
+        mpi=args.mpi,
+        sync_subdomains=sync_subdomains,
+    )
+    command = run_ops.dry_run_command(cmd)
+    receipt_path = receipt_ops.write_case_run_receipt(
+        Path(args.case_dir),
+        name=display,
+        command=command,
+        background=False,
+        detached=False,
+        parallel=parallel,
+        mpi=args.mpi,
+        sync_subdomains=sync_subdomains,
+        prepare_parallel=prepare_parallel,
+        clean_processors=clean_processors,
+        output=getattr(args, "receipt_file", None),
+        record_inputs_copy=bool(getattr(args, "record_inputs_copy", False)),
+    )
+    payload = {
+        "case": str(Path(args.case_dir).resolve()),
+        "command": command,
+        "receipt": str(receipt_path),
+        "recorded_inputs_copy": bool(getattr(args, "record_inputs_copy", False)),
+        "ok": True,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(f"case={payload['case']}")
+    print(f"command={payload['command']}")
+    print(f"receipt={payload['receipt']}")
+    print(f"recorded_inputs_copy={payload['recorded_inputs_copy']}")
+    return 0
+
+
+def _knife_receipt_verify(args: argparse.Namespace) -> int:
+    payload = receipt_ops.verify_run_receipt(
+        Path(args.receipt),
+        case_path=getattr(args, "case_dir", None),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if bool(payload.get("ok")) else 1
+    print(f"receipt={payload['receipt']}")
+    print(f"case={payload['case']}")
+    print(f"ok={payload['ok']}")
+    print(f"expected_tree_hash={payload['expected_tree_hash']}")
+    print(f"actual_tree_hash={payload['actual_tree_hash']}")
+    print(f"openfoam_version_match={payload['openfoam']['match']}")
+    if payload["missing_files"]:
+        print("missing_files:")
+        for path in payload["missing_files"]:
+            print(f"- {path}")
+    if payload["changed_files"]:
+        print("changed_files:")
+        for row in payload["changed_files"]:
+            print(f"- {row['path']}")
+    if payload["extra_files"]:
+        print("extra_files:")
+        for path in payload["extra_files"]:
+            print(f"- {path}")
+    return 0 if bool(payload.get("ok")) else 1
+
+
+def _knife_receipt_restore(args: argparse.Namespace) -> int:
+    payload = receipt_ops.restore_run_receipt(
+        Path(args.receipt),
+        Path(args.destination),
+        only=getattr(args, "only", []),
+        skip=getattr(args, "skip", []),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if bool(payload.get("ok")) else 1
+    print(f"receipt={payload['receipt']}")
+    print(f"destination={payload['destination']}")
+    print(f"selected_roots={','.join(payload['selected_roots'])}")
+    print(f"restored_receipt={payload['restored_receipt']}")
+    if payload["restored"]:
+        print("restored:")
+        for item in payload["restored"]:
+            print(f"- {item}")
+    return 0 if bool(payload.get("ok")) else 1
 
 
 def _knife_initials(args: argparse.Namespace) -> int:
@@ -2532,6 +2784,12 @@ def _run_solver_dry_run(
         extra_env=None,
     )
     cmd_text = run_ops.dry_run_command(cmd)
+    write_receipt = _write_receipt_enabled(args)
+    receipt_path = (
+        _planned_receipt_path(args.case_dir, getattr(args, "receipt_file", None))
+        if write_receipt
+        else None
+    )
     if getattr(args, "json", False):
         print(
             json.dumps(
@@ -2543,6 +2801,9 @@ def _run_solver_dry_run(
                     "sync_subdomains": sync_subdomains,
                     "clean_processors": clean_processors,
                     "prepare_parallel": prepare_parallel,
+                    "write_receipt": write_receipt,
+                    "record_inputs_copy": bool(getattr(args, "record_inputs_copy", False)),
+                    "receipt_path": str(receipt_path) if receipt_path is not None else None,
                     "parallel_setup": parallel_setup,
                 },
                 indent=2,
@@ -2558,6 +2819,8 @@ def _run_solver_dry_run(
         )
     elif parallel > 1 and "-parallel" in cmd:
         print("# pre: skipped (--no-prepare-parallel)")
+    if receipt_path is not None:
+        print(f"# receipt: {receipt_path}")
     return 0
 
 
@@ -2578,6 +2841,12 @@ def _run_solver_execute(
     log_path = Path(log_path_raw) if isinstance(log_path_raw, str) and log_path_raw else None
     pid_path = Path(pid_path_raw) if isinstance(pid_path_raw, str) and pid_path_raw else None
     extra_env = _parse_env_assignments(getattr(args, "env", []))
+    write_receipt = _write_receipt_enabled(args)
+    receipt_output = (
+        _planned_receipt_path(args.case_dir, getattr(args, "receipt_file", None))
+        if write_receipt
+        else None
+    )
     parallel_setup = _parallel_setup_payload(
         args.case_dir,
         cmd=cmd,
@@ -2599,6 +2868,26 @@ def _run_solver_execute(
         pid_path=pid_path,
         extra_env=extra_env,
     )
+    written_receipt: Path | None = None
+    if write_receipt:
+        written_receipt = receipt_ops.write_case_run_receipt(
+            Path(args.case_dir),
+            name=display,
+            command=run_ops.dry_run_command(cmd),
+            background=background,
+            detached=detached if background else False,
+            parallel=parallel,
+            mpi=args.mpi,
+            sync_subdomains=sync_subdomains,
+            prepare_parallel=prepare_parallel,
+            clean_processors=clean_processors,
+            extra_env=extra_env,
+            log_path=result.log_path,
+            pid=result.pid,
+            returncode=result.returncode,
+            output=receipt_output,
+            record_inputs_copy=bool(getattr(args, "record_inputs_copy", False)),
+        )
     if getattr(args, "json", False):
         payload: dict[str, object] = {
             "case": str(Path(args.case_dir).resolve()),
@@ -2612,6 +2901,9 @@ def _run_solver_execute(
             "sync_subdomains": sync_subdomains,
             "clean_processors": clean_processors,
             "prepare_parallel": prepare_parallel,
+            "write_receipt": write_receipt,
+            "record_inputs_copy": bool(getattr(args, "record_inputs_copy", False)),
+            "receipt_path": str(written_receipt) if written_receipt is not None else None,
             "parallel_setup": parallel_setup,
             "returncode": result.returncode,
             "pid": result.pid,
@@ -2624,11 +2916,15 @@ def _run_solver_execute(
         return result.returncode
     if result.pid is not None:
         print(f"Started {display} in background: pid={result.pid} log={result.log_path}")
+        if written_receipt is not None:
+            print(f"Receipt: {written_receipt}")
         return 0
     if result.stdout:
         print(result.stdout, end="")
     if result.stderr:
         print(result.stderr, file=sys.stderr, end="")
+    if written_receipt is not None:
+        print(f"Receipt: {written_receipt}")
     return result.returncode
 
 
@@ -2654,6 +2950,19 @@ def _parallel_setup_payload(
             dry_run=dry_run,
         ),
     )
+
+
+def _write_receipt_enabled(args: argparse.Namespace) -> bool:
+    return bool(
+        getattr(args, "write_receipt", False)
+        or getattr(args, "record_inputs_copy", False)
+        or getattr(args, "receipt_file", None) is not None,
+    )
+
+
+def _planned_receipt_path(case_dir: Path, receipt_file: object) -> Path:
+    output = receipt_file if isinstance(receipt_file, Path) else None
+    return receipt_ops.resolve_receipt_output(Path(case_dir), output)
 
 
 def _parse_env_assignments(raw_values: object) -> dict[str, str]:
