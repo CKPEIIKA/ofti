@@ -1355,6 +1355,7 @@ def _knife_receipt_write(args: argparse.Namespace) -> int:
         clean_processors=clean_processors,
         output=getattr(args, "receipt_file", None),
         record_inputs_copy=bool(getattr(args, "record_inputs_copy", False)),
+        solver_name=_solver_name_for_receipt(cmd, parallel=parallel),
     )
     payload = {
         "case": str(Path(args.case_dir).resolve()),
@@ -1387,6 +1388,8 @@ def _knife_receipt_verify(args: argparse.Namespace) -> int:
     print(f"expected_tree_hash={payload['expected_tree_hash']}")
     print(f"actual_tree_hash={payload['actual_tree_hash']}")
     print(f"openfoam_version_match={payload['openfoam']['match']}")
+    print(f"solver_binary_match={payload['build']['solver']['match']}")
+    print(f"linked_libs_match={payload['build']['linked_libs']['match']}")
     if payload["missing_files"]:
         print("missing_files:")
         for path in payload["missing_files"]:
@@ -2887,6 +2890,7 @@ def _run_solver_execute(
             returncode=result.returncode,
             output=receipt_output,
             record_inputs_copy=bool(getattr(args, "record_inputs_copy", False)),
+            solver_name=_solver_name_for_receipt(cmd, parallel=parallel),
         )
     if getattr(args, "json", False):
         payload: dict[str, object] = {
@@ -2963,6 +2967,11 @@ def _write_receipt_enabled(args: argparse.Namespace) -> bool:
 def _planned_receipt_path(case_dir: Path, receipt_file: object) -> Path:
     output = receipt_file if isinstance(receipt_file, Path) else None
     return receipt_ops.resolve_receipt_output(Path(case_dir), output)
+
+
+def _solver_name_for_receipt(cmd: list[str], *, parallel: int) -> str | None:
+    solver = run_ops._solver_token_from_command(cmd, parallel=parallel)
+    return str(solver) if solver else None
 
 
 def _parse_env_assignments(raw_values: object) -> dict[str, str]:

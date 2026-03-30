@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import platform
+import shlex
 import shutil
 from copy import deepcopy
 from datetime import UTC, datetime
@@ -13,11 +14,34 @@ from typing import Any
 from ofti.core.case import detect_parallel_settings, detect_solver
 from ofti.core.case_snapshot import build_case_snapshot
 from ofti.foam.openfoam_env import detect_openfoam_version, resolve_openfoam_bashrc
-from ofti.foam.subprocess_utils import run_trusted
+from ofti.foam.subprocess_utils import resolve_executable, run_trusted
 
 SCHEMA_VERSION = 1
 RECEIPT_KIND = "ofti_run_receipt"
 DEFAULT_INPUT_ROOTS = ("system", "constant", "0")
+_OF_ENV_KEYS = (
+    "WM_PROJECT",
+    "WM_PROJECT_DIR",
+    "WM_PROJECT_VERSION",
+    "FOAM_API",
+    "WM_OPTIONS",
+    "WM_COMPILER",
+    "WM_COMPILER_TYPE",
+    "WM_COMPILE_OPTION",
+    "WM_LABEL_SIZE",
+    "WM_PRECISION_OPTION",
+    "WM_CC",
+    "WM_CXX",
+    "WM_CFLAGS",
+    "WM_CXXFLAGS",
+    "WM_LDFLAGS",
+    "FOAM_APPBIN",
+    "FOAM_LIBBIN",
+    "FOAM_SITE_APPBIN",
+    "FOAM_SITE_LIBBIN",
+    "FOAM_USER_APPBIN",
+    "FOAM_USER_LIBBIN",
+)
 
 
 def build_run_receipt(
@@ -37,11 +61,14 @@ def build_run_receipt(
     pid: int | None = None,
     returncode: int | None = None,
     recorded_inputs_copy: bool = False,
+    solver_name: str | None = None,
 ) -> dict[str, Any]:
     case_dir = case_path.expanduser().resolve()
     bashrc = resolve_openfoam_bashrc()
     snapshot = build_case_snapshot(case_dir)
     input_rows = collect_case_inputs(case_dir)
+    chosen_solver = solver_name or detect_solver(case_dir)
+    build = _build_provenance(chosen_solver, bashrc=bashrc)
     return {
         "schema_version": SCHEMA_VERSION,
         "receipt_kind": RECEIPT_KIND,
@@ -49,7 +76,7 @@ def build_run_receipt(
         "case": {
             "name": case_dir.name,
             "path": str(case_dir),
-            "solver": detect_solver(case_dir),
+            "solver": chosen_solver,
             "parallel": detect_parallel_settings(case_dir),
         },
         "launch": {
@@ -71,6 +98,7 @@ def build_run_receipt(
             "bashrc": str(bashrc.resolve()) if bashrc is not None else None,
             "version": detect_openfoam_version(),
         },
+        "build": build,
         "system": {
             "hostname": platform.node() or None,
             "platform": platform.system() or None,
@@ -130,6 +158,7 @@ def write_case_run_receipt(
     returncode: int | None = None,
     output: Path | None = None,
     record_inputs_copy: bool = False,
+    solver_name: str | None = None,
 ) -> Path:
     receipt = build_run_receipt(
         case_path,
@@ -147,6 +176,7 @@ def write_case_run_receipt(
         pid=pid,
         returncode=returncode,
         recorded_inputs_copy=record_inputs_copy,
+        solver_name=solver_name,
     )
     return write_run_receipt(
         case_path,
@@ -189,6 +219,7 @@ def verify_run_receipt(receipt_path: Path, *, case_path: Path | None = None) -> 
     actual_version = detect_openfoam_version()
     expected_version = str(receipt.get("openfoam", {}).get("version") or "")
     version_match = not expected_version or expected_version in {"unknown", actual_version}
+    build_check = _verify_build_provenance(receipt)
     return {
         "receipt": str(resolved_receipt),
         "case": str(target_case),
@@ -197,6 +228,7 @@ def verify_run_receipt(receipt_path: Path, *, case_path: Path | None = None) -> 
             and not changed
             and not extra
             and version_match
+            and bool(build_check["ok"])
             and actual_tree_hash == expected_tree_hash
         ),
         "missing_files": missing,
@@ -216,6 +248,7 @@ def verify_run_receipt(receipt_path: Path, *, case_path: Path | None = None) -> 
             "actual_version": actual_version,
             "match": version_match,
         },
+        "build": build_check,
         "recorded_inputs_copy": bool(receipt.get("inputs", {}).get("recorded_inputs_copy")),
         "restorable": bool(receipt.get("inputs", {}).get("inputs_copy_path")),
     }
@@ -333,6 +366,196 @@ def _copy_input_roots(case_path: Path, destination: Path) -> None:
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target, follow_symlinks=True)
+
+
+def _build_provenance(solver_name: str | None, *, bashrc: Path | None) -> dict[str, Any]:
+    env = _effective_openfoam_env(bashrc)
+    solver_binary = _solver_binary_row(solver_name, bashrc=bashrc)
+    linked_libs = _linked_library_rows(solver_binary.get("path"))
+    return {
+        "solver": solver_binary,
+        "linked_libs": linked_libs,
+        "compiler": {
+            "compiler": env.get("WM_COMPILER"),
+            "compiler_type": env.get("WM_COMPILER_TYPE"),
+            "compile_option": env.get("WM_COMPILE_OPTION"),
+            "cc": env.get("WM_CC"),
+            "cxx": env.get("WM_CXX"),
+            "cflags": env.get("WM_CFLAGS"),
+            "cxxflags": env.get("WM_CXXFLAGS"),
+            "ldflags": env.get("WM_LDFLAGS"),
+        },
+        "openfoam_env": dict(sorted(env.items())),
+    }
+
+
+def _verify_build_provenance(receipt: dict[str, Any]) -> dict[str, Any]:
+    expected = receipt.get("build", {})
+    solver = expected.get("solver", {})
+    solver_name = (
+        str(solver.get("name") or receipt.get("case", {}).get("solver") or "").strip() or None
+    )
+    bashrc_value = receipt.get("openfoam", {}).get("bashrc")
+    bashrc = Path(str(bashrc_value)).expanduser() if bashrc_value else resolve_openfoam_bashrc()
+    actual_solver = _solver_binary_row(solver_name, bashrc=bashrc)
+    expected_solver_hash = str(solver.get("sha256") or "")
+    actual_solver_hash = str(actual_solver.get("sha256") or "")
+    solver_match = not expected_solver_hash or expected_solver_hash == actual_solver_hash
+    expected_libs = expected.get("linked_libs", {})
+    actual_libs = _linked_library_rows(actual_solver.get("path"))
+    expected_lib_hash = str(expected_libs.get("hash") or "")
+    actual_lib_hash = str(actual_libs.get("hash") or "")
+    libs_match = not expected_lib_hash or expected_lib_hash == actual_lib_hash
+    return {
+        "ok": bool(solver_match and libs_match),
+        "solver": {
+            "expected_sha256": expected_solver_hash or None,
+            "actual_sha256": actual_solver_hash or None,
+            "match": solver_match,
+            "path": actual_solver.get("path"),
+        },
+        "linked_libs": {
+            "expected_hash": expected_lib_hash or None,
+            "actual_hash": actual_lib_hash or None,
+            "match": libs_match,
+            "count": actual_libs.get("count"),
+            "missing": actual_libs.get("missing", []),
+        },
+    }
+
+
+def _effective_openfoam_env(bashrc: Path | None) -> dict[str, str]:
+    if bashrc is None:
+        return _selected_env(os.environ)
+    shell = f'. {shlex.quote(str(bashrc))}; env'
+    try:
+        result = run_trusted(
+            ["/bin/bash", "--noprofile", "--norc", "-c", shell],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, FileNotFoundError):
+        return _selected_env(os.environ)
+    if result.returncode != 0:
+        return _selected_env(os.environ)
+    return _selected_env(_parse_env_lines(result.stdout))
+
+
+def _parse_env_lines(text: str) -> dict[str, str]:
+    payload: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        payload[key] = value
+    return payload
+
+
+def _selected_env(env: Any) -> dict[str, str]:
+    return {key: str(env[key]) for key in _OF_ENV_KEYS if key in env and str(env[key]).strip()}
+
+
+def _solver_binary_row(solver_name: str | None, *, bashrc: Path | None) -> dict[str, Any]:
+    if not solver_name:
+        return {"name": None, "path": None, "sha256": None, "size": None}
+    path = _resolve_solver_binary_path(solver_name, bashrc=bashrc)
+    if path is None:
+        return {"name": solver_name, "path": None, "sha256": None, "size": None}
+    return {
+        "name": solver_name,
+        "path": str(path),
+        "sha256": _sha256_file(path),
+        "size": path.stat().st_size,
+    }
+
+
+def _resolve_solver_binary_path(solver_name: str, *, bashrc: Path | None) -> Path | None:
+    try:
+        return Path(resolve_executable(solver_name)).resolve()
+    except (FileNotFoundError, OSError):
+        pass
+    if bashrc is None:
+        return None
+    shell = f'. {shlex.quote(str(bashrc))}; command -v {shlex.quote(solver_name)}'
+    try:
+        result = run_trusted(
+            ["/bin/bash", "--noprofile", "--norc", "-c", shell],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, FileNotFoundError):
+        return None
+    if result.returncode != 0:
+        return None
+    resolved = result.stdout.strip()
+    if not resolved:
+        return None
+    path = Path(resolved).expanduser()
+    return path.resolve() if path.exists() else None
+
+
+def _linked_library_rows(binary_path_value: Any) -> dict[str, Any]:
+    if not binary_path_value:
+        return {"count": 0, "hash": None, "files": [], "missing": []}
+    binary_path = Path(str(binary_path_value))
+    try:
+        result = run_trusted(
+            ["ldd", str(binary_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, FileNotFoundError):
+        return {"count": 0, "hash": None, "files": [], "missing": []}
+    if result.returncode != 0:
+        return {"count": 0, "hash": None, "files": [], "missing": []}
+    files: list[dict[str, Any]] = []
+    missing: list[str] = []
+    seen: set[str] = set()
+    for line in result.stdout.splitlines():
+        row = line.strip()
+        if not row:
+            continue
+        resolved = _ldd_resolved_path(row)
+        if resolved == "missing":
+            missing.append(row)
+            continue
+        if resolved is None:
+            continue
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        path = Path(resolved)
+        if not path.is_file():
+            continue
+        files.append(
+            {
+                "path": str(path),
+                "sha256": _sha256_file(path),
+                "size": path.stat().st_size,
+            },
+        )
+    files.sort(key=lambda row: str(row["path"]))
+    return {
+        "count": len(files),
+        "hash": _tree_hash(files) if files else None,
+        "files": files,
+        "missing": missing,
+    }
+
+
+def _ldd_resolved_path(line: str) -> str | None:
+    if "=>" in line:
+        _, right = line.split("=>", 1)
+        trimmed = right.strip()
+        if trimmed.startswith("not found"):
+            return "missing"
+        path = trimmed.split(" ", 1)[0]
+        return path if path.startswith("/") else None
+    token = line.split(" ", 1)[0].strip()
+    return token if token.startswith("/") else None
 
 
 def _iter_files(root: Path) -> list[Path]:
