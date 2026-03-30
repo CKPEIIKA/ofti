@@ -96,7 +96,7 @@ def test_runner_service_background_detached_and_files(tmp_path: Path) -> None:
     assert registered and registered[0][0] == "tool with spaces!"
     assert captured["start_new_session"] is True
     env = captured["env"]
-    env_map = cast(dict[str, str], env)
+    env_map = cast("dict[str, str]", env)
     assert env_map.get("X") == "1"
     assert pid_file.read_text().strip() == "4242"
     stdout_handle = captured["stdout"]

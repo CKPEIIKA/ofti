@@ -32,7 +32,7 @@ def _default_hint_provider(has_command: bool) -> Callable[[int], str]:
     return hint
 
 
-def _prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:  # noqa: C901, PLR0912
+def _prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:
     height, width = stdscr.getmaxyx()
     buffer: list[str] = []
     cursor = 0
@@ -97,8 +97,7 @@ def _prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:  # noqa:
 
 
 def _fzf_pick_option(stdscr: Any, options: list[str]) -> int | None:
-    """
-    Use fzf to pick an option from the given list.
+    """Use fzf to pick an option from the given list.
 
     Returns the selected index, or None if selection was cancelled or
     fzf is unavailable.
@@ -179,7 +178,7 @@ class Menu:
         self.help_lines = help_lines or []
         self._scroll = 0
 
-    def display(self) -> None:  # noqa: C901, PLR0912
+    def display(self) -> None:
         if hasattr(self.stdscr, "erase"):
             self.stdscr.erase()
         else:
@@ -298,7 +297,7 @@ class Menu:
         env.pop("ENV", None)
         try:
             shell = env.get("SHELL") or "bash"
-            subprocess.run([shell], cwd=case_path, env=env)  # noqa: S603
+            subprocess.run([shell], cwd=case_path, env=env)
         except KeyboardInterrupt:
             pass
         finally:
@@ -342,7 +341,7 @@ class Menu:
     def _show_help(self) -> None:
         _show_help(self.stdscr, "Help", self._help_lines())
 
-    def _handle_navigation_key(self, key: int, cfg: Any) -> str | None:  # noqa: C901, PLR0911
+    def _handle_navigation_key(self, key: int, cfg: Any) -> str | None:
         if key in (curses.KEY_UP,) or key_in(key, cfg.keys.get("up", [])):
             self.current_option = (self.current_option - 1) % len(self.options)
             return "continue"
@@ -374,7 +373,7 @@ class Menu:
             return "back"
         return None
 
-    def navigate(self) -> int:  # noqa: C901, PLR0912
+    def navigate(self) -> int:
         cfg = get_config()
         while True:
             self.display()
@@ -458,7 +457,7 @@ class Submenu(Menu):
             disabled_helpers=disabled_helpers,
         )
 
-    def navigate(self) -> int:  # noqa: C901, PLR0912
+    def navigate(self) -> int:
         cfg = get_config()
         while True:
             self.display()
@@ -513,8 +512,7 @@ class Submenu(Menu):
 
 
 class RootMenu(Menu):
-    """
-    Root-level menu where 'q' quits the program but 'h' does not.
+    """Root-level menu where 'q' quits the program but 'h' does not.
     """
 
     def __init__(
@@ -553,7 +551,7 @@ class RootMenu(Menu):
             help_lines=help_lines,
         )
 
-    def navigate(self) -> int:  # noqa: C901, PLR0912
+    def navigate(self) -> int:
         cfg = get_config()
         while True:
             self.display()

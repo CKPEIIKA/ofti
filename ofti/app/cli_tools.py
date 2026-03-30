@@ -5,6 +5,7 @@ import json
 import sys
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -18,6 +19,8 @@ from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.cli_tools import watch as watch_ops
 
 Handler = Callable[[argparse.Namespace], int]
+_EASY_ON_CPU_TAIL_BYTES = 256 * 1024
+_EASY_ON_CPU_MIN_POLL_INTERVAL = 1.0
 
 
 def _help_handler(parser: argparse.ArgumentParser) -> Handler:
@@ -26,6 +29,21 @@ def _help_handler(parser: argparse.ArgumentParser) -> Handler:
         return 0
 
     return _show_help
+
+
+def _add_easy_on_cpu_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--easy-on-cpu",
+        action="store_true",
+        help="Reduce CPU load with bounded log reads (can be combined with --fast/--full)",
+    )
+    # Backward-compatible alias.
+    parser.add_argument(
+        "--lightweight",
+        dest="easy_on_cpu",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -143,20 +161,16 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Use fast tail-only bounded log read (default)",
     )
     status_mode.add_argument(
-        "--lightweight",
-        action="store_true",
-        help="Alias of --fast",
-    )
-    status_mode.add_argument(
         "--full",
         action="store_true",
         help="Parse full logs (slower, previous behavior)",
     )
+    _add_easy_on_cpu_flag(status)
     status.add_argument(
         "--tail-bytes",
         type=int,
         default=None,
-        help="Max log bytes to parse (default: auto in fast mode)",
+        help="Max log bytes to parse (default: auto when --easy-on-cpu is enabled)",
     )
     status.add_argument("--json", action="store_true")
     status.set_defaults(func=_knife_status)
@@ -215,20 +229,16 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Use fast tail-only bounded log read (default)",
     )
     case_status_mode.add_argument(
-        "--lightweight",
-        action="store_true",
-        help="Alias of --fast",
-    )
-    case_status_mode.add_argument(
         "--full",
         action="store_true",
         help="Parse full logs (slower, previous behavior)",
     )
+    _add_easy_on_cpu_flag(case_status)
     case_status.add_argument(
         "--tail-bytes",
         type=int,
         default=None,
-        help="Max log bytes to parse (default: auto in fast mode)",
+        help="Max log bytes to parse (default: auto when --easy-on-cpu is enabled)",
     )
     case_status.add_argument("--json", action="store_true")
     case_status.set_defaults(func=_knife_status)
@@ -378,6 +388,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Use lightweight log parsing (default)",
     )
     criteria_mode.add_argument("--full", action="store_true", help="Parse full logs (slower)")
+    _add_easy_on_cpu_flag(criteria)
     criteria.add_argument("--tail-bytes", type=int, default=None)
     criteria.add_argument("--json", action="store_true")
     criteria.set_defaults(func=_knife_criteria)
@@ -395,6 +406,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Use lightweight log parsing (default)",
     )
     eta_mode.add_argument("--full", action="store_true", help="Parse full logs (slower)")
+    _add_easy_on_cpu_flag(eta)
     eta.add_argument("--tail-bytes", type=int, default=None)
     eta.add_argument("--json", action="store_true")
     eta.set_defaults(func=_knife_eta)
@@ -412,6 +424,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Use lightweight log parsing (default)",
     )
     report_mode.add_argument("--full", action="store_true", help="Parse full logs (slower)")
+    _add_easy_on_cpu_flag(report)
     report.add_argument("--tail-bytes", type=int, default=None)
     report.add_argument("--json", action="store_true", help="Alias for --format json")
     report.set_defaults(func=_knife_report)
@@ -557,6 +570,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     log.add_argument("--follow", action="store_true")
     log.add_argument("--job-id", default=None, help="Tracked job id from .ofti/jobs.json")
     log.add_argument("--case", dest="case_dir", default=Path.cwd(), type=Path)
+    _add_easy_on_cpu_flag(log)
     log.add_argument("--output", choices=["brief", "detailed"], default=None)
     log.add_argument("--json", action="store_true", help="Print result as JSON")
     log.set_defaults(func=_watch_log)
@@ -603,6 +617,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Adopt running process by pid or case path before attach",
     )
     attach.add_argument("--case", dest="case_dir", default=Path.cwd(), type=Path)
+    _add_easy_on_cpu_flag(attach)
     attach.add_argument("--output", choices=["brief", "detailed"], default=None)
     attach.add_argument("--json", action="store_true", help="Print result as JSON")
     attach.set_defaults(func=_watch_attach)
@@ -804,6 +819,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Signal used by --stop (TERM is default)",
     )
     external.add_argument("--dry-run", action="store_true")
+    _add_easy_on_cpu_flag(external)
     external.add_argument("--output", choices=["brief", "detailed"], default=None)
     external.add_argument("--json", action="store_true")
     external.add_argument(
@@ -889,6 +905,7 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     matrix.add_argument("--mpi", default=None)
     matrix.add_argument("--max-parallel", type=int, default=1)
     matrix.add_argument("--poll-interval", type=float, default=0.25)
+    _add_easy_on_cpu_flag(matrix)
     matrix.add_argument(
         "--backend",
         choices=["process", "foamlib-async", "foamlib-slurm"],
@@ -961,6 +978,7 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     parametric.add_argument("--mpi", default=None)
     parametric.add_argument("--max-parallel", type=int, default=1)
     parametric.add_argument("--poll-interval", type=float, default=0.25)
+    _add_easy_on_cpu_flag(parametric)
     parametric.add_argument(
         "--backend",
         choices=["process", "foamlib-async", "foamlib-slurm"],
@@ -1000,6 +1018,7 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     )
     queue.add_argument("--max-parallel", type=int, required=True)
     queue.add_argument("--poll-interval", type=float, default=0.25)
+    _add_easy_on_cpu_flag(queue)
     queue.add_argument(
         "--prepare-parallel",
         action=argparse.BooleanOptionalAction,
@@ -1026,6 +1045,7 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     status_mode = status.add_mutually_exclusive_group()
     status_mode.add_argument("--fast", action="store_true", help="Use lightweight status parsing")
     status_mode.add_argument("--full", action="store_true", help="Parse full logs (slower)")
+    _add_easy_on_cpu_flag(status)
     status.add_argument("--tail-bytes", type=int, default=None)
     status.add_argument("--json", action="store_true", help="Print result as JSON")
     status.set_defaults(func=_run_status)
@@ -1119,8 +1139,8 @@ def _print_compare_diff(diff: dict[str, object], *, flat: bool) -> None:
     print(f"  kind: {diff.get('kind', 'dict')}")
     if diff["error"]:
         print(f"  error: {diff['error']}")
-    missing_left = cast(list[str], diff.get("missing_in_left", []))
-    missing_right = cast(list[str], diff.get("missing_in_right", []))
+    missing_left = cast("list[str]", diff.get("missing_in_left", []))
+    missing_right = cast("list[str]", diff.get("missing_in_right", []))
     if missing_left:
         print(f"  missing_in_left: {', '.join(missing_left)}")
     if missing_right:
@@ -1133,13 +1153,13 @@ def _print_compare_diff(diff: dict[str, object], *, flat: bool) -> None:
 
 def _print_compare_values(diff: dict[str, object], *, flat: bool) -> None:
     if flat:
-        values = cast(list[str], diff.get("value_diffs_flat", []))
+        values = cast("list[str]", diff.get("value_diffs_flat", []))
         for value in values[:40]:
             print(f"  value_diff {value}")
         if len(values) > 40:
             print(f"  value_diff_more={len(values) - 40}")
         return
-    values = cast(list[dict[str, object]], diff.get("value_diffs", []))
+    values = cast("list[dict[str, object]]", diff.get("value_diffs", []))
     for value in values[:40]:
         print(
             f"  value_diff {value['key']}: left={value['left']} "
@@ -1199,12 +1219,30 @@ def _knife_use_lightweight_mode(args: argparse.Namespace) -> bool:
     return not bool(getattr(args, "full", False))
 
 
+def _tail_bytes_with_cpu_mode(args: argparse.Namespace) -> int | None:
+    explicit = getattr(args, "tail_bytes", None)
+    if explicit is not None:
+        return int(explicit)
+    if bool(getattr(args, "easy_on_cpu", False)):
+        return _EASY_ON_CPU_TAIL_BYTES
+    return None
+
+
+def _interval_with_cpu_mode(args: argparse.Namespace, interval: float) -> float:
+    value = float(interval)
+    if value <= 0:
+        value = 0.25
+    if bool(getattr(args, "easy_on_cpu", False)):
+        value = max(value, _EASY_ON_CPU_MIN_POLL_INTERVAL)
+    return value
+
+
 def _knife_status(args: argparse.Namespace) -> int:
     try:
         payload = knife_ops.status_payload(
             args.case_dir,
             lightweight=_knife_use_lightweight_mode(args),
-            tail_bytes=getattr(args, "tail_bytes", None),
+            tail_bytes=_tail_bytes_with_cpu_mode(args),
         )
     except TypeError:
         payload = knife_ops.status_payload(args.case_dir)
@@ -1226,7 +1264,7 @@ def _knife_current(args: argparse.Namespace) -> int:
 
 
 def _knife_current_payload(args: argparse.Namespace) -> dict[str, object]:
-    scope_root = cast(Path, getattr(args, "root", None) or args.case_dir)
+    scope_root = cast("Path", getattr(args, "root", None) or args.case_dir)
     recursive = bool(getattr(args, "recursive", False))
     live = bool(getattr(args, "live", False))
     has_root_override = getattr(args, "root", None) is not None
@@ -1297,7 +1335,7 @@ def _knife_current_scope_payload(
 
 
 def _knife_adopt(args: argparse.Namespace) -> int:
-    scope_root = cast(Path, getattr(args, "root", None) or args.case_dir)
+    scope_root = cast("Path", getattr(args, "root", None) or args.case_dir)
     payload = _knife_adopt_payload(
         scope_root,
         recursive=bool(getattr(args, "recursive", False)),
@@ -1465,7 +1503,7 @@ def _knife_criteria(args: argparse.Namespace) -> int:
     payload = knife_ops.criteria_payload(
         args.case_dir,
         lightweight=_knife_use_lightweight_mode(args),
-        tail_bytes=getattr(args, "tail_bytes", None),
+        tail_bytes=_tail_bytes_with_cpu_mode(args),
     )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -1488,7 +1526,7 @@ def _knife_eta(args: argparse.Namespace) -> int:
         args.case_dir,
         mode=str(args.mode),
         lightweight=_knife_use_lightweight_mode(args),
-        tail_bytes=getattr(args, "tail_bytes", None),
+        tail_bytes=_tail_bytes_with_cpu_mode(args),
     )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -1509,7 +1547,7 @@ def _knife_report(args: argparse.Namespace) -> int:
     payload = knife_ops.report_payload(
         args.case_dir,
         lightweight=_knife_use_lightweight_mode(args),
-        tail_bytes=getattr(args, "tail_bytes", None),
+        tail_bytes=_tail_bytes_with_cpu_mode(args),
     )
     if fmt == "md":
         print(knife_ops.report_markdown(payload))
@@ -1771,14 +1809,14 @@ def _watch_log(args: argparse.Namespace) -> int:
     if not args.follow:
         return 0
 
-    try:
-        interval = watch_ops.effective_interval(args.case_dir)
-    except Exception:
-        interval = 0.25
+    base_interval = 0.25
+    with suppress(Exception):
+        base_interval = watch_ops.effective_interval(args.case_dir)
+    interval = _interval_with_cpu_mode(args, base_interval)
     return _follow_log_path(Path(payload["log"]), interval=interval)
 
 
-def _watch_attach(args: argparse.Namespace) -> int:  # noqa: C901, PLR0911
+def _watch_attach(args: argparse.Namespace) -> int:
     watcher_raw = getattr(args, "watcher", None)
     if watcher_raw is not None:
         if getattr(args, "adopt", None):
@@ -1850,6 +1888,7 @@ def _watch_attach(args: argparse.Namespace) -> int:  # noqa: C901, PLR0911
         follow=True,
         job_id=job_id,
         case_dir=args.case_dir,
+        easy_on_cpu=bool(getattr(args, "easy_on_cpu", False)),
         output=getattr(args, "output", None),
         json=args.json,
     )
@@ -2084,7 +2123,7 @@ def _print_watch_external_status(payload: dict[str, object]) -> int:
     print(f"case={payload['case']}")
     print(f"name={payload['name']}")
     print(f"count={payload['count']}")
-    jobs = cast(list[dict[str, object]], payload.get("jobs", []))
+    jobs = cast("list[dict[str, object]]", payload.get("jobs", []))
     for job in jobs:
         print(
             f"- id={job.get('id')} name={job.get('name')} pid={job.get('pid')} "
@@ -2095,7 +2134,7 @@ def _print_watch_external_status(payload: dict[str, object]) -> int:
 
 def _print_watch_external_attach(args: argparse.Namespace, payload: dict[str, object]) -> int:
     profile = _watch_profile(args.case_dir, getattr(args, "output", None))
-    lines = cast(list[str], payload.get("lines", []))
+    lines = cast("list[str]", payload.get("lines", []))
     if profile == "brief":
         print(f"log={payload.get('log')} lines={len(lines)}")
     else:
@@ -2103,11 +2142,10 @@ def _print_watch_external_attach(args: argparse.Namespace, payload: dict[str, ob
             print(line)
     if not args.follow:
         return 0
-    interval = (
-        float(args.interval)
-        if float(args.interval) > 0
-        else watch_ops.effective_interval(args.case_dir)
-    )
+    interval = float(args.interval)
+    if interval <= 0:
+        interval = watch_ops.effective_interval(args.case_dir)
+    interval = _interval_with_cpu_mode(args, interval)
     return _follow_log_path(Path(str(payload["log"])), interval=interval)
 
 
@@ -2116,8 +2154,8 @@ def _print_watch_external_stop(payload: dict[str, object]) -> int:
     print(f"name={payload['name']}")
     print(f"signal={payload['signal']}")
     print(f"selected={payload['selected']}")
-    stopped = cast(list[dict[str, object]], payload.get("stopped", []))
-    failed = cast(list[dict[str, object]], payload.get("failed", []))
+    stopped = cast("list[dict[str, object]]", payload.get("stopped", []))
+    failed = cast("list[dict[str, object]]", payload.get("failed", []))
     if stopped:
         print("stopped:")
         for row in stopped:
@@ -2162,7 +2200,7 @@ def _watch_profile(case_dir: Path, explicit: str | None) -> str:
         return "detailed"
 
 
-def _watch_json_payload(  # noqa: C901
+def _watch_json_payload(
     command: str,
     payload: dict[str, object],
     *,
@@ -2180,7 +2218,7 @@ def _watch_json_payload(  # noqa: C901
     if "count" in payload:
         base["count"] = payload.get("count")
     if "jobs" in payload:
-        jobs = cast(list[dict[str, object]], payload.get("jobs", []))
+        jobs = cast("list[dict[str, object]]", payload.get("jobs", []))
         base["items"] = [
             {
                 "id": job.get("id"),
@@ -2196,7 +2234,7 @@ def _watch_json_payload(  # noqa: C901
             for job in jobs
         ]
     if "log" in payload:
-        lines = cast(list[str], payload.get("lines", []))
+        lines = cast("list[str]", payload.get("lines", []))
         base["log"] = payload.get("log")
         base["line_count"] = len(lines)
         base["lines"] = lines
@@ -2252,13 +2290,14 @@ def _run_matrix(args: argparse.Namespace) -> int:
     queue_result: dict[str, object] | None = None
     if launch:
         case_paths = [Path(str(row["case"])) for row in generated["cases"]]
+        poll_interval = _interval_with_cpu_mode(args, float(getattr(args, "poll_interval", 0.25)))
         queue_result = run_ops.queue_payload(
             cases=case_paths,
             solver=getattr(args, "solver", None),
             parallel=int(getattr(args, "parallel", 0)),
             mpi=getattr(args, "mpi", None),
             max_parallel=int(getattr(args, "max_parallel", 1)),
-            poll_interval=float(getattr(args, "poll_interval", 0.25)),
+            poll_interval=poll_interval,
             dry_run=bool(getattr(args, "dry_run", False)),
             backend=str(getattr(args, "backend", "process")),
             prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
@@ -2297,6 +2336,7 @@ def _run_matrix(args: argparse.Namespace) -> int:
 
 
 def _run_parametric(args: argparse.Namespace) -> int:
+    poll_interval = _interval_with_cpu_mode(args, float(getattr(args, "poll_interval", 0.25)))
     values = run_ops.parse_sweep_values(list(getattr(args, "values", [])))
     grid_axes = run_ops.parse_grid_axes(
         list(getattr(args, "grid_axis", [])),
@@ -2315,14 +2355,14 @@ def _run_parametric(args: argparse.Namespace) -> int:
         parallel=int(getattr(args, "parallel", 0)),
         mpi=getattr(args, "mpi", None),
         max_parallel=int(getattr(args, "max_parallel", 1)),
-        poll_interval=float(getattr(args, "poll_interval", 0.25)),
+        poll_interval=poll_interval,
         queue_backend=str(getattr(args, "backend", "process")),
         prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
         clean_processors=bool(getattr(args, "clean_processors", False)),
     )
     if bool(getattr(args, "json", False)):
         print(json.dumps(payload, indent=2, sort_keys=True))
-        queue = cast(dict[str, object] | None, payload.get("queue"))
+        queue = cast("dict[str, object] | None", payload.get("queue"))
         if queue and queue.get("ok") is False:
             return 1
         return 0
@@ -2331,15 +2371,15 @@ def _run_parametric(args: argparse.Namespace) -> int:
         f"mode={payload['mode']} created={payload['created_count']} "
         f"run_solver={payload['run_solver']}",
     )
-    for path in cast(list[str], payload["created"]):
+    for path in cast("list[str]", payload["created"]):
         print(f"- {path}")
-    queue = cast(dict[str, object] | None, payload.get("queue"))
+    queue = cast("dict[str, object] | None", payload.get("queue"))
     if queue:
         print(
             f"queue max_parallel={queue['max_parallel']} "
             f"backend={queue.get('backend', 'process')} "
-            f"started={len(cast(list[object], queue['started']))} "
-            f"failed_to_start={len(cast(list[object], queue['failed_to_start']))}",
+            f"started={len(cast('list[object]', queue['started']))} "
+            f"failed_to_start={len(cast('list[object]', queue['failed_to_start']))}",
         )
         if queue.get("ok") is False:
             return 1
@@ -2347,6 +2387,7 @@ def _run_parametric(args: argparse.Namespace) -> int:
 
 
 def _run_queue(args: argparse.Namespace) -> int:
+    poll_interval = _interval_with_cpu_mode(args, float(getattr(args, "poll_interval", 0.25)))
     cases = run_ops.resolve_case_set(
         set_dir=args.set_dir,
         explicit_cases=list(getattr(args, "cases", [])),
@@ -2359,7 +2400,7 @@ def _run_queue(args: argparse.Namespace) -> int:
         parallel=int(getattr(args, "parallel", 0)),
         mpi=getattr(args, "mpi", None),
         max_parallel=int(getattr(args, "max_parallel", 1)),
-        poll_interval=float(getattr(args, "poll_interval", 0.25)),
+        poll_interval=poll_interval,
         dry_run=bool(getattr(args, "dry_run", False)),
         backend=str(getattr(args, "backend", "process")),
         prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
@@ -2391,7 +2432,7 @@ def _run_status(args: argparse.Namespace) -> int:
         case_glob=str(getattr(args, "glob", "*")),
         summary_csv=getattr(args, "summary_csv", None),
         lightweight=not bool(getattr(args, "full", False)),
-        tail_bytes=getattr(args, "tail_bytes", None),
+        tail_bytes=_tail_bytes_with_cpu_mode(args),
     )
     if bool(getattr(args, "json", False)):
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -2410,7 +2451,7 @@ def _run_status(args: argparse.Namespace) -> int:
     return 0
 
 
-def _run_tool(args: argparse.Namespace) -> int:  # noqa: C901, PLR0911
+def _run_tool(args: argparse.Namespace) -> int:
     if args.list:
         payload = run_ops.tool_catalog_payload(args.case_dir)
         if args.json:
@@ -2645,7 +2686,7 @@ def _parallel_setup_payload(
     if not (parallel > 1 and "-parallel" in cmd and prepare_parallel):
         return None
     return cast(
-        dict[str, object],
+        "dict[str, object]",
         run_ops.prepare_parallel_case(
             case_dir,
             parallel=parallel,

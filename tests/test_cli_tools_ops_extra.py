@@ -233,14 +233,14 @@ def test_run_prepare_parallel_case_dry_run_and_apply(
 
     dry = run.prepare_parallel_case(case, parallel=2, clean_processors=True, dry_run=True)
     assert dry["clean_processors"] is True
-    assert len(cast(list[str], dry["cleaned_processors"])) == 2
+    assert len(cast("list[str]", dry["cleaned_processors"])) == 2
     assert (case / "processor0").is_dir()
 
     applied = run.prepare_parallel_case(case, parallel=2, clean_processors=True, dry_run=False)
     assert applied["decompose_returncode"] == 0
     assert not (case / "processor0").exists()
     assert not (case / "processor1").exists()
-    kwargs = cast(dict[str, object], seen["kwargs"])
+    kwargs = cast("dict[str, object]", seen["kwargs"])
     assert kwargs["background"] is False
 
 
@@ -567,7 +567,7 @@ def test_watch_start_payload_uses_runner_service(tmp_path: Path, monkeypatch: py
 
     def _exec(case_path: Path, name: str, cmd: list[str], **kwargs: object) -> object:
         register_job_fn = cast(
-            Callable[[Path, str, int, str, Path | None], str],
+            "Callable[[Path, str, int, str, Path | None], str]",
             kwargs["register_job_fn"],
         )
         log_path = kwargs["log_path"]
@@ -684,7 +684,7 @@ def test_run_parametric_helpers_and_payload(
         run_solver=True,
     )
     assert grid_payload["mode"] == "grid"
-    assert cast(dict[str, object], grid_payload["queue"])["ok"] is True
+    assert cast("dict[str, object]", grid_payload["queue"])["ok"] is True
 
     with pytest.raises(ValueError, match="choose only one mode"):
         run.parametric_case_payload(
@@ -828,8 +828,8 @@ def test_run_matrix_and_catalog_helper_branches(
         run.parse_matrix_axes([], default_dict="system/controlDict")
 
     combo = [
-        (cast(run.MatrixAxis, {"dict_path": "system/controlDict", "entry": "application", "values": ["a"]}), "a"),
-        (cast(run.MatrixAxis, {"dict_path": "constant/chemistryProperties", "entry": "application", "values": ["b"]}), "b"),
+        (cast("run.MatrixAxis", {"dict_path": "system/controlDict", "entry": "application", "values": ["a"]}), "a"),
+        (cast("run.MatrixAxis", {"dict_path": "constant/chemistryProperties", "entry": "application", "values": ["b"]}), "b"),
     ]
     name = run.matrix_case_name("base", combo)
     assert "system_controlDict_application-a" in name
@@ -913,10 +913,10 @@ def test_run_queue_backend_validation_and_foamlib_async_flow(
         dry_run=False,
     )
     assert payload["backend"] == "foamlib-async"
-    assert len(cast(list[object], payload["started"])) == 2
-    assert len(cast(list[object], payload["finished"])) == 2
+    assert len(cast("list[object]", payload["started"])) == 2
+    assert len(cast("list[object]", payload["finished"])) == 2
     assert payload["ok"] is False
-    kwargs = cast(dict[str, object], seen["kwargs"])
+    kwargs = cast("dict[str, object]", seen["kwargs"])
     assert kwargs["slurm"] is False
     assert kwargs["max_parallel"] == 2
 
@@ -944,7 +944,7 @@ def test_run_queue_backend_prepare_parallel_failure_records_error(
         dry_run=False,
     )
     assert payload["ok"] is False
-    assert cast(list[dict[str, str]], payload["failed_to_start"])[0]["error"] == "bad decompose"
+    assert cast("list[dict[str, str]]", payload["failed_to_start"])[0]["error"] == "bad decompose"
 
 
 def test_run_state_reason_and_create_case_helpers(
@@ -1004,7 +1004,7 @@ def test_run_execute_solver_case_command_foamlib_success(
     assert result.returncode == 0
     assert result.log_path == case / "log.simpleFoam"
     assert seen["args"] == (case.resolve(), "simpleFoam")
-    kwargs = cast(dict[str, object], seen["kwargs"])
+    kwargs = cast("dict[str, object]", seen["kwargs"])
     assert kwargs["parallel"] is False
     assert kwargs["cpus"] is None
 
@@ -1032,7 +1032,7 @@ def test_run_execute_solver_case_command_fallback_paths(
         background=False,
     )
     assert custom_mpi.returncode == 0
-    assert cast(dict[str, object], seen["kwargs"])["background"] is False
+    assert cast("dict[str, object]", seen["kwargs"])["background"] is False
 
     def _raise_unavailable(*_args: object, **_kwargs: object) -> None:
         raise run.FoamlibUnavailableError()
@@ -1044,7 +1044,7 @@ def test_run_execute_solver_case_command_fallback_paths(
         ["simpleFoam"],
         background=False,
     )
-    assert cast(tuple[object, ...], seen["args"])[0] == case.resolve()
+    assert cast("tuple[object, ...]", seen["args"])[0] == case.resolve()
 
 
 def test_run_execute_solver_case_command_maps_called_process_error(

@@ -13,7 +13,7 @@ def _write_control_dict(path: Path, entries: dict[str, str]) -> None:
         "    version 2.0;",
         "    format ascii;",
         "    class dictionary;",
-        "    location \"system\";",
+        '    location "system";',
         "    object controlDict;",
         "}",
     ]

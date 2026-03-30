@@ -10,7 +10,7 @@ from ofti.tools.runner import _run_simple_tool, _show_message
 from ofti.ui_curses.tool_dicts_ui import _ensure_tool_dict
 
 
-def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:  # noqa: C901
+def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:
     """Prompt for foamCalc arguments with helpers."""
     latest = latest_time(case_path)
     if not _ensure_tool_dict(

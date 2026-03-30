@@ -87,7 +87,7 @@ def _read_optional_node(field_path: Path, key: str) -> object | None:
         return None
 
 
-def _summarize_internal_field(node: object | None) -> list[str]:  # noqa: PLR0911
+def _summarize_internal_field(node: object | None) -> list[str]:
     if node is None:
         return ["Internal field: <missing>"]
     if isinstance(node, (int, float, bool)):
@@ -95,7 +95,7 @@ def _summarize_internal_field(node: object | None) -> list[str]:  # noqa: PLR091
     if isinstance(node, str):
         return [f"Internal field: {node.strip()}"]
     if isinstance(node, (list, tuple)):
-        return _summarize_sequence(cast(list[object] | tuple[object, ...], node))
+        return _summarize_sequence(cast("list[object] | tuple[object, ...]", node))
     if hasattr(node, "shape"):
         try:
             size = int(getattr(node, "size", 0))

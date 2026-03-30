@@ -65,7 +65,7 @@ def test_input_prompt_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
 
     messages: list[str] = []
     monkeypatch.setattr(input_prompts, "_show_message", lambda _s, text: messages.append(text))
-    monkeypatch.setattr(input_prompts, "prompt_input", lambda *_a, **_k: "\"")
+    monkeypatch.setattr(input_prompts, "prompt_input", lambda *_a, **_k: '"')
     assert input_prompts.prompt_args_line(_Screen(), "x") is None
     assert "Invalid arguments" in messages[-1]
     assert input_prompts.prompt_command_line(_Screen(), "x") is None
@@ -274,36 +274,26 @@ def test_job_control_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     assert "Sent SIGTERM to pid 42." in messages[-1]
 
     # Start background command (direct path without bashrc/runfunctions).
-    monkeypatch.delenv("WM_PROJECT_DIR", raising=False)
-    monkeypatch.setattr(job_control, "resolve_openfoam_bashrc", lambda: None)
-    monkeypatch.setattr(job_control, "_expand_command", lambda cmd, _case: cmd)
     started: list[tuple[str, list[str]]] = []
     monkeypatch.setattr(
-        job_control.watch_service,
-        "start_payload",
-        lambda _case, **kwargs: (
-            started.append((str(kwargs.get("name")), list(kwargs.get("command", []))))
-            or {"pid": 77, "ok": True}
+        job_control.run_ops,
+        "expand_command",
+        lambda _case, cmd: list(cmd),
+    )
+    monkeypatch.setattr(
+        job_control.run_ops,
+        "execute_case_command",
+        lambda _case, name, cmd, **_kwargs: (
+            started.append((str(name), list(cmd)))
+            or types.SimpleNamespace(pid=77)
         ),
     )
     job_control._start_background_command(screen, case, "blockMesh", ["blockMesh"])
     assert started[-1] == ("blockMesh", ["blockMesh"])
 
-    # Shell path with RunFunctions.
-    monkeypatch.setenv("WM_PROJECT_DIR", "/wm")
-    monkeypatch.setattr(
-        job_control,
-        "get_config",
-        lambda: types.SimpleNamespace(use_runfunctions=True),
-    )
-    shell_cmds: list[str] = []
-    monkeypatch.setattr(
-        job_control,
-        "_start_background_shell",
-        lambda *_a, **_k: shell_cmds.append(str(_a[3])),
-    )
+    # Shared path is also used for other tools.
     job_control._start_background_command(screen, case, "checkMesh", ["checkMesh"])
-    assert "runApplication" in shell_cmds[-1]
+    assert started[-1] == ("checkMesh", ["checkMesh"])
 
     assert job_control._log_path(case, "name with !").name == "log.namewith"
 

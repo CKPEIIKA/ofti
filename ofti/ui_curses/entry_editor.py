@@ -38,7 +38,7 @@ class EntryEditor:
         self._scroll = 0
         self.case_label = case_label
 
-    def edit(self) -> None:  # noqa: C901, PLR0912
+    def edit(self) -> None:
         use_textbox = (
             os.environ.get("OFTI_USE_TEXTBOX") == "1"
             and hasattr(self.stdscr, "derwin")

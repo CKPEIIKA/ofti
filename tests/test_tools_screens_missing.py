@@ -152,7 +152,7 @@ def test_field_summary_screen(monkeypatch, tmp_path: Path) -> None:
                 "    version 2.0;",
                 "    format ascii;",
                 "    class volScalarField;",
-                "    location \"1\";",
+                '    location "1";',
                 "    object T;",
                 "}",
                 "internalField uniform 1;",

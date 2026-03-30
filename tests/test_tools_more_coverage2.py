@@ -353,22 +353,20 @@ def test_solver_run_live_shell_cmd_and_tail_finish(monkeypatch: pytest.MonkeyPat
     original_tail = solver._tail_process_log
 
     monkeypatch.setattr(solver, "_show_message", lambda _s, text: shown.append(text))
-    monkeypatch.setattr(solver, "with_bashrc", lambda cmd: cmd)
     monkeypatch.setattr(solver, "_expand_shell_command", lambda cmd, _c: cmd)
-    monkeypatch.setattr(solver, "resolve_executable", lambda _name: (_ for _ in ()).throw(FileNotFoundError("bash missing")))
+    monkeypatch.setattr(
+        solver.watch_service,
+        "start_payload",
+        lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bash missing")),
+    )
     solver._run_solver_live_shell(screen, case, "simpleFoam", "simpleFoam")
     assert "Failed to run simpleFoam" in shown[-1]
 
-    class _Popen:
-        def __init__(self, *_a: object, **_k: object) -> None:
-            self.pid = 55
-
-        def poll(self) -> int:
-            return 0
-
-    monkeypatch.setattr(solver, "resolve_executable", lambda _name: "/bin/bash")
-    monkeypatch.setattr(solver.subprocess, "Popen", _Popen)
-    monkeypatch.setattr(solver, "register_job", lambda *_a, **_k: "job-1")
+    monkeypatch.setattr(
+        solver.watch_service,
+        "start_payload",
+        lambda *_a, **_k: {"pid": 55, "job_id": "job-1"},
+    )
     monkeypatch.setattr(solver, "_tail_process_log", lambda *_a, **_k: tailed.append("ok"))
     solver._run_solver_live_shell(screen, case, "simpleFoam", "simpleFoam")
     solver._run_solver_live_cmd(screen, case, "simpleFoam", ["simpleFoam"])
@@ -394,7 +392,7 @@ def test_solver_run_live_shell_cmd_and_tail_finish(monkeypatch: pytest.MonkeyPat
         screen,
         case,
         "simpleFoam",
-        cast(Any, _Finished()),
+        cast("Any", _Finished()),
         case / "log.simpleFoam",
         "job-9",
     )

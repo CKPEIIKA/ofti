@@ -40,7 +40,7 @@ THERMO_SLOT_TEMPLATES: dict[str, list[tuple[str, str]]] = {
 }
 
 
-def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901
+def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:
     keys = ["type", "mixture", "transport", "equationOfState"]
     paths = {key: _dict_path_for(case_path) for key in keys}
     values = {

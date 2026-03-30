@@ -1,1 +1,1 @@
-from .testscreen import TestScreen  # noqa: F401
+from .testscreen import TestScreen as TestScreen

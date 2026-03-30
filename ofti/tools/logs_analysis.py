@@ -56,7 +56,7 @@ def residual_timeline_screen(stdscr: Any, case_path: Path) -> None:
     Viewer(stdscr, "\n".join(lines)).display()
 
 
-def log_analysis_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901
+def log_analysis_screen(stdscr: Any, case_path: Path) -> None:
     path = _select_solver_log_file(
         case_path,
         stdscr,

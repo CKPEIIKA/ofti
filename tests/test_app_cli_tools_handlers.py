@@ -221,14 +221,18 @@ def test_watch_jobs_plain_and_watch_attach_forwarding(
     def fake_watch_log(args: argparse.Namespace) -> int:
         captured["source"] = args.source
         captured["follow"] = args.follow
+        captured["easy_on_cpu"] = args.easy_on_cpu
         return 7
 
     monkeypatch.setattr(cli_tools, "_watch_log", fake_watch_log)
     case_dir = Path("relative-case")
-    code = cli_tools._watch_attach(_ns(source=None, lines=10, job_id="j1", case_dir=case_dir, json=False))
+    code = cli_tools._watch_attach(
+        _ns(source=None, lines=10, job_id="j1", case_dir=case_dir, easy_on_cpu=True, json=False),
+    )
     assert code == 7
     assert captured["source"] == case_dir
     assert captured["follow"] is True
+    assert captured["easy_on_cpu"] is True
 
 
 def test_watch_jobs_with_rows(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -334,6 +338,30 @@ def test_watch_log_follow_prints_new_lines(
     args = _ns(source=tmp_path, case_dir=tmp_path, lines=5, follow=True, job_id=None, json=False)
     assert cli_tools._watch_log(args) == 0
     assert "new-line" in capsys.readouterr().out
+
+
+def test_watch_log_easy_on_cpu_enforces_min_follow_interval(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    log_path = tmp_path / "log.simpleFoam"
+    log_path.write_text("")
+    seen: dict[str, float] = {}
+    monkeypatch.setattr(
+        cli_tools.watch_ops,
+        "log_tail_payload",
+        lambda _source, **_kwargs: {"log": str(log_path), "lines": []},
+    )
+    monkeypatch.setattr(cli_tools.watch_ops, "effective_interval", lambda _case_dir: 0.1)
+
+    def _follow(_path: Path, *, interval: float) -> int:
+        seen["interval"] = interval
+        return 0
+
+    monkeypatch.setattr(cli_tools, "_follow_log_path", _follow)
+    args = _ns(source=tmp_path, case_dir=tmp_path, lines=5, follow=True, job_id=None, easy_on_cpu=True, json=False)
+    assert cli_tools._watch_log(args) == 0
+    assert seen["interval"] == pytest.approx(1.0)
 
 
 def test_watch_stop_plain_failed(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -661,3 +689,19 @@ def test_watch_external_handler_start_status_attach_stop_modes(
     args.stop = True
     assert cli_tools._watch_external(args) == 0
     assert "selected=1" in capsys.readouterr().out
+
+
+def test_watch_external_attach_easy_on_cpu_enforces_min_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, float] = {}
+
+    def _follow(_path: Path, *, interval: float) -> int:
+        seen["interval"] = interval
+        return 0
+
+    monkeypatch.setattr(cli_tools, "_follow_log_path", _follow)
+    args = _ns(case_dir=Path("/case"), output=None, follow=True, interval=0.25, easy_on_cpu=True)
+    payload = {"log": "/case/log.watch.external", "lines": []}
+    assert cli_tools._print_watch_external_attach(args, payload) == 0
+    assert seen["interval"] == pytest.approx(1.0)

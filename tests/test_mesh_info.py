@@ -31,7 +31,7 @@ def test_boundary_summary_counts_types(tmp_path: Path) -> None:
                 "    version 2.0;",
                 "    format ascii;",
                 "    class polyBoundaryMesh;",
-                "    location \"constant/polyMesh\";",
+                '    location "constant/polyMesh";',
                 "    object boundary;",
                 "}",
                 "2",

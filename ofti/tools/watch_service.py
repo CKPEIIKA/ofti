@@ -249,7 +249,7 @@ def watcher_start_payload(
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     handle = log_path.open("a", encoding="utf-8", errors="ignore")
-    process = subprocess.Popen(  # noqa: S603
+    process = subprocess.Popen(
         resolved_command,
         cwd=case_path,
         stdout=handle,
@@ -316,7 +316,7 @@ def watcher_run_payload(
     if dry_run:
         payload["ok"] = True
         return payload
-    process = subprocess.Popen(  # noqa: S603
+    process = subprocess.Popen(
         resolved_command,
         cwd=case_path,
         text=True,
@@ -487,7 +487,7 @@ def external_watch_payload(
     if not command:
         raise ValueError("external watcher command is required")
 
-    process = subprocess.Popen(command, cwd=case_path)  # noqa: S603
+    process = subprocess.Popen(command, cwd=case_path)
     payload["pid"] = process.pid
     returncode = process.wait()
     payload["returncode"] = returncode
@@ -602,7 +602,7 @@ def external_watch_start_payload(
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     handle = log_path.open("a", encoding="utf-8", errors="ignore")
-    process = subprocess.Popen(  # noqa: S603
+    process = subprocess.Popen(
         command,
         cwd=case_path,
         stdout=handle,
@@ -681,7 +681,7 @@ def external_watch_stop_payload(
         case_path,
         rows,
         job_id=job_id,
-        name=name if name else None,
+        name=name or None,
         all_jobs=all_jobs,
         signal_name=signal_name,
         kill_fn=os.kill,

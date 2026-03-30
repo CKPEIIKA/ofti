@@ -31,7 +31,7 @@ def test_check_boundary_field_missing_patches(tmp_path: Path) -> None:
                 "    version 2.0;",
                 "    format ascii;",
                 "    class volVectorField;",
-                "    location \"0\";",
+                '    location "0";',
                 "    object U;",
                 "}",
                 "dimensions [0 1 -1 0 0 0 0];",

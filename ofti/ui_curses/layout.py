@@ -7,8 +7,7 @@ from ofti.core.spinner import next_spinner
 
 
 def draw_status_bar(stdscr: Any, text: str) -> None:
-    """
-    Draw a simple status bar on the last line of the screen.
+    """Draw a simple status bar on the last line of the screen.
     """
     try:
         height, width = stdscr.getmaxyx()

@@ -28,7 +28,7 @@ def test_read_pipeline_commands_parses_lines(tmp_path: Path) -> None:
 
 def test_read_pipeline_commands_reports_errors(tmp_path: Path) -> None:
     path = tmp_path / "Allrun"
-    path.write_text("\n".join(["#!/bin/bash", PIPELINE_HEADER, "echo \"unterminated"]))
+    path.write_text("\n".join(["#!/bin/bash", PIPELINE_HEADER, 'echo "unterminated']))
     commands, errors = read_pipeline_commands(path)
     assert commands == []
     assert errors

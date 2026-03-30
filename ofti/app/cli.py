@@ -41,8 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """
-    Entry point for the OpenFOAM TUI.
+    """Entry point for the OpenFOAM TUI.
 
     Usage:
         ofti [--debug] [CASE_DIR]

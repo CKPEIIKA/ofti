@@ -3,7 +3,9 @@ from __future__ import annotations
 import curses
 import os
 import shutil
+import signal
 import subprocess
+import time
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -27,11 +29,12 @@ from ofti.core.tool_output import CommandResult, format_command_result
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.subprocess_utils import resolve_executable
 from ofti.foamlib.logs import read_log_tail_lines
+from ofti.tools import watch_service
 from ofti.tools.cleaning_utils import _require_wm_project_dir
 from ofti.tools.cli_tools import run as run_ops
-from ofti.tools.helpers import resolve_openfoam_bashrc, with_bashrc
+from ofti.tools.helpers import resolve_openfoam_bashrc
 from ofti.tools.input_prompts import prompt_line
-from ofti.tools.job_registry import finish_job, register_job
+from ofti.tools.job_registry import finish_job
 from ofti.tools.runner import (
     _expand_shell_command,
     _show_message,
@@ -141,8 +144,51 @@ def run_current_solver_parallel(stdscr: Any, case_path: Path) -> None:
     mpi_exec = _resolve_mpi_launcher(stdscr)
     if not mpi_exec:
         return
-    cmd = [mpi_exec, "-np", str(subdomains), solver, "-parallel"]
+    try:
+        _display, cmd = run_ops.solver_command(
+            case_path,
+            solver=solver,
+            parallel=subdomains,
+            mpi=mpi_exec,
+            sync_subdomains=False,
+        )
+    except ValueError:
+        cmd = [mpi_exec, "-np", str(subdomains), solver, "-parallel"]
     _run_solver_live_cmd(stdscr, case_path, solver, cmd)
+
+
+class _TrackedJobProcess:
+    def __init__(self, case_path: Path, pid: int, job_id: str | None) -> None:
+        self._case_path = case_path
+        self._pid = int(pid)
+        self._job_id = job_id
+
+    def poll(self) -> int | None:
+        if _pid_running(self._pid):
+            return None
+        return 0
+
+    def terminate(self) -> None:
+        if self._job_id:
+            with suppress(Exception):
+                watch_service.stop_payload(
+                    self._case_path,
+                    job_id=self._job_id,
+                    all_jobs=False,
+                    kind="any",
+                    signal_name="TERM",
+                )
+                return
+        with suppress(OSError):
+            os.kill(self._pid, signal.SIGTERM)
+
+    def wait(self, timeout: float | None = None) -> int:
+        deadline = None if timeout is None else (time.monotonic() + timeout)
+        while self.poll() is None:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(cmd=str(self._pid), timeout=timeout)
+            time.sleep(0.05)
+        return 0
 
 
 def _run_solver_live_shell(
@@ -153,27 +199,14 @@ def _run_solver_live_shell(
     *,
     log_path: Path | None = None,
 ) -> None:
-    command = with_bashrc(_expand_shell_command(shell_cmd, case_path))
-    target_log = log_path if log_path is not None else case_path / f"log.{solver}"
-    target_log.parent.mkdir(parents=True, exist_ok=True)
-    with suppress(OSError):
-        target_log.write_text("")
-    with target_log.open("a", encoding="utf-8", errors="ignore") as handle:
-        try:
-            bash_path = resolve_executable("bash")
-        except FileNotFoundError as exc:
-            _show_message(stdscr, _with_no_foam_hint(f"Failed to run {solver}: {exc}"))
-            return
-        process = subprocess.Popen(  # noqa: S603
-            [bash_path, "--noprofile", "--norc", "-c", command],
-            cwd=case_path,
-            stdout=handle,
-            stderr=handle,
-            text=True,
-            env=_clean_env(case_path),
-        )
-        job_id = register_job(case_path, solver, process.pid, command, target_log)
-        _tail_process_log(stdscr, case_path, solver, process, target_log, job_id)
+    command = _expand_shell_command(shell_cmd, case_path)
+    _run_solver_live_cmd(
+        stdscr,
+        case_path,
+        solver,
+        ["bash", "--noprofile", "--norc", "-c", command],
+        log_path=log_path,
+    )
 
 
 def _run_solver_live_cmd(
@@ -188,17 +221,33 @@ def _run_solver_live_cmd(
     target_log.parent.mkdir(parents=True, exist_ok=True)
     with suppress(OSError):
         target_log.write_text("")
-    with target_log.open("a", encoding="utf-8", errors="ignore") as handle:
-        process = subprocess.Popen(  # noqa: S603
-            cmd,
-            cwd=case_path,
-            stdout=handle,
-            stderr=handle,
-            text=True,
-            env=_clean_env(case_path),
+    try:
+        payload = watch_service.start_payload(
+            case_path,
+            name=solver,
+            command=cmd,
+            detached=False,
+            log_file=str(target_log),
+            kind="solver",
         )
-        job_id = register_job(case_path, solver, process.pid, " ".join(cmd), target_log)
-        _tail_process_log(stdscr, case_path, solver, process, target_log, job_id)
+    except ValueError as exc:
+        _show_message(stdscr, _with_no_foam_hint(f"Failed to run {solver}: {exc}"))
+        return
+    pid = payload.get("pid")
+    if not isinstance(pid, int):
+        _show_message(stdscr, f"Failed to run {solver}: missing background pid")
+        return
+    job_id_raw = payload.get("job_id")
+    job_id = str(job_id_raw).strip() if job_id_raw is not None else ""
+    process = _TrackedJobProcess(case_path, pid, job_id or None)
+    _tail_process_log(
+        stdscr,
+        case_path,
+        solver,
+        process,
+        target_log,
+        job_id or None,
+    )
 
 
 def solver_status_line(case_path: Path) -> str | None:
@@ -241,17 +290,18 @@ def _ensure_zero_dir(stdscr: Any, case_path: Path) -> bool:
     return True
 
 
-def _tail_process_log(  # noqa: C901, PLR0912
+def _tail_process_log(
     stdscr: Any,
     case_path: Path,
     solver: str,
-    process: subprocess.Popen[str],
+    process: Any,
     log_path: Path,
     job_id: str | None,
 ) -> None:
     cfg = get_config()
     patterns = ["FATAL", "bounding", "Courant", "nan", "SIGFPE", "floating point exception"]
     stdscr.timeout(400)
+    stopped_by_user = False
     try:
         while True:
             try:
@@ -319,15 +369,17 @@ def _tail_process_log(  # noqa: C901, PLR0912
                 return
             key = stdscr.getch()
             if key_in(key, cfg.keys.get("back", [])):
+                stopped_by_user = True
                 process.terminate()
-                process.wait(timeout=5)
+                with suppress(Exception):
+                    process.wait(timeout=5)
                 return
     finally:
         returncode = process.poll()
-        if returncode is None:
+        if stopped_by_user or returncode is None:
             finish_job(case_path, job_id, "stopped", None)
         else:
-            finish_job(case_path, job_id, "finished", returncode)
+            finish_job(case_path, job_id, "finished", int(returncode))
         stdscr.timeout(-1)
 
 
@@ -364,6 +416,24 @@ def _resolve_mpi_launcher(stdscr: Any) -> str | None:
         except FileNotFoundError as exc:
             _show_message(stdscr, _with_no_foam_hint(f"MPI launcher not found: {exc}"))
             return None
+
+
+def _pid_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _clean_env(case_path: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env.pop("BASH_ENV", None)
+    env.pop("ENV", None)
+    env["PWD"] = str(case_path.resolve())
+    return env
 
 
 def _prepare_solver_run(stdscr: Any, case_path: Path) -> str | None:
@@ -427,11 +497,3 @@ def _resolve_solver_log_path(
     except ValueError as exc:
         raise ValueError("Log path must stay inside the case directory.") from exc
     return resolved_log
-
-
-def _clean_env(case_path: Path) -> dict[str, str]:
-    env = os.environ.copy()
-    env.pop("BASH_ENV", None)
-    env.pop("ENV", None)
-    env["PWD"] = str(case_path.resolve())
-    return env

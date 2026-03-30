@@ -10,8 +10,7 @@ from ofti.foam.subprocess_utils import run_trusted
 
 
 def ensure_environment() -> None:
-    """
-    Ensure OpenFOAM utilities are available.
+    """Ensure OpenFOAM utilities are available.
 
     This checks for `foamVersion` on PATH and raises a clear
     error if it is missing. The caller can catch this and show

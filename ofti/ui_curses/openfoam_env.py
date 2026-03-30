@@ -26,7 +26,7 @@ def _show_message(stdscr: Any, message: str) -> None:
         raise QuitAppError()
 
 
-def _prompt_text(stdscr: Any, prompt: str) -> str:  # noqa: C901
+def _prompt_text(stdscr: Any, prompt: str) -> str:
     height, width = stdscr.getmaxyx()
     buffer: list[str] = []
     cursor = 0
@@ -85,8 +85,7 @@ def _set_openfoam_bashrc(path: Path | None) -> None:
 
 
 def openfoam_env_screen(stdscr: Any) -> None:
-    """
-    Select an OpenFOAM bashrc for the current session.
+    """Select an OpenFOAM bashrc for the current session.
     """
     current = resolve_openfoam_bashrc()
     candidates = auto_detect_bashrc_paths()

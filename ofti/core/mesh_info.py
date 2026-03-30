@@ -13,8 +13,7 @@ class BoundarySummary(TypedDict):
 
 
 def mesh_counts(case_path: Path) -> tuple[int | None, int | None, int | None]:
-    """
-    Return (cells, faces, points) from polyMesh files, or Nones if missing.
+    """Return (cells, faces, points) from polyMesh files, or Nones if missing.
     """
     poly = case_path / "constant" / "polyMesh"
     points = _list_count(poly / "points")

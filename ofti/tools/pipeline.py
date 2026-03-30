@@ -35,7 +35,7 @@ def pipeline_runner_screen(stdscr: Any, case_path: Path) -> None:
     _run_pipeline_commands(stdscr, case_path, commands)
 
 
-def pipeline_editor_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912
+def pipeline_editor_screen(stdscr: Any, case_path: Path) -> None:
     pipeline_path = case_path / PIPELINE_FILENAME
     if not pipeline_path.is_file():
         stdscr.clear()
@@ -153,7 +153,7 @@ def _pipeline_tool_catalog(case_path: Path) -> list[tuple[str, list[str]]]:
     return base + custom
 
 
-def _pipeline_pick_tool(stdscr: Any, case_path: Path) -> list[str] | None:  # noqa: C901, PLR0911
+def _pipeline_pick_tool(stdscr: Any, case_path: Path) -> list[str] | None:
     options = _pipeline_tool_catalog(case_path)
     labels = [name for name, _cmd in options] + ["Back"]
     menu = build_menu(
@@ -236,4 +236,4 @@ def _render_pipeline_editor(
     stdscr.refresh()
 
 
- 
+

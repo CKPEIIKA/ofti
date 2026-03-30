@@ -29,7 +29,7 @@ def run_trusted(
     if not args_list:
         raise ValueError("No command specified")
     args_list[0] = resolve_executable(args_list[0])
-    return subprocess.run(  # noqa: S603
+    return subprocess.run(
         args_list,
         cwd=cwd,
         input=stdin,

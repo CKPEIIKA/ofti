@@ -11,7 +11,7 @@ from ofti.tools.runner import _run_simple_tool, _show_message
 from ofti.ui_curses.tool_dicts_ui import _ensure_tool_dict
 
 
-def post_process_prompt(stdscr: Any, case_path: Path) -> None:  # noqa: C901
+def post_process_prompt(stdscr: Any, case_path: Path) -> None:
     """Prompt for postProcess arguments, suggesting use of latestTime."""
     latest = latest_time(case_path)
     if not _ensure_tool_dict(

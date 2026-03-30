@@ -35,8 +35,7 @@ def _foamlib_candidate(file_path: Path) -> bool:
 
 
 def list_keywords(file_path: Path) -> list[str]:
-    """
-    List top-level keywords for a dictionary file.
+    """List top-level keywords for a dictionary file.
     """
     parse_error: Exception | None = None
     if _foamlib_candidate(file_path):
@@ -61,8 +60,7 @@ def list_keywords(file_path: Path) -> list[str]:
 
 
 def list_subkeys(file_path: Path, entry: str) -> list[str]:
-    """
-    List sub-keys for a dictionary entry, if it is itself a dictionary.
+    """List sub-keys for a dictionary entry, if it is itself a dictionary.
     """
     if _foamlib_candidate(file_path):
         try:
@@ -74,8 +72,7 @@ def list_subkeys(file_path: Path, entry: str) -> list[str]:
 
 
 def get_entry_comments(file_path: Path, key: str) -> list[str]:
-    """
-    Try to extract comment lines associated with an entry from the file.
+    """Try to extract comment lines associated with an entry from the file.
 
     This is a heuristic: it searches for the first line containing the
     key and then collects immediately preceding comment lines starting
@@ -107,8 +104,7 @@ def get_entry_comments(file_path: Path, key: str) -> list[str]:
 
 
 def get_entry_info(file_path: Path, key: str) -> list[str]:
-    """
-    Try to obtain additional information about an entry using foamlib.
+    """Try to obtain additional information about an entry using foamlib.
 
     Returns the output lines (if any), or an empty list when the
     command is not available or fails.
@@ -117,8 +113,7 @@ def get_entry_info(file_path: Path, key: str) -> list[str]:
 
 
 def get_entry_enum_values(file_path: Path, key: str) -> list[str]:
-    """
-    Try to obtain a set of allowed values for an entry.
+    """Try to obtain a set of allowed values for an entry.
 
     Returns the values (if any), or an empty list when the command
     fails or no values are reported.
@@ -127,8 +122,7 @@ def get_entry_enum_values(file_path: Path, key: str) -> list[str]:
 
 
 def parse_required_entries(info_lines: Sequence[str]) -> list[str]:
-    """
-    Parse required entry hints from foamlib info output.
+    """Parse required entry hints from foamlib info output.
 
     Several OpenFOAM dictionaries emit lines such as
 
@@ -137,7 +131,6 @@ def parse_required_entries(info_lines: Sequence[str]) -> list[str]:
     or bullet lists. This helper extracts the reported entry names
     so that callers can verify they exist on disk.
     """
-
     required: list[str] = []
     capture_block = False
 
@@ -192,15 +185,13 @@ def missing_required_entries(required: Sequence[str], available: Sequence[str]) 
 
 
 def normalize_scalar_token(value: str) -> str:
-    """
-    Extract the final scalar token from an entry for comparison against enums.
+    """Extract the final scalar token from an entry for comparison against enums.
 
     Enum lists often report plain tokens without trailing semicolons.
     This helper mirrors the heuristic used by the editor for determining
     scalar types so that enum validation is consistent across the TUI and
     automated checks.
     """
-
     if not value:
         return ""
     cleaned = value.replace(";", " ").strip()
@@ -211,8 +202,7 @@ def normalize_scalar_token(value: str) -> str:
 
 
 def is_scalar_value(value: str) -> bool:
-    """
-    Return True if the value looks like a single scalar token.
+    """Return True if the value looks like a single scalar token.
     """
     if not value:
         return False
@@ -251,9 +241,8 @@ def write_entry(file_path: Path, key: str, value: str) -> bool:
     return False
 
 
-def discover_case_files(case_dir: Path) -> dict[str, list[Path]]:  # noqa: C901
-    """
-    Discover candidate dictionary files in an OpenFOAM case.
+def discover_case_files(case_dir: Path) -> dict[str, list[Path]]:
+    """Discover candidate dictionary files in an OpenFOAM case.
 
     Returns a mapping: section -> list of files.
     Sections: "system", "constant", "0*".
@@ -316,13 +305,11 @@ def verify_case(
     progress: Callable[[Path], None] | None = None,
     result_callback: Callable[[Path, FileCheckResult], None] | None = None,
 ) -> dict[Path, FileCheckResult]:
-    """
-    Run a correctness check over all discovered dictionary files.
+    """Run a correctness check over all discovered dictionary files.
 
     Beyond ensuring the files parse, this inspects each entry recursively
     to detect missing required sub-entries and invalid enum values.
     """
-
     all_files = _collect_case_files(case_dir)
     results = {file_path: FileCheckResult() for file_path in all_files}
 

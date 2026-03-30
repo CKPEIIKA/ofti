@@ -9,7 +9,7 @@ from ofti.core.tool_dicts_service import apply_assignment_or_write
 from ofti.foam.openfoam import OpenFOAMError
 
 
-def detect_mesh_stats(case_path: Path) -> str:  # noqa: C901
+def detect_mesh_stats(case_path: Path) -> str:
     log_path = latest_checkmesh_log(case_path)
     if log_path is None:
         if has_mesh(case_path):

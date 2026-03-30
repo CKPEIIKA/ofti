@@ -77,7 +77,7 @@ def test_runner_load_presets_parsing_and_read_errors(
                 "missing separator",
                 "empty-name: ",
                 "ok: echo 1",
-                "bad: \"unterminated",
+                'bad: "unterminated',
             ],
         ),
     )

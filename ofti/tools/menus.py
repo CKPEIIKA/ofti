@@ -35,7 +35,6 @@ from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import (
     _no_foam_active,
-    _normalize_tool_name,
     _run_simple_tool,
     _show_message,
     get_last_tool_run,
@@ -112,7 +111,7 @@ def run_tool_by_name(
             job_control.start_tool_background(
                 stdscr,
                 case_path,
-                _normalize_tool_name(display_name),
+                display_name,
                 command,
             )
             return True
@@ -120,7 +119,7 @@ def run_tool_by_name(
         return True
 
     aliases = _tool_aliases(stdscr, case_path)
-    key = _normalize_tool_name(name)
+    key = run_ops.normalize_tool_name(name)
     alias = aliases.get(key)
     if alias is None:
         return False
@@ -140,17 +139,7 @@ def run_tool_by_name(
 
 
 def _resolve_catalog_tool(case_path: Path, name: str) -> tuple[str, list[str]] | None:
-    resolved = run_ops.resolve_tool(case_path, name)
-    if resolved is not None:
-        return resolved
-    normalized = _normalize_tool_name(name)
-    if normalized.startswith("post:"):
-        token = normalized.split(":", 1)[1]
-        return run_ops.resolve_tool(case_path, f"[post] {token}")
-    if normalized.startswith("post."):
-        token = normalized.split(".", 1)[1]
-        return run_ops.resolve_tool(case_path, f"[post] {token}")
-    return None
+    return run_ops.resolve_tool(case_path, name)
 
 
 def _run_snappy_staged(stdscr: Any, case_path: Path) -> None:
@@ -220,7 +209,7 @@ def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, _ToolAlias]:
         handler: Callable[[], None],
         background_cmd: list[str] | None = None,
     ) -> None:
-        key = _normalize_tool_name(name)
+        key = run_ops.normalize_tool_name(name)
         existing = aliases.get(key)
         if existing and background_cmd is None:
             background_cmd = existing.background_cmd
@@ -306,15 +295,14 @@ TOOLS_SPECIAL_HINTS = [
 ]
 
 
-def tools_screen(  # noqa: C901
+def tools_screen(
     stdscr: Any,
     case_path: Path,
     *,
     command_handler: Callable[[str], str | None] | None = None,
     command_suggestions: Callable[[], list[str]] | None = None,
 ) -> None:
-    """
-    Tools menu with common solvers/utilities, job helpers, logs, and
+    """Tools menu with common solvers/utilities, job helpers, logs, and
     optional shell scripts, all in a single flat list.
     """
     base_tools: list[tuple[str, list[str]]] = []

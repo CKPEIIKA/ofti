@@ -15,8 +15,7 @@ def non_empty(value: str) -> str | None:
 
 
 def _normalize_numeric(value: str) -> str:
-    """
-    Normalize a numeric value by trimming whitespace and an optional
+    """Normalize a numeric value by trimming whitespace and an optional
     trailing semicolon, as commonly used in OpenFOAM dictionaries.
     """
     text = value.strip()
@@ -50,9 +49,8 @@ def bool_flag(value: str) -> str | None:
 
 
 def vector_values(value: str) -> str | None:
-    """
-    Validate a simple OpenFOAM-style vector, e.g.:
-      (1 2 3) or 'uniform (1 2 3)'
+    """Validate a simple OpenFOAM-style vector, e.g.:
+    (1 2 3) or 'uniform (1 2 3)'
     """
     text = value.strip()
     if text.lower().startswith("uniform"):
@@ -72,8 +70,7 @@ def vector_values(value: str) -> str | None:
 
 
 def dimension_set_values(value: str) -> str | None:
-    """
-    Validate OpenFOAM dimensions entry: seven integers in brackets.
+    """Validate OpenFOAM dimensions entry: seven integers in brackets.
     Example: [0 1 -2 0 0 0 0]
     """
     parsed = _parse_dimension_set(value)
@@ -93,9 +90,8 @@ def dimension_set_values(value: str) -> str | None:
 
 
 def dimensioned_value(value: str) -> str | None:
-    """
-    Validate dimensioned scalar/vector entries:
-      [0 2 -2 0 0 0 0] 1e-05
+    """Validate dimensioned scalar/vector entries:
+    [0 2 -2 0 0 0 0] 1e-05
     """
     text = value.strip().rstrip(";")
     error: str | None = None
@@ -243,11 +239,10 @@ def normalize_field_value(value: str) -> str | None:
 
 
 def field_value(value: str) -> str | None:
-    """
-    Validate OpenFOAM field values such as:
-      uniform 0
-      uniform (1 0 0)
-      nonuniform List<scalar> ...
+    """Validate OpenFOAM field values such as:
+    uniform 0
+    uniform (1 0 0)
+    nonuniform List<scalar> ...
     """
     text = value.strip().rstrip(";")
     if not text:

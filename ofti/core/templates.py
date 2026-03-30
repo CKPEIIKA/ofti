@@ -23,8 +23,7 @@ def iter_example_cases() -> list[Path]:
 
 
 def load_example_template(rel_path: Path) -> str | None:
-    """
-    Return the content of an example file matching rel_path (relative to case root),
+    """Return the content of an example file matching rel_path (relative to case root),
     or None if no example file exists.
     """
     for case_dir in iter_example_cases():
@@ -38,8 +37,7 @@ def load_example_template(rel_path: Path) -> str | None:
 
 
 def write_example_template(dest: Path, rel_path: Path) -> bool:
-    """
-    Write example content to dest if available. Returns True on success.
+    """Write example content to dest if available. Returns True on success.
     """
     content = load_example_template(rel_path)
     if content is None:

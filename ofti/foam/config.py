@@ -124,7 +124,7 @@ def _load_config() -> Config:
             try:
                 parsed = _TOML.loads(path.read_text())
                 if isinstance(parsed, dict):
-                    raw = cast(dict[str, Any], parsed)
+                    raw = cast("dict[str, Any]", parsed)
             except Exception:
                 raw = {}
         _apply_file_config(cfg, raw)
@@ -179,7 +179,7 @@ def _apply_file_config(cfg: Config, raw: dict[str, Any]) -> None:
                 and isinstance(value, list)
                 and all(isinstance(item, str) for item in value)
             ):
-                cfg.keys[key] = cast(list[str], value)
+                cfg.keys[key] = cast("list[str]", value)
     examples_value = raw.get("example_paths")
     if isinstance(examples_value, list):
         example_paths: list[str] = []

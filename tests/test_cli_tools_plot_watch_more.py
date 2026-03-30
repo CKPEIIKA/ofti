@@ -391,7 +391,7 @@ def test_watch_watcher_preset_start_and_run_payloads(
     )
     assert started["ok"] is True
     assert started["job_id"] == "watch-job-1"
-    kwargs = cast(dict[str, object], captured_register["kwargs"])
+    kwargs = cast("dict[str, object]", captured_register["kwargs"])
     assert kwargs["kind"] == "watcher"
     assert kwargs["detached"] is True
 
