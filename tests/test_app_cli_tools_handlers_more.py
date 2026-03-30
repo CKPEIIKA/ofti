@@ -197,6 +197,10 @@ def test_receipt_handlers_and_run_solver_recording(
             "expected_tree_hash": "a",
             "actual_tree_hash": "b",
             "openfoam": {"match": True},
+            "build": {
+                "solver": {"match": False},
+                "linked_libs": {"match": True},
+            },
             "missing_files": [],
             "changed_files": [{"path": "system/controlDict"}],
             "extra_files": ["system/newDict"],

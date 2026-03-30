@@ -192,9 +192,13 @@ ofti knife receipt restore runs/.../receipt.json --to CASE_COPY --only system,co
 - Hash-only receipts are verification-grade: they let you detect drift.
 - `--record-inputs-copy` upgrades the receipt to restore-grade by copying
   `system/`, `constant/`, and `0/` next to the receipt.
+- Receipts now also record build/runtime provenance:
+  solver binary hash, linked-library hash set, compiler flags, and selected
+  OpenFOAM environment variables.
 - `--receipt-file` overrides the destination explicitly; relative paths resolve
   from the current working directory.
 - `knife receipt verify` checks the current case against recorded hashes.
+- `knife receipt verify` also checks solver binary and linked-library drift.
 - `knife receipt restore` recreates inputs only when the receipt includes the
   recorded input copy.
 - `knife receipt restore --only/--skip` lets you restore only selected roots
