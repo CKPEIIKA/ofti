@@ -19,7 +19,7 @@ def _make_case(tmp_path: Path) -> Path:
                 "    version 2.0;",
                 "    format ascii;",
                 "    class dictionary;",
-                "    location \"system\";",
+                '    location "system";',
                 "    object controlDict;",
                 "}",
                 "application simpleFoam;",

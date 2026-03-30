@@ -76,7 +76,7 @@ def list_dir_entries(path: Path) -> tuple[list[Path], list[Path]]:
     return sorted(dirs), sorted(files)
 
 
-def select_case_directory(stdscr: Any, start_path: Path) -> Path | None:  # noqa: C901, PLR0912
+def select_case_directory(stdscr: Any, start_path: Path) -> Path | None:
     current = start_path if start_path.is_dir() else start_path.parent
     index = 0
     scroll = 0
@@ -97,7 +97,7 @@ def select_case_directory(stdscr: Any, start_path: Path) -> Path | None:  # noqa
         back_hint = key_hint("back", "h")
         search_hint = "/" if not query else f"/:{query}"
         hint = (
-            f"Enter: open/select  e: use this folder  {search_hint}: search  "  # noqa: S608
+            f"Enter: open/select  e: use this folder  {search_hint}: search  "
             f"n: new case  {back_hint}: back  "
             "[Create new case] to clone from examples"
         )
@@ -255,7 +255,7 @@ def _list_tutorial_cases() -> list[Path]:
     return sorted(cases, key=lambda path: path.as_posix())
 
 
-def _create_case_from_example(stdscr: Any, current: Path) -> Path | None:  # noqa: PLR0911
+def _create_case_from_example(stdscr: Any, current: Path) -> Path | None:
     examples = _list_example_cases()
     if not examples:
         show_message(stdscr, "No example cases found in ./examples.")
@@ -334,7 +334,7 @@ def _collect_cases_from_root(root: Path) -> set[Path]:
     return cases
 
 
-def prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:  # noqa: C901, PLR0912
+def prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:
     height, width = stdscr.getmaxyx()
     buffer: list[str] = []
     cursor = 0

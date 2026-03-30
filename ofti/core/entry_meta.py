@@ -33,8 +33,7 @@ def get_entry_metadata(
     file_path: Path,
     full_key: str,
 ) -> tuple[str, str, list[str], list[str], list[str], Validator]:
-    """
-    Load entry metadata (value, type label, subkeys, comments, info_lines, validator),
+    """Load entry metadata (value, type label, subkeys, comments, info_lines, validator),
     using a simple cache to avoid repeated foamlib calls while
     navigating.
     """
@@ -90,8 +89,7 @@ def refresh_entry_cache(
     file_path: Path,
     full_key: str,
 ) -> None:
-    """
-    Refresh a single entry in the cache after an edit, swallowing
+    """Refresh a single entry in the cache after an edit, swallowing
     OpenFOAM errors so the UI remains responsive.
     """
     try:
@@ -117,8 +115,7 @@ def refresh_entry_cache(
 
 
 def boundary_condition_info(file_path: Path, full_key: str) -> list[str]:
-    """
-    Provide extra info for boundary patches: show type/value when possible.
+    """Provide extra info for boundary patches: show type/value when possible.
     """
     parts = full_key.split(".")
     info: list[str] = []
@@ -146,8 +143,7 @@ def boundary_condition_info(file_path: Path, full_key: str) -> list[str]:
 
 
 def choose_validator(key: str, value: str) -> tuple[Validator, str]:
-    """
-    Choose a validator based on both key name and current value.
+    """Choose a validator based on both key name and current value.
 
     This allows us to handle scalar types and simple vectors.
     """
@@ -284,7 +280,7 @@ def _is_foamlib_field(node: object) -> bool:
     if FoamlibField is None:
         return False
     try:
-        return isinstance(node, cast(type[Any], FoamlibField))
+        return isinstance(node, cast("type[Any]", FoamlibField))
     except TypeError:
         return False
 
@@ -341,8 +337,7 @@ def detect_type_with_foamlib(
 
 
 def _guess_validator(key: str) -> Validator:
-    """
-    Simple heuristic to choose a validator based on key name.
+    """Simple heuristic to choose a validator based on key name.
     """
     lower = key.lower()
     if any(tok in lower for tok in ("on", "off", "switch", "enable", "disable")):

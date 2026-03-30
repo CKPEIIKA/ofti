@@ -8,7 +8,7 @@ from ofti.tools.input_prompts import prompt_line
 from ofti.tools.runner import _show_message
 
 
-def time_directory_pruner_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901
+def time_directory_pruner_screen(stdscr: Any, case_path: Path) -> None:
     times = time_directories(case_path)
     if len(times) < 2:
         _show_message(stdscr, "No time directories found to prune.")

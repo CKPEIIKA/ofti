@@ -633,8 +633,8 @@ def test_knife_run_time_control_extracts_quoted_blocks_and_case_include(tmp_path
     control.write_text(
         "\n".join(
             [
-                'startTime 0;',
-                'endTime 100;',
+                "startTime 0;",
+                "endTime 100;",
                 '#include "$FOAM_CASE/system/criteria.inc"',
                 "functions",
                 "{",
@@ -733,7 +733,7 @@ def test_dict_compare_dictionary_error_and_raw_key_scan(tmp_path: Path, monkeypa
     assert "alpha" in keys
     assert "transportModels" in keys
 
-    nested = cast(dict[str, object], {"FoamFile": {"skip": 1}, "a": {"b": 1}, "v": [1, 2]})
+    nested = cast("dict[str, object]", {"FoamFile": {"skip": 1}, "a": {"b": 1}, "v": [1, 2]})
     flat = dict_compare._flatten_mapping(nested)
     assert flat["a.b"] == "1"
     assert flat["v"] == "(1 2)"

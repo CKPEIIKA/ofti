@@ -40,7 +40,7 @@ def test_preferred_log_file(tmp_path: Path) -> None:
                 "    version 2.0;",
                 "    format ascii;",
                 "    class dictionary;",
-                "    location \"system\";",
+                '    location "system";',
                 "    object controlDict;",
                 "}",
                 "application simpleFoam;",

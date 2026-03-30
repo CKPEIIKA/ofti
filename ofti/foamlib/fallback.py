@@ -275,13 +275,13 @@ def _as_str_dict(node: object) -> dict[str, object] | None:
         return None
     if not all(isinstance(key, str) for key in node):
         return None
-    return cast(dict[str, object], node)
+    return cast("dict[str, object]", node)
 
 
 def _as_object_list(node: object) -> list[object] | None:
     if not isinstance(node, list):
         return None
-    return cast(list[object], node)
+    return cast("list[object]", node)
 
 
 def _parse_mapping(text: str) -> dict[str, object]:
@@ -297,7 +297,7 @@ def _tokenize(text: str) -> list[str]:
 
 
 def _strip_block_comments(text: str) -> str:
-    return re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    return re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
 
 
 def _parse_entries(tokens: list[str], index: int) -> tuple[dict[str, object], int]:

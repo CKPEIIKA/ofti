@@ -156,7 +156,7 @@ class _BoundaryParseState:
     pending_patch: str | None = None
 
 
-def parse_boundary_text(text: str) -> tuple[list[str], dict[str, str]]:  # noqa: C901
+def parse_boundary_text(text: str) -> tuple[list[str], dict[str, str]]:
     patches: list[str] = []
     patch_types: dict[str, str] = {}
     state = _BoundaryParseState()

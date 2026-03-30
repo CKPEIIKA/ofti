@@ -249,7 +249,7 @@ def test_watch_service_remaining_helper_branches(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(ValueError, match="watcher command is required"):
         watch_service.watcher_run_payload(case, command=None, dry_run=False)
 
-    (case / "ofti.watcher").write_text("bad: \"unterminated\nenv KEY=1\n")
+    (case / "ofti.watcher").write_text('bad: "unterminated\nenv KEY=1\n')
     with pytest.raises(ValueError, match="watcher command not found in preset"):
         watch_service.watcher_run_payload(case, command=None, dry_run=False)
 

@@ -323,7 +323,7 @@ def test_runtime_control_snapshot_full_uses_filtered_log_reader(
         max_log_bytes=None,
     )
     assert seen["path"] == log_path
-    terms = cast(list[str], seen["terms"])
+    terms = cast("list[str]", seen["terms"])
     assert "residualTolerance" in terms
     assert "shockFlat" in terms
     assert snapshot["latest_iteration"] == 1

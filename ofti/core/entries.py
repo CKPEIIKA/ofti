@@ -4,8 +4,7 @@ from dataclasses import dataclass
 
 
 def autoformat_value(value: str) -> str:
-    """
-    Apply a very small amount of auto-formatting before saving.
+    """Apply a very small amount of auto-formatting before saving.
 
     - For single-line values, trim leading/trailing whitespace.
     - For multi-line values, leave content as-is (only strip trailing

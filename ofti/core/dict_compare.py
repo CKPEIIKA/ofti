@@ -239,7 +239,7 @@ def _as_str_object_dict(value: object) -> dict[str, object] | None:
         return None
     if not all(isinstance(key, str) for key in value):
         return None
-    return cast(dict[str, object], value)
+    return cast("dict[str, object]", value)
 
 
 def _raw_key_scan(path: Path) -> set[str]:
@@ -304,7 +304,7 @@ def _raw_flatten_pairs(path: Path) -> dict[str, str]:
 
 
 def _raw_flatten_tokens(text: str) -> list[str]:
-    cleaned = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    cleaned = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
     cleaned = re.sub(r"//.*", "", cleaned)
     cleaned = "\n".join(line for line in cleaned.splitlines() if not line.strip().startswith("#"))
     return re.findall(r'"[^"]*"|[{};]|[^\s{};]+', cleaned)

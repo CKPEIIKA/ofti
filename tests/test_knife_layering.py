@@ -61,7 +61,7 @@ def test_knife_current_payload_delegates_to_case_status_service(
     payload = knife.current_payload(case)
     assert payload["jobs_running"] == 0
     assert seen["case"] == case.resolve()
-    kwargs = cast(dict[str, object], seen["kwargs"])
+    kwargs = cast("dict[str, object]", seen["kwargs"])
     assert callable(kwargs["resolve_solver_name_fn"])
     assert callable(kwargs["refresh_jobs_fn"])
     assert callable(kwargs["running_job_pids_fn"])
@@ -86,7 +86,7 @@ def test_knife_status_payload_delegates_to_case_status_service(
     assert payload["running"] is True
     assert payload["jobs_running"] == 1
     assert seen["case"] == case.resolve()
-    kwargs = cast(dict[str, object], seen["kwargs"])
+    kwargs = cast("dict[str, object]", seen["kwargs"])
     assert callable(kwargs["resolve_solver_name_fn"])
     assert callable(kwargs["refresh_jobs_fn"])
     assert callable(kwargs["running_job_pids_fn"])

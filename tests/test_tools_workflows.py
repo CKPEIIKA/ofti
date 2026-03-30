@@ -198,4 +198,4 @@ def test_run_tool_by_name_background_uses_job_registry(tmp_path: Path, monkeypat
     )
 
     assert run_tool_by_name(screen, case_dir, "blockMesh", background=True) is True
-    assert started == [("blockmesh", ["blockMesh"])]
+    assert started == [("blockMesh", ["blockMesh"])]

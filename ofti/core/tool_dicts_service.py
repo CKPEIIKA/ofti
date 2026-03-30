@@ -53,8 +53,7 @@ def apply_assignment(
 def build_edit_plan(
     edits: list[tuple[Path, list[str], str]],
 ) -> list[tuple[Path, list[str], str]]:
-    """
-    Build a deterministic edit plan for applying config changes.
+    """Build a deterministic edit plan for applying config changes.
     Currently returns the input list to preserve ordering; future
     versions can normalize or coalesce edits.
     """
@@ -76,8 +75,7 @@ def apply_edit_plan(
     case_path: Path,
     edits: list[tuple[Path, list[str], str]],
 ) -> list[tuple[Path, list[str], str]]:
-    """
-    Apply a list of (file_path, key_path, value) edits.
+    """Apply a list of (file_path, key_path, value) edits.
     Returns a list of edits that failed.
     """
     failures: list[tuple[Path, list[str], str]] = []

@@ -4,8 +4,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class DictionaryFile:
-    """
-    Lightweight wrapper for a dictionary file in an OpenFOAM case.
+    """Lightweight wrapper for a dictionary file in an OpenFOAM case.
 
     Holds both the absolute path and the case root so that callers can
     easily obtain a relative path for display.
@@ -21,8 +20,7 @@ class DictionaryFile:
 
 @dataclass(frozen=True)
 class EntryRef:
-    """
-    Reference to a specific dictionary entry (file + key).
+    """Reference to a specific dictionary entry (file + key).
     """
 
     file: DictionaryFile
@@ -31,8 +29,7 @@ class EntryRef:
 
 @dataclass(frozen=True)
 class Case:
-    """
-    Thin representation of a case root.
+    """Thin representation of a case root.
     """
 
     root: Path

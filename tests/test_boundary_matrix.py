@@ -37,20 +37,20 @@ def test_build_boundary_matrix_missing_boundary_field(tmp_path: Path) -> None:
     zero_path.mkdir(parents=True)
 
     (boundary_path / "boundary").write_text(
-        "FoamFile{version 2.0;format ascii;class polyBoundaryMesh;location \"constant/polyMesh\";object boundary;}\n"
+        'FoamFile{version 2.0;format ascii;class polyBoundaryMesh;location "constant/polyMesh";object boundary;}\n'
         "1\n(\n"
         " inlet { type patch; nFaces 1; startFace 0; }\n"
         ")\n",
     )
 
     (zero_path / "U").write_text(
-        "FoamFile{version 2.0;format ascii;class volVectorField;location \"0\";object U;}\n"
+        'FoamFile{version 2.0;format ascii;class volVectorField;location "0";object U;}\n'
         "dimensions [0 1 -1 0 0 0 0];\n"
         "internalField uniform (0 0 0);\n"
         "boundaryField{ inlet{ type fixedValue; value uniform (0 0 0); } }\n",
     )
     (zero_path / "p").write_text(
-        "FoamFile{version 2.0;format ascii;class volScalarField;location \"0\";object p;}\n"
+        'FoamFile{version 2.0;format ascii;class volScalarField;location "0";object p;}\n'
         "dimensions [0 2 -2 0 0 0 0];\n"
         "internalField uniform 0;\n",
     )
@@ -72,7 +72,7 @@ def test_build_boundary_matrix_wildcard(tmp_path: Path) -> None:
     zero_path.mkdir(parents=True)
 
     (boundary_path / "boundary").write_text(
-        "FoamFile{version 2.0;format ascii;class polyBoundaryMesh;location \"constant/polyMesh\";object boundary;}\n"
+        'FoamFile{version 2.0;format ascii;class polyBoundaryMesh;location "constant/polyMesh";object boundary;}\n'
         "2\n(\n"
         " inlet { type patch; nFaces 1; startFace 0; }\n"
         " outlet { type patch; nFaces 1; startFace 1; }\n"
@@ -80,12 +80,12 @@ def test_build_boundary_matrix_wildcard(tmp_path: Path) -> None:
     )
 
     (zero_path / "U").write_text(
-        "FoamFile{version 2.0;format ascii;class volVectorField;location \"0\";object U;}\n"
+        'FoamFile{version 2.0;format ascii;class volVectorField;location "0";object U;}\n'
         "dimensions [0 1 -1 0 0 0 0];\n"
         "internalField uniform (0 0 0);\n"
         "boundaryField\n"
         "{\n"
-        "  \".*\"\n"
+        '  ".*"\n'
         "  {\n"
         "    type zeroGradient;\n"
         "  }\n"
@@ -109,7 +109,7 @@ def test_boundary_matrix_writeback(tmp_path: Path) -> None:
     zero_path.mkdir(parents=True)
 
     (boundary_path / "boundary").write_text(
-        "FoamFile{version 2.0;format ascii;class polyBoundaryMesh;location \"constant/polyMesh\";object boundary;}\n"
+        'FoamFile{version 2.0;format ascii;class polyBoundaryMesh;location "constant/polyMesh";object boundary;}\n'
         "1\n(\n"
         " inlet { type patch; nFaces 1; startFace 0; }\n"
         ")\n",
@@ -117,7 +117,7 @@ def test_boundary_matrix_writeback(tmp_path: Path) -> None:
 
     u_path = zero_path / "U"
     u_path.write_text(
-        "FoamFile{version 2.0;format ascii;class volVectorField;location \"0\";object U;}\n"
+        'FoamFile{version 2.0;format ascii;class volVectorField;location "0";object U;}\n'
         "dimensions [0 1 -1 0 0 0 0];\n"
         "internalField uniform (0 0 0);\n"
         "boundaryField\n"

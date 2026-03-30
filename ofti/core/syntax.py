@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-def find_suspicious_lines(content: str) -> list[str]:  # noqa: C901
+def find_suspicious_lines(content: str) -> list[str]:
     warnings: list[str] = []
     brace_depth = 0
     header_done = False

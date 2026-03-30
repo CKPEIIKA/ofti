@@ -200,7 +200,7 @@ def test_tail_process_log_stops_on_back(tmp_path: Path) -> None:
         screen,
         case_dir,
         "simpleFoam",
-        cast(subprocess.Popen[str], process),
+        cast("subprocess.Popen[str]", process),
         log_path,
         None,
     )
@@ -228,7 +228,7 @@ def test_tail_process_log_renders_residuals(tmp_path: Path) -> None:
         screen,
         case_dir,
         "simpleFoam",
-        cast(subprocess.Popen[str], process),
+        cast("subprocess.Popen[str]", process),
         log_path,
         None,
     )

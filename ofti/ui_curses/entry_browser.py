@@ -43,8 +43,7 @@ def entry_browser_screen(
     callbacks: BrowserCallbacks,
     initial_index: int | None = None,
 ) -> None:
-    """
-    Browse entries in a file with a left-hand list and right-hand preview.
+    """Browse entries in a file with a left-hand list and right-hand preview.
     """
     base_entry: str | None = None
     stack: list[tuple[str | None, list[str], int]] = []

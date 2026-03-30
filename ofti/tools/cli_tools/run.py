@@ -16,6 +16,7 @@ from typing import Any, TypedDict
 from ofti.core.case import read_number_of_subdomains
 from ofti.core.entry_io import write_entry
 from ofti.core.solver_checks import resolve_solver_name, validate_initial_fields
+from ofti.core.times import latest_time
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
 from ofti.foamlib import runner as foamlib_runner
 from ofti.foamlib.adapter import FoamlibUnavailableError
@@ -52,6 +53,11 @@ class GridAxis(TypedDict):
     values: list[str]
 
 
+def normalize_tool_name(value: str) -> str:
+    lowered = value.strip().lower()
+    return "".join(ch for ch in lowered if ch.isalnum() or ch in {"-", "_", ".", ":"})
+
+
 def tool_catalog_names(case_dir: Path) -> list[str]:
     payload = tool_catalog_payload(case_dir)
     return list(payload["tools"])
@@ -77,11 +83,35 @@ def write_tool_catalog_json(case_dir: Path, output_path: Path | None = None) -> 
 def resolve_tool(case_dir: Path, name: str) -> tuple[str, list[str]] | None:
     case_path = require_case_dir(case_dir)
     catalog = tool_catalog(case_path)
-    normalized = _normalize_name(name)
-    for display, cmd in catalog:
-        if display == name or _normalize_name(display) == normalized:
-            return display, list(cmd)
+    for query in _catalog_resolution_queries(name):
+        resolved = _resolve_tool_from_catalog(catalog, query)
+        if resolved is not None:
+            return resolved
     return None
+
+
+def catalog_command_keys(case_dir: Path) -> list[str]:
+    case_path = require_case_dir(case_dir)
+    keys: list[str] = []
+    for display, _cmd in tool_catalog(case_path):
+        normalized = normalize_tool_name(display)
+        if normalized:
+            keys.append(normalized)
+        if not display.startswith("[post] "):
+            continue
+        token = normalize_tool_name(display.removeprefix("[post] "))
+        if not token:
+            continue
+        keys.append(token)
+        keys.append(normalize_tool_name(f"post:{token}"))
+        keys.append(normalize_tool_name(f"post.{token}"))
+    return sorted(set(keys))
+
+
+def expand_command(case_dir: Path, cmd: list[str]) -> list[str]:
+    case_path = require_case_dir(case_dir)
+    latest = latest_time(case_path)
+    return [part.replace("{{latestTime}}", latest) for part in cmd]
 
 
 def solver_command(
@@ -453,8 +483,32 @@ def _requires_solver_subprocess(
 
 
 def _normalize_name(value: str) -> str:
-    lowered = value.strip().lower()
-    return "".join(ch for ch in lowered if ch.isalnum() or ch in {"-", "_", ".", ":"})
+    return normalize_tool_name(value)
+
+
+def _catalog_resolution_queries(name: str) -> list[str]:
+    normalized = normalize_tool_name(name)
+    queries = [name]
+    if normalized.startswith("post:"):
+        token = normalized.split(":", 1)[1]
+        if token:
+            queries.append(f"[post] {token}")
+    if normalized.startswith("post."):
+        token = normalized.split(".", 1)[1]
+        if token:
+            queries.append(f"[post] {token}")
+    return queries
+
+
+def _resolve_tool_from_catalog(
+    catalog: list[tuple[str, list[str]]],
+    name: str,
+) -> tuple[str, list[str]] | None:
+    normalized = normalize_tool_name(name)
+    for display, cmd in catalog:
+        if display == name or normalize_tool_name(display) == normalized:
+            return display, list(cmd)
+    return None
 
 
 def parse_matrix_axes(raw_axes: list[str], *, default_dict: str) -> list[MatrixAxis]:

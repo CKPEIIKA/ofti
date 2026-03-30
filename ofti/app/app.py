@@ -45,8 +45,7 @@ from ofti.ui_curses.viewer import Viewer
 
 
 def run_tui(case_dir: str, debug: bool = False) -> None:
-    """
-    Run the TUI on the given OpenFOAM case directory.
+    """Run the TUI on the given OpenFOAM case directory.
     """
     logging.basicConfig(
         level=logging.DEBUG if debug else logging.INFO,

@@ -1,19 +1,13 @@
 from __future__ import annotations
 
-import os
-import shlex
 from pathlib import Path
 from typing import Any
 
-from ofti.foam.config import get_config
 from ofti.tools import watch_service
 from ofti.tools.cli_tools import run as run_ops
-from ofti.tools.helpers import resolve_openfoam_bashrc
 from ofti.tools.input_prompts import prompt_command_line
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import (
-    _expand_command,
-    _expand_shell_command,
     _show_message,
     _with_no_foam_hint,
 )
@@ -101,65 +95,32 @@ def _start_background_command(
     name: str,
     cmd: list[str],
 ) -> None:
-    expanded = _expand_command(cmd, case_path)
-    wm_dir = os.environ.get("WM_PROJECT_DIR")
-    if wm_dir and get_config().use_runfunctions:
-        cmd_str = " ".join(shlex.quote(part) for part in expanded)
-        shell_cmd = f'. "{wm_dir}/bin/tools/RunFunctions"; runApplication {cmd_str}'
-        _start_background_shell(stdscr, case_path, name, shell_cmd)
-        return
-
-    bashrc = resolve_openfoam_bashrc()
-    if bashrc:
-        shell_cmd = " ".join(shlex.quote(part) for part in expanded)
-        _start_background_shell(stdscr, case_path, name, shell_cmd)
-        return
+    expanded = run_ops.expand_command(case_path, cmd)
 
     try:
-        payload = watch_service.start_payload(
+        result = run_ops.execute_case_command(
             case_path,
             name=name,
-            command=expanded,
+            cmd=expanded,
+            background=True,
             detached=True,
-            log_file=str(_log_path(case_path, name)),
-            kind="solver",
+            log_path=_log_path(case_path, name),
         )
     except ValueError as exc:
         _show_message(stdscr, _with_no_foam_hint(f"Failed to run {name}: {exc}"))
         return
+    pid = result.pid
+    if pid is None:
+        _show_message(stdscr, f"Failed to run {name}: missing background pid")
+        return
     _show_message(
         stdscr,
-        f"Started {name} (pid {payload.get('pid', '?')}).",
+        f"Started {name} (pid {pid}).",
     )
 
 
 def start_tool_background(stdscr: Any, case_path: Path, name: str, cmd: list[str]) -> None:
     _start_background_command(stdscr, case_path, name, cmd)
-
-
-def _start_background_shell(
-    stdscr: Any,
-    case_path: Path,
-    name: str,
-    shell_cmd: str,
-) -> None:
-    shell_cmd = _expand_shell_command(shell_cmd, case_path)
-    try:
-        payload = watch_service.start_payload(
-            case_path,
-            name=name,
-            command=["bash", "--noprofile", "--norc", "-c", shell_cmd],
-            detached=True,
-            log_file=str(_log_path(case_path, name)),
-            kind="solver",
-        )
-    except ValueError as exc:
-        _show_message(stdscr, _with_no_foam_hint(f"Failed to run {name}: {exc}"))
-        return
-    _show_message(
-        stdscr,
-        f"Started {name} (pid {payload.get('pid', '?')}).",
-    )
 
 
 def pause_job_screen(stdscr: Any, case_path: Path) -> None:

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class CommandKind(str, Enum):  # noqa: UP042
+class CommandKind(StrEnum):
     QUIT = "quit"
     CHECK = "check"
     TOOLS = "tools"
@@ -98,7 +98,7 @@ def _simple_command(name: str, raw: str) -> CommandAction | None:
     return CommandAction(kind, raw=raw)
 
 
-def _tool_command(  # noqa: PLR0911
+def _tool_command(
     name: str,
     raw: str,
     parts: list[str],

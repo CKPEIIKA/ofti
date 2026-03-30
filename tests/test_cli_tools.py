@@ -222,6 +222,113 @@ def test_run_parametric_cli_json(monkeypatch, capsys) -> None:
     assert payload["created_count"] == 2
 
 
+def test_run_matrix_easy_on_cpu_forces_min_poll_interval(monkeypatch, capsys) -> None:
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "parse_matrix_axes",
+        lambda _params, **_k: [{"dict_path": "system/controlDict", "entry": "application", "values": ["a"]}],
+    )
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "matrix_case_payload",
+        lambda _case, **_k: {
+            "template_case": "/case",
+            "output_root": "/set",
+            "axis_count": 1,
+            "case_count": 1,
+            "axes": [{"dict_path": "system/controlDict", "entry": "application", "values": ["a"]}],
+            "cases": [{"case": "/set/case__application-a", "values": {"application": "a"}, "created": True}],
+            "dry_run": False,
+        },
+    )
+
+    def _queue_payload(**kwargs: object) -> dict[str, object]:
+        seen.update(kwargs)
+        return {
+            "count": 1,
+            "max_parallel": 1,
+            "poll_interval": kwargs["poll_interval"],
+            "dry_run": False,
+            "planned": [],
+            "started": [],
+            "finished": [],
+            "failed_to_start": [],
+            "ok": True,
+        }
+
+    monkeypatch.setattr(cli_tools.run_ops, "queue_payload", _queue_payload)
+    code = cli_tools.main(
+        [
+            "run",
+            "matrix",
+            "/case",
+            "--param",
+            "application=a",
+            "--poll-interval",
+            "0.1",
+            "--easy-on-cpu",
+            "--json",
+        ],
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert seen["poll_interval"] == pytest.approx(1.0)
+    assert payload["queue"]["poll_interval"] == pytest.approx(1.0)
+
+
+def test_run_parametric_easy_on_cpu_forces_min_poll_interval(monkeypatch, capsys) -> None:
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "parse_sweep_values",
+        lambda _values: ["simpleFoam", "pisoFoam"],
+    )
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "parse_grid_axes",
+        lambda _axes, **_k: [],
+    )
+
+    def _parametric_case_payload(*_args: object, **kwargs: object) -> dict[str, object]:
+        seen.update(kwargs)
+        return {
+            "case": "/case",
+            "mode": "single",
+            "dict_path": "system/controlDict",
+            "entry": "application",
+            "values": ["simpleFoam", "pisoFoam"],
+            "csv_path": None,
+            "grid_axes": [],
+            "output_root": "/set",
+            "created_count": 2,
+            "created": ["/set/case_a", "/set/case_b"],
+            "run_solver": False,
+            "queue": None,
+        }
+
+    monkeypatch.setattr(cli_tools.run_ops, "parametric_case_payload", _parametric_case_payload)
+    code = cli_tools.main(
+        [
+            "run",
+            "parametric",
+            "/case",
+            "--entry",
+            "application",
+            "--values",
+            "simpleFoam,pisoFoam",
+            "--poll-interval",
+            "0.1",
+            "--easy-on-cpu",
+            "--json",
+        ],
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert seen["poll_interval"] == pytest.approx(1.0)
+    assert payload["created_count"] == 2
+
+
 def test_run_write_tool_catalog_json_default_path(tmp_path) -> None:
     case = _make_case(tmp_path / "case")
     export_path = cli_tools.run_ops.write_tool_catalog_json(case)
@@ -657,7 +764,7 @@ def test_knife_status_lightweight_flags_forwarded(monkeypatch, tmp_path, capsys)
             "knife",
             "status",
             str(case),
-            "--lightweight",
+            "--easy-on-cpu",
             "--tail-bytes",
             "4096",
         ],
@@ -667,6 +774,24 @@ def test_knife_status_lightweight_flags_forwarded(monkeypatch, tmp_path, capsys)
     assert seen["lightweight"] is True
     assert seen["tail_bytes"] == 4096
     assert "unmet_reason=window" in out
+
+
+def test_knife_status_easy_on_cpu_sets_default_tail_bytes(monkeypatch, tmp_path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+    seen: dict[str, object] = {}
+
+    def _status(case_dir: Path, **kwargs: object) -> dict[str, object]:
+        seen["case"] = case_dir
+        seen.update(kwargs)
+        return {"case": str(case_dir)}
+
+    monkeypatch.setattr(cli_tools.knife_ops, "status_payload", _status)
+    code = cli_tools.main(["knife", "status", str(case), "--easy-on-cpu", "--json"])
+
+    assert code == 0
+    assert seen["lightweight"] is True
+    assert seen["tail_bytes"] == 256 * 1024
+    assert json.loads(capsys.readouterr().out)["case"] == str(case)
 
 
 def test_knife_status_defaults_to_fast_mode(monkeypatch, tmp_path, capsys) -> None:
@@ -1187,10 +1312,13 @@ def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monk
             str(root),
             "--max-parallel",
             "1",
+            "--poll-interval",
+            "0.1",
             "--backend",
             "foamlib-async",
             "--no-prepare-parallel",
             "--clean-processors",
+            "--easy-on-cpu",
             "--json",
         ],
     )
@@ -1199,6 +1327,7 @@ def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monk
     assert seen["backend"] == "foamlib-async"
     assert seen["prepare_parallel"] is False
     assert seen["clean_processors"] is True
+    assert seen["poll_interval"] == pytest.approx(1.0)
     assert payload["backend"] == "foamlib-async"
 
 

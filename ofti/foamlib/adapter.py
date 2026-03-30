@@ -60,13 +60,13 @@ def _split_key(key: str) -> tuple[str, ...]:
 
 def _foam_file(path: Path) -> Any:
     if not FOAMLIB_AVAILABLE or FoamFile is None:
-        raise FoamlibUnavailableError()
+        raise FoamlibUnavailableError
     return FoamFile(path)
 
 
 def _foam_field_file(path: Path) -> Any:
     if not FOAMLIB_AVAILABLE or FoamFieldFile is None:
-        raise FoamlibUnavailableError()
+        raise FoamlibUnavailableError
     return FoamFieldFile(path)
 
 
@@ -82,7 +82,7 @@ def list_subkeys(file_path: Path, entry: str) -> list[str]:
         return fallback.list_subkeys(file_path, entry)
     foam_file = _foam_file(file_path)
     key_parts = _split_key(entry)
-    node = foam_file.getone(key_parts if key_parts else None)
+    node = foam_file.getone(key_parts or None)
     if node is None:
         return []
     if hasattr(node, "keys"):
@@ -95,7 +95,7 @@ def read_entry(file_path: Path, key: str) -> str:
         return fallback.read_entry(file_path, key)
     foam_file = _foam_file(file_path)
     key_parts = _split_key(key)
-    node = foam_file.getone(key_parts if key_parts else None)
+    node = foam_file.getone(key_parts or None)
     if node is None:
         raise KeyError(key)
     key_name = key_parts[-1] if key_parts else ""
@@ -107,7 +107,7 @@ def read_entry_node(file_path: Path, key: str) -> object:
         return fallback.read_entry_node(file_path, key)
     foam_file = _foam_file(file_path)
     key_parts = _split_key(key)
-    node = foam_file.getone(key_parts if key_parts else None)
+    node = foam_file.getone(key_parts or None)
     if node is None:
         raise KeyError(key)
     return node
@@ -118,7 +118,7 @@ def read_field_entry(file_path: Path, key: str) -> str:
         return fallback.read_field_entry(file_path, key)
     field_file = _foam_field_file(file_path)
     key_parts = _split_key(key)
-    node = field_file.getone(key_parts if key_parts else None)
+    node = field_file.getone(key_parts or None)
     if node is None:
         raise KeyError(key)
     key_name = key_parts[-1] if key_parts else ""
@@ -130,7 +130,7 @@ def read_field_entry_node(file_path: Path, key: str) -> object:
         return fallback.read_field_entry_node(file_path, key)
     field_file = _foam_field_file(file_path)
     key_parts = _split_key(key)
-    node = field_file.getone(key_parts if key_parts else None)
+    node = field_file.getone(key_parts or None)
     if node is None:
         raise KeyError(key)
     return node
@@ -183,12 +183,12 @@ def write_entry(file_path: Path, key: str, value: str) -> bool:
     parsed = _parse_uniform_value(cleaned)
     if parsed is not None:
         with foam_file:
-            foam_file[key_parts if key_parts else None] = parsed
+            foam_file[key_parts or None] = parsed
         return True
     if not _foamlib_can_write(cleaned):
         return False
     with foam_file:
-        foam_file[key_parts if key_parts else None] = cleaned
+        foam_file[key_parts or None] = cleaned
     return True
 
 
@@ -218,7 +218,7 @@ def write_field_entry(file_path: Path, key: str, value: str) -> bool:
     if parsed is None:
         return False
     with field_file:
-        field_file[key_parts if key_parts else None] = parsed
+        field_file[key_parts or None] = parsed
     return True
 
 
@@ -301,7 +301,7 @@ def _system_helper_for(rel_path: Path) -> Any | None:
 
 
 def _dump_entry_value(key_name: str, node: object) -> str:
-    payload = cast(Any, {key_name: node})
+    payload = cast("Any", {key_name: node})
     text = FoamFile.dumps(payload, ensure_header=False).decode().strip()
     lines = text.splitlines()
     if len(lines) == 1 and key_name:

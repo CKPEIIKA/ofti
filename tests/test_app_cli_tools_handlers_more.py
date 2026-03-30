@@ -346,7 +346,7 @@ def test_knife_new_flag_forwarding_and_new_handlers(
     assert compare_seen["files"] == ["system/controlDict,maxCoSchedule.dat"]
     capsys.readouterr()
 
-    assert cli_tools._knife_status(_ns(case_dir=Path(), fast=True, lightweight=False, tail_bytes=4096, json=True)) == 0
+    assert cli_tools._knife_status(_ns(case_dir=Path(), fast=True, easy_on_cpu=False, tail_bytes=4096, json=True)) == 0
     assert status_seen["lightweight"] is True
     assert status_seen["tail_bytes"] == 4096
     assert json.loads(capsys.readouterr().out)["case"] == "case"

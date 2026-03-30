@@ -8,30 +8,38 @@ unsafe-fixes = false
 select = [
   "C90",
   "E",
+  "W",
   "F",
   "I",
   "B",
   "C4",
   "ERA",
   "A",
+  "FA",
   "ARG",
   "COM",
   "DTZ",
+  "EXE",
   "FBT",
   "G",
+  "ICN",
+  "INP",
   "ISC",
   "N",
   "PERF",
   "PIE",
   "PTH",
+  "Q",
   "S",
   "PL",
   "RUF",
   "RET",
+  "T10",
   "TID",
   "TRY",
   "UP",
   "SIM",
+  "YTT",
 ]
 ignore = [
   "FBT",
@@ -54,7 +62,9 @@ unfixable = []
 [lint.per-file-ignores]
 "tests/*" = ["E501", "S101", "PLR2004"]
 "ofti/app/app.py" = ["C901", "PLR0912", "PLR0911", "PLR0915", "S603", "S607", "SIM105"]
+"ofti/app/cli_tools.py" = ["C901", "PLR0911"]
 "ofti/app/commands.py" = ["C901", "PLR0911", "PLR0912"]
+"ofti/app/helpers.py" = ["C901", "PLR0911", "PLR0912", "S608"]
 "ofti/foam/config.py" = ["C901", "PLR0912", "PLW0603"]
 "ofti/ui_curses/entry_browser.py" = ["C901", "PLR0912", "SIM105"]
 "ofti/app/menus/config.py" = ["C901", "PLR0912"]
@@ -62,21 +72,41 @@ unfixable = []
 "ofti/app/menus/postprocessing.py" = ["C901", "PLR0912"]
 "ofti/app/menus/simulation.py" = ["C901", "PLR0912"]
 "ofti/app/screens/check.py" = ["C901", "PLR0912"]
-"ofti/app/screens/search.py" = ["C901", "PLR0912"]
+"ofti/app/screens/editor.py" = ["S603"]
+"ofti/app/screens/search.py" = ["C901", "PLR0912", "S603"]
 "ofti/app/screens/main.py" = ["PLR0911"]
-"ofti/core/commands.py" = ["C901"]
+"ofti/core/boundary.py" = ["C901"]
+"ofti/core/case.py" = ["C901"]
+"ofti/core/commands.py" = ["C901", "PLR0911"]
 "ofti/core/entry_io.py" = ["S110"]
+"ofti/core/syntax.py" = ["C901"]
+"ofti/foam/openfoam.py" = ["C901"]
+"ofti/foam/subprocess_utils.py" = ["S603"]
 "ofti/foamlib/fallback.py" = ["C901", "PLR0912"]
 "ofti/tools/case_doctor.py" = ["PERF401"]
 "ofti/tools/cleaning_ops.py" = ["C901"]
 "ofti/tools/diagnostics.py" = ["PLR0911"]
 "ofti/tools/job_control.py" = ["E501"]
-"ofti/tools/logs_view.py" = ["PLC0415"]
-"ofti/tools/menus.py" = ["E402"]
+"ofti/tools/logs_analysis.py" = ["C901"]
+"ofti/tools/logs_fields.py" = ["PLR0911"]
+"ofti/tools/logs_view.py" = ["C901", "PLR0912", "PLC0415"]
+"ofti/tools/menus.py" = ["C901", "E402"]
+"ofti/tools/pipeline.py" = ["C901", "PLR0911", "PLR0912"]
+"ofti/tools/runner.py" = ["PLW0603"]
+"ofti/tools/solver.py" = ["C901", "PLR0912", "S603"]
+"ofti/tools/time_pruner.py" = ["C901"]
+"ofti/tools/tool_dicts_foamcalc.py" = ["C901"]
+"ofti/tools/tool_dicts_postprocess.py" = ["C901"]
+"ofti/tools/watch_service.py" = ["S603"]
 "ofti/ui_curses/boundary_matrix.py" = ["C901", "PLR0911"]
+"ofti/ui_curses/entry_editor.py" = ["C901", "PLR0912"]
 "ofti/ui_curses/help/manager.py" = ["E501"]
 "ofti/ui_curses/initial_conditions.py" = ["C901", "PLR0912"]
-"ofti/ui_curses/thermo_wizard.py" = ["B023"]
+"ofti/ui_curses/inputs.py" = ["C901", "PLR0912"]
+"ofti/ui_curses/menus.py" = ["C901", "PLR0911", "PLR0912", "S603"]
+"ofti/ui_curses/openfoam_env.py" = ["C901"]
+"ofti/ui_curses/thermo_wizard.py" = ["B023", "C901"]
+"ofti/ui_curses/viewer.py" = ["C901", "PLR0912"]
 "tests/test_tools_cleaning.py" = ["PLC0415"]
 "tests/test_tools_screens_missing.py" = ["PLC0415"]
 "tests/test_tools_workflows.py" = ["PLC0415"]

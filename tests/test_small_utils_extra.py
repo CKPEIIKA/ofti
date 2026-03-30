@@ -16,7 +16,7 @@ def test_task_running_checks_thread_status() -> None:
     state.tasks._tasks["solver"] = Task(
         name="solver",
         status="running",
-        thread=cast(Thread, types.SimpleNamespace(is_alive=lambda: True)),
+        thread=cast("Thread", types.SimpleNamespace(is_alive=lambda: True)),
     )
     assert task_utils.task_running(state, "solver") is True
 

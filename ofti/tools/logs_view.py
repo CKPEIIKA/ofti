@@ -54,7 +54,7 @@ def logs_screen(stdscr: Any, case_path: Path) -> None:
         viewer.display()
 
 
-def log_tail_screen(stdscr: Any, case_path: Path) -> None:  # noqa: C901, PLR0912
+def log_tail_screen(stdscr: Any, case_path: Path) -> None:
     log_files = sorted(case_path.glob("log.*"))
     if not log_files:
         _show_message(stdscr, "No log.* files found in case directory.")

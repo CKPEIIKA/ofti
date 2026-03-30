@@ -60,7 +60,7 @@ def test_run_current_solver_log_prompt_and_execute(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(solver, "_ensure_zero_dir", lambda *_a, **_k: True)
     monkeypatch.setattr(solver, "validate_initial_fields", lambda _case: [])
     called: list[str] = []
-    
+
     def _run_solver(*_a: object, **_k: object) -> object:
         called.append("run")
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")

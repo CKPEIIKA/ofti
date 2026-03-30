@@ -12,7 +12,7 @@ class Viewer:
         self.stdscr = stdscr
         self.content = content
 
-    def display(self) -> None:  # noqa: C901, PLR0912
+    def display(self) -> None:
         lines = self.content.splitlines()
         start_line = 0
         search_term: str | None = None

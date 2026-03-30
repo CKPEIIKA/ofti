@@ -48,7 +48,7 @@ def _with_no_foam_hint(message: str) -> str:
 
 
 def _record_last_tool(name: str, kind: str, command: list[str] | str) -> None:
-    global _LAST_TOOL_RUN  # noqa: PLW0603
+    global _LAST_TOOL_RUN
     _LAST_TOOL_RUN = LastToolRun(name=name, kind=kind, command=command)
 
 
@@ -57,7 +57,7 @@ def get_last_tool_run() -> LastToolRun | None:
 
 
 def _record_tool_status(name: str, status: str) -> None:
-    global _LAST_TOOL_STATUS  # noqa: PLW0603
+    global _LAST_TOOL_STATUS
     _LAST_TOOL_STATUS = (name, status, time.time())
 
 
@@ -92,8 +92,7 @@ def _maybe_job_hint(name: str) -> str | None:
 
 
 def _load_presets_from_path(cfg_path: Path) -> list[tuple[str, list[str]]]:
-    """
-    Load tool presets from a colon-delimited config file.
+    """Load tool presets from a colon-delimited config file.
     """
     presets: list[tuple[str, list[str]]] = []
     if not cfg_path.is_file():
@@ -123,37 +122,17 @@ def _load_presets_from_path(cfg_path: Path) -> list[tuple[str, list[str]]]:
 
 
 def _normalize_tool_name(name: str) -> str:
-    lowered = name.strip().lower()
-    return "".join(ch for ch in lowered if ch.isalnum() or ch in ("-", "_", ".", ":"))
+    from ofti.tools.cli_tools import run as run_ops
+
+    return run_ops.normalize_tool_name(name)
 
 
 def list_tool_commands(case_path: Path) -> list[str]:
-    return sorted(set(_tool_alias_keys(case_path)))
+    from ofti.tools.cli_tools import run as run_ops
 
-
-def _tool_alias_keys(case_path: Path) -> list[str]:
-    keys: list[str] = []
-
-    base_tools = [
-        ("blockMesh", ["blockMesh"]),
-        ("snappyHexMesh", ["snappyHexMesh"]),
-        ("decomposePar", ["decomposePar"]),
-        ("reconstructPar", ["reconstructPar"]),
-    ]
-    extra_tools = load_tool_presets(case_path)
-    post_tools = load_postprocessing_presets(case_path)
-
-    for name, _ in base_tools + extra_tools:
-        keys.append(_normalize_tool_name(name))
-
-    for name, _ in post_tools:
-        keys.append(_normalize_tool_name(name))
-        keys.append(_normalize_tool_name(f"post.{name}"))
-        keys.append(_normalize_tool_name(f"post:{name}"))
-
+    keys = run_ops.catalog_command_keys(case_path)
     keys.extend(_normalize_tool_name(name) for name in STATIC_TOOL_ALIAS_NAMES)
-
-    return keys
+    return sorted(set(keys))
 
 
 def _show_message(stdscr: Any, message: str) -> None:
@@ -167,8 +146,7 @@ def _show_message(stdscr: Any, message: str) -> None:
 
 
 def load_tool_presets(case_path: Path) -> list[tuple[str, list[str]]]:
-    """
-    Load extra tools from an optional per-case file `ofti.tools`.
+    """Load extra tools from an optional per-case file `ofti.tools`.
 
     Format (one per line, lines starting with # are ignored):
       name: command with args
@@ -180,8 +158,7 @@ def load_tool_presets(case_path: Path) -> list[tuple[str, list[str]]]:
 
 
 def load_postprocessing_presets(case_path: Path) -> list[tuple[str, list[str]]]:
-    """
-    Load optional post-processing commands from `ofti.postprocessing`.
+    """Load optional post-processing commands from `ofti.postprocessing`.
     Same format as `ofti.tools`.
     """
     cfg_path = case_path / "ofti.postprocessing"

@@ -118,7 +118,7 @@ def _run_fzf_live(
     state: AppState,
     entries: list[EntryRef],
 ) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.Popen(  # noqa: S603
+    proc = subprocess.Popen(
         [resolve_executable("fzf")],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,

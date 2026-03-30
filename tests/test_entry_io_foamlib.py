@@ -19,7 +19,7 @@ def test_entry_io_reads_and_lists_with_foamlib(tmp_path: Path) -> None:
     field = case_dir / "0" / "U"
     field.parent.mkdir(parents=True)
     field.write_text(
-        "FoamFile{version 2.0;format ascii;class volScalarField;location \"0\";object U;}\n"
+        'FoamFile{version 2.0;format ascii;class volScalarField;location "0";object U;}\n'
         "alpha 1.0;\n"
         "boundaryField{ inlet{ type fixedValue; value uniform 0; } }\n",
     )
@@ -40,7 +40,7 @@ def test_entry_io_write_logs_changes(tmp_path: Path) -> None:
     field = case_dir / "0" / "p"
     field.parent.mkdir(parents=True)
     field.write_text(
-        "FoamFile{version 2.0;format ascii;class volScalarField;location \"0\";object p;}\n"
+        'FoamFile{version 2.0;format ascii;class volScalarField;location "0";object p;}\n'
         "p 1;\n",
     )
 
@@ -68,7 +68,7 @@ def test_entry_io_field_helpers(tmp_path: Path) -> None:
                 "    version 2.0;",
                 "    format ascii;",
                 "    class volScalarField;",
-                "    location \"0\";",
+                '    location "0";',
                 "    object T;",
                 "}",
                 "dimensions [0 0 0 0 0 0 0];",

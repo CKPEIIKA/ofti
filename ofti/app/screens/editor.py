@@ -361,6 +361,6 @@ def open_file_in_editor(stdscr: Any, file_path: Path) -> None:
         return
 
     try:
-        subprocess.run([editor, str(file_path)], check=False)  # noqa: S603
+        subprocess.run([editor, str(file_path)], check=False)
     except OSError as exc:
         show_message(stdscr, f"Failed to open editor: {exc}")

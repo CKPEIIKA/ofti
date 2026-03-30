@@ -5,9 +5,8 @@ from contextlib import suppress
 from typing import Any
 
 
-def prompt_input(stdscr: Any, prompt: str) -> str | None:  # noqa: C901, PLR0912
-    """
-    Read a single-line input. Returns None when ESC is pressed.
+def prompt_input(stdscr: Any, prompt: str) -> str | None:
+    """Read a single-line input. Returns None when ESC is pressed.
     """
     try:
         height, width = stdscr.getmaxyx()

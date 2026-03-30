@@ -92,7 +92,7 @@ def test_global_search_screen_reports_missing_fzf(monkeypatch, tmp_path: Path) -
         stdscr=object(),
         case_path=tmp_path,
         state=AppState(),
-        browser_callbacks=cast(BrowserCallbacks, SimpleNamespace()),
+        browser_callbacks=cast("BrowserCallbacks", SimpleNamespace()),
     )
 
     assert messages == ["fzf not available (disabled or missing)."]
@@ -115,7 +115,7 @@ def test_global_search_screen_reports_parse_failures(monkeypatch, tmp_path: Path
         stdscr=object(),
         case_path=case_path,
         state=AppState(),
-        browser_callbacks=cast(BrowserCallbacks, SimpleNamespace()),
+        browser_callbacks=cast("BrowserCallbacks", SimpleNamespace()),
     )
 
     assert messages
@@ -181,13 +181,13 @@ def test_global_search_reuses_session_cache(monkeypatch, tmp_path: Path) -> None
         stdscr=screen,
         case_path=case_path,
         state=state,
-        browser_callbacks=cast(BrowserCallbacks, SimpleNamespace()),
+        browser_callbacks=cast("BrowserCallbacks", SimpleNamespace()),
     )
     search.global_search_screen(
         stdscr=screen,
         case_path=case_path,
         state=state,
-        browser_callbacks=cast(BrowserCallbacks, SimpleNamespace()),
+        browser_callbacks=cast("BrowserCallbacks", SimpleNamespace()),
     )
 
     assert calls["count"] == 1
@@ -223,7 +223,7 @@ def test_check_syntax_screen_foreground_path(monkeypatch, tmp_path: Path) -> Non
         stdscr=object(),
         case_path=case_path,
         state=state,
-        command_callbacks=cast(CommandCallbacks, SimpleNamespace()),
+        command_callbacks=cast("CommandCallbacks", SimpleNamespace()),
     )
 
     assert called["menu"] is True

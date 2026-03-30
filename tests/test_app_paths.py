@@ -5,8 +5,7 @@ from ofti.app.app import run_tui
 
 
 def test_run_tui_resolves_case_dir(tmp_path: Path) -> None:
-    """
-    Ensure that run_tui resolves the case directory so that
+    """Ensure that run_tui resolves the case directory so that
     later Path.relative_to calls do not fail when the user
     passes a relative path (e.g. 'of_example').
     """
