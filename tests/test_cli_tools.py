@@ -75,6 +75,7 @@ def test_knife_group_help_lists_new_commands(capsys) -> None:
     assert "eta" in out
     assert "report" in out
     assert "campaign" in out
+    assert "receipt" in out
 
 
 def test_run_tool_list_outputs_catalog_json(tmp_path, capsys) -> None:
