@@ -13,6 +13,7 @@ class CurrentPayload(TypedDict):
     case: str
     solver: str | None
     solver_error: str | None
+    proc_access_warning: str | None
     jobs: list[dict[str, Any]]
     jobs_total: int
     jobs_running: int
@@ -25,6 +26,7 @@ class CaseStatusPayload(TypedDict):
     case: str
     solver: str | None
     solver_error: str | None
+    proc_access_warning: str | None
     solver_status: str | None
     latest_time: float | str | None
     latest_iteration: int | None
@@ -71,6 +73,7 @@ def current_payload(
         "case": str(case_path),
         "solver": solver,
         "solver_error": solver_error,
+        "proc_access_warning": None,
         "jobs": active_jobs,
         "jobs_total": len(jobs),
         "jobs_running": running_count,
@@ -130,13 +133,14 @@ def status_payload(
     )
     latest_time_value = runtime["latest_time"]
     has_live_pids = bool(live_processes)
-    running_heuristic = has_live_pids or bool(runtime["log_fresh"])
+    running_heuristic = has_live_pids or (solver is not None and bool(runtime["log_fresh"]))
     untracked_count = untracked_running_count(untracked_live)
     running_count = len(active_jobs) + untracked_count
     return {
         "case": str(case_path),
         "solver": solver,
         "solver_error": solver_error,
+        "proc_access_warning": None,
         "solver_status": solver_status,
         "latest_time": (
             latest_time_value if latest_time_value is not None else latest_time_fn(case_path)

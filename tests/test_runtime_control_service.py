@@ -91,6 +91,22 @@ def test_runtime_control_resolve_solver_log_fallback(tmp_path: Path) -> None:
     assert missing is None
 
 
+def test_runtime_control_resolve_solver_log_prefers_hint_over_fallback(tmp_path: Path) -> None:
+    case = _make_case(tmp_path / "case")
+    fallback = case / "log.decomposePar"
+    hint = tmp_path / "dw_a8.nohup.log"
+    fallback.write_text("Time = 0\n")
+    hint.write_text("Time = 1\n")
+
+    found = svc.resolve_solver_log(
+        case,
+        "hy2Foam",
+        resolve_log_source_fn=lambda source: source / "log.decomposePar",
+        log_path_hint=hint,
+    )
+    assert found == hint.resolve()
+
+
 def test_runtime_control_enriches_live_criterion_values(tmp_path: Path) -> None:
     case = _make_case(tmp_path / "case")
     (case / "system" / "controlDict").write_text("startTime 0;\nendTime 1;\nresidualTolerance 0.05;\n")

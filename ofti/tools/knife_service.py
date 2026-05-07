@@ -53,7 +53,7 @@ def doctor_exit_code(payload: dict[str, Any]) -> int:
 
 def current_payload(case_dir: Path, *, live: bool = False) -> case_status_service.CurrentPayload:
     case_path = case_source_service.require_case_dir(case_dir)
-    return case_status_service.current_payload(
+    payload = case_status_service.current_payload(
         case_path,
         resolve_solver_name_fn=resolve_solver_name,
         refresh_jobs_fn=refresh_jobs,
@@ -61,6 +61,10 @@ def current_payload(case_dir: Path, *, live: bool = False) -> case_status_servic
         scan_proc_solver_processes_fn=_scan_proc_solver_processes,
         live=live,
     )
+    warning = process_scan_service.proc_access_warning()
+    if warning is not None:
+        payload["proc_access_warning"] = warning
+    return payload
 
 
 def current_scope_payload(
@@ -112,6 +116,7 @@ def current_scope_payload(
         "case": str(scope_root),
         "scope": "tree",
         "recursive": True,
+        "proc_access_warning": process_scan_service.proc_access_warning(),
         "cases_total": len(case_rows),
         "cases": case_rows,
         "solver": None,
@@ -434,7 +439,7 @@ def status_payload(
     tail_bytes: int | None = None,
 ) -> case_status_service.CaseStatusPayload:
     case_path = case_source_service.require_case_dir(case_dir)
-    return case_status_service.status_payload(
+    payload = case_status_service.status_payload(
         case_path,
         resolve_solver_name_fn=resolve_solver_name,
         refresh_jobs_fn=refresh_jobs,
@@ -447,6 +452,10 @@ def status_payload(
         lightweight=lightweight,
         tail_bytes=tail_bytes,
     )
+    warning = process_scan_service.proc_access_warning()
+    if warning is not None:
+        payload["proc_access_warning"] = warning
+    return payload
 
 
 def criteria_payload(
@@ -1506,11 +1515,13 @@ def _runtime_control_snapshot(
     lightweight: bool = False,
     max_log_bytes: int | None = None,
 ) -> runtime_control_service.RuntimeControlSnapshot:
+    log_path_hint = _live_stdout_log_path(case_path, solver)
     try:
         return runtime_control_service.runtime_control_snapshot(
             case_path,
             solver,
             resolve_log_source_fn=case_source_service.resolve_log_source,
+            log_path_hint=log_path_hint,
             lightweight=lightweight,
             max_log_bytes=max_log_bytes,
         )
@@ -1527,7 +1538,36 @@ def _resolve_solver_log(case_path: Path, solver: str | None) -> Path | None:
         case_path,
         solver,
         resolve_log_source_fn=case_source_service.resolve_log_source,
+        log_path_hint=_live_stdout_log_path(case_path, solver),
     )
+
+
+def _live_stdout_log_path(case_path: Path, solver: str | None) -> Path | None:
+    try:
+        rows = process_scan_service.scan_proc_solver_processes(
+            case_path,
+            solver,
+            tracked_pids=set(),
+            include_tracked=True,
+            require_case_target=True,
+        )
+    except OSError:
+        return None
+    for role in ("launcher", "solver"):
+        for row in rows:
+            if str(row.get("role")) != role:
+                continue
+            pid = int(row.get("pid", 0) or 0)
+            if pid <= 0:
+                continue
+            fd1 = Path("/proc") / str(pid) / "fd" / "1"
+            try:
+                candidate = fd1.resolve()
+            except OSError:
+                continue
+            if candidate.is_file():
+                return candidate
+    return None
 
 
 def _run_time_control_data(

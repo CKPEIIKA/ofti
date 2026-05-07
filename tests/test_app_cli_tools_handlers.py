@@ -116,12 +116,15 @@ def test_knife_preflight_status_current_and_set_plain(
             "solver_error": None,
             "solver": "simpleFoam",
             "solver_status": None,
+            "proc_access_warning": "procfs appears sandboxed via bwrap; live process discovery may be incomplete",
             "jobs_running": 0,
             "jobs_total": 1,
         },
     )
     assert cli_tools._knife_status(_ns(case_dir=Path(), json=False)) == 0
-    assert "solver_status=not tracked" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "solver_status=not tracked" in out
+    assert "proc_access_warning=" in out
 
     monkeypatch.setattr(
         cli_tools.knife_ops,
@@ -130,12 +133,14 @@ def test_knife_preflight_status_current_and_set_plain(
             "case": "case-path",
             "solver_error": None,
             "solver": "simpleFoam",
+            "proc_access_warning": "procfs appears sandboxed via bwrap; live process discovery may be incomplete",
             "jobs": [{"name": "simpleFoam", "pid": 99, "status": "running"}],
             "untracked_processes": [{"pid": 88, "solver": "simpleFoam", "command": "simpleFoam -case ."}],
         },
     )
     assert cli_tools._knife_current(_ns(case_dir=Path(), json=False)) == 0
     out = capsys.readouterr().out
+    assert "proc_access_warning=" in out
     assert "tracked_jobs:" in out
     assert "untracked_solver_processes:" in out
 

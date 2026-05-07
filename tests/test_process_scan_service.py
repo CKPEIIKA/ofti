@@ -331,3 +331,25 @@ def test_scan_processes_uses_registry_cache_for_same_pid(tmp_path: Path) -> None
     )
     assert rows_cached[0]["case"] == str(case.resolve())
     assert rows_cached[0]["discovery_source"] == "registry"
+
+
+def test_proc_access_warning_detects_sandbox_marker(tmp_path: Path) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    _write_proc_entry(
+        proc_root,
+        pid=1,
+        ppid=0,
+        cmdline=b"bwrap\x00--new-session\x00",
+        cwd=None,
+    )
+    _write_proc_entry(
+        proc_root,
+        pid=2,
+        ppid=1,
+        cmdline=b"hy2Foam\x00-parallel\x00",
+        cwd=None,
+    )
+    warning = svc.proc_access_warning(proc_root)
+    assert warning is not None
+    assert "sandboxed" in warning

@@ -427,7 +427,7 @@ def _verify_build_provenance(receipt: dict[str, Any]) -> dict[str, Any]:
 def _effective_openfoam_env(bashrc: Path | None) -> dict[str, str]:
     if bashrc is None:
         return _selected_env(os.environ)
-    shell = f'. {shlex.quote(str(bashrc))}; env'
+    shell = f". {shlex.quote(str(bashrc))}; env"
     try:
         result = run_trusted(
             ["/bin/bash", "--noprofile", "--norc", "-c", shell],
@@ -477,7 +477,7 @@ def _resolve_solver_binary_path(solver_name: str, *, bashrc: Path | None) -> Pat
         pass
     if bashrc is None:
         return None
-    shell = f'. {shlex.quote(str(bashrc))}; command -v {shlex.quote(solver_name)}'
+    shell = f". {shlex.quote(str(bashrc))}; command -v {shlex.quote(solver_name)}"
     try:
         result = run_trusted(
             ["/bin/bash", "--noprofile", "--norc", "-c", shell],

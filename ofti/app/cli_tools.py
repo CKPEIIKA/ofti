@@ -1553,6 +1553,8 @@ def _print_knife_current(payload: dict[str, object]) -> None:
         print(f"solver={payload['solver']}")
     else:
         print("solver=<mixed>")
+    if payload.get("proc_access_warning"):
+        print(f"proc_access_warning={payload['proc_access_warning']}")
     if not payload["jobs"]:
         print("No tracked running jobs.")
     else:
