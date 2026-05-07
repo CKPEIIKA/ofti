@@ -8,6 +8,7 @@ from typing import Any, TypedDict
 
 _MPI_LAUNCHERS = {"mpirun", "mpiexec", "mpiexec.hydra", "orterun", "srun"}
 _SHELL_LAUNCHERS = {"bash", "sh", "zsh", "dash", "ksh"}
+_SANDBOX_MARKERS = {"bwrap", "codex-linux-sandbox", "firejail", "flatpak-spawn"}
 _DISCOVERY_CACHE_TTL_SECONDS = 600.0
 
 
@@ -63,6 +64,26 @@ def running_job_pids(jobs: list[dict[str, Any]]) -> list[int]:
         if isinstance(pid, int) and pid > 0:
             pids.append(pid)
     return pids
+
+
+def proc_access_warning(proc_root: Path = Path("/proc")) -> str | None:
+    try:
+        entries = list(proc_root.iterdir())
+    except OSError as exc:
+        detail = exc.strerror or str(exc)
+        return f"procfs unavailable: {detail}"
+    if not entries:
+        return "procfs appears empty; live process discovery may be incomplete"
+    pid1 = proc_root / "1"
+    if not pid1.exists():
+        return "procfs missing pid 1; live process discovery may be incomplete"
+    args = read_proc_args(pid1)
+    if not args:
+        return "procfs pid 1 is unreadable; live process discovery may be incomplete"
+    base = Path(args[0]).name.lower()
+    if base in _SANDBOX_MARKERS:
+        return f"procfs appears sandboxed via {base}; live process discovery may be incomplete"
+    return None
 
 
 def scan_proc_solver_processes(

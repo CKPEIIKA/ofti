@@ -48,3 +48,29 @@ def test_case_status_lines_summary() -> None:
     assert any("runtime_control=criteria:0 pass:0 fail:0 unknown:0" in line for line in lines)
     assert any("tracked_solver_processes=1" in line for line in lines)
     assert any("untracked_solver_processes=1" in line for line in lines)
+
+
+def test_case_status_lines_include_proc_access_warning() -> None:
+    payload = {
+        "case": "/case",
+        "latest_time": 0.1,
+        "latest_iteration": 10,
+        "latest_delta_t": 1e-9,
+        "sec_per_iter": 0.2,
+        "solver_error": None,
+        "solver": "simpleFoam",
+        "solver_status": "running",
+        "proc_access_warning": "procfs appears sandboxed via bwrap; live process discovery may be incomplete",
+        "run_time_control": {"criteria": [], "passed": 0, "failed": 0, "unknown": 0},
+        "eta_seconds_to_criteria_start": None,
+        "eta_seconds_to_end_time": None,
+        "log_path": "/case/log.simpleFoam",
+        "log_fresh": True,
+        "running": True,
+        "tracked_solver_processes": [{"pid": 1}],
+        "untracked_solver_processes": [{"pid": 2}],
+        "jobs_running": 1,
+        "jobs_total": 2,
+    }
+    lines = svc.case_status_lines(payload)
+    assert any("proc_access_warning=" in line for line in lines)

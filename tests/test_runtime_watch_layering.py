@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.tools import job_control_service, runtime_control_service, watch_service
+from ofti.tools import job_control_service, knife_service, runtime_control_service, watch_service
 from ofti.tools.cli_tools import knife, watch
 
 
@@ -28,6 +28,34 @@ def test_knife_runtime_snapshot_wrapper_delegates(monkeypatch) -> None:
     assert callable(seen["resolver"])
 
 
+def test_knife_runtime_snapshot_wrapper_forwards_log_hint(monkeypatch, tmp_path: Path) -> None:
+    seen: dict[str, object] = {}
+    hint = tmp_path / "solver.log"
+    hint.write_text("Time = 1\n")
+
+    monkeypatch.setattr(knife_service, "_live_stdout_log_path", lambda _case, _solver: hint)
+
+    def _snapshot(
+        _case_path: Path,
+        _solver: str | None,
+        *,
+        resolve_log_source_fn,
+        log_path_hint,
+        lightweight: bool,
+        max_log_bytes: int | None,
+    ) -> dict[str, object]:
+        seen["resolver"] = resolve_log_source_fn
+        seen["hint"] = log_path_hint
+        seen["lightweight"] = lightweight
+        seen["max_log_bytes"] = max_log_bytes
+        return {"ok": True}
+
+    monkeypatch.setattr(runtime_control_service, "runtime_control_snapshot", _snapshot)
+    payload = knife._runtime_control_snapshot(Path("case"), "hy2Foam")
+    assert payload == {"ok": True}
+    assert seen["hint"] == hint
+
+
 def test_knife_runtime_snapshot_wrapper_forwards_lightweight(monkeypatch) -> None:
     seen: dict[str, object] = {}
 
@@ -36,12 +64,14 @@ def test_knife_runtime_snapshot_wrapper_forwards_lightweight(monkeypatch) -> Non
         _solver: str | None,
         *,
         resolve_log_source_fn,
+        log_path_hint,
         lightweight: bool,
         max_log_bytes: int | None,
     ) -> dict[str, object]:
         seen["lightweight"] = lightweight
         seen["max_log_bytes"] = max_log_bytes
         seen["resolver"] = resolve_log_source_fn
+        seen["hint"] = log_path_hint
         return {"ok": True}
 
     monkeypatch.setattr(runtime_control_service, "runtime_control_snapshot", _snapshot)

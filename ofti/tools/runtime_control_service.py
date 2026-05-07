@@ -94,10 +94,16 @@ def runtime_control_snapshot(
     solver: str | None,
     *,
     resolve_log_source_fn: Callable[[Path], Path],
+    log_path_hint: Path | None = None,
     lightweight: bool = False,
     max_log_bytes: int | None = None,
 ) -> RuntimeControlSnapshot:
-    log_path = resolve_solver_log(case_path, solver, resolve_log_source_fn=resolve_log_source_fn)
+    log_path = resolve_solver_log(
+        case_path,
+        solver,
+        resolve_log_source_fn=resolve_log_source_fn,
+        log_path_hint=log_path_hint,
+    )
     read_limit = max_log_bytes
     if read_limit is None and lightweight:
         read_limit = 2 * 1024 * 1024
@@ -159,11 +165,14 @@ def resolve_solver_log(
     solver: str | None,
     *,
     resolve_log_source_fn: Callable[[Path], Path],
+    log_path_hint: Path | None = None,
 ) -> Path | None:
     if solver:
         candidate = case_path / f"log.{solver}"
         if candidate.is_file():
             return candidate.resolve()
+    if log_path_hint is not None and log_path_hint.is_file():
+        return log_path_hint.resolve()
     try:
         return resolve_log_source_fn(case_path)
     except ValueError:

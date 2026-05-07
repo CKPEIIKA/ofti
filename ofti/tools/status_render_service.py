@@ -31,6 +31,8 @@ def case_status_lines(payload: Mapping[str, Any]) -> list[str]:
     else:
         lines.append(f"solver={payload.get('solver')}")
         lines.append(f"solver_status={payload.get('solver_status') or 'not tracked'}")
+    if payload.get("proc_access_warning"):
+        lines.append(f"proc_access_warning={payload.get('proc_access_warning')}")
     rtc = payload.get("run_time_control", {})
     lines.append(
         "runtime_control="
