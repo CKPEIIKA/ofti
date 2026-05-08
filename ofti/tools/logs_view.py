@@ -7,12 +7,17 @@ from typing import Any
 
 from ofti.core.checkmesh import extract_last_courant
 from ofti.foam.config import get_config, key_hint, key_in
-from ofti.foamlib.logs import read_log_tail_lines
+from ofti.foamlib.logs import read_log_tail_lines, read_log_text
 from ofti.tools.logs_analysis import log_analysis_screen
 from ofti.tools.logs_select import _select_log_file
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
 from ofti.ui_curses.viewer import Viewer
+
+_LOG_TAIL_POLL_MS = 500
+_LOG_TAIL_MAX_LINES = 400
+_LOG_TAIL_MAX_BYTES = 256 * 1024
+_LOG_VIEW_MAX_BYTES = 2 * 1024 * 1024
 
 
 def logs_screen(stdscr: Any, case_path: Path) -> None:
@@ -45,7 +50,7 @@ def logs_screen(stdscr: Any, case_path: Path) -> None:
         if path is None:
             continue
         try:
-            text = path.read_text()
+            text = _read_log_view_text(path)
         except OSError as exc:
             _show_message(stdscr, f"Failed to read {path.name}: {exc}")
             continue
@@ -75,11 +80,15 @@ def log_tail_screen(stdscr: Any, case_path: Path) -> None:
     path = log_files[choice]
     cfg = get_config()
     patterns = ["FATAL", "bounding", "Courant", "nan", "SIGFPE", "floating point exception"]
-    stdscr.timeout(500)
+    stdscr.timeout(_LOG_TAIL_POLL_MS)
     try:
         while True:
             try:
-                lines = read_log_tail_lines(path, max_lines=400)
+                lines = read_log_tail_lines(
+                    path,
+                    max_lines=_LOG_TAIL_MAX_LINES,
+                    max_bytes=_LOG_TAIL_MAX_BYTES,
+                )
             except OSError as exc:
                 _show_message(stdscr, f"Failed to read {path.name}: {exc}")
                 return
@@ -128,3 +137,14 @@ def log_tail_screen(stdscr: Any, case_path: Path) -> None:
                 return
     finally:
         stdscr.timeout(-1)
+
+
+def _read_log_view_text(path: Path) -> str:
+    size = path.stat().st_size
+    if size <= _LOG_VIEW_MAX_BYTES:
+        return path.read_text(encoding="utf-8", errors="ignore")
+    text = read_log_text(path, max_bytes=_LOG_VIEW_MAX_BYTES)
+    return (
+        f"[large log: showing last {_LOG_VIEW_MAX_BYTES} bytes "
+        f"of {size} bytes from {path.name}]\n\n{text}"
+    )

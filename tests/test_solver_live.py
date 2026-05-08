@@ -235,3 +235,51 @@ def test_tail_process_log_renders_residuals(tmp_path: Path) -> None:
 
     joined = "\n".join(screen.lines)
     assert "Res" in joined
+
+
+def test_tail_process_log_uses_bounded_reads_and_resets_timeout(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    log_path = case_dir / "log.simpleFoam"
+    log_path.write_text("Time = 0.1\n")
+    seen: dict[str, object] = {}
+
+    class _PollingScreen(FakeScreen):
+        def __init__(self) -> None:
+            super().__init__([ord("h")])
+            self.timeout_values: list[int] = []
+
+        def timeout(self, value: int) -> None:
+            self.timeout_values.append(value)
+            super().timeout(value)
+
+        def getyx(self):
+            return (len(self.lines), 0)
+
+    def _tail(path: Path, *, max_lines: int, max_bytes: int) -> list[str]:
+        seen["path"] = path
+        seen["max_lines"] = max_lines
+        seen["max_bytes"] = max_bytes
+        return ["Time = 0.1"]
+
+    monkeypatch.setattr("ofti.tools.solver.read_log_tail_lines", _tail)
+    screen = _PollingScreen()
+    process = FakeProcess()
+
+    _tail_process_log(
+        screen,
+        case_dir,
+        "simpleFoam",
+        cast("subprocess.Popen[str]", process),
+        log_path,
+        None,
+    )
+
+    assert seen["path"] == log_path
+    assert seen["max_lines"] == 600
+    assert seen["max_bytes"] == 256 * 1024
+    assert screen.timeout_values[0] == 400
+    assert screen.timeout_values[-1] == -1

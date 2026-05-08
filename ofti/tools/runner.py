@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ofti.core.times import latest_time
 from ofti.core.tool_output import CommandResult, format_command_result, format_log_blob
 from ofti.foam.config import get_config, key_in
 from ofti.foam.exceptions import QuitAppError
@@ -166,13 +165,15 @@ def load_postprocessing_presets(case_path: Path) -> list[tuple[str, list[str]]]:
 
 
 def _expand_command(cmd: list[str], case_path: Path) -> list[str]:
-    latest = latest_time(case_path)
-    return [part.replace("{{latestTime}}", latest) for part in cmd]
+    from ofti.tools.cli_tools import run as run_ops
+
+    return run_ops.expand_command(case_path, cmd)
 
 
 def _expand_shell_command(shell_cmd: str, case_path: Path) -> str:
-    latest = latest_time(case_path)
-    return shell_cmd.replace("{{latestTime}}", latest)
+    from ofti.tools.cli_tools import run as run_ops
+
+    return run_ops.expand_shell_command(case_path, shell_cmd)
 
 
 def _run_simple_tool(
@@ -273,23 +274,28 @@ def run_tool_command(
     *,
     status: str | None = None,
 ) -> None:
+    from ofti.tools.cli_tools import run as run_ops
+
     if status:
         status_message(stdscr, status)
+    expanded = run_ops.expand_command(case_path, cmd)
     try:
-        result = run_trusted(
-            cmd,
-            cwd=case_path,
-            capture_output=True,
-            text=True,
-            check=False,
+        result = run_ops.execute_case_command(
+            case_path,
+            name,
+            expanded,
+            background=False,
         )
     except OSError as exc:
+        _show_message(stdscr, _with_no_foam_hint(f"Failed to run {name}: {exc}"))
+        return
+    except ValueError as exc:
         _show_message(stdscr, _with_no_foam_hint(f"Failed to run {name}: {exc}"))
         return
     _write_tool_log(case_path, name, result.stdout, result.stderr)
     _record_tool_status(name, f"exit {result.returncode}")
     summary = format_command_result(
-        [f"$ cd {case_path}", f"$ {' '.join(cmd)}"],
+        [f"$ cd {case_path}", f"$ {' '.join(expanded)}"],
         CommandResult(result.returncode, result.stdout, result.stderr),
     )
     Viewer(stdscr, summary).display()
@@ -303,17 +309,22 @@ def run_tool_command_capture(
     *,
     status: str | None = None,
 ) -> CommandResult | None:
+    from ofti.tools.cli_tools import run as run_ops
+
     if status:
         status_message(stdscr, status)
+    expanded = run_ops.expand_command(case_path, cmd)
     try:
-        result = run_trusted(
-            cmd,
-            cwd=case_path,
-            capture_output=True,
-            text=True,
-            check=False,
+        result = run_ops.execute_case_command(
+            case_path,
+            name,
+            expanded,
+            background=False,
         )
     except OSError as exc:
+        _show_message(stdscr, _with_no_foam_hint(f"Failed to run {name}: {exc}"))
+        return None
+    except ValueError as exc:
         _show_message(stdscr, _with_no_foam_hint(f"Failed to run {name}: {exc}"))
         return None
     _write_tool_log(case_path, name, result.stdout, result.stderr)

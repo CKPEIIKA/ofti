@@ -5,7 +5,7 @@ from typing import Any
 
 from ofti.foam.subprocess_utils import run_trusted
 from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import _run_simple_tool, _show_message, _write_tool_log
+from ofti.tools.runner import _show_message, _write_tool_log, run_tool_command
 
 
 def _decomposed_processors(case_path: Path) -> list[Path]:
@@ -28,10 +28,20 @@ def reconstruct_manager_screen(stdscr: Any, case_path: Path) -> None:
     if choice == -1 or choice == len(options) - 1:
         return
     if choice == 0:
-        _run_simple_tool(stdscr, case_path, "reconstructPar", ["reconstructPar"])
+        run_tool_command(
+            stdscr,
+            case_path,
+            "reconstructPar",
+            ["reconstructPar"],
+            status="Running reconstructPar...",
+        )
     elif choice == 1:
-        _run_simple_tool(
-            stdscr, case_path, "reconstructPar -latestTime", ["reconstructPar", "-latestTime"],
+        run_tool_command(
+            stdscr,
+            case_path,
+            "reconstructPar -latestTime",
+            ["reconstructPar", "-latestTime"],
+            status="Running reconstructPar -latestTime...",
         )
 
 

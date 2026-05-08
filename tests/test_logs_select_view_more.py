@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import curses
+import os
 import types
 from pathlib import Path
 
@@ -72,6 +73,52 @@ def test_logs_screen_handles_none_error_and_tail_dispatch(monkeypatch: pytest.Mo
     assert "Failed to read log.missing" in messages[-1]
 
 
+def test_logs_screen_large_log_uses_bounded_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    log_path = case / "log.big"
+    log_path.write_text("tail-data\n")
+    seen: dict[str, object] = {}
+
+    choices = iter([0, 3])
+    monkeypatch.setattr(logs_view, "build_menu", lambda *_a, **_k: _Menu(next(choices)))
+    monkeypatch.setattr(logs_view, "_select_log_file", lambda *_a, **_k: log_path)
+    orig_stat = os.stat
+
+    def _stat(path: str | bytes | os.PathLike[str] | os.PathLike[bytes], *args: object, **kwargs: object) -> os.stat_result:
+        result = orig_stat(path, *args, **kwargs)
+        if Path(path) == log_path:
+            return os.stat_result(
+                (
+                    result.st_mode,
+                    result.st_ino,
+                    result.st_dev,
+                    result.st_nlink,
+                    result.st_uid,
+                    result.st_gid,
+                    logs_view._LOG_VIEW_MAX_BYTES + 1,
+                    result.st_atime,
+                    result.st_mtime,
+                    result.st_ctime,
+                ),
+            )
+        return result
+
+    monkeypatch.setattr(os, "stat", _stat)
+    monkeypatch.setattr(
+        logs_view,
+        "read_log_text",
+        lambda path, *, max_bytes: seen.update({"path": path, "max_bytes": max_bytes}) or "tail-data\n",
+    )
+    shown: list[str] = []
+    monkeypatch.setattr(logs_view.Viewer, "display", lambda self: shown.append(self.content))
+    logs_view.logs_screen(_Screen(), case)
+    assert seen["path"] == log_path
+    assert seen["max_bytes"] == logs_view._LOG_VIEW_MAX_BYTES
+    assert "large log: showing last" in shown[-1]
+    assert "tail-data" in shown[-1]
+
+
 def test_log_tail_screen_branches_and_alerts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     case = tmp_path / "case"
     case.mkdir()
@@ -129,3 +176,44 @@ def test_log_tail_screen_branches_and_alerts(monkeypatch: pytest.MonkeyPatch, tm
             super().addstr(*args)
 
     logs_view.log_tail_screen(_ErrorTailScreen(), case)
+
+
+def test_log_tail_screen_uses_bounded_reads_and_resets_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    log_path = case / "log.simpleFoam"
+    log_path.write_text("Time = 1\n")
+    seen: dict[str, object] = {}
+
+    class _BoundedScreen(_Screen):
+        def __init__(self) -> None:
+            super().__init__(keys=[ord("h")], height=12, width=80)
+            self.timeout_values: list[int] = []
+
+        def timeout(self, value: int) -> None:
+            self.timeout_values.append(value)
+            super().timeout(value)
+
+        def getyx(self) -> tuple[int, int]:
+            return (len(self.lines), 0)
+
+    def _tail(path: Path, *, max_lines: int, max_bytes: int) -> list[str]:
+        seen["path"] = path
+        seen["max_lines"] = max_lines
+        seen["max_bytes"] = max_bytes
+        return ["Time = 1"]
+
+    monkeypatch.setattr(logs_view, "get_config", lambda: types.SimpleNamespace(courant_limit=0.5, keys={"back": [ord("h")]}))
+    monkeypatch.setattr(logs_view, "key_in", lambda key, keys: key in keys)
+    monkeypatch.setattr(logs_view, "build_menu", lambda *_a, **_k: _Menu(0))
+    monkeypatch.setattr(logs_view, "read_log_tail_lines", _tail)
+    screen = _BoundedScreen()
+    logs_view.log_tail_screen(screen, case)
+    assert seen["path"] == log_path
+    assert seen["max_lines"] == logs_view._LOG_TAIL_MAX_LINES
+    assert seen["max_bytes"] == logs_view._LOG_TAIL_MAX_BYTES
+    assert screen.timeout_values[0] == logs_view._LOG_TAIL_POLL_MS
+    assert screen.timeout_values[-1] == -1

@@ -5,14 +5,10 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
-from ofti.core.tool_output import CommandResult, format_command_result
 from ofti.foam.config import get_config, key_hint, key_in
-from ofti.foam.subprocess_utils import run_trusted
 from ofti.tools.job_registry import refresh_jobs
 from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import _run_shell_tool, _run_simple_tool, _show_message, get_last_tool_run
-from ofti.ui.status import status_message
-from ofti.ui_curses.viewer import Viewer
+from ofti.tools.runner import _run_shell_tool, _show_message, get_last_tool_run, run_tool_command
 
 
 def job_status_poll_screen(stdscr: Any, case_path: Path) -> None:
@@ -77,25 +73,16 @@ def run_shell_script_screen(stdscr: Any, case_path: Path) -> None:
         return
 
     path = scripts[choice]
-    status_message(stdscr, f"Running {path.name}...")
     try:
-        result = run_trusted(
-            ["sh", str(path)],
-            cwd=case_path,
-            capture_output=True,
-            text=True,
-            check=False,
+        run_tool_command(
+            stdscr,
+            case_path,
+            path.name,
+            ["sh", path.name],
+            status=f"Running {path.name}...",
         )
     except OSError as exc:
         _show_message(stdscr, f"Failed to run {path.name}: {exc}")
-        return
-
-    summary = format_command_result(
-        [f"$ cd {case_path}", f"$ sh {path.name}"],
-        CommandResult(result.returncode, result.stdout, result.stderr),
-    )
-    viewer = Viewer(stdscr, summary)
-    viewer.display()
 
 
 def rerun_last_tool(stdscr: Any, case_path: Path) -> None:
@@ -106,4 +93,10 @@ def rerun_last_tool(stdscr: Any, case_path: Path) -> None:
     if last.kind == "shell":
         _run_shell_tool(stdscr, case_path, f"Re-run {last.name}", str(last.command))
     else:
-        _run_simple_tool(stdscr, case_path, f"Re-run {last.name}", list(last.command))
+        run_tool_command(
+            stdscr,
+            case_path,
+            f"Re-run {last.name}",
+            list(last.command),
+            status=f"Running Re-run {last.name}...",
+        )

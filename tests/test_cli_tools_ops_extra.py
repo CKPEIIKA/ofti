@@ -63,6 +63,17 @@ def test_run_resolve_tool_normalized_match(tmp_path: Path, monkeypatch: pytest.M
     assert run.resolve_tool(case, "missing") is None
 
 
+def test_run_expand_command_helpers_replace_latest_time(tmp_path: Path) -> None:
+    case = _make_case(tmp_path / "case")
+    (case / "1.5").mkdir()
+
+    expanded = run.expand_command(case, ["postProcess", "-time", "{{latestTime}}"])
+    assert expanded == ["postProcess", "-time", "1.5"]
+
+    shell_expanded = run.expand_shell_command(case, "postProcess -time {{latestTime}}")
+    assert shell_expanded == "postProcess -time 1.5"
+
+
 def test_run_solver_command_validates_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     case = _make_case(tmp_path / "case")
 

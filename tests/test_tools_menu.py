@@ -71,12 +71,26 @@ def test_run_shell_script_screen_runs_script_and_shows_output(tmp_path: Path) ->
     # Select first script, then 'q' to exit viewer.
     screen = FakeScreen(keys=[ord("\n"), ord("h")])
 
-    run_shell_script_screen(screen, case_dir)
+    def _run_script(
+        stdscr: FakeScreen,
+        _path: Path,
+        _name: str,
+        cmd: list[str],
+        **_kwargs: object,
+    ) -> None:
+        stdscr.addstr(f"$ {' '.join(cmd)}\nhello-from-script\n")
+
+    with mock.patch(
+        "ofti.tools.shell_tools.run_tool_command",
+        side_effect=_run_script,
+    ) as run:
+        run_shell_script_screen(screen, case_dir)
 
     # Expect the command and output to have been written to the screen.
     joined = "\n".join(screen.lines)
     assert "sh hello.sh" in joined
     assert "hello-from-script" in joined
+    assert run.called
 
 
 def test_run_shell_script_screen_handles_no_scripts(tmp_path: Path) -> None:
@@ -90,6 +104,28 @@ def test_run_shell_script_screen_handles_no_scripts(tmp_path: Path) -> None:
 
     joined = "\n".join(screen.lines)
     assert "No *.sh scripts found in case directory." in joined
+
+
+def test_run_shell_script_screen_forwards_to_shared_runner(tmp_path: Path) -> None:
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    script = case_dir / "hello.sh"
+    script.write_text("#!/bin/sh\necho hello\n")
+    screen = FakeScreen(keys=[ord("\n")])
+    seen: dict[str, object] = {}
+
+    def _run(_stdscr, path: Path, name: str, cmd: list[str], **kwargs: object) -> None:
+        seen["path"] = path
+        seen["name"] = name
+        seen["cmd"] = list(cmd)
+        seen["status"] = kwargs.get("status")
+
+    with mock.patch("ofti.tools.shell_tools.run_tool_command", side_effect=_run):
+        run_shell_script_screen(screen, case_dir)
+
+    assert seen["path"] == case_dir
+    assert seen["name"] == "hello.sh"
+    assert seen["cmd"] == ["sh", "hello.sh"]
 
 
 def test_tools_menu_special_hints_present() -> None:
@@ -266,7 +302,7 @@ def test_tools_screen_runs_simple_and_special_entries(tmp_path: Path, monkeypatc
     monkeypatch.setattr(menus, "build_menu", fake_build_menu)
     monkeypatch.setattr(menus, "load_tool_presets", lambda _case: [("extra", ["echo", "x"])])
     monkeypatch.setattr(menus, "load_postprocessing_presets", lambda _case: [("post1", ["echo", "p"])])
-    monkeypatch.setattr(menus, "_run_simple_tool", lambda *_a, **_k: calls.append("simple"))
+    monkeypatch.setattr(menus, "run_tool_command", lambda *_a, **_k: calls.append("simple"))
     monkeypatch.setattr(menus, "diagnostics_screen", lambda *_a, **_k: calls.append("diagnostics"))
     monkeypatch.setattr(menus.case_doctor, "case_doctor_screen", lambda *_a, **_k: calls.append("doctor"))
     monkeypatch.setattr(menus, "case_operations_screen", lambda *_a, **_k: calls.append("caseops"))

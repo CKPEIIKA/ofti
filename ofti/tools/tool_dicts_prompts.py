@@ -5,7 +5,7 @@ from typing import Any
 
 from ofti.tools.input_prompts import prompt_args_line
 from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import _run_simple_tool
+from ofti.tools.runner import run_tool_command
 from ofti.ui_curses.tool_dicts_ui import _ensure_tool_dict, _open_dict_preview
 
 
@@ -26,7 +26,7 @@ def topo_set_prompt(stdscr: Any, case_path: Path) -> None:
         return
 
     cmd = ["topoSet", *args]
-    _run_simple_tool(stdscr, case_path, "topoSet", cmd)
+    run_tool_command(stdscr, case_path, "topoSet", cmd, status="Running topoSet...")
 
 
 def set_fields_prompt(stdscr: Any, case_path: Path) -> None:
@@ -46,7 +46,7 @@ def set_fields_prompt(stdscr: Any, case_path: Path) -> None:
         return
 
     cmd = ["setFields", *args]
-    _run_simple_tool(stdscr, case_path, "setFields", cmd)
+    run_tool_command(stdscr, case_path, "setFields", cmd, status="Running setFields...")
 
 
 def tool_dicts_screen(stdscr: Any, case_path: Path) -> None:

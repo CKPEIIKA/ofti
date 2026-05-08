@@ -205,20 +205,20 @@ def test_tool_dict_prompts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     monkeypatch.setattr(foamcalc, "latest_time", lambda _case: "1")
     monkeypatch.setattr(foamcalc, "build_menu", lambda *_a, **_k: _Menu(0))
     called: list[list[str]] = []
-    monkeypatch.setattr(foamcalc, "_run_simple_tool", lambda *_a, **_k: called.append(list(_a[3])))
+    monkeypatch.setattr(foamcalc, "run_tool_command", lambda *_a, **_k: called.append(list(_a[3])))
     foamcalc.foam_calc_prompt(screen, case)
     assert called[-1] == ["foamCalc"]
 
     monkeypatch.setattr(postprocess, "_ensure_tool_dict", lambda *_a, **_k: True)
     monkeypatch.setattr(postprocess, "latest_time", lambda _case: "1")
     monkeypatch.setattr(postprocess, "build_menu", lambda *_a, **_k: _Menu(0))
-    monkeypatch.setattr(postprocess, "_run_simple_tool", lambda *_a, **_k: called.append(list(_a[3])))
+    monkeypatch.setattr(postprocess, "run_tool_command", lambda *_a, **_k: called.append(list(_a[3])))
     postprocess.post_process_prompt(screen, case)
     assert called[-1][:2] == ["postProcess", "-latestTime"]
 
     monkeypatch.setattr(prompts, "_ensure_tool_dict", lambda *_a, **_k: True)
     monkeypatch.setattr(prompts, "prompt_args_line", lambda *_a, **_k: ["-latestTime"])
-    monkeypatch.setattr(prompts, "_run_simple_tool", lambda *_a, **_k: called.append(list(_a[3])))
+    monkeypatch.setattr(prompts, "run_tool_command", lambda *_a, **_k: called.append(list(_a[3])))
     prompts.topo_set_prompt(screen, case)
     prompts.set_fields_prompt(screen, case)
     assert any(cmd[0] == "topoSet" for cmd in called)

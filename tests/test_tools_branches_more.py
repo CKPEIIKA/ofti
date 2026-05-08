@@ -79,7 +79,7 @@ def test_foamcalc_common_div_and_manual_empty(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setattr(foamcalc, "build_menu", _menu_sequence([1, 2]))
     prompt_values = iter(["U", ""])
     monkeypatch.setattr(foamcalc, "prompt_line", lambda *_a, **_k: next(prompt_values))
-    monkeypatch.setattr(foamcalc, "_run_simple_tool", lambda *_a, **_k: run_cmds.append(list(_a[3])))
+    monkeypatch.setattr(foamcalc, "run_tool_command", lambda *_a, **_k: run_cmds.append(list(_a[3])))
     foamcalc.foam_calc_prompt(screen, case)
     assert run_cmds[-1] == ["foamCalc", "div", "phi", "U", "-latestTime"]
 
@@ -95,7 +95,7 @@ def test_foamcalc_returns_when_dict_missing(tmp_path: Path, monkeypatch: pytest.
     case.mkdir()
     monkeypatch.setattr(foamcalc, "_ensure_tool_dict", lambda *_a, **_k: False)
     called: list[str] = []
-    monkeypatch.setattr(foamcalc, "_run_simple_tool", lambda *_a, **_k: called.append("run"))
+    monkeypatch.setattr(foamcalc, "run_tool_command", lambda *_a, **_k: called.append("run"))
     foamcalc.foam_calc_prompt(_Screen(), case)
     assert called == []
 
@@ -114,7 +114,7 @@ def test_postprocess_function_selection_and_missing_funcs(
     monkeypatch.setattr(postprocess, "latest_time", lambda _case: "1.0")
     monkeypatch.setattr(postprocess, "build_menu", _menu_sequence([1, 0]))
     monkeypatch.setattr(postprocess, "list_subkeys", lambda *_a, **_k: ["forces"])
-    monkeypatch.setattr(postprocess, "_run_simple_tool", lambda *_a, **_k: run_cmds.append(list(_a[3])))
+    monkeypatch.setattr(postprocess, "run_tool_command", lambda *_a, **_k: run_cmds.append(list(_a[3])))
     postprocess.post_process_prompt(screen, case)
     assert run_cmds[-1] == ["postProcess", "-latestTime", "-funcs", "(forces)"]
 
@@ -134,7 +134,7 @@ def test_postprocess_manual_defaults_and_cancel(tmp_path: Path, monkeypatch: pyt
     monkeypatch.setattr(postprocess, "latest_time", lambda _case: "2.0")
     monkeypatch.setattr(postprocess, "build_menu", _menu_sequence([2]))
     monkeypatch.setattr(postprocess, "prompt_args_line", lambda *_a, **_k: [])
-    monkeypatch.setattr(postprocess, "_run_simple_tool", lambda *_a, **_k: run_cmds.append(list(_a[3])))
+    monkeypatch.setattr(postprocess, "run_tool_command", lambda *_a, **_k: run_cmds.append(list(_a[3])))
     postprocess.post_process_prompt(_Screen(), case)
     assert run_cmds[-1] == ["postProcess", "-latestTime"]
 
@@ -226,16 +226,19 @@ def test_shell_tools_job_status_script_and_rerun(tmp_path: Path, monkeypatch: py
     monkeypatch.setattr(shell_tools, "build_menu", _menu_sequence([0]))
     monkeypatch.setattr(
         shell_tools,
-        "run_trusted",
-        lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="ok", stderr=""),
+        "run_tool_command",
+        lambda *_a, **_k: shown.append(f"$ {' '.join(_a[3])}\nok"),
     )
-    monkeypatch.setattr(shell_tools.Viewer, "display", lambda self: shown.append(self.content))
     shell_tools.run_shell_script_screen(_Screen(), case)
     assert "$ sh run.sh" in shown[-1]
 
     monkeypatch.setattr(shell_tools, "build_menu", _menu_sequence([0]))
-    monkeypatch.setattr(shell_tools, "run_trusted", lambda *_a, **_k: (_ for _ in ()).throw(OSError("boom")))
     monkeypatch.setattr(shell_tools, "_show_message", lambda *_a, **_k: shown.append(_a[1]))
+    monkeypatch.setattr(
+        shell_tools,
+        "run_tool_command",
+        lambda *_a, **_k: (_ for _ in ()).throw(OSError("boom")),
+    )
     shell_tools.run_shell_script_screen(_Screen(), case)
     assert "Failed to run" in shown[-1]
 
@@ -248,7 +251,7 @@ def test_shell_tools_job_status_script_and_rerun(tmp_path: Path, monkeypatch: py
         "get_last_tool_run",
         lambda: SimpleNamespace(name="demo", kind="simple", command=["echo", "ok"]),
     )
-    monkeypatch.setattr(shell_tools, "_run_simple_tool", lambda *_a, **_k: run_simple.append(list(_a[3])))
+    monkeypatch.setattr(shell_tools, "run_tool_command", lambda *_a, **_k: run_simple.append(list(_a[3])))
     shell_tools.rerun_last_tool(_Screen(), case)
     assert run_simple[-1] == ["echo", "ok"]
 

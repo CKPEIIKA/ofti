@@ -296,3 +296,33 @@ def test_watch_service_remaining_helper_branches(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(Path, "read_text", _raise_read)
     assert watch_service._load_watcher_preset(preset) == {"command": [], "env": {}}
+
+
+def test_watch_service_tracked_job_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    sent: list[tuple[str | None, str | None]] = []
+    finished: list[tuple[str | None, int | None, bool]] = []
+
+    monkeypatch.setattr(watch_service, "_pid_running", lambda _pid: False)
+    proc = watch_service.tracked_job_process(case, pid=123, job_id="job-1")
+    assert proc.poll() == 0
+
+    monkeypatch.setattr(
+        watch_service,
+        "stop_payload",
+        lambda *_a, **_k: sent.append((_k.get("job_id"), _k.get("signal_name"))) or {"ok": True},
+    )
+    proc = watch_service.tracked_job_process(case, pid=123, job_id="job-1")
+    proc.terminate()
+    assert sent[-1] == ("job-1", "TERM")
+
+    monkeypatch.setattr(
+        watch_service,
+        "finish_job",
+        lambda _case, job_id, status, rc: finished.append((job_id, rc, status == "stopped")),
+    )
+    watch_service.finalize_tracked_job(case, job_id="job-1", returncode=None, stopped_by_user=True)
+    watch_service.finalize_tracked_job(case, job_id="job-2", returncode=0, stopped_by_user=False)
+    assert finished[0] == ("job-1", None, True)
+    assert finished[1] == ("job-2", 0, False)
