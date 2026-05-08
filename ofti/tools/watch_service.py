@@ -6,6 +6,7 @@ import shlex
 import signal as _signal
 import subprocess
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Literal
 
@@ -467,6 +468,69 @@ def resume_payload(
             set_status_fn=_set_job_status,
         ),
     )
+
+
+class _TrackedJobProcess:
+    def __init__(self, case_path: Path, pid: int, job_id: str | None) -> None:
+        self._case_path = case_path
+        self._pid = int(pid)
+        self._job_id = job_id
+
+    def poll(self) -> int | None:
+        if _pid_running(self._pid):
+            return None
+        return 0
+
+    def terminate(self) -> None:
+        if self._job_id:
+            with suppress(Exception):
+                stop_payload(
+                    self._case_path,
+                    job_id=self._job_id,
+                    all_jobs=False,
+                    kind="any",
+                    signal_name="TERM",
+                )
+                return
+        with suppress(OSError):
+            os.kill(self._pid, signal.SIGTERM)
+
+    def wait(self, timeout: float | None = None) -> int:
+        deadline = None if timeout is None else (time.monotonic() + timeout)
+        while self.poll() is None:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(cmd=str(self._pid), timeout=timeout)
+            time.sleep(0.05)
+        return 0
+
+
+def tracked_job_process(case_dir: Path, *, pid: int, job_id: str | None) -> _TrackedJobProcess:
+    case_path = case_source_service.require_case_dir(case_dir)
+    return _TrackedJobProcess(case_path, pid, job_id)
+
+
+def finalize_tracked_job(
+    case_dir: Path,
+    *,
+    job_id: str | None,
+    returncode: int | None,
+    stopped_by_user: bool,
+) -> None:
+    case_path = case_source_service.require_case_dir(case_dir)
+    if stopped_by_user or returncode is None:
+        finish_job(case_path, job_id, "stopped", None)
+        return
+    finish_job(case_path, job_id, "finished", int(returncode))
+
+
+def _pid_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
 
 
 def external_watch_payload(

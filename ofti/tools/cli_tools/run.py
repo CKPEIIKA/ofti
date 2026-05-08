@@ -114,6 +114,12 @@ def expand_command(case_dir: Path, cmd: list[str]) -> list[str]:
     return [part.replace("{{latestTime}}", latest) for part in cmd]
 
 
+def expand_shell_command(case_dir: Path, shell_cmd: str) -> str:
+    case_path = require_case_dir(case_dir)
+    latest = latest_time(case_path)
+    return shell_cmd.replace("{{latestTime}}", latest)
+
+
 def solver_command(
     case_dir: Path,
     *,

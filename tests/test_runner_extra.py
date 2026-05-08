@@ -222,8 +222,7 @@ def test_run_tool_command_variants(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     monkeypatch.setattr(runner, "status_message", lambda _s, text: status_lines.append(text))
     monkeypatch.setattr(runner, "_show_message", lambda _s, text: shown.append(text))
     monkeypatch.setattr(
-        runner,
-        "run_trusted",
+        "ofti.tools.cli_tools.run.execute_case_command",
         lambda *_a, **_k: types.SimpleNamespace(returncode=2, stdout="a\n", stderr="b\n"),
     )
 
@@ -236,8 +235,7 @@ def test_run_tool_command_variants(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     assert captured is not None and captured.returncode == 2
 
     monkeypatch.setattr(
-        runner,
-        "run_trusted",
+        "ofti.tools.cli_tools.run.execute_case_command",
         lambda *_a, **_k: (_ for _ in ()).throw(OSError("oops")),
     )
     assert runner.run_tool_command_capture(screen, case, "demo", ["echo", "1"]) is None

@@ -3,9 +3,6 @@ from __future__ import annotations
 import curses
 import os
 import shutil
-import signal
-import subprocess
-import time
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -34,7 +31,6 @@ from ofti.tools.cleaning_utils import _require_wm_project_dir
 from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.helpers import resolve_openfoam_bashrc
 from ofti.tools.input_prompts import prompt_line
-from ofti.tools.job_registry import finish_job
 from ofti.tools.runner import (
     _expand_shell_command,
     _show_message,
@@ -43,6 +39,9 @@ from ofti.tools.runner import (
 from ofti.ui_curses.viewer import Viewer
 
 require_wm_project_dir = _require_wm_project_dir
+_LIVE_TAIL_POLL_MS = 400
+_LIVE_TAIL_MAX_LINES = 600
+_LIVE_TAIL_MAX_BYTES = 256 * 1024
 
 
 def run_current_solver(stdscr: Any, case_path: Path) -> None:
@@ -157,40 +156,6 @@ def run_current_solver_parallel(stdscr: Any, case_path: Path) -> None:
     _run_solver_live_cmd(stdscr, case_path, solver, cmd)
 
 
-class _TrackedJobProcess:
-    def __init__(self, case_path: Path, pid: int, job_id: str | None) -> None:
-        self._case_path = case_path
-        self._pid = int(pid)
-        self._job_id = job_id
-
-    def poll(self) -> int | None:
-        if _pid_running(self._pid):
-            return None
-        return 0
-
-    def terminate(self) -> None:
-        if self._job_id:
-            with suppress(Exception):
-                watch_service.stop_payload(
-                    self._case_path,
-                    job_id=self._job_id,
-                    all_jobs=False,
-                    kind="any",
-                    signal_name="TERM",
-                )
-                return
-        with suppress(OSError):
-            os.kill(self._pid, signal.SIGTERM)
-
-    def wait(self, timeout: float | None = None) -> int:
-        deadline = None if timeout is None else (time.monotonic() + timeout)
-        while self.poll() is None:
-            if deadline is not None and time.monotonic() >= deadline:
-                raise subprocess.TimeoutExpired(cmd=str(self._pid), timeout=timeout)
-            time.sleep(0.05)
-        return 0
-
-
 def _run_solver_live_shell(
     stdscr: Any,
     case_path: Path,
@@ -239,7 +204,7 @@ def _run_solver_live_cmd(
         return
     job_id_raw = payload.get("job_id")
     job_id = str(job_id_raw).strip() if job_id_raw is not None else ""
-    process = _TrackedJobProcess(case_path, pid, job_id or None)
+    process = watch_service.tracked_job_process(case_path, pid=pid, job_id=job_id or None)
     _tail_process_log(
         stdscr,
         case_path,
@@ -300,12 +265,16 @@ def _tail_process_log(
 ) -> None:
     cfg = get_config()
     patterns = ["FATAL", "bounding", "Courant", "nan", "SIGFPE", "floating point exception"]
-    stdscr.timeout(400)
+    stdscr.timeout(_LIVE_TAIL_POLL_MS)
     stopped_by_user = False
     try:
         while True:
             try:
-                lines = read_log_tail_lines(log_path, max_lines=600)
+                lines = read_log_tail_lines(
+                    log_path,
+                    max_lines=_LIVE_TAIL_MAX_LINES,
+                    max_bytes=_LIVE_TAIL_MAX_BYTES,
+                )
             except OSError:
                 lines = []
             tail = lines[-12:]
@@ -376,10 +345,12 @@ def _tail_process_log(
                 return
     finally:
         returncode = process.poll()
-        if stopped_by_user or returncode is None:
-            finish_job(case_path, job_id, "stopped", None)
-        else:
-            finish_job(case_path, job_id, "finished", int(returncode))
+        watch_service.finalize_tracked_job(
+            case_path,
+            job_id=job_id,
+            returncode=returncode,
+            stopped_by_user=stopped_by_user,
+        )
         stdscr.timeout(-1)
 
 
@@ -416,16 +387,6 @@ def _resolve_mpi_launcher(stdscr: Any) -> str | None:
         except FileNotFoundError as exc:
             _show_message(stdscr, _with_no_foam_hint(f"MPI launcher not found: {exc}"))
             return None
-
-
-def _pid_running(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
 
 
 def _clean_env(case_path: Path) -> dict[str, str]:

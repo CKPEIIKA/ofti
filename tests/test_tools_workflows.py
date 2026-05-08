@@ -92,10 +92,10 @@ def test_run_tool_by_name_dispatches_simple_tool(tmp_path: Path, monkeypatch) ->
     screen = FakeScreen()
     called: list[tuple[str, list[str]]] = []
 
-    def fake_run_simple(_stdscr, _case, name: str, cmd: list[str], **_kwargs: object) -> None:
+    def fake_run_tool(_stdscr, _case, name: str, cmd: list[str], **_kwargs: object) -> None:
         called.append((name, list(cmd)))
 
-    monkeypatch.setattr("ofti.tools.menus._run_simple_tool", fake_run_simple)
+    monkeypatch.setattr("ofti.tools.menus.run_tool_command", fake_run_tool)
 
     assert run_tool_by_name(screen, case_dir, "blockMesh") is True
     assert called == [("blockMesh", ["blockMesh"])]
@@ -126,10 +126,10 @@ def test_post_process_prompt_runs_default_args(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setattr(curses, "echo", lambda: None)
     monkeypatch.setattr(curses, "noecho", lambda: None)
 
-    def fake_run_simple(_stdscr, _case, name, _cmd):
+    def fake_run_simple(_stdscr, _case, name, _cmd, **_kwargs: object):
         screen.addstr(name)
 
-    monkeypatch.setattr("ofti.tools.tool_dicts_postprocess._run_simple_tool", fake_run_simple)
+    monkeypatch.setattr("ofti.tools.tool_dicts_postprocess.run_tool_command", fake_run_simple)
 
     post_process_prompt(screen, case_dir)
 
@@ -145,10 +145,10 @@ def test_foam_calc_prompt_runs_args(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(curses, "echo", lambda: None)
     monkeypatch.setattr(curses, "noecho", lambda: None)
 
-    def fake_run_simple(_stdscr, _case, name, _cmd):
+    def fake_run_simple(_stdscr, _case, name, _cmd, **_kwargs: object):
         screen.addstr(name)
 
-    monkeypatch.setattr("ofti.tools.tool_dicts_foamcalc._run_simple_tool", fake_run_simple)
+    monkeypatch.setattr("ofti.tools.tool_dicts_foamcalc.run_tool_command", fake_run_simple)
 
     foam_calc_prompt(screen, case_dir)
 

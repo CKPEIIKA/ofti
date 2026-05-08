@@ -259,26 +259,21 @@ def test_shell_and_reconstruct_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     script = case / "run.sh"
     script.write_text("echo ok\n")
     monkeypatch.setattr(shell_tools, "build_menu", lambda *_a, **_k: _Menu(0))
+
+    def _run_ok(_screen: object, _case: Path, _name: str, cmd: list[str], **_kwargs: object) -> None:
+        viewed.append(f"$ {' '.join(cmd)}\nok\n")
+
     monkeypatch.setattr(
         shell_tools,
-        "run_trusted",
-        lambda *_a, **_k: types.SimpleNamespace(returncode=0, stdout="ok\n", stderr=""),
+        "run_tool_command",
+        _run_ok,
     )
-
-    class _Viewer:
-        def __init__(self, _s: object, text: str) -> None:
-            viewed.append(text)
-
-        def display(self) -> None:
-            return None
-
-    monkeypatch.setattr(shell_tools, "Viewer", _Viewer)
     shell_tools.run_shell_script_screen(screen, case)
     assert viewed and "sh run.sh" in viewed[-1]
 
     monkeypatch.setattr(
         shell_tools,
-        "run_trusted",
+        "run_tool_command",
         lambda *_a, **_k: (_ for _ in ()).throw(OSError("boom")),
     )
     shell_tools.run_shell_script_screen(screen, case)
@@ -304,7 +299,7 @@ def test_shell_and_reconstruct_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         lambda: types.SimpleNamespace(name="demo", kind="simple", command=["echo", "1"]),
     )
     called_simple: list[list[str]] = []
-    monkeypatch.setattr(shell_tools, "_run_simple_tool", lambda *_a, **_k: called_simple.append(list(_a[3])))
+    monkeypatch.setattr(shell_tools, "run_tool_command", lambda *_a, **_k: called_simple.append(list(_a[3])))
     shell_tools.rerun_last_tool(screen, case)
     assert called_simple[-1] == ["echo", "1"]
 
@@ -315,6 +310,6 @@ def test_shell_and_reconstruct_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     (case / "processor0").mkdir()
     monkeypatch.setattr(reconstruct, "build_menu", lambda *_a, **_k: _Menu(1))
     rec_calls: list[list[str]] = []
-    monkeypatch.setattr(reconstruct, "_run_simple_tool", lambda *_a, **_k: rec_calls.append(list(_a[3])))
+    monkeypatch.setattr(reconstruct, "run_tool_command", lambda *_a, **_k: rec_calls.append(list(_a[3])))
     reconstruct.reconstruct_manager_screen(screen, case)
     assert rec_calls[-1] == ["reconstructPar", "-latestTime"]

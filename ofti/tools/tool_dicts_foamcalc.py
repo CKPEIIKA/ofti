@@ -6,7 +6,7 @@ from typing import Any
 from ofti.core.times import latest_time
 from ofti.tools.input_prompts import prompt_args_line, prompt_line
 from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import _run_simple_tool, _show_message
+from ofti.tools.runner import _show_message, run_tool_command
 from ofti.ui_curses.tool_dicts_ui import _ensure_tool_dict
 
 
@@ -39,7 +39,13 @@ def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:
         if choice in (-1, len(options) - 1):
             return
         if choice == 0:
-            _run_simple_tool(stdscr, case_path, "foamCalc", ["foamCalc"])
+            run_tool_command(
+                stdscr,
+                case_path,
+                "foamCalc",
+                ["foamCalc"],
+                status="Running foamCalc...",
+            )
             return
         if choice == 1:
             ops = ["mag", "grad", "div", "Back"]
@@ -65,7 +71,13 @@ def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:
                     continue
                 flux = flux or "phi"
                 cmd = ["foamCalc", op, flux, field, "-latestTime"]
-            _run_simple_tool(stdscr, case_path, f"foamCalc {op}", cmd)
+            run_tool_command(
+                stdscr,
+                case_path,
+                f"foamCalc {op}",
+                cmd,
+                status=f"Running foamCalc {op}...",
+            )
             return
         if choice == 2:
             stdscr.clear()
@@ -78,5 +90,11 @@ def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:
                 _show_message(stdscr, "No arguments provided for foamCalc.")
                 continue
             cmd = ["foamCalc", *args]
-            _run_simple_tool(stdscr, case_path, "foamCalc", cmd)
+            run_tool_command(
+                stdscr,
+                case_path,
+                "foamCalc",
+                cmd,
+                status="Running foamCalc...",
+            )
             return

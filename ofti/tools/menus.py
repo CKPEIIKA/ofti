@@ -35,12 +35,12 @@ from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import (
     _no_foam_active,
-    _run_simple_tool,
     _show_message,
     get_last_tool_run,
     last_tool_status_line,
     load_postprocessing_presets,
     load_tool_presets,
+    run_tool_command,
     tool_status_mode,
 )
 from ofti.tools.tool_aliases import STATIC_TOOL_ALIAS_GROUPS
@@ -115,7 +115,13 @@ def run_tool_by_name(
                 command,
             )
             return True
-        _run_simple_tool(stdscr, case_path, display_name, command)
+        run_tool_command(
+            stdscr,
+            case_path,
+            display_name,
+            command,
+            status=f"Running {display_name}...",
+        )
         return True
 
     aliases = _tool_aliases(stdscr, case_path)
@@ -379,7 +385,7 @@ def tools_screen(
         simple_index = choice - 1
         if 0 <= simple_index < len(simple_tools):
             name, cmd = simple_tools[simple_index]
-            _run_simple_tool(stdscr, case_path, name, cmd)
+            run_tool_command(stdscr, case_path, name, cmd, status=f"Running {name}...")
             continue
 
         special_index = choice - 1 - len(simple_tools)

@@ -7,7 +7,7 @@ from ofti.core.entry_io import list_subkeys
 from ofti.core.times import latest_time
 from ofti.tools.input_prompts import prompt_args_line
 from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import _run_simple_tool, _show_message
+from ofti.tools.runner import _show_message, run_tool_command
 from ofti.ui_curses.tool_dicts_ui import _ensure_tool_dict
 
 
@@ -40,7 +40,13 @@ def post_process_prompt(stdscr: Any, case_path: Path) -> None:
         if choice in (-1, len(options) - 1):
             return
         if choice == 0:
-            _run_simple_tool(stdscr, case_path, "postProcess", ["postProcess", "-latestTime"])
+            run_tool_command(
+                stdscr,
+                case_path,
+                "postProcess",
+                ["postProcess", "-latestTime"],
+                status="Running postProcess...",
+            )
             return
         if choice == 1:
             dict_path = case_path / "system" / "postProcessDict"
@@ -60,7 +66,13 @@ def post_process_prompt(stdscr: Any, case_path: Path) -> None:
                 continue
             func = funcs[func_choice]
             cmd = ["postProcess", "-latestTime", "-funcs", f"({func})"]
-            _run_simple_tool(stdscr, case_path, "postProcess", cmd)
+            run_tool_command(
+                stdscr,
+                case_path,
+                "postProcess",
+                cmd,
+                status="Running postProcess...",
+            )
             return
         if choice == 2:
             stdscr.clear()
@@ -72,5 +84,11 @@ def post_process_prompt(stdscr: Any, case_path: Path) -> None:
             if not args:
                 args = ["-latestTime"]
             cmd = ["postProcess", *args]
-            _run_simple_tool(stdscr, case_path, "postProcess", cmd)
+            run_tool_command(
+                stdscr,
+                case_path,
+                "postProcess",
+                cmd,
+                status="Running postProcess...",
+            )
             return

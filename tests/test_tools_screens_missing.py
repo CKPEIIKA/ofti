@@ -187,7 +187,7 @@ def test_time_pruner_and_setfields(monkeypatch, tmp_path: Path) -> None:
 
     (case_dir / "system").mkdir(exist_ok=True)
     (case_dir / "system" / "setFieldsDict").write_text("defaultFieldValues();\n")
-    monkeypatch.setattr("ofti.tools.tool_dicts_prompts._run_simple_tool", lambda *_: None)
+    monkeypatch.setattr("ofti.tools.tool_dicts_prompts.run_tool_command", lambda *_a, **_k: None)
     monkeypatch.setattr("ofti.tools.tool_dicts_prompts.prompt_args_line", lambda *_: [])
     set_fields_prompt(FakeScreen(), case_dir)
 
@@ -266,7 +266,7 @@ def test_reconstruct_and_parallel_screens(monkeypatch, tmp_path: Path) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
     (case_dir / "processor0").mkdir()
-    monkeypatch.setattr("ofti.tools.reconstruct._run_simple_tool", lambda *_: None)
+    monkeypatch.setattr("ofti.tools.reconstruct.run_tool_command", lambda *_a, **_k: None)
     monkeypatch.setattr("ofti.ui_curses.menus.Menu.navigate", lambda *_: 0)
     reconstruct.reconstruct_manager_screen(FakeScreen(), case_dir)
 

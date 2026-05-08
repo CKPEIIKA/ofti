@@ -290,6 +290,7 @@ def test_shell_tools_job_status_and_back_choice(monkeypatch: pytest.MonkeyPatch,
     script = case / "run.sh"
     script.write_text("echo ok\n")
     monkeypatch.setattr(shell_tools, "build_menu", lambda *_a, **_k: _Menu(1))
+    monkeypatch.setattr(shell_tools, "run_tool_command", lambda *_a, **_k: None)
     shell_tools.run_shell_script_screen(screen, case)
 
 
@@ -383,9 +384,13 @@ def test_solver_run_live_shell_cmd_and_tail_finish(monkeypatch: pytest.MonkeyPat
         def wait(self, timeout: float | None = None) -> None:
             _ = timeout
 
-    finished: list[tuple[str | None, str, int | None]] = []
+    finished: list[tuple[str | None, int | None, bool]] = []
     monkeypatch.setattr(solver, "read_log_tail_lines", lambda *_a, **_k: (_ for _ in ()).throw(OSError("x")))
-    monkeypatch.setattr(solver, "finish_job", lambda _c, job_id, status, rc: finished.append((job_id, status, rc)))
+    monkeypatch.setattr(
+        solver.watch_service,
+        "finalize_tracked_job",
+        lambda _c, *, job_id, returncode, stopped_by_user: finished.append((job_id, returncode, stopped_by_user)),
+    )
     monkeypatch.setattr(solver, "fatal_log_line", lambda _lines: "FATAL: boom")
     monkeypatch.setattr(solver, "residual_spark_lines", lambda _lines, _width: ["res"])
     solver._tail_process_log(
@@ -396,5 +401,5 @@ def test_solver_run_live_shell_cmd_and_tail_finish(monkeypatch: pytest.MonkeyPat
         case / "log.simpleFoam",
         "job-9",
     )
-    assert finished[-1] == ("job-9", "finished", 2)
+    assert finished[-1] == ("job-9", 2, False)
     assert screen.timeout_value == -1
