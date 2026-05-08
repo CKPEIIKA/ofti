@@ -103,6 +103,9 @@ ofti run tool -h
 Most commands support `--json` for machine-readable output.
 For streaming tails (`watch log --follow` / `watch attach`), JSON is only for
 non-follow mode.
+Use `--easy-on-cpu` when you want bounded log reads and slower polling to keep
+watch/status commands lighter on busy systems. The hidden legacy alias
+`--lightweight` still works for compatibility.
 
 Examples:
 
@@ -120,6 +123,7 @@ ofti watch pause CASE --all
 ofti watch resume CASE --all
 ofti watch stop CASE --signal TERM
 ofti watch log CASE --lines 80 --json
+ofti watch log CASE --follow --easy-on-cpu
 ofti run tool --list --case CASE --json
 ofti run solver CASE --dry-run --json
 ofti run solver CASE --write-receipt --json
@@ -131,7 +135,7 @@ ofti run parametric CASE --entry application --values simpleFoam,pisoFoam --json
 ofti run parametric CASE --csv studies/parametric.csv --run-solver --max-parallel 4 --json
 ofti run parametric CASE --grid-axis application=simpleFoam,pisoFoam --grid-axis transport:nu=1e-5,2e-5 --json
 ofti run queue --set CASE_SET --glob 'case_*' --max-parallel 6 --backend foamlib-async --json
-ofti run status --set CASE_SET --fast --json
+ofti run status --set CASE_SET --fast --easy-on-cpu --json
 ```
 
 ### Knife Workflows (New)
@@ -173,8 +177,9 @@ Runtime criteria now respect explicit runTimeControl gate messages in logs:
 - `Conditions not met` prevents premature auto-pass from numeric-only checks.
 - Criteria stay `unknown`/unmet until gate lines report conditions are met.
 
-For very large logs, analysis/tail commands read recent log windows to stay
-responsive.
+For very large logs, analysis/tail paths use bounded recent log windows to stay
+responsive, and the TUI log viewer falls back to a bounded tail view for very
+large files.
 
 Run receipts for reproducible runs:
 
@@ -208,7 +213,8 @@ External watcher integration (for example `scripts/oftools/ofwatch`) is
 expected to run through tool presets in `ofti.tools` and can be executed with
 `ofti run tool <name> --case CASE`.
 
-More command-level examples: `docs/knife_tools.md`
+For command-level details, prefer built-in help such as `ofti knife -h`,
+`ofti watch -h`, and `ofti run -h`.
 
 ## UNIX CLI CONTRACT
 
