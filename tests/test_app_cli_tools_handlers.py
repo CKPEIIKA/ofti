@@ -28,6 +28,13 @@ def test_main_catches_value_error(monkeypatch: pytest.MonkeyPatch, capsys: pytes
     assert "ofti: bad args" in capsys.readouterr().err
 
 
+def test_main_rejects_conflicting_output_modes(capsys: pytest.CaptureFixture[str]) -> None:
+    code = cli_tools.main(["plot", "metrics", "--json", "--table"])
+
+    assert code == 2
+    assert "--json and --table cannot be used together" in capsys.readouterr().err
+
+
 def test_knife_doctor_plain_formats_errors_and_warnings(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -88,6 +95,40 @@ def test_knife_compare_plain_no_diffs_and_with_error(
     code = cli_tools._knife_compare(_ns(left_case=Path("a"), right_case=Path("b"), json=False))
     assert code == 0
     assert "error: parse failed" in capsys.readouterr().out
+
+
+def test_knife_compare_table_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "compare_payload",
+        lambda *_a, **_k: {
+            "left_case": "a",
+            "right_case": "b",
+            "diff_count": 1,
+            "flat": False,
+            "diffs": [
+                {
+                    "rel_path": "system/controlDict",
+                    "kind": "dict",
+                    "missing_in_left": ["endTime"],
+                    "missing_in_right": [],
+                    "value_diffs": [{"key": "application", "left": "a", "right": "b"}],
+                    "error": None,
+                },
+            ],
+        },
+    )
+
+    code = cli_tools._knife_compare(
+        _ns(left_case=Path("a"), right_case=Path("b"), flat=False, files=[], raw_hash=False, json=False, table=True),
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Diffs" in out
+    assert "system/controlDict" in out
 
 
 def test_knife_preflight_status_current_and_set_plain(
@@ -153,6 +194,223 @@ def test_knife_preflight_status_current_and_set_plain(
     assert "ok=False" in capsys.readouterr().out
 
 
+def test_readonly_handlers_support_table_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "status_payload",
+        lambda *_a, **_k: {
+            "case": "case-path",
+            "solver": "simpleFoam",
+            "solver_error": None,
+            "solver_status": "running",
+            "running": True,
+            "latest_time": 1.0,
+            "latest_iteration": 2,
+            "latest_delta_t": 0.1,
+            "sec_per_iter": 0.2,
+            "run_time_control": {"criteria": [], "passed": 0, "failed": 0, "unknown": 0},
+            "eta_seconds_to_criteria_start": None,
+            "eta_seconds_to_end_time": 10,
+            "log_path": "log.simpleFoam",
+            "log_fresh": True,
+            "jobs_running": 1,
+            "jobs_total": 1,
+            "tracked_solver_processes": [],
+            "untracked_solver_processes": [],
+        },
+    )
+    assert cli_tools._knife_status(_ns(case_dir=Path(), json=False, table=True)) == 0
+    out = capsys.readouterr().out
+    assert "Key" in out
+    assert "Runtime control" in out
+
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "current_payload",
+        lambda *_a, **_k: {
+            "case": "case-path",
+            "solver": "simpleFoam",
+            "solver_error": None,
+            "proc_access_warning": None,
+            "jobs_running": 1,
+            "jobs_total": 1,
+            "jobs_tracked_running": 1,
+            "jobs_registry_running": 1,
+            "jobs": [{"id": "j1", "name": "simpleFoam", "pid": 42, "status": "running"}],
+            "untracked_processes": [],
+        },
+    )
+    assert cli_tools._knife_current(_ns(case_dir=Path(), json=False, table=True)) == 0
+    out = capsys.readouterr().out
+    assert "Tracked jobs" in out
+    assert "j1" in out
+
+    monkeypatch.setattr(
+        cli_tools.watch_ops,
+        "jobs_payload",
+        lambda *_a, **_k: {
+            "case": "case-path",
+            "kind": "any",
+            "count": 1,
+            "jobs": [{"id": "j1", "kind": "solver", "pid": 42, "status": "running"}],
+        },
+    )
+    assert cli_tools._watch_jobs(_ns(case_dir=Path(), all=False, kind="any", json=False, table=True)) == 0
+    assert "Jobs" in capsys.readouterr().out
+
+
+def test_campaign_handlers_support_table_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    status_row = {
+        "case": "case_1",
+        "running": True,
+        "criteria_met": 1,
+        "criteria_total": 2,
+        "criteria_worst_ratio": 0.5,
+        "latest_time": 10,
+        "eta_seconds": 20,
+    }
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "campaign_list_payload",
+        lambda *_a, **_k: {"case": "root", "glob": "*", "summary_csv": None, "count": 1, "cases": ["case_1"]},
+    )
+    assert cli_tools._knife_campaign_list(_ns(case_dir=Path(), glob="*", summary_csv=None, json=False, table=True)) == 0
+    out = capsys.readouterr().out
+    assert "Cases" in out
+    assert "case_1" in out
+
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "campaign_status_payload",
+        lambda *_a, **_k: {"case": "root", "glob": "*", "summary_csv": None, "count": 1, "cases": [status_row]},
+    )
+    args = _ns(case_dir=Path(), glob="*", summary_csv=None, tail_bytes=10, json=False, table=True)
+    assert cli_tools._knife_campaign_status(args) == 0
+    out = capsys.readouterr().out
+    assert "Worst" in out
+    assert "case_1" in out
+
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "campaign_rank_payload",
+        lambda *_a, **_k: {
+            "case": "root",
+            "by": "convergence",
+            "glob": "*",
+            "summary_csv": None,
+            "count": 1,
+            "ranked": [status_row],
+        },
+    )
+    args = _ns(case_dir=Path(), by="convergence", glob="*", summary_csv=None, tail_bytes=10, json=False, table=True)
+    assert cli_tools._knife_campaign_rank(args) == 0
+    out = capsys.readouterr().out
+    assert "Ranked cases" in out
+    assert "case_1" in out
+
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "campaign_compare_payload",
+        lambda *_a, **_k: {
+            "case": "root",
+            "group_by": "speed",
+            "group_count": 1,
+            "groups": {"fast": ["case_1"]},
+            "comparisons": [],
+        },
+    )
+    args = _ns(case_dir=Path(), group_by="speed", glob="*", summary_csv=None, json=False, table=True)
+    assert cli_tools._knife_campaign_compare(args) == 0
+    out = capsys.readouterr().out
+    assert "Groups" in out
+    assert "fast" in out
+
+
+def test_initials_converge_stability_support_table_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "initials_payload",
+        lambda _case: {
+            "case": "case-path",
+            "initial_dir": "0",
+            "field_count": 1,
+            "patch_count": 1,
+            "fields": [
+                {
+                    "name": "U",
+                    "internal_field": "uniform (1 0 0)",
+                    "boundary": {"inlet": {"type": "fixedValue", "name": "U"}},
+                },
+            ],
+            "failed": [],
+        },
+    )
+    assert cli_tools._knife_initials(_ns(case_dir=Path(), json=False, table=True)) == 0
+    out = capsys.readouterr().out
+    assert "Boundary conditions" in out
+    assert "fixedValue" in out
+
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "converge_payload",
+        lambda *_a, **_k: {
+            "log": "log.simpleFoam",
+            "strict": False,
+            "strict_ok": True,
+            "ok": True,
+            "shock": {"drift": 0.01, "limit": 0.02, "ok": True},
+            "drag": {"band": 0.01, "limit": 0.02, "ok": True},
+            "mass": {"last_abs_global": 1e-5, "limit": 1e-4, "ok": True},
+            "residuals": {"flatline": False, "flatline_fields": []},
+            "thermo": {"out_of_range_count": 0, "ok": True},
+        },
+    )
+    args = _ns(
+        source=Path(),
+        strict=False,
+        shock_drift_limit=0.02,
+        drag_band_limit=0.02,
+        mass_limit=1e-4,
+        json=False,
+        table=True,
+    )
+    assert cli_tools._knife_converge(args) == 0
+    assert "Checks" in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        cli_tools.knife_ops,
+        "stability_payload",
+        lambda *_a, **_k: {
+            "log": "log.simpleFoam",
+            "pattern": "Cd",
+            "count": 10,
+            "window": 8,
+            "window_delta": 0.01,
+            "tolerance": 0.02,
+            "comparator": "le",
+            "latest": 0.41,
+            "status": "pass",
+            "unmet_reason": None,
+            "eta_seconds": 0,
+        },
+    )
+    args = _ns(source=Path(), pattern="Cd", tolerance=0.02, window=8, startup_samples=0, comparator="le", json=False, table=True)
+    assert cli_tools._knife_stability(args) == 0
+    out = capsys.readouterr().out
+    assert "status" in out
+    assert "pass" in out
+    assert "eta_seconds" in out
+
+
 def test_plot_handlers_error_and_empty_residuals(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -206,6 +464,68 @@ def test_plot_handlers_success_and_json(
     monkeypatch.setattr(cli_tools.plot_ops, "residuals_payload", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad residuals")))
     assert cli_tools._plot_residuals(_ns(source=Path(), field=[], limit=0, json=False)) == 1
     assert "ofti: bad residuals" in capsys.readouterr().err
+
+
+def test_plot_handlers_support_table_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli_tools.plot_ops,
+        "metrics_payload",
+        lambda _source: {
+            "log": "log.simpleFoam",
+            "times": {"count": 2, "last": 0.2},
+            "courant": {"count": 2, "max": 0.8},
+            "execution_time": {"count": 2, "last": 1.2},
+            "residual_fields": ["U"],
+        },
+    )
+    assert cli_tools._plot_metrics(_ns(source=Path(), json=False, table=True)) == 0
+    assert "residual_fields" in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        cli_tools.plot_ops,
+        "residuals_payload",
+        lambda *_a, **_k: {
+            "log": "log.simpleFoam",
+            "fields": [{"field": "U", "count": 3, "last": 1.0, "min": 0.1, "max": 2.0}],
+        },
+    )
+    assert cli_tools._plot_residuals(_ns(source=Path(), field=[], limit=0, json=False, table=True)) == 0
+    out = capsys.readouterr().out
+    assert "Field" in out
+    assert "U" in out
+
+
+def test_table_flags_parse_for_readonly_commands() -> None:
+    parser = cli_tools.build_parser()
+
+    assert parser.parse_args(["knife", "status", "--table"]).table is True
+    assert parser.parse_args(["knife", "current", "--table"]).table is True
+    assert parser.parse_args(["knife", "compare", "a", "b", "--table"]).table is True
+    assert parser.parse_args(["knife", "initials", "--table"]).table is True
+    assert parser.parse_args(["knife", "converge", "--table"]).table is True
+    assert parser.parse_args(["knife", "stability", "--pattern", "x", "--tolerance", "1", "--table"]).table is True
+    assert parser.parse_args(["knife", "campaign", "status", "--table"]).table is True
+    assert parser.parse_args(["plot", "metrics", "--table"]).table is True
+    assert parser.parse_args(["watch", "jobs", "--table"]).table is True
+    assert parser.parse_args(["run", "status", "--table"]).table is True
+
+
+def test_parser_help_has_no_bare_arguments() -> None:
+    def _missing_help(parser: argparse.ArgumentParser) -> list[str]:
+        missing = []
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                for name, subparser in action.choices.items():
+                    missing.extend(f"{name} {item}" for item in _missing_help(subparser))
+                continue
+            if action.dest != "help" and action.help is None:
+                missing.append(action.dest)
+        return missing
+
+    assert _missing_help(cli_tools.build_parser()) == []
 
 
 def test_watch_jobs_plain_and_watch_attach_forwarding(

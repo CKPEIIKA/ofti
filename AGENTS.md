@@ -42,7 +42,7 @@ small, composable tools; clear layering; and Unix-style CLI behavior.
 ## Quality gates
 
 - Keep `ruff`, `ty`, and full `pytest` green.
-- Maintain coverage gate at current project target (>=75%).
+- Maintain coverage gate at current project target (>=85%).
 - Add tests for shared services first; adapter tests focus on wiring/output.
 
 ## Safety and hygiene

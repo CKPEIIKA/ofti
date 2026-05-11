@@ -4,6 +4,7 @@ from ofti.ui_curses.help import menu_hint
 def test_menu_hints_cover_primary_menus() -> None:
     menus = {
         "menu:root": [
+            "Overview",
             "Mesh",
             "Physics & Boundary Conditions",
             "Simulation",

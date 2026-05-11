@@ -53,6 +53,12 @@ and common tools (mesh, run, post-process, diagnostics).
 
 If the provided path is not an OpenFOAM case, `ofti` opens a folder picker
 to select a valid case directory.
+On startup, the TUI first shows a case chooser with currently visible running
+solver cases, the current case when applicable, and a "Choose from a directory"
+entry that opens the folder picker.
+The first main-menu entry is `Overview`, a read-only dashboard that consolidates
+safe CLI diagnostics such as case status, live jobs/processes, runtime criteria,
+ETA, log metrics, and residual summaries.
 
 Main menu/interface sketch (example):
 
@@ -68,7 +74,8 @@ Main menu/interface sketch (example):
 
 Main menu
 
->> Mesh
+>> Overview
+   Mesh
    Physics & Boundary Conditions
    Simulation
    Post-Processing
@@ -100,7 +107,9 @@ ofti watch log -h
 ofti run tool -h
 ```
 
-Most commands support `--json` for machine-readable output.
+Most read-only diagnostic commands support `--json` for machine-readable output
+and `--table` for aligned terminal tables. The TUI `Overview` screen uses the
+same table rendering as the CLI instead of raw key/value dumps.
 For streaming tails (`watch log --follow` / `watch attach`), JSON is only for
 non-follow mode.
 Use `--easy-on-cpu` when you want bounded log reads and slower polling to keep
@@ -111,6 +120,10 @@ Examples:
 
 ```bash
 ofti knife preflight CASE --json
+ofti knife status CASE --table
+ofti knife current --root REPO --recursive --live --table
+ofti plot metrics CASE --table
+ofti watch jobs CASE --table
 ofti knife initials CASE --json
 ofti knife copy CASE_COPY --case CASE
 ofti knife current --root REPO --recursive --live --json
@@ -221,6 +234,8 @@ For command-level details, prefer built-in help such as `ofti knife -h`,
 - `-h/--help` is available at each command level.
 - `-V/--version`, `--version`, and `ofti version` print the package version.
 - `--json` is optional machine output for automation.
+- `--table` is optional aligned human output for structured read-only commands.
+- `--json` and `--table` are mutually exclusive.
 - Command output goes to `stdout`; parse/usage errors go to `stderr`.
 - Exit codes:
   - `0` success
@@ -239,7 +254,7 @@ Current repo checks:
 
 - `ruff check`
 - `ty check`
-- `pytest` with coverage gate `--cov-fail-under=80`
+- `pytest` with coverage gate `--cov-fail-under=85`
 
 ## MODES
 

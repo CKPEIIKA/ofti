@@ -190,6 +190,7 @@ def test_run_receipt_remaining_error_and_copy_branches(
     bashrc = tmp_path / "bashrc"
     bashrc.write_text("# env\n", encoding="utf-8")
     monkeypatch.setattr(run_receipt, "run_trusted", lambda *_a, **_k: (_ for _ in ()).throw(OSError("shell missing")))
+    monkeypatch.setattr(run_receipt, "resolve_executable", lambda _name: (_ for _ in ()).throw(FileNotFoundError))
     assert run_receipt._effective_openfoam_env(bashrc) == run_receipt._selected_env(os.environ)
     assert run_receipt._resolve_solver_binary_path("simpleFoam", bashrc=bashrc) is None
     assert run_receipt._linked_library_rows(tmp_path / "simpleFoam") == {
@@ -199,7 +200,6 @@ def test_run_receipt_remaining_error_and_copy_branches(
         "missing": [],
     }
 
-    monkeypatch.setattr(run_receipt, "resolve_executable", lambda _name: (_ for _ in ()).throw(FileNotFoundError))
     monkeypatch.setattr(run_receipt, "run_trusted", lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="", stderr=""))
     assert run_receipt._effective_openfoam_env(bashrc) == run_receipt._selected_env(os.environ)
     assert run_receipt._resolve_solver_binary_path("simpleFoam", bashrc=bashrc) is None

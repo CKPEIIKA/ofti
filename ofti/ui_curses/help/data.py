@@ -2,7 +2,8 @@ from __future__ import annotations
 
 CONTEXT_HELP: dict[str, list[str]] = {
     "main": [
-        "Choose a top-level area (mesh, physics, simulation, post, clean, config).",
+        "Choose a top-level area (overview, mesh, physics, simulation, post, clean, config).",
+        "Overview consolidates safe read-only status, live process, ETA, and log diagnostics.",
         "Use :tool <name> or :run for direct command-mode shortcuts.",
         "Clean case groups cleanup helpers in one place.",
     ],
@@ -84,6 +85,7 @@ CONTEXT_HELP: dict[str, list[str]] = {
 
 MENU_HINTS: dict[str, dict[str, str]] = {
     "menu:root": {
+        "Overview": "Read-only case status, live jobs, ETA, criteria, and log metrics.",
         "Mesh": "Mesh generation and quality tools.",
         "Physics & Boundary Conditions": "BCs, initial conditions, thermophysical setup.",
         "Simulation": "Run solver, pipeline, safe stop/resume.",

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from ofti.app.menus.config import config_menu
+from ofti.app.menus.mesh import mesh_menu
 from ofti.app.menus.physics import physics_menu
 from ofti.app.menus.postprocessing import postprocessing_menu
 from ofti.app.menus.simulation import simulation_menu
@@ -49,6 +50,7 @@ def test_main_menu_no_tools_option(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         global_search_screen=lambda *_a, **_k: None,
     )
     assert result is None
+    assert captured["options"][0] == "Overview"
     assert "Tools" not in captured["options"]
 
 
@@ -105,6 +107,59 @@ def test_simulation_menu_stage_actions(monkeypatch: pytest.MonkeyPatch, tmp_path
         "stop",
         "pause",
         "resume",
+    ]
+
+
+def test_mesh_menu_stage_actions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "blockMeshDict").write_text("ok\n")
+    (case / "system" / "snappyHexMeshDict").write_text("ok\n")
+    (case / "system" / "decomposeParDict").write_text("ok\n")
+    (case / "system" / "cfMeshDict").write_text("ok\n")
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        "ofti.app.menus.mesh.menu_choice",
+        _label_sequence(
+            [
+                "Run blockMesh",
+                "blockMesh helper",
+                "Mesh quality",
+                "snappyHexMesh staged",
+                "Decompose",
+                "Reconstruct manager",
+                "renumberMesh",
+                "transformPoints",
+                "cfMesh",
+                "Back",
+            ],
+        ),
+    )
+    monkeypatch.setattr("ofti.app.menus.mesh.has_processor_dirs", lambda _case: True)
+    monkeypatch.setattr(
+        "ofti.app.menus.mesh.run_tool_by_name",
+        lambda _s, _c, name: calls.append(f"tool:{name}"),
+    )
+    monkeypatch.setattr("ofti.app.menus.mesh.blockmesh_helper_screen", lambda *_a: calls.append("helper"))
+    monkeypatch.setattr("ofti.app.menus.mesh.run_checkmesh", lambda *_a: calls.append("check"))
+    monkeypatch.setattr("ofti.app.menus.mesh.snappy_staged_screen", lambda *_a: True)
+    monkeypatch.setattr("ofti.app.menus.mesh.reconstruct_manager_screen", lambda *_a: calls.append("reconstruct"))
+    monkeypatch.setattr("ofti.app.menus.mesh.renumber_mesh_screen", lambda *_a: calls.append("renumber"))
+    monkeypatch.setattr("ofti.app.menus.mesh.transform_points_screen", lambda *_a: calls.append("transform"))
+    monkeypatch.setattr("ofti.app.menus.mesh.cfmesh_screen", lambda *_a: calls.append("cfmesh"))
+
+    assert mesh_menu(object(), case, AppState()) == Screen.MAIN_MENU
+    assert calls == [
+        "tool:blockMesh",
+        "helper",
+        "check",
+        "tool:snappyHexMesh",
+        "tool:decomposePar",
+        "reconstruct",
+        "renumber",
+        "transform",
+        "cfmesh",
     ]
 
 

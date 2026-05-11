@@ -3,6 +3,8 @@ from __future__ import annotations
 import curses
 import os
 import shutil
+from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +36,158 @@ def show_message(stdscr: Any, message: str) -> None:
 
 def is_case_dir(path: Path) -> bool:
     return (path / "system" / "controlDict").is_file()
+
+
+@dataclass(frozen=True)
+class RunningCaseChoice:
+    path: Path
+    pids: tuple[int, ...]
+    solvers: tuple[str, ...]
+
+
+def discover_running_case_choices(start_path: Path) -> list[RunningCaseChoice]:
+    """Return visible live solver case directories for the startup chooser."""
+    scope = start_path if start_path.is_dir() else start_path.parent
+    try:
+        rows = _scan_proc_solver_processes(
+            scope,
+            None,
+            tracked_pids=set(),
+            include_tracked=True,
+            require_case_target=False,
+        )
+    except (OSError, ValueError):
+        return []
+
+    cases: dict[Path, dict[str, set[int] | set[str]]] = {}
+    for row in rows:
+        raw_case = str(row.get("case") or "").strip()
+        if not raw_case:
+            continue
+        try:
+            case_path = Path(raw_case).expanduser().resolve()
+        except OSError:
+            continue
+        if not is_case_dir(case_path):
+            continue
+        bucket = cases.setdefault(case_path, {"pids": set(), "solvers": set()})
+        pid = row.get("pid")
+        if isinstance(pid, int) and pid > 0:
+            bucket["pids"].add(pid)  # type: ignore[union-attr]
+        solver = str(row.get("solver") or "").strip()
+        if solver and solver != "unknown":
+            bucket["solvers"].add(solver)  # type: ignore[union-attr]
+
+    choices: list[RunningCaseChoice] = []
+    for case_path, values in cases.items():
+        pids = tuple(sorted(pid for pid in values["pids"] if isinstance(pid, int)))
+        solvers = tuple(sorted(str(name) for name in values["solvers"]))
+        choices.append(RunningCaseChoice(case_path, pids, solvers))
+    return sorted(choices, key=lambda choice: choice.path.as_posix())
+
+
+def _scan_proc_solver_processes(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+    service = import_module("ofti.tools.process_scan_service")
+    return service.scan_proc_solver_processes(*args, **kwargs)
+
+
+def select_start_case(stdscr: Any, start_path: Path) -> Path | None:
+    current_case = start_path.resolve() if is_case_dir(start_path) else None
+    running_cases = discover_running_case_choices(start_path)
+    options: list[tuple[str, Path | None, str]] = []
+    if current_case is not None:
+        options.append((_current_case_label(current_case), current_case, "current"))
+    for choice in running_cases:
+        if current_case is not None and choice.path == current_case:
+            continue
+        options.append((_running_case_label(choice), choice.path, "running"))
+    options.append(("[Choose from a directory]", None, "browse"))
+
+    extra_lines = [
+        "Select a live case, open the current case, or browse to a case directory.",
+    ]
+    if not running_cases:
+        extra_lines.append("No live solver cases detected.")
+    choice = _navigate_start_case_menu(
+        stdscr,
+        [label for label, _path, _kind in options],
+        [kind for _label, _path, kind in options],
+        extra_lines=extra_lines,
+    )
+    if choice == -1:
+        return None
+    label, path, kind = options[choice]
+    if kind == "browse":
+        return select_case_directory(stdscr, start_path)
+    if path is None:
+        show_message(stdscr, f"{label} is not a case directory.")
+        return None
+    return path
+
+
+def _navigate_start_case_menu(
+    stdscr: Any,
+    labels: list[str],
+    kinds: list[str],
+    *,
+    extra_lines: list[str],
+) -> int:
+    """Navigate the startup chooser while keeping the final option selectable."""
+    cfg = get_config()
+    menu = Menu(
+        stdscr,
+        "Choose case",
+        labels,
+        extra_lines=extra_lines,
+        hint_provider=lambda idx: _start_case_hint(kinds[idx]),
+    )
+    while True:
+        menu.display()
+        key = stdscr.getch()
+
+        if key_in(key, cfg.keys.get("quit", [])):
+            raise QuitAppError()
+        if key in (curses.KEY_UP,) or key_in(key, cfg.keys.get("up", [])):
+            menu.current_option = (menu.current_option - 1) % len(labels)
+            continue
+        if key in (curses.KEY_DOWN,) or key_in(key, cfg.keys.get("down", [])):
+            menu.current_option = (menu.current_option + 1) % len(labels)
+            continue
+        if key_in(key, cfg.keys.get("top", [])):
+            menu.current_option = 0
+            continue
+        if key_in(key, cfg.keys.get("bottom", [])):
+            menu.current_option = len(labels) - 1
+            continue
+        if key_in(key, cfg.keys.get("back", [])):
+            return -1
+        if key in (curses.KEY_ENTER, 10, 13) or key_in(key, cfg.keys.get("select", [])):
+            return int(menu.current_option)
+
+
+def _current_case_label(path: Path) -> str:
+    return f"[Current case] {path}"
+
+
+def _running_case_label(choice: RunningCaseChoice) -> str:
+    solver_text = ", ".join(choice.solvers) if choice.solvers else "solver"
+    if not choice.pids:
+        pid_text = "pid=?"
+    elif len(choice.pids) == 1:
+        pid_text = f"pid={choice.pids[0]}"
+    else:
+        pid_text = f"pids={len(choice.pids)}"
+    return f"{solver_text} {pid_text} | {choice.path}"
+
+
+def _start_case_hint(kind: str) -> str:
+    if kind == "browse":
+        return "Open the directory case chooser."
+    if kind == "running":
+        return "Open this currently running case."
+    if kind == "current":
+        return "Open the current case directory."
+    return "Exit OFTI."
 
 
 def is_probable_case_dir(path: Path) -> bool:

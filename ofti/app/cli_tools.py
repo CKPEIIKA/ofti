@@ -13,7 +13,7 @@ from textwrap import dedent
 from typing import cast
 
 from ofti.core import run_receipt as receipt_ops
-from ofti.tools import status_render_service
+from ofti.tools import status_render_service, table_render_service
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import plot as plot_ops
 from ofti.tools.cli_tools import run as run_ops
@@ -47,12 +47,85 @@ def _add_easy_on_cpu_flag(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_table_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--table",
+        action="store_true",
+        help="Print aligned human-readable tables",
+    )
+
+
+def _output_mode_conflict(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "json", False) and getattr(args, "table", False))
+
+
+_HELP_BY_DEST = {
+    "all": "Apply to all matching tracked jobs",
+    "background": "Start the command in the background",
+    "best": "Number of best-ranked cases to keep",
+    "brief": "Use compact watcher output",
+    "case_dir": "OpenFOAM case directory (default: current directory)",
+    "cases": "Explicit case directories",
+    "destination": "Destination path",
+    "detailed": "Use detailed watcher output",
+    "drag_band_limit": "Maximum allowed drag-band spread",
+    "dry_run": "Print planned actions without applying them",
+    "field": "Residual field to include (repeatable)",
+    "follow": "Keep following the log for new lines",
+    "format": "Output format",
+    "glob": "Case directory glob",
+    "job_id": "Tracked job id from .ofti/jobs.json",
+    "json": "Print result as JSON",
+    "kind": "Tracked job kind filter",
+    "left_case": "Left case directory",
+    "limit": "Maximum residual rows per field (0 means no limit)",
+    "lines": "Number of log lines to print",
+    "list": "List available tools",
+    "log_file": "Log file path for background execution",
+    "mass_limit": "Maximum allowed mass-balance drift",
+    "max_parallel": "Maximum number of cases to run at once",
+    "mode": "ETA target mode",
+    "mpi": "MPI launcher (default: mpirun/mpiexec)",
+    "name": "Tool or tracked job name",
+    "no_detach": "Run foreground even when background flags are present",
+    "output": "Output verbosity",
+    "output_root": "Directory for generated cases",
+    "parallel": "Number of MPI ranks / subdomains (0 means serial)",
+    "pid_file": "Write background process pid to this file",
+    "poll_interval": "Seconds between queue status polls",
+    "receipt": "Run receipt JSON file",
+    "right_case": "Right case directory",
+    "seconds": "Polling interval in seconds",
+    "set_dir": "Case-set root used when explicit cases are omitted",
+    "shock_drift_limit": "Maximum allowed shock-position drift",
+    "solver": "Solver override; defaults to controlDict application",
+    "source": "Case directory or solver log path",
+    "startup_samples": "Samples to ignore before stability checks",
+    "summary_csv": "Read case paths from a campaign summary CSV",
+    "tail_bytes": "Max solver log bytes to parse",
+    "tolerance": "Required stability tolerance",
+    "window": "Number of recent samples to inspect",
+    "worst": "Number of worst-ranked cases to stop",
+}
+
+
+def _fill_missing_help(parser: argparse.ArgumentParser) -> None:
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for subparser in action.choices.values():
+                _fill_missing_help(subparser)
+            continue
+        if action.dest == "help" or action.help is not None:
+            continue
+        action.help = _HELP_BY_DEST.get(action.dest, action.dest.replace("_", " ").capitalize())
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ofti",
         description=(
             "Non-interactive OFTI utilities.\n"
-            "Use --json on commands for machine-readable output."
+            "Use --json for machine output and --table for aligned diagnostics."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=dedent(
@@ -82,6 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_run_parser(groups)
     version_cmd = groups.add_parser("version", help="Show version and exit")
     version_cmd.set_defaults(func=_version_command)
+    _fill_missing_help(parser)
     return parser
 
 
@@ -96,11 +170,13 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
 
     doctor = knife_sub.add_parser("doctor", help="Run case doctor checks")
     doctor.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    _add_table_flag(doctor)
     doctor.add_argument("--json", action="store_true")
     doctor.set_defaults(func=_knife_doctor)
 
     preflight = knife_sub.add_parser("preflight", help="Check basic case/run prerequisites")
     preflight.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    _add_table_flag(preflight)
     preflight.add_argument("--json", action="store_true")
     preflight.set_defaults(func=_knife_preflight)
 
@@ -123,6 +199,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         action="store_true",
         help="Show non-dictionary hash/presence diffs only",
     )
+    _add_table_flag(compare)
     compare.add_argument("--json", action="store_true")
     compare.set_defaults(func=_knife_compare)
 
@@ -223,6 +300,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Show initial internal fields and boundary conditions",
     )
     initials.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    _add_table_flag(initials)
     initials.add_argument("--json", action="store_true")
     initials.set_defaults(func=_knife_initials)
 
@@ -246,6 +324,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         default=None,
         help="Max log bytes to parse (default: auto when --easy-on-cpu is enabled)",
     )
+    _add_table_flag(status)
     status.add_argument("--json", action="store_true")
     status.set_defaults(func=_knife_status)
 
@@ -267,6 +346,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         action="store_true",
         help="Force live /proc scan for untracked solver processes",
     )
+    _add_table_flag(current)
     current.add_argument("--json", action="store_true")
     current.set_defaults(func=_knife_current)
 
@@ -314,6 +394,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         default=None,
         help="Max log bytes to parse (default: auto when --easy-on-cpu is enabled)",
     )
+    _add_table_flag(case_status)
     case_status.add_argument("--json", action="store_true")
     case_status.set_defaults(func=_knife_status)
 
@@ -457,6 +538,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     converge.add_argument("--shock-drift-limit", type=float, default=0.02)
     converge.add_argument("--drag-band-limit", type=float, default=0.02)
     converge.add_argument("--mass-limit", type=float, default=1e-4)
+    _add_table_flag(converge)
     converge.add_argument("--json", action="store_true")
     converge.set_defaults(func=_knife_converge)
 
@@ -479,6 +561,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         default="le",
         help="le: stable when delta <= tolerance (default), ge: delta >= tolerance",
     )
+    _add_table_flag(stability)
     stability.add_argument("--json", action="store_true")
     stability.set_defaults(func=_knife_stability)
 
@@ -496,6 +579,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     criteria_mode.add_argument("--full", action="store_true", help="Parse full logs (slower)")
     _add_easy_on_cpu_flag(criteria)
     criteria.add_argument("--tail-bytes", type=int, default=None)
+    _add_table_flag(criteria)
     criteria.add_argument("--json", action="store_true")
     criteria.set_defaults(func=_knife_criteria)
 
@@ -514,6 +598,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     eta_mode.add_argument("--full", action="store_true", help="Parse full logs (slower)")
     _add_easy_on_cpu_flag(eta)
     eta.add_argument("--tail-bytes", type=int, default=None)
+    _add_table_flag(eta)
     eta.add_argument("--json", action="store_true")
     eta.set_defaults(func=_knife_eta)
 
@@ -532,6 +617,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     report_mode.add_argument("--full", action="store_true", help="Parse full logs (slower)")
     _add_easy_on_cpu_flag(report)
     report.add_argument("--tail-bytes", type=int, default=None)
+    _add_table_flag(report)
     report.add_argument("--json", action="store_true", help="Alias for --format json")
     report.set_defaults(func=_knife_report)
 
@@ -542,28 +628,86 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     campaign.set_defaults(func=_help_handler(campaign))
     campaign_sub = campaign.add_subparsers(dest="campaign_command", required=False)
 
-    campaign_list = campaign_sub.add_parser("list", help="List campaign case directories")
-    campaign_list.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    campaign_list.add_argument("--glob", default="*")
-    campaign_list.add_argument("--summary-csv", default=None, type=Path)
-    campaign_list.add_argument("--json", action="store_true")
+    campaign_list = campaign_sub.add_parser(
+        "list",
+        help="List campaign case directories",
+        description="List OpenFOAM cases under a campaign/root directory.",
+    )
+    campaign_list.add_argument(
+        "case_dir",
+        nargs="?",
+        default=Path.cwd(),
+        type=Path,
+        help="Campaign root or case directory (default: current directory)",
+    )
+    campaign_list.add_argument("--glob", default="*", help="Case directory glob under case_dir")
+    campaign_list.add_argument(
+        "--summary-csv",
+        default=None,
+        type=Path,
+        help="Read case paths from a campaign summary CSV",
+    )
+    _add_table_flag(campaign_list)
+    campaign_list.add_argument("--json", action="store_true", help="Print result as JSON")
     campaign_list.set_defaults(func=_knife_campaign_list)
 
-    campaign_status = campaign_sub.add_parser("status", help="Show campaign case status summary")
-    campaign_status.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    campaign_status.add_argument("--glob", default="*")
-    campaign_status.add_argument("--summary-csv", default=None, type=Path)
-    campaign_status.add_argument("--tail-bytes", type=int, default=256 * 1024)
-    campaign_status.add_argument("--json", action="store_true")
+    campaign_status = campaign_sub.add_parser(
+        "status",
+        help="Show campaign case status summary",
+        description="Summarize status/runtime criteria for cases in a campaign.",
+    )
+    campaign_status.add_argument(
+        "case_dir",
+        nargs="?",
+        default=Path.cwd(),
+        type=Path,
+        help="Campaign root or case directory (default: current directory)",
+    )
+    campaign_status.add_argument("--glob", default="*", help="Case directory glob under case_dir")
+    campaign_status.add_argument(
+        "--summary-csv",
+        default=None,
+        type=Path,
+        help="Read case paths from a campaign summary CSV",
+    )
+    campaign_status.add_argument(
+        "--tail-bytes",
+        type=int,
+        default=256 * 1024,
+        help="Max solver log bytes to parse per case",
+    )
+    _add_table_flag(campaign_status)
+    campaign_status.add_argument("--json", action="store_true", help="Print result as JSON")
     campaign_status.set_defaults(func=_knife_campaign_status)
 
-    campaign_rank = campaign_sub.add_parser("rank", help="Rank campaign cases")
-    campaign_rank.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    campaign_rank = campaign_sub.add_parser(
+        "rank",
+        help="Rank campaign cases",
+        description="Rank campaign cases by read-only convergence/status metrics.",
+    )
+    campaign_rank.add_argument(
+        "case_dir",
+        nargs="?",
+        default=Path.cwd(),
+        type=Path,
+        help="Campaign root or case directory (default: current directory)",
+    )
     campaign_rank.add_argument("--by", choices=["convergence"], default="convergence")
-    campaign_rank.add_argument("--glob", default="*")
-    campaign_rank.add_argument("--summary-csv", default=None, type=Path)
-    campaign_rank.add_argument("--tail-bytes", type=int, default=256 * 1024)
-    campaign_rank.add_argument("--json", action="store_true")
+    campaign_rank.add_argument("--glob", default="*", help="Case directory glob under case_dir")
+    campaign_rank.add_argument(
+        "--summary-csv",
+        default=None,
+        type=Path,
+        help="Read case paths from a campaign summary CSV",
+    )
+    campaign_rank.add_argument(
+        "--tail-bytes",
+        type=int,
+        default=256 * 1024,
+        help="Max solver log bytes to parse per case",
+    )
+    _add_table_flag(campaign_rank)
+    campaign_rank.add_argument("--json", action="store_true", help="Print result as JSON")
     campaign_rank.set_defaults(func=_knife_campaign_rank)
 
     campaign_stop = campaign_sub.add_parser("stop", help="Stop worst N ranked cases")
@@ -596,16 +740,33 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     campaign_keep.add_argument("--json", action="store_true")
     campaign_keep.set_defaults(func=_knife_campaign_keep)
 
-    campaign_compare = campaign_sub.add_parser("compare", help="Compare grouped campaign cases")
-    campaign_compare.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    campaign_compare = campaign_sub.add_parser(
+        "compare",
+        help="Compare grouped campaign cases",
+        description="Group campaign cases by safe summary metrics.",
+    )
+    campaign_compare.add_argument(
+        "case_dir",
+        nargs="?",
+        default=Path.cwd(),
+        type=Path,
+        help="Campaign root or case directory (default: current directory)",
+    )
     campaign_compare.add_argument("--group-by", choices=["speed"], default="speed")
-    campaign_compare.add_argument("--glob", default="*")
-    campaign_compare.add_argument("--summary-csv", default=None, type=Path)
-    campaign_compare.add_argument("--json", action="store_true")
+    campaign_compare.add_argument("--glob", default="*", help="Case directory glob under case_dir")
+    campaign_compare.add_argument(
+        "--summary-csv",
+        default=None,
+        type=Path,
+        help="Read case paths from a campaign summary CSV",
+    )
+    _add_table_flag(campaign_compare)
+    campaign_compare.add_argument("--json", action="store_true", help="Print result as JSON")
     campaign_compare.set_defaults(func=_knife_campaign_compare)
 
     plot_criteria = knife_sub.add_parser("plot-criteria", help="Alias of plot criteria")
     plot_criteria.add_argument("source", nargs="?", default=Path.cwd(), type=Path)
+    _add_table_flag(plot_criteria)
     plot_criteria.add_argument("--json", action="store_true")
     plot_criteria.set_defaults(func=_plot_metrics)
 
@@ -621,11 +782,13 @@ def _build_plot_parser(groups: argparse._SubParsersAction[argparse.ArgumentParse
 
     metrics = plot_sub.add_parser("metrics", help="Summarize time/courant/execution metrics")
     metrics.add_argument("source", nargs="?", default=Path.cwd(), type=Path)
+    _add_table_flag(metrics)
     metrics.add_argument("--json", action="store_true")
     metrics.set_defaults(func=_plot_metrics)
 
     criteria = plot_sub.add_parser("criteria", help="Alias of plot metrics")
     criteria.add_argument("source", nargs="?", default=Path.cwd(), type=Path)
+    _add_table_flag(criteria)
     criteria.add_argument("--json", action="store_true")
     criteria.set_defaults(func=_plot_metrics)
 
@@ -636,6 +799,7 @@ def _build_plot_parser(groups: argparse._SubParsersAction[argparse.ArgumentParse
     residuals.add_argument("source", nargs="?", default=Path.cwd(), type=Path)
     residuals.add_argument("--field", action="append", default=[])
     residuals.add_argument("--limit", type=int, default=0)
+    _add_table_flag(residuals)
     residuals.add_argument("--json", action="store_true")
     residuals.set_defaults(func=_plot_residuals)
 
@@ -659,6 +823,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     jobs.add_argument("--all", action="store_true", help="Include finished/stopped jobs")
     jobs.add_argument("--kind", choices=["solver", "watcher", "any"], default="any")
     jobs.add_argument("--output", choices=["brief", "detailed"], default=None)
+    _add_table_flag(jobs)
     jobs.add_argument("--json", action="store_true")
     jobs.set_defaults(func=_watch_jobs)
 
@@ -667,6 +832,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     status.add_argument("--all", action="store_true", help="Include finished/stopped jobs")
     status.add_argument("--kind", choices=["solver", "watcher", "any"], default="any")
     status.add_argument("--output", choices=["brief", "detailed"], default=None)
+    _add_table_flag(status)
     status.add_argument("--json", action="store_true")
     status.set_defaults(func=_watch_jobs)
 
@@ -1195,16 +1361,37 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     status = run_sub.add_parser(
         "status",
         help="Show compact status table for a case set",
+        description=(
+            "Show a compact read-only status table for explicit cases or for "
+            "cases discovered under --set/--glob."
+        ),
     )
-    status.add_argument("cases", nargs="*", type=Path)
-    status.add_argument("--set", dest="set_dir", default=Path.cwd(), type=Path)
-    status.add_argument("--glob", default="*")
-    status.add_argument("--summary-csv", default=None, type=Path)
+    status.add_argument("cases", nargs="*", type=Path, help="Explicit case directories")
+    status.add_argument(
+        "--set",
+        dest="set_dir",
+        default=Path.cwd(),
+        type=Path,
+        help="Case-set root used when explicit cases are omitted",
+    )
+    status.add_argument("--glob", default="*", help="Case directory glob under --set")
+    status.add_argument(
+        "--summary-csv",
+        default=None,
+        type=Path,
+        help="Read case paths from a campaign summary CSV",
+    )
     status_mode = status.add_mutually_exclusive_group()
     status_mode.add_argument("--fast", action="store_true", help="Use lightweight status parsing")
     status_mode.add_argument("--full", action="store_true", help="Parse full logs (slower)")
     _add_easy_on_cpu_flag(status)
-    status.add_argument("--tail-bytes", type=int, default=None)
+    status.add_argument(
+        "--tail-bytes",
+        type=int,
+        default=None,
+        help="Max solver log bytes to parse",
+    )
+    _add_table_flag(status)
     status.add_argument("--json", action="store_true", help="Print result as JSON")
     status.set_defaults(func=_run_status)
 
@@ -1214,6 +1401,9 @@ def main(argv: list[str] | None = None) -> int:
     if bool(getattr(args, "version", False)):
         print(f"ofti {ofti_version()}")
         return 0
+    if _output_mode_conflict(args):
+        print("ofti: --json and --table cannot be used together", file=sys.stderr)
+        return 2
     try:
         return int(args.func(args))
     except ValueError as exc:
@@ -1238,6 +1428,9 @@ def _knife_doctor(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return knife_ops.doctor_exit_code(payload)
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.doctor_table_lines(payload)))
+        return knife_ops.doctor_exit_code(payload)
     for line in payload["lines"]:
         print(line)
     if payload["errors"]:
@@ -1257,6 +1450,9 @@ def _knife_preflight(args: argparse.Namespace) -> int:
     payload = knife_ops.preflight_payload(args.case_dir)
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload["ok"] else 1
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.preflight_table_lines(payload)))
         return 0 if payload["ok"] else 1
     print(f"case={payload['case']}")
     for key, value in payload["checks"].items():
@@ -1280,6 +1476,9 @@ def _knife_compare(args: argparse.Namespace) -> int:
         payload = knife_ops.compare_payload(args.left_case, args.right_case)
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.compare_table_lines(payload)))
         return 0
     print(f"left_case={payload['left_case']}")
     print(f"right_case={payload['right_case']}")
@@ -1387,6 +1586,9 @@ def _knife_receipt_write(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.campaign_list_table_lines(payload)))
+        return 0
     print(f"case={payload['case']}")
     print(f"command={payload['command']}")
     print(f"receipt={payload['receipt']}")
@@ -1451,6 +1653,9 @@ def _knife_initials(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.initials_table_lines(payload)))
+        return 0
     print(f"case={payload['case']}")
     print(f"initial_dir={payload['initial_dir']}")
     print(f"fields={payload['field_count']} patches={payload['patch_count']}")
@@ -1504,6 +1709,9 @@ def _knife_status(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.status_table_lines(payload)))
+        return 0
     for line in status_render_service.case_status_lines(payload):
         print(line)
     return 0
@@ -1513,6 +1721,9 @@ def _knife_current(args: argparse.Namespace) -> int:
     payload = _knife_current_payload(args)
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.current_table_lines(payload)))
         return 0
     _print_knife_current(payload)
     return 0
@@ -1700,6 +1911,9 @@ def _knife_converge(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if payload["ok"] else 1
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.converge_table_lines(payload)))
+        return 0 if payload["ok"] else 1
     print(f"log={payload['log']}")
     print(
         f"shock drift={payload['shock']['drift']} limit={payload['shock']['limit']} "
@@ -1743,6 +1957,9 @@ def _knife_stability(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if payload["status"] == "pass" else 1
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.stability_table_lines(payload)))
+        return 0 if payload["status"] == "pass" else 1
     print(f"log={payload['log']}")
     print(f"pattern={payload['pattern']}")
     print(
@@ -1765,6 +1982,9 @@ def _knife_criteria(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if not payload.get("failed") else 1
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.criteria_payload_table_lines(payload)))
+        return 0
     print(f"case={payload['case']}")
     print(
         f"criteria={payload['criteria_count']} pass={payload['passed']} "
@@ -1788,6 +2008,9 @@ def _knife_eta(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.eta_table_lines(payload)))
+        return 0
     print(f"case={payload['case']}")
     print(f"mode={payload['mode']}")
     print(f"eta_mode={payload.get('eta_mode')}")
@@ -1806,6 +2029,12 @@ def _knife_report(args: argparse.Namespace) -> int:
         lightweight=_knife_use_lightweight_mode(args),
         tail_bytes=_tail_bytes_with_cpu_mode(args),
     )
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.report_table_lines(payload)))
+        return 0
     if fmt == "md":
         print(knife_ops.report_markdown(payload))
         return 0
@@ -1821,6 +2050,9 @@ def _knife_campaign_list(args: argparse.Namespace) -> int:
     )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.campaign_list_table_lines(payload)))
         return 0
     print(f"case={payload['case']}")
     print(f"count={payload['count']}")
@@ -1838,6 +2070,9 @@ def _knife_campaign_status(args: argparse.Namespace) -> int:
     )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.campaign_status_table_lines(payload)))
         return 0
     print(f"case={payload['case']}")
     print(f"count={payload['count']}")
@@ -1860,6 +2095,9 @@ def _knife_campaign_rank(args: argparse.Namespace) -> int:
     )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.campaign_rank_table_lines(payload)))
         return 0
     print(f"case={payload['case']}")
     print(f"count={payload['count']}")
@@ -1925,6 +2163,9 @@ def _knife_campaign_compare(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.campaign_compare_table_lines(payload)))
+        return 0
     print(f"case={payload['case']}")
     print(f"group_by={payload['group_by']} groups={payload['group_count']}")
     for key, values in payload["groups"].items():
@@ -1954,6 +2195,9 @@ def _plot_metrics(args: argparse.Namespace) -> int:
         return 1
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.metrics_table_lines(payload)))
         return 0
     print(f"log={payload['log']}")
     print(f"time_steps={payload['times']['count']} last={payload['times']['last']}")
@@ -1986,6 +2230,9 @@ def _plot_residuals(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.residual_payload_table_lines(payload)))
+        return 0
     print(f"log={payload['log']}")
     for row in payload["fields"]:
         print(
@@ -2010,6 +2257,9 @@ def _watch_jobs(args: argparse.Namespace) -> int:
                 sort_keys=True,
             ),
         )
+        return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.jobs_payload_table_lines(payload)))
         return 0
     if profile == "brief":
         print(f"case={payload['case']} kind={payload.get('kind', 'any')} count={payload['count']}")
@@ -2693,6 +2943,9 @@ def _run_status(args: argparse.Namespace) -> int:
     )
     if bool(getattr(args, "json", False)):
         print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.run_status_table_lines(payload)))
         return 0
     print(f"set={payload['set_dir']} count={payload['count']}")
     print("STATE   LATEST_TIME   ETA(s)    STOP_REASON   CASE")
