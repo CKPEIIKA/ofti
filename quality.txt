@@ -12,9 +12,10 @@ platform linux -- Python 3.13.5, pytest-9.0.2, pluggy-1.6.0
 rootdir: /home/uu/OpenFOAM/TUI
 configfile: pyproject.toml
 plugins: cov-7.0.0
-collected 712 items / 712 deselected / 0 selected
+collected 737 items / 737 deselected / 0 selected
 
-=========================== 712 deselected in 2.68s ============================
+=========================== 737 deselected in 2.53s ============================
+no smoke tests selected; skipping
 
 == pytest coverage ==
 ============================= test session starts ==============================
@@ -22,105 +23,106 @@ platform linux -- Python 3.13.5, pytest-9.0.2, pluggy-1.6.0
 rootdir: /home/uu/OpenFOAM/TUI
 configfile: pyproject.toml
 plugins: cov-7.0.0
-collected 712 items
+collected 737 items
 
 tests/test_app_case_meta.py .....                                        [  0%]
-tests/test_app_cli_tools_handlers.py ........................            [  4%]
-tests/test_app_cli_tools_handlers_more.py ...........                    [  5%]
-tests/test_app_helpers.py ..........                                     [  7%]
-tests/test_app_main_flow_more.py ......                                  [  7%]
-tests/test_app_menu_case_tools.py ......                                 [  8%]
-tests/test_app_paths.py .                                                [  8%]
-tests/test_app_screens_check_search.py .......                           [  9%]
-tests/test_app_stage_menus.py .......                                    [ 10%]
-tests/test_app_state_helpers.py .......                                  [ 11%]
-tests/test_autoformat_value.py ..                                        [ 12%]
-tests/test_blockmesh.py ..                                               [ 12%]
-tests/test_boundary_actions_foamlib.py ..                                [ 12%]
-tests/test_boundary_field_checks.py s                                    [ 12%]
-tests/test_boundary_helpers.py ..                                        [ 13%]
-tests/test_boundary_matrix.py ....                                       [ 13%]
-tests/test_boundary_matrix_helpers.py ..                                 [ 13%]
-tests/test_boundary_parse.py .                                           [ 14%]
-tests/test_case_copy.py ...                                              [ 14%]
-tests/test_case_doctor.py ...                                            [ 14%]
-tests/test_case_header_version.py ...s                                   [ 15%]
-tests/test_case_helpers.py ..                                            [ 15%]
-tests/test_case_ops.py ..                                                [ 16%]
-tests/test_case_parsing.py ..                                            [ 16%]
-tests/test_case_report.py ..                                             [ 16%]
-tests/test_case_snapshot.py ..                                           [ 16%]
-tests/test_case_status_service.py .....                                  [ 17%]
-tests/test_checkmesh_summary.py ...                                      [ 17%]
-tests/test_choose_validator.py ........                                  [ 19%]
-tests/test_clean_menu.py .                                               [ 19%]
-tests/test_cli_flags.py .....                                            [ 19%]
-tests/test_cli_tools.py ................................................ [ 26%]
-.......                                                                  [ 27%]
-tests/test_cli_tools_knife_dict_more.py .........................        [ 31%]
-tests/test_cli_tools_ops_extra.py ...................................... [ 36%]
-                                                                         [ 36%]
-tests/test_cli_tools_plot_watch_more.py ..............                   [ 38%]
-tests/test_cli_tui_shared_paths.py .                                     [ 38%]
-tests/test_cli_wrapper_exports.py ...                                    [ 39%]
-tests/test_commands_background.py ..                                     [ 39%]
-tests/test_commands_handle.py ....                                       [ 39%]
-tests/test_config.py ....                                                [ 40%]
-tests/test_config_templates.py ..                                        [ 40%]
-tests/test_convergence_service.py ....                                   [ 41%]
-tests/test_core_commands.py ......                                       [ 42%]
-tests/test_core_events_messages.py ..                                    [ 42%]
-tests/test_core_imports.py .                                             [ 42%]
-tests/test_diagnostics_helpers.py .                                      [ 42%]
-tests/test_dict_compare.py ...                                           [ 43%]
-tests/test_entry_browser_editor.py .                                     [ 43%]
-tests/test_entry_browser_helpers.py ..                                   [ 43%]
-tests/test_entry_browser_more.py ...                                     [ 43%]
-tests/test_entry_editor.py ...                                           [ 44%]
-tests/test_entry_io_foamlib.py ...                                       [ 44%]
-tests/test_entry_io_log.py .                                             [ 44%]
-tests/test_entry_io_misc.py ..                                           [ 45%]
-tests/test_entry_meta_foamlib.py .                                       [ 45%]
-tests/test_entry_meta_helpers.py ..                                      [ 45%]
-tests/test_entry_meta_numeric_lists.py ..                                [ 45%]
-tests/test_examples_case_integration.py .                                [ 46%]
-tests/test_external_optin_cases.py ssss                                  [ 46%]
-tests/test_field_summary.py .                                            [ 46%]
-tests/test_foamlib_adapter.py ..ss.                                      [ 47%]
+tests/test_app_cli_tools_handlers.py ................................    [  5%]
+tests/test_app_cli_tools_handlers_more.py ...........                    [  6%]
+tests/test_app_helpers.py ................                               [  8%]
+tests/test_app_main_flow_more.py .......                                 [  9%]
+tests/test_app_menu_case_tools.py ......                                 [ 10%]
+tests/test_app_overview.py ...                                           [ 10%]
+tests/test_app_paths.py .                                                [ 10%]
+tests/test_app_screens_check_search.py .......                           [ 11%]
+tests/test_app_stage_menus.py ........                                   [ 13%]
+tests/test_app_state_helpers.py .......                                  [ 13%]
+tests/test_autoformat_value.py ..                                        [ 14%]
+tests/test_blockmesh.py ..                                               [ 14%]
+tests/test_boundary_actions_foamlib.py ..                                [ 14%]
+tests/test_boundary_field_checks.py s                                    [ 14%]
+tests/test_boundary_helpers.py ..                                        [ 15%]
+tests/test_boundary_matrix.py ....                                       [ 15%]
+tests/test_boundary_matrix_helpers.py ..                                 [ 16%]
+tests/test_boundary_parse.py .                                           [ 16%]
+tests/test_case_copy.py ...                                              [ 16%]
+tests/test_case_doctor.py ...                                            [ 16%]
+tests/test_case_header_version.py ...s                                   [ 17%]
+tests/test_case_helpers.py ..                                            [ 17%]
+tests/test_case_ops.py ..                                                [ 18%]
+tests/test_case_parsing.py ..                                            [ 18%]
+tests/test_case_report.py ..                                             [ 18%]
+tests/test_case_snapshot.py ..                                           [ 18%]
+tests/test_case_status_service.py .....                                  [ 19%]
+tests/test_checkmesh_summary.py ...                                      [ 19%]
+tests/test_choose_validator.py ........                                  [ 21%]
+tests/test_clean_menu.py .                                               [ 21%]
+tests/test_cli_flags.py .....                                            [ 21%]
+tests/test_cli_tools.py ................................................ [ 28%]
+.......                                                                  [ 29%]
+tests/test_cli_tools_knife_dict_more.py .........................        [ 32%]
+tests/test_cli_tools_ops_extra.py ...................................... [ 37%]
+                                                                         [ 37%]
+tests/test_cli_tools_plot_watch_more.py ..............                   [ 39%]
+tests/test_cli_tui_shared_paths.py .                                     [ 39%]
+tests/test_cli_wrapper_exports.py ...                                    [ 40%]
+tests/test_commands_background.py ..                                     [ 40%]
+tests/test_commands_handle.py ....                                       [ 41%]
+tests/test_config.py ....                                                [ 41%]
+tests/test_config_templates.py ..                                        [ 41%]
+tests/test_convergence_service.py ....                                   [ 42%]
+tests/test_core_commands.py ......                                       [ 43%]
+tests/test_core_events_messages.py ..                                    [ 43%]
+tests/test_core_imports.py .                                             [ 43%]
+tests/test_diagnostics_helpers.py .                                      [ 43%]
+tests/test_dict_compare.py ...                                           [ 44%]
+tests/test_entry_browser_editor.py .                                     [ 44%]
+tests/test_entry_browser_helpers.py ..                                   [ 44%]
+tests/test_entry_browser_more.py ...                                     [ 45%]
+tests/test_entry_editor.py ...                                           [ 45%]
+tests/test_entry_io_foamlib.py ...                                       [ 45%]
+tests/test_entry_io_log.py .                                             [ 45%]
+tests/test_entry_io_misc.py ..                                           [ 46%]
+tests/test_entry_meta_foamlib.py .                                       [ 46%]
+tests/test_entry_meta_helpers.py ..                                      [ 46%]
+tests/test_entry_meta_numeric_lists.py ..                                [ 46%]
+tests/test_examples_case_integration.py .                                [ 47%]
+tests/test_external_optin_cases.py ssss                                  [ 47%]
+tests/test_field_summary.py .                                            [ 47%]
+tests/test_foamlib_adapter.py ..ss.                                      [ 48%]
 tests/test_foamlib_fallback.py ....                                      [ 48%]
-tests/test_foamlib_integration_helpers.py ..                             [ 48%]
-tests/test_foamlib_logs.py .......                                       [ 49%]
-tests/test_foamlib_parametric.py s                                       [ 49%]
-tests/test_foamlib_postprocessing.py ..                                  [ 49%]
-tests/test_foamlib_runner.py .....                                       [ 50%]
-tests/test_help_manager.py ...                                           [ 50%]
+tests/test_foamlib_integration_helpers.py ..                             [ 49%]
+tests/test_foamlib_logs.py .......                                       [ 50%]
+tests/test_foamlib_parametric.py s                                       [ 50%]
+tests/test_foamlib_postprocessing.py ..                                  [ 50%]
+tests/test_foamlib_runner.py .....                                       [ 51%]
+tests/test_help_manager.py ...                                           [ 51%]
 tests/test_high_speed.py ..                                              [ 51%]
-tests/test_inputs.py ..                                                  [ 51%]
-tests/test_job_control_service.py ....                                   [ 51%]
-tests/test_job_registry.py ...                                           [ 52%]
-tests/test_knife_layering.py ....                                        [ 52%]
+tests/test_inputs.py ..                                                  [ 52%]
+tests/test_job_control_service.py ....                                   [ 52%]
+tests/test_job_registry.py ...                                           [ 53%]
+tests/test_knife_layering.py ....                                        [ 53%]
 tests/test_labs_coverage_extra.py .........                              [ 54%]
-tests/test_layering_imports.py ..                                        [ 54%]
-tests/test_layout.py ...                                                 [ 54%]
-tests/test_logs_analysis_more.py .....                                   [ 55%]
-tests/test_logs_select_view_more.py ......                               [ 56%]
+tests/test_layering_imports.py ..                                        [ 55%]
+tests/test_layout.py ...                                                 [ 55%]
+tests/test_logs_analysis_more.py .....                                   [ 56%]
+tests/test_logs_select_view_more.py ......                               [ 57%]
 tests/test_lowcov_more2.py .....                                         [ 57%]
 tests/test_menu_commands.py .                                            [ 57%]
-tests/test_menu_display.py ..                                            [ 57%]
-tests/test_menu_hints.py .                                               [ 57%]
+tests/test_menu_display.py ..                                            [ 58%]
+tests/test_menu_hints.py .                                               [ 58%]
 tests/test_menu_navigation.py ....                                       [ 58%]
-tests/test_menu_utils.py ..                                              [ 58%]
-tests/test_mesh_header.py .                                              [ 58%]
-tests/test_mesh_info.py ..                                               [ 58%]
+tests/test_menu_utils.py ..                                              [ 59%]
+tests/test_mesh_header.py .                                              [ 59%]
+tests/test_mesh_info.py ..                                               [ 59%]
 tests/test_openfoam_discovery.py .                                       [ 59%]
-tests/test_openfoam_env_detection.py ...                                 [ 59%]
+tests/test_openfoam_env_detection.py ...                                 [ 60%]
 tests/test_openfoam_env_more.py ......                                   [ 60%]
-tests/test_openfoam_helpers.py ...                                       [ 60%]
-tests/test_openfoam_wrapper_no_env.py ..............                     [ 62%]
-tests/test_optional_integration_foamdictionary.py s                      [ 62%]
+tests/test_openfoam_helpers.py ...                                       [ 61%]
+tests/test_openfoam_wrapper_no_env.py ..............                     [ 63%]
+tests/test_optional_integration_foamdictionary.py s                      [ 63%]
 tests/test_parametric_preprocessing.py ...                               [ 63%]
-tests/test_parametric_presets.py ..                                      [ 63%]
-tests/test_pipeline_catalog.py ..                                        [ 63%]
+tests/test_parametric_presets.py ..                                      [ 64%]
+tests/test_pipeline_catalog.py ..                                        [ 64%]
 tests/test_pipeline_runner.py ..                                         [ 64%]
 tests/test_pipeline_service.py ...                                       [ 64%]
 tests/test_postprocessing_browser.py ...                                 [ 65%]
@@ -131,7 +133,7 @@ tests/test_run_layering.py .                                             [ 67%]
 tests/test_run_receipt.py ...........                                    [ 69%]
 tests/test_runner_extra.py ........                                      [ 70%]
 tests/test_runner_service.py ...                                         [ 70%]
-tests/test_runner_utils.py ..                                            [ 70%]
+tests/test_runner_utils.py ..                                            [ 71%]
 tests/test_runtime_control_service.py ..........                         [ 72%]
 tests/test_runtime_watch_extra.py ......                                 [ 73%]
 tests/test_runtime_watch_layering.py ....                                [ 73%]
@@ -146,25 +148,26 @@ tests/test_solver_zero_copy.py .                                         [ 77%]
 tests/test_status_render_service.py ...                                  [ 77%]
 tests/test_subprocess_utils.py ....                                      [ 78%]
 tests/test_suspicious_lines.py ......                                    [ 79%]
-tests/test_tasks.py ..                                                   [ 79%]
-tests/test_templates.py ..                                               [ 79%]
+tests/test_table_render_service.py ......                                [ 80%]
+tests/test_tasks.py ..                                                   [ 80%]
+tests/test_templates.py ..                                               [ 80%]
 tests/test_templates_more.py ..                                          [ 80%]
-tests/test_thermo_wizard.py ...                                          [ 80%]
-tests/test_times.py ..                                                   [ 80%]
+tests/test_thermo_wizard.py ...                                          [ 81%]
+tests/test_times.py ..                                                   [ 81%]
 tests/test_times_extra.py ..                                             [ 81%]
 tests/test_tool_dicts_service.py .                                       [ 81%]
-tests/test_tool_output.py ..                                             [ 81%]
+tests/test_tool_output.py ..                                             [ 82%]
 tests/test_tools_branches_more.py ............                           [ 83%]
 tests/test_tools_case_operations_shared.py .                             [ 83%]
-tests/test_tools_cleaning.py ....                                        [ 83%]
-tests/test_tools_helpers.py .......                                      [ 84%]
-tests/test_tools_lowcov_extra.py .......                                 [ 85%]
-tests/test_tools_menu.py .............                                   [ 87%]
-tests/test_tools_more_coverage2.py .......                               [ 88%]
+tests/test_tools_cleaning.py ....                                        [ 84%]
+tests/test_tools_helpers.py .......                                      [ 85%]
+tests/test_tools_lowcov_extra.py .......                                 [ 86%]
+tests/test_tools_menu.py .............                                   [ 88%]
+tests/test_tools_more_coverage2.py .......                               [ 89%]
 tests/test_tools_pipeline_more.py .....                                  [ 89%]
 tests/test_tools_run_more.py .....                                       [ 90%]
 tests/test_tools_screens_extra.py ..                                     [ 90%]
-tests/test_tools_screens_missing.py ..................                   [ 92%]
+tests/test_tools_screens_missing.py ..................                   [ 93%]
 tests/test_tools_services_extra.py .....                                 [ 93%]
 tests/test_tools_workflows.py ..........                                 [ 95%]
 tests/test_ui_adapter_router.py ..                                       [ 95%]
@@ -184,21 +187,22 @@ Name                                    Stmts   Miss  Cover   Missing
 ---------------------------------------------------------------------
 ofti/__init__.py                            0      0   100%
 ofti/app/__init__.py                        0      0   100%
-ofti/app/app.py                           190     30    84%   55, 80, 95, 104-112, 116-125, 129-137, 141-149, 153-163, 170, 179, 187, 281, 290, 298
+ofti/app/app.py                           197     38    81%   56, 85-88, 103, 112-120, 124-133, 137-145, 149-157, 161-171, 175-202, 289, 298, 306
 ofti/app/clean_menu.py                     58     26    55%   24-56, 70-77, 90-91
 ofti/app/cli.py                            29      2    93%   59, 72
-ofti/app/cli_tools.py                    1571    270    83%   1227-1228, 1314-1319, 1338-1340, 1344-1349, 1390-1394, 1403-1404, 1414-1416, 1438-1446, 1454-1470, 1489, 1547, 1549, 1555, 1587-1591, 1630, 1632, 1643-1645, 1649-1651, 1657-1685, 1740-1742, 1791-1799, 1825-1829, 1833-1850, 1864-1871, 1888-1893, 1897-1915, 1919-1933, 2015-2021, 2062, 2080-2081, 2084-2086, 2105-2120, 2129-2131, 2134-2141, 2165-2166, 2172-2174, 2185-2186, 2193-2194, 2250-2252, 2265-2266, 2283-2284, 2303-2304, 2322-2323, 2372-2373, 2375, 2396, 2404, 2421-2423, 2433-2434, 2494-2497, 2499, 2501, 2503, 2505, 2509, 2511, 2513, 2571, 2573-2592, 2624, 2626-2643, 2669-2682, 2697-2708, 2862, 2867, 2869, 2967, 2974, 3026-3032
+ofti/app/cli_tools.py                    1675    283    83%   1417-1418, 1432-1433, 1455-1456, 1513-1518, 1537-1539, 1543-1548, 1589-1596, 1605-1606, 1616-1618, 1640-1648, 1659-1675, 1694, 1758, 1760, 1766, 1798-1802, 1841, 1843, 1854-1856, 1860-1862, 1868-1896, 1954-1956, 1986-1987, 2011-2022, 2036-2037, 2057-2061, 2072-2073, 2077-2085, 2102-2109, 2126-2131, 2135-2153, 2164-2165, 2169-2174, 2265-2271, 2312, 2330-2331, 2334-2336, 2355-2370, 2379-2381, 2384-2391, 2415-2416, 2422-2424, 2435-2436, 2443-2444, 2500-2502, 2515-2516, 2533-2534, 2553-2554, 2572-2573, 2622-2623, 2625, 2646, 2654, 2671-2673, 2683-2684, 2744-2747, 2749, 2751, 2753, 2755, 2759, 2761, 2763, 2821, 2823-2842, 2874, 2876-2893, 2919-2932, 2947-2961, 3115, 3120, 3122, 3220, 3227, 3279-3285
 ofti/app/commands.py                      139     28    80%   90, 97-101, 103, 128-129, 134-135, 150-151, 157-158, 160-161, 163-164, 166-167, 169-170, 175-176, 190-192, 201-203
 ofti/app/config_templates.py               36     14    61%   13-31, 75
-ofti/app/helpers.py                       344     91    74%   17-22, 41, 48-51, 74-75, 107-108, 130-131, 133-134, 136-137, 139-140, 151, 165, 171-192, 218, 235, 246, 249, 261-262, 276, 288, 291, 296-297, 300-302, 304-305, 313-319, 324-334, 353-354, 363, 365-369, 406, 408
-ofti/app/menu_utils.py                     44      4    91%   48, 58, 74, 83
+ofti/app/helpers.py                       450     97    78%   19-24, 69-70, 102, 123-124, 175, 195, 202-205, 228-229, 261-262, 284-285, 287-288, 290-291, 293-294, 305, 319, 325-346, 372, 389, 400, 403, 415-416, 430, 442, 445, 450-451, 454-456, 458-459, 467-473, 478-488, 507-508, 517, 519-523, 560, 562
+ofti/app/menu_utils.py                     44     20    55%   28-49, 58, 73-77, 81-86
 ofti/app/menus/__init__.py                  2      0   100%
 ofti/app/menus/case_tools.py              231     54    77%   16-18, 23, 31-33, 42-44, 82, 137, 139, 141, 146, 153-155, 167-168, 180, 183, 186, 205-207, 231, 238-240, 257-259, 266, 270-272, 305, 315-317, 341, 344-345, 358, 360, 363-365, 371, 373, 376-378
 ofti/app/menus/config.py                   50      8    84%   70, 72, 87-92
-ofti/app/menus/mesh.py                     73     20    73%   101-120
+ofti/app/menus/mesh.py                     73     21    71%   51-56, 58-60, 62-64, 66-68, 70-72, 74-76, 81-83
 ofti/app/menus/physics.py                  19      0   100%
 ofti/app/menus/postprocessing.py           65     15    77%   53-54, 93, 95, 97, 99, 101, 103, 105, 107, 109, 112-115
 ofti/app/menus/simulation.py               83     23    72%   69-74, 76-80, 82-85, 98, 117, 119, 121, 123, 125, 148-153
+ofti/app/overview.py                       81      0   100%
 ofti/app/state.py                          55      2    96%   56, 63
 ofti/app/status.py                         17      7    59%   10, 18-23
 ofti/app/task_utils.py                      9      1    89%   12
@@ -209,9 +213,9 @@ ofti/core/boundary.py                     181     36    80%   38-39, 67-70, 76, 
 ofti/core/case.py                         154     46    70%   18-25, 30-31, 42, 45, 58, 64, 72-75, 79-82, 93-97, 106-107, 129, 155-156, 159-166, 177-178, 189-190, 196-197
 ofti/core/case_copy.py                     80      7    91%   38-40, 86-87, 132-133
 ofti/core/case_headers.py                  78      2    97%   78-79
-ofti/core/case_meta.py                     45     13    71%   19-28, 78-79, 90
+ofti/core/case_meta.py                     45     14    69%   19-28, 53, 78-79, 90
 ofti/core/case_report.py                   16      0   100%
-ofti/core/case_snapshot.py                 46      0   100%
+ofti/core/case_snapshot.py                 46      1    98%   29
 ofti/core/checkmesh.py                     68      5    93%   18-19, 155, 160, 183
 ofti/core/commands.py                     119      5    96%   111, 140, 179, 198, 227
 ofti/core/dict_compare.py                 252     31    88%   59-68, 70-79, 85, 111, 114, 123, 125, 134, 137-144, 161-162, 171, 179, 248-249, 264, 274-275, 288-289, 292-293
@@ -230,17 +234,18 @@ ofti/core/solver_checks.py                 58     13    78%   13, 20, 23, 33, 39
 ofti/core/solver_status.py                 95     28    71%   27-28, 37-46, 71, 88, 101, 105-106, 112, 115-117, 125-131
 ofti/core/spinner.py                        5      0   100%
 ofti/core/syntax.py                        84      5    94%   16, 51, 59, 61, 65
+ofti/core/table.py                         32      0   100%
 ofti/core/templates.py                     38      8    79%   15, 21, 34-35, 44, 48-49, 58
-ofti/core/times.py                         36      4    89%   12, 33-35
+ofti/core/times.py                         36      1    97%   12
 ofti/core/tool_dicts_service.py            62      4    94%   60, 70, 113-114
 ofti/core/tool_output.py                   17      0   100%
 ofti/core/validation.py                   199     34    83%   78, 83, 87-88, 100, 102, 107, 113, 118-119, 126, 134, 138, 153, 166, 170, 175-176, 186, 191-192, 199, 203, 206-207, 209, 215-216, 223, 229, 236-237, 254, 259
-ofti/core/versioning.py                    60      5    92%   38, 51, 83-85
+ofti/core/versioning.py                    60      7    88%   32, 38, 44, 51, 83-85
 ofti/foam/__init__.py                       0      0   100%
 ofti/foam/config.py                       166     28    83%   16, 69, 84, 87, 104, 128-129, 151, 155, 159, 162, 165, 185-191, 201, 209, 213, 217, 220, 223-224, 227-232
 ofti/foam/exceptions.py                     2      0   100%
-ofti/foam/openfoam.py                     318     62    81%   23, 27, 32-33, 56, 84-85, 159-160, 168, 177, 196, 199, 208, 211, 220, 230-231, 237-240, 271-272, 284, 290-293, 321, 346, 348-349, 357-358, 362, 395-397, 399, 402, 421-430, 451, 454-455, 457, 459, 466, 469-470, 480, 482, 484
-ofti/foam/openfoam_env.py                  72     26    64%   20, 22, 43-44, 48-73, 82, 101
+ofti/foam/openfoam.py                     318     61    81%   23, 27, 32-33, 84-85, 159-160, 168, 177, 196, 199, 208, 211, 220, 230-231, 237-240, 271-272, 284, 290-293, 321, 346, 348-349, 357-358, 362, 395-397, 399, 402, 421-430, 451, 454-455, 457, 459, 466, 469-470, 480, 482, 484
+ofti/foam/openfoam_env.py                  72     26    64%   22, 24, 43-44, 48-73, 82, 101
 ofti/foam/subprocess_utils.py              18      1    94%   30
 ofti/foam/tasks.py                         56      6    89%   37, 47-51
 ofti/foamlib/__init__.py                   11      0   100%
@@ -251,7 +256,7 @@ ofti/foamlib/parametric.py                176     94    47%   35, 48-51, 73-92, 
 ofti/foamlib/postprocessing.py             40      3    92%   23, 61, 64
 ofti/foamlib/runner.py                     92     22    76%   26-30, 40, 51, 58, 67, 95, 107, 131, 134-149, 173, 191, 194, 196
 ofti/tools/__init__.py                      6      0   100%
-ofti/tools/case_doctor.py                 126     28    78%   16-25, 64, 80, 93-101, 117-119, 141, 175, 181-182
+ofti/tools/case_doctor.py                 126     25    80%   16-25, 93-101, 117-119, 175, 181-182
 ofti/tools/case_ops.py                     43      0   100%
 ofti/tools/case_source_service.py          34      2    94%   29, 37
 ofti/tools/case_status_service.py          84      0   100%
@@ -288,11 +293,12 @@ ofti/tools/reconstruct.py                  34      5    85%   29, 51, 60-61, 64
 ofti/tools/run.py                          75      0   100%
 ofti/tools/runner.py                      199     10    95%   289-294, 315, 327-329
 ofti/tools/runner_service.py               52      0   100%
-ofti/tools/runtime_control_service.py     572     53    91%   240-241, 255, 290, 303-304, 323, 333, 345, 387, 395, 400, 437, 452, 494, 526, 566, 605, 615, 627, 633, 651, 661, 678, 691, 703, 709, 726, 753-765, 777, 786-791, 802, 810, 820-824, 846, 855-856
+ofti/tools/runtime_control_service.py     572     52    91%   240-241, 255, 290, 303-304, 323, 333, 387, 395, 400, 437, 452, 494, 526, 566, 605, 615, 627, 633, 651, 661, 678, 691, 703, 709, 726, 753-765, 777, 786-791, 802, 810, 820-824, 846, 855-856
 ofti/tools/shell_tools.py                  67      0   100%
 ofti/tools/solver.py                      307     25    92%   79-81, 104, 108, 123-125, 203-204, 224, 304-307, 320, 323-325, 328-329, 331-332, 431-432, 453
 ofti/tools/solver_control.py               27      8    70%   15-17, 24-25, 28-29, 33
 ofti/tools/status_render_service.py        32      0   100%
+ofti/tools/table_render_service.py        189      3    98%   280-281, 304
 ofti/tools/time_pruner.py                  43      4    91%   20, 22, 48-49
 ofti/tools/tool_aliases.py                  3      0   100%
 ofti/tools/tool_catalog.py                 15      1    93%   26
@@ -303,11 +309,11 @@ ofti/tools/watch_service.py               546      3    99%   76, 131, 504
 ofti/tools/yplus.py                        73      0   100%
 ofti/tools/zero_ops.py                     19      4    79%   18, 20-22
 ofti/ui/__init__.py                         0      0   100%
-ofti/ui/adapter.py                         18      0   100%
+ofti/ui/adapter.py                         18      1    94%   14
 ofti/ui/help.py                            12      2    83%   19, 23
 ofti/ui/menu.py                            22      5    77%   16, 19, 27, 32, 35
 ofti/ui/router.py                          16      0   100%
 ofti/ui/status.py                          22      9    59%   10-20, 35-36
 ---------------------------------------------------------------------
-TOTAL                                   14248   2135    85%
-======================= 702 passed, 10 skipped in 23.18s =======================
+TOTAL                                   14767   2179    85%
+======================= 727 passed, 10 skipped in 25.18s =======================

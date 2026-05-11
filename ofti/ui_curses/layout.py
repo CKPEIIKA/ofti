@@ -52,9 +52,21 @@ def case_banner_lines(meta: dict[str, str]) -> list[str]:
         and header_version != meta.get("foam_version")
     ):
         env_label = f"{env_label} (header v {header_version})"
+    status_text = f"Status: {meta['status']}"
+    latest_text = f"Latest time: {meta['latest_time']}"
+    if meta.get("running") == "yes":
+        status_text = (
+            f"Running: jobs={meta.get('jobs_running', '0')} "
+            f"pids={meta.get('live_processes', '0')}"
+        )
+        latest_text = (
+            f"Latest: {meta['latest_time']} "
+            f"iter={meta.get('latest_iteration', 'n/a')}"
+        )
+
     rows = [
         (f"Case: {meta['case_name']}", f"Solver: {meta['solver']}"),
-        (f"Status: {meta['status']}", f"Latest time: {meta['latest_time']}"),
+        (status_text, latest_text),
         (
             f"Mesh: {meta['mesh']} Cells: {meta.get('cells', 'n/a')}",
             f"Parallel: {meta['parallel']}",
@@ -64,6 +76,21 @@ def case_banner_lines(meta: dict[str, str]) -> list[str]:
         (env_label, "Keys: ? help / search : cmd"),
         (f"Path: {meta['case_path']}", f"Log: {meta.get('log', 'none')}"),
     ]
+    if meta.get("running") == "yes":
+        rows.insert(
+            4,
+            (
+                (
+                    f"dt={meta.get('latest_delta_t', 'n/a')} "
+                    f"sec/iter={meta.get('sec_per_iter', 'n/a')}"
+                ),
+                f"ETA end={meta.get('eta_end', 'n/a')} criteria={meta.get('eta_criteria', 'n/a')}",
+            ),
+        )
+        rows[-1] = (
+            f"Path: {meta['case_path']}",
+            f"Log: {meta.get('log', 'none')} {meta.get('log_fresh', '')}".rstrip(),
+        )
     return foam_style_banner("ofti", rows)
 
 

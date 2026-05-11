@@ -34,6 +34,19 @@ run_cmd() {
   fi
 }
 
+run_pytest_smoke() {
+  echo "== pytest smoke =="
+  set +e
+  "$PYTHON" -m pytest -o addopts='' -m smoke --maxfail=1
+  local code="$?"
+  set -e
+  if [[ "$code" = "5" ]]; then
+    echo "no smoke tests selected; skipping"
+    return 0
+  fi
+  return "$code"
+}
+
 {
   if [[ -n "$RUFF" ]]; then
     run_cmd "ruff check (auto-fix)" "$RUFF" check --fix .
@@ -61,7 +74,9 @@ run_cmd() {
   fi
 
   echo
-  run_cmd "pytest smoke" "$PYTHON" -m pytest -o addopts='' -m smoke --maxfail=1
+  if ! run_pytest_smoke; then
+    STATUS=1
+  fi
   echo
   if [[ "$PYTEST_COV_AVAILABLE" = "1" ]]; then
     run_cmd "pytest coverage" "$PYTHON" -m pytest -o addopts='' --cov=ofti --cov-report=term-missing --cov-fail-under=0
@@ -71,6 +86,7 @@ run_cmd() {
       STATUS=1
     fi
   fi
+  exit "${STATUS}"
 } 2>&1 | tee -a "${LOG_FILE}"
 
-exit "${STATUS}"
+exit "${PIPESTATUS[0]}"

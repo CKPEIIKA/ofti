@@ -1,9 +1,9 @@
-# Foamlib Survey (checked against installed 1.5.5)
+# Foamlib Survey (checked against installed 1.5.7)
 
-Foamlib is installed in `.venv` (version 1.5.5). The notes below are based on
+Foamlib is installed in `.venv` (version 1.5.7). The notes below are based on
 local introspection of the package and the current OFTI adapter.
 
-## Core API (foamlib 1.5.5)
+## Core API (foamlib 1.5.7)
 
 - `FoamFile(path)`: read/write OpenFOAM dictionaries with dict-like access.
 - `FoamFieldFile(path)`: field file support with `dimensions`, `internal_field`,
@@ -46,8 +46,7 @@ local introspection of the package and the current OFTI adapter.
 - Mesh stats (cells/faces/points) extraction without `checkMesh`.
 - Behavior across OpenFOAM forks / versioned syntax.
 
-## P1 follow-ups once foamlib is installed
+## P1 follow-ups
 
-- Verify supported file types and error modes.
 - Update adapter if foamlib offers richer type info for editors.
 - Replace remaining shell tool usage for read-only inspections.

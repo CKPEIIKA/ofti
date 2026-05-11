@@ -14,6 +14,7 @@ from ofti.app.helpers import (
     is_case_dir,
     prompt_command,
     select_case_directory,
+    select_start_case,
     set_no_foam_mode,
     show_message,
 )
@@ -73,6 +74,13 @@ def _main(stdscr: Any, case_path: Path, debug: bool, state: AppState) -> None:
     curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     curses.init_pair(4, curses.COLOR_RED, curses.COLOR_BLACK)
 
+    try:
+        selected = select_start_case(stdscr, case_path)
+    except QuitAppError:
+        return
+    if selected is None:
+        return
+    case_path = selected
     if not is_case_dir(case_path):
         selected = select_case_directory(stdscr, case_path)
         if selected is None:

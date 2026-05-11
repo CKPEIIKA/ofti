@@ -12,6 +12,8 @@ from ofti.app.menus.mesh import mesh_menu
 from ofti.app.menus.physics import physics_menu
 from ofti.app.menus.postprocessing import postprocessing_menu
 from ofti.app.menus.simulation import simulation_menu
+from ofti.app.overview import running_header_metadata
+from ofti.app.screens.overview import overview_screen
 from ofti.app.state import AppState, Screen
 from ofti.core.case_meta import case_metadata, case_metadata_quick
 from ofti.foam.config import fzf_enabled
@@ -39,6 +41,7 @@ def main_menu_screen(
     has_fzf = fzf_enabled()
 
     categories = [
+        "Overview",
         "Mesh",
         "Physics & Boundary Conditions",
         "Simulation",
@@ -50,14 +53,15 @@ def main_menu_screen(
     quit_index = len(menu_options)
     menu_options.append("Quit")
 
-    overview_lines = case_overview_lines(case_metadata_cached(case_path, state))
+    banner_meta = running_header_metadata(case_path, case_metadata_cached(case_path, state))
+    overview_lines = case_overview_lines(banner_meta)
     initial_index = state.menu_selection.get("menu:root", 0)
     root_menu = RootMenu(
         stdscr,
         "Main menu",
         menu_options,
         extra_lines=overview_lines,
-        banner_provider=lambda: case_banner_lines(case_metadata_cached(case_path, state)),
+        banner_lines=case_banner_lines(banner_meta),
         initial_index=initial_index,
         command_handler=lambda cmd: handle_command(
             stdscr, case_path, state, cmd, command_callbacks,
@@ -79,16 +83,16 @@ def main_menu_screen(
         return None
     state.menu_selection["menu:root"] = choice
 
-    if choice == 0:
-        return mesh_menu(
+    actions = [
+        lambda: _overview_action(stdscr, case_path),
+        lambda: mesh_menu(
             stdscr,
             case_path,
             state,
             command_handler=menu_command,
             command_suggestions=menu_suggestions,
-        )
-    if choice == 1:
-        return physics_menu(
+        ),
+        lambda: physics_menu(
             stdscr,
             case_path,
             state,
@@ -96,33 +100,29 @@ def main_menu_screen(
             check_syntax_screen,
             command_handler=menu_command,
             command_suggestions=menu_suggestions,
-        )
-    if choice == 2:
-        return simulation_menu(
+        ),
+        lambda: simulation_menu(
             stdscr,
             case_path,
             state,
             command_handler=menu_command,
             command_suggestions=menu_suggestions,
-        )
-    if choice == 3:
-        return postprocessing_menu(
+        ),
+        lambda: postprocessing_menu(
             stdscr,
             case_path,
             state,
             command_handler=menu_command,
             command_suggestions=menu_suggestions,
-        )
-    if choice == 4:
-        return clean_case_menu(
+        ),
+        lambda: clean_case_menu(
             stdscr,
             case_path,
             state,
             command_handler=menu_command,
             command_suggestions=menu_suggestions,
-        )
-    if choice == 5:
-        return config_menu(
+        ),
+        lambda: config_menu(
             stdscr,
             case_path,
             state,
@@ -133,7 +133,15 @@ def main_menu_screen(
             global_search_screen,
             command_handler=menu_command,
             command_suggestions=menu_suggestions,
-        )
+        ),
+    ]
+    if 0 <= choice < len(actions):
+        return actions[choice]()
+    return Screen.MAIN_MENU
+
+
+def _overview_action(stdscr: Any, case_path: Path) -> Screen:
+    overview_screen(stdscr, case_path)
     return Screen.MAIN_MENU
 
 

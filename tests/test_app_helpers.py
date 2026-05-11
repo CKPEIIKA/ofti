@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
+
+import pytest
 
 from ofti.app import app, helpers, tasks
 from ofti.app.tasks import recent_task_summary, running_tasks_status
@@ -112,3 +115,142 @@ def test_case_chooser_entries_respect_search_and_flags(tmp_path: Path) -> None:
     assert any(label == "caseA/ [OF case]" for label in labels)
     assert any(label == "caseB/ [probably OF case]" for label in labels)
     assert "notes.txt" not in labels
+
+
+def test_running_case_choices_dedupe_visible_cases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    case = tmp_path / "case"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "controlDict").write_text("application simpleFoam;\n")
+    other = tmp_path / "not-case"
+    other.mkdir()
+
+    rows = [
+        {"case": str(case), "pid": 10, "solver": "simpleFoam"},
+        {"case": str(case), "pid": 11, "solver": "simpleFoam"},
+        {"case": str(other), "pid": 12, "solver": "pisoFoam"},
+        {"case": "", "pid": 13, "solver": "unknown"},
+    ]
+    monkeypatch.setattr(helpers, "_scan_proc_solver_processes", lambda *_a, **_k: rows)
+
+    choices = helpers.discover_running_case_choices(tmp_path)
+
+    assert len(choices) == 1
+    assert choices[0].path == case.resolve()
+    assert choices[0].pids == (10, 11)
+    assert choices[0].solvers == ("simpleFoam",)
+
+
+def test_select_start_case_can_choose_running_or_browse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    case = tmp_path / "case"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "controlDict").write_text("application simpleFoam;\n")
+    browsed = tmp_path / "browsed"
+    (browsed / "system").mkdir(parents=True)
+    (browsed / "system" / "controlDict").write_text("application pisoFoam;\n")
+
+    monkeypatch.setattr(
+        helpers,
+        "discover_running_case_choices",
+        lambda _path: [helpers.RunningCaseChoice(case.resolve(), (101,), ("simpleFoam",))],
+    )
+
+    class _Menu:
+        choices: ClassVar[list[int]] = [0]
+
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.current_option = self.choices.pop(0)
+
+        def display(self) -> None:
+            return
+
+    monkeypatch.setattr(helpers, "Menu", _Menu)
+
+    class _Screen:
+        def getch(self) -> int:
+            return 10
+
+    assert helpers.select_start_case(_Screen(), tmp_path) == case.resolve()
+
+    _Menu.choices = [1]
+    monkeypatch.setattr(helpers, "select_case_directory", lambda *_a, **_k: browsed)
+    assert helpers.select_start_case(_Screen(), tmp_path) == browsed
+
+
+def test_select_start_case_current_and_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    case = tmp_path / "case"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "controlDict").write_text("application simpleFoam;\n")
+    monkeypatch.setattr(helpers, "discover_running_case_choices", lambda _path: [])
+
+    class _Menu:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.current_option = 0
+
+        def display(self) -> None:
+            return
+
+    class _SelectScreen:
+        def getch(self) -> int:
+            return 10
+
+    class _BackScreen:
+        def getch(self) -> int:
+            return ord("h")
+
+    monkeypatch.setattr(helpers, "Menu", _Menu)
+    assert helpers.select_start_case(_SelectScreen(), case) == case.resolve()
+    assert helpers.select_start_case(_BackScreen(), case) is None
+
+
+def test_running_case_choices_handles_scan_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise_os_error(*_args, **_kwargs):
+        raise OSError("proc not available")
+
+    monkeypatch.setattr(helpers, "_scan_proc_solver_processes", _raise_os_error)
+    assert helpers.discover_running_case_choices(tmp_path) == []
+
+
+def test_start_case_labels_and_hints(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    choice = helpers.RunningCaseChoice(case, (1, 2), ("pisoFoam", "simpleFoam"))
+
+    assert helpers._current_case_label(case).startswith("[Current case]")
+    assert "pids=2" in helpers._running_case_label(choice)
+    assert "directory" in helpers._start_case_hint("browse")
+    assert "running" in helpers._start_case_hint("running")
+    assert "current" in helpers._start_case_hint("current")
+    assert "Exit" in helpers._start_case_hint("other")
+
+
+def test_start_case_navigation_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Menu:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.current_option = 0
+
+        def display(self) -> None:
+            return
+
+    class _Screen:
+        def __init__(self, keys: list[int]) -> None:
+            self.keys = keys
+
+        def getch(self) -> int:
+            return self.keys.pop(0)
+
+    monkeypatch.setattr(helpers, "Menu", _Menu)
+
+    choice = helpers._navigate_start_case_menu(
+        _Screen([ord("j"), ord("j"), ord("k"), ord("g"), ord("G"), 10]),
+        ["one", "two", "three"],
+        ["running", "running", "browse"],
+        extra_lines=[],
+    )
+    assert choice == 2
+
+    with pytest.raises(helpers.QuitAppError):
+        helpers._navigate_start_case_menu(
+            _Screen([ord("q")]),
+            ["one"],
+            ["browse"],
+            extra_lines=[],
+        )
