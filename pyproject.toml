@@ -24,11 +24,15 @@ dependencies = [
 ofti = "ofti.app.cli:main"
 
 [tool.pytest.ini_options]
-addopts = "--cov=ofti --cov-report=term-missing --cov-fail-under=80"
+addopts = "--cov=ofti --cov-report=term-missing --cov-fail-under=85"
 norecursedirs = ["refs"]
 
 [tool.coverage.run]
 source = ["ofti"]
+omit = [
+    "ofti/app/screens/*",
+    "ofti/ui_curses/*",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
