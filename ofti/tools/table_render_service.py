@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ofti.core.plot import block_bar
 from ofti.core.table import render_kv, render_table
 
 
@@ -139,6 +140,22 @@ def current_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
+def alert_cards_table_lines(cards: list[object]) -> list[str]:
+    rows = [_dict(card) for card in cards]
+    if not rows:
+        return ["No alerts."]
+    return render_table(
+        rows,
+        [
+            ("severity", "Severity"),
+            ("title", "Alert"),
+            ("evidence", "Evidence"),
+            ("action", "Action"),
+            ("source", "Source"),
+        ],
+    )
+
+
 def criteria_payload_table_lines(payload: dict[str, Any]) -> list[str]:
     criteria = list(payload.get("criteria", []))
     lines = render_kv(
@@ -264,6 +281,120 @@ def residuals_table_lines(rows: list[object]) -> list[str]:
             ("max", "Max"),
         ],
     )
+
+
+def case_dna_table_lines(payload: dict[str, Any]) -> list[str]:
+    residual_fields = ",".join(str(item) for item in list(payload.get("residual_fields", [])))
+    fingerprint = _dict(payload.get("fingerprint"))
+    return render_kv(
+        [
+            ("case", payload.get("case")),
+            ("solver", payload.get("solver")),
+            ("running", payload.get("running")),
+            ("latest_time", payload.get("latest_time")),
+            ("latest_iteration", payload.get("latest_iteration")),
+            ("fields", payload.get("fields")),
+            ("patches", payload.get("patches")),
+            ("residual_fields", residual_fields),
+            ("jobs_running", payload.get("jobs_running")),
+            ("criteria_failed", payload.get("criteria_failed")),
+            ("risk", payload.get("risk")),
+            ("fingerprint", fingerprint.get("hash")),
+            ("fingerprint_files", fingerprint.get("files")),
+            ("fingerprint_skipped", fingerprint.get("skipped")),
+        ],
+    )
+
+
+def scope_table_lines(payload: dict[str, Any]) -> list[str]:
+    rows = [_dict(row) for row in list(payload.get("rows", []))]
+    if not rows:
+        return ["No scope data available."]
+    return render_table(rows, [("scope", "Scope"), ("value", "Value"), ("plot", "Plot")])
+
+
+def folded_log_table_lines(payload: dict[str, Any]) -> list[str]:
+    rows = [_dict(row) for row in list(payload.get("rows", []))]
+    lines = render_kv([("log", payload.get("log")), ("signals", len(rows))])
+    if rows:
+        lines.extend(
+            [
+                "",
+                "Signals",
+                *render_table(rows, [("kind", "Kind"), ("message", "Message")]),
+            ],
+        )
+    else:
+        lines.append("No signal lines found.")
+    return lines
+
+
+def mesh_radar_table_lines(payload: dict[str, Any]) -> list[str]:
+    metrics = [_mesh_radar_row(row) for row in list(payload.get("metrics", []))]
+    lines = render_kv(
+        [
+            ("case", payload.get("case")),
+            ("status", payload.get("status")),
+            ("has_mesh", payload.get("has_mesh")),
+            ("log", payload.get("log")),
+        ],
+    )
+    if metrics:
+        lines.extend(
+            [
+                "",
+                "Mesh quality",
+                *render_table(
+                    metrics,
+                    [
+                        ("metric", "Metric"),
+                        ("value", "Value"),
+                        ("status", "Status"),
+                        ("bar", "Radar"),
+                    ],
+                ),
+            ],
+        )
+    notes = [{"note": note} for note in list(payload.get("notes", []))]
+    if notes:
+        lines.extend(["", "Notes", *render_table(notes, [("note", "Note")])])
+    return lines
+
+
+def resource_watch_table_lines(payload: dict[str, Any]) -> list[str]:
+    lines = render_kv(
+        [
+            ("case", payload.get("case")),
+            ("risk", payload.get("risk")),
+            ("free_disk", _format_bytes_value(payload.get("free_bytes"))),
+            ("time_dirs", payload.get("time_dirs")),
+            ("processor_dirs", payload.get("processor_dirs")),
+            ("log_total", _format_bytes_value(payload.get("log_bytes"))),
+        ],
+    )
+    logs = list(payload.get("logs", []))
+    if logs:
+        lines.extend(
+            [
+                "",
+                "Logs",
+                *render_table([_dict(row) for row in logs], [("log", "Log"), ("size", "Size")]),
+            ],
+        )
+    return lines
+
+
+def cockpit_table_lines(payload: dict[str, Any]) -> list[str]:
+    sections = [
+        ("Case DNA", case_dna_table_lines(_dict(payload.get("case_dna")))),
+        ("Mission Scopes", scope_table_lines(_dict(payload.get("scopes")))),
+        ("Mesh Radar", mesh_radar_table_lines(_dict(payload.get("mesh_radar")))),
+        ("Resource Watch", resource_watch_table_lines(_dict(payload.get("resource_watch")))),
+    ]
+    lines = render_kv([("case", payload.get("case"))])
+    for title, section_lines in sections:
+        lines.extend(["", title, "-" * len(title), *section_lines])
+    return lines
 
 
 def compare_table_lines(payload: dict[str, Any]) -> list[str]:
@@ -447,7 +578,18 @@ def live_cases_table_lines(payload: dict[str, Any]) -> list[str]:
         ],
     )
     if rows:
-        lines.extend(["", "Case grid", *run_status_rows_table(rows)])
+        if payload.get("group_state"):
+            lines.extend(["", "Case grid"])
+            for state in _state_order(rows):
+                state_rows = [
+                    row for row in rows
+                    if str(_dict(row).get("state") or "unknown") == state
+                ]
+                lines.extend(
+                    [f"State: {state} ({len(state_rows)})", *run_status_rows_table(state_rows)],
+                )
+        else:
+            lines.extend(["", "Case grid", *run_status_rows_table(rows)])
     else:
         lines.append("No cases found.")
     return lines
@@ -710,6 +852,44 @@ def _single_path_table(title: str, paths: list[object]) -> list[str]:
 
 def _warning_lines(warning: object) -> list[str]:
     return ["", *render_kv([("proc_access_warning", warning)])]
+
+
+def _mesh_radar_row(row: object) -> dict[str, object]:
+    data = _dict(row)
+    return {
+        "metric": data.get("metric"),
+        "value": data.get("value"),
+        "status": data.get("status"),
+        "bar": block_bar(
+            _float_or_none(data.get("bar_value")),
+            maximum=_float_or_none(data.get("bar_max")),
+            width=16,
+        ),
+    }
+
+
+def _state_order(rows: list[object]) -> list[str]:
+    wanted = ["running", "queued", "failed", "done", "unknown"]
+    states = {str(_dict(row).get("state") or "unknown") for row in rows}
+    return [state for state in wanted if state in states] + sorted(states.difference(wanted))
+
+
+def _float_or_none(value: object) -> float | None:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_bytes_value(value: object) -> str | None:
+    number = _float_or_none(value)
+    if number is None:
+        return None
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if number < 1024 or unit == "TB":
+            return f"{number:.1f}{unit}" if unit != "B" else f"{int(number)}B"
+        number /= 1024
+    return f"{number:.1f}TB"
 
 
 def _dict(value: object) -> dict[str, object]:

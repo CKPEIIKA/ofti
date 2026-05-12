@@ -94,13 +94,53 @@ def test_overview_text_aggregates_readonly_sections(monkeypatch: pytest.MonkeyPa
             "fields": [{"field": "Ux", "count": 2, "last": 1e-4, "min": 1e-4, "max": 1e-3}],
         },
     )
+    monkeypatch.setattr(
+        overview.knife_ops,
+        "initials_payload",
+        lambda _case: {"field_count": 2, "patch_count": 4},
+    )
+    monkeypatch.setattr(
+        overview,
+        "case_dna_payload",
+        lambda *_a, **_k: {
+            "case": str(tmp_path),
+            "risk": "low",
+            "residual_fields": ["Ux"],
+            "fingerprint": {"hash": "abc", "files": 0, "skipped": 0},
+        },
+    )
+    monkeypatch.setattr(
+        overview,
+        "mission_scope_payload",
+        lambda _case: {"rows": [{"scope": "Courant max", "value": 0.5, "plot": "████"}]},
+    )
+    monkeypatch.setattr(
+        overview.watch_ops,
+        "log_tail_payload",
+        lambda *_a, **_k: {
+            "log": "log.simpleFoam",
+            "lines": [
+                "Time = 1",
+                "smoothSolver: Solving for Ux, Initial residual = 1e-4",
+                "Courant Number mean: 0.2 max: 0.5",
+                "ExecutionTime = 4 s",
+            ],
+        },
+    )
 
     text = overview.overview_text(tmp_path)
 
+    assert "Case DNA" in text
+    assert "Mission Scopes" in text
+    assert "Mesh Radar" in text
+    assert "Resource Watch" in text
+    assert "Alert Cards" in text
+    assert "Case doctor warnings" in text
     assert "Runtime Status" in text
     assert "Live Jobs And Processes" in text
     assert "Live Cases Monitor" in text
     assert "Log + Residual Split View" in text
+    assert "Folded Log" in text
     assert "Log metrics" in text
     assert "Residuals" in text
     assert "Tracked jobs" in text
@@ -109,6 +149,9 @@ def test_overview_text_aggregates_readonly_sections(monkeypatch: pytest.MonkeyPa
     assert "residual_fields" in text
     assert "Ux" in text
     assert "Count" in text
+    assert "Courant max" in text
+    assert "fingerprint" in text
+    assert "Signals" in text
 
 
 def test_running_header_metadata_and_banner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -213,6 +256,33 @@ def test_overview_branches_for_errors_and_empty_data(
     assert "Untracked solver processes" in current_lines
 
     monkeypatch.setattr(
+        overview.knife_ops,
+        "doctor_payload",
+        lambda _case: {"errors": [], "warnings": []},
+    )
+    monkeypatch.setattr(
+        overview.knife_ops,
+        "status_payload",
+        lambda *_a, **_k: {
+            "running": True,
+            "log_fresh": True,
+            "run_time_control": {"failed": 0},
+        },
+    )
+    monkeypatch.setattr(
+        overview.plot_ops,
+        "metrics_payload",
+        lambda _case: {"log": "log.simpleFoam", "courant": {"max": 1.5}},
+    )
+    monkeypatch.setattr(
+        overview.plot_ops,
+        "residuals_payload",
+        lambda *_a, **_k: {"log": "log.simpleFoam", "fields": [{"field": "U"}]},
+    )
+    alert_text = "\n".join(overview._alert_lines(tmp_path))
+    assert "High Courant number" in alert_text
+
+    monkeypatch.setattr(
         overview.plot_ops,
         "metrics_payload",
         lambda _case: {
@@ -234,3 +304,23 @@ def test_overview_branches_for_errors_and_empty_data(
     split = "\n".join(overview._log_residual_split_lines(tmp_path))
     assert "Log metrics" in split
     assert "Residuals" in split
+
+    monkeypatch.setattr(
+        overview.knife_ops,
+        "initials_payload",
+        lambda _case: (_ for _ in ()).throw(ValueError("bad initials")),
+    )
+    monkeypatch.setattr(
+        overview,
+        "case_dna_payload",
+        lambda *_a, **_k: {"case": str(tmp_path), "risk": "medium", "fingerprint": {"hash": "abc"}},
+    )
+    dna = "\n".join(overview._case_dna_lines(tmp_path))
+    assert "risk" in dna
+
+    monkeypatch.setattr(
+        overview.watch_ops,
+        "log_tail_payload",
+        lambda *_a, **_k: {"log": "log.simpleFoam", "lines": ["Time = 1", "noise"]},
+    )
+    assert "folded" in "\n".join(overview._folded_log_lines(tmp_path))

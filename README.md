@@ -58,7 +58,9 @@ solver cases, the current case when applicable, and a "Choose from a directory"
 entry that opens the folder picker.
 The first main-menu entry is `Overview`, a read-only dashboard that consolidates
 safe CLI diagnostics such as case status, live jobs/processes, runtime criteria,
-ETA, log metrics, and residual summaries.
+ETA, log metrics, residual summaries, alert cards, Case DNA, mission-scope
+sparklines, a folded log signal view, Resource Watch, setup fingerprinting,
+and a Mesh Radar summary from checkMesh data when available.
 
 Main menu/interface sketch (example):
 
@@ -111,7 +113,9 @@ Most read-only diagnostic commands support `--json` for machine-readable output
 and `--table` for aligned terminal tables. The TUI `Overview` screen uses the
 same table rendering as the CLI instead of raw key/value dumps.
 Use `ofti watch cases --table` for a read-only live case grid over a case set,
-or add `--follow` to refresh it until interrupted.
+or add `--follow` to refresh it until interrupted. Add `--group-state` to make
+the queue easier to scan and `--sort case|state|latest|eta|jobs` to choose the
+row order.
 For streaming tails (`watch log --follow` / `watch attach`), JSON is only for
 non-follow mode.
 Use `--easy-on-cpu` when you want bounded log reads and slower polling to keep
@@ -123,10 +127,15 @@ Examples:
 ```bash
 ofti knife preflight CASE --json
 ofti knife status CASE --table
+ofti knife cockpit CASE --table
+ofti knife dna CASE --json
+ofti knife resource CASE --table
+ofti knife mesh-radar CASE --table
 ofti knife current --root REPO --recursive --live --table
 ofti plot metrics CASE --table
 ofti watch jobs CASE --table
 ofti watch cases --set STUDY --glob 'case_*' --table
+ofti watch cases --set STUDY --glob 'case_*' --group-state --sort eta --table
 ofti knife initials CASE --json
 ofti knife copy CASE_COPY --case CASE
 ofti knife current --root REPO --recursive --live --json

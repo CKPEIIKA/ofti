@@ -311,12 +311,15 @@ def test_readonly_handlers_support_table_output(
         tail_bytes=None,
         easy_on_cpu=False,
         follow=False,
+        group_state=True,
         json=False,
+        sort="state",
         table=True,
     )
     assert cli_tools._watch_cases(args) == 0
     out = capsys.readouterr().out
     assert "Case grid" in out
+    assert "State: running" in out
     assert "case_1" in out
 
 
@@ -416,6 +419,54 @@ def test_initials_converge_stability_support_table_output(
     out = capsys.readouterr().out
     assert "Boundary conditions" in out
     assert "fixedValue" in out
+
+    monkeypatch.setattr(
+        cli_tools.cockpit_service,
+        "cockpit_payload",
+        lambda *_a, **_k: {
+            "case": "case-path",
+            "case_dna": {"case": "case-path", "risk": "low", "fingerprint": {"hash": "abc"}},
+            "scopes": {"rows": [{"scope": "Courant max", "value": 0.5, "plot": "██"}]},
+            "mesh_radar": {"case": "case-path", "status": "ok", "metrics": [], "notes": []},
+            "resource_watch": {"case": "case-path", "risk": "low", "logs": []},
+        },
+    )
+    assert cli_tools._knife_cockpit(_ns(case_dir=Path(), tail_bytes=None, json=False)) == 0
+    out = capsys.readouterr().out
+    assert "Case DNA" in out
+    assert "Resource Watch" in out
+
+    monkeypatch.setattr(
+        cli_tools.cockpit_service,
+        "case_dna_payload",
+        lambda *_a, **_k: {"case": "case-path", "risk": "low", "fingerprint": {"hash": "abc"}},
+    )
+    assert cli_tools._knife_dna(_ns(case_dir=Path(), tail_bytes=None, json=False)) == 0
+    assert "fingerprint" in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        cli_tools.cockpit_service,
+        "mission_scope_payload",
+        lambda _case: {"rows": [{"scope": "Courant max", "value": 0.5, "plot": "██"}]},
+    )
+    assert cli_tools._knife_scopes(_ns(case_dir=Path(), json=False)) == 0
+    assert "Courant max" in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        cli_tools.cockpit_service,
+        "mesh_radar_payload",
+        lambda _case: {"case": "case-path", "status": "ok", "metrics": [], "notes": []},
+    )
+    assert cli_tools._knife_mesh_radar(_ns(case_dir=Path(), json=False)) == 0
+    assert "status" in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        cli_tools.cockpit_service,
+        "resource_watch_payload",
+        lambda _case: {"case": "case-path", "risk": "low", "logs": []},
+    )
+    assert cli_tools._knife_resource(_ns(case_dir=Path(), json=False)) == 0
+    assert "risk" in capsys.readouterr().out
 
     monkeypatch.setattr(
         cli_tools.knife_ops,
@@ -563,6 +614,11 @@ def test_table_flags_parse_for_readonly_commands() -> None:
     assert parser.parse_args(["knife", "current", "--table"]).table is True
     assert parser.parse_args(["knife", "compare", "a", "b", "--table"]).table is True
     assert parser.parse_args(["knife", "initials", "--table"]).table is True
+    assert parser.parse_args(["knife", "cockpit", "--table"]).table is True
+    assert parser.parse_args(["knife", "dna", "--table"]).table is True
+    assert parser.parse_args(["knife", "scopes", "--table"]).table is True
+    assert parser.parse_args(["knife", "mesh-radar", "--table"]).table is True
+    assert parser.parse_args(["knife", "resource", "--table"]).table is True
     assert parser.parse_args(["knife", "converge", "--table"]).table is True
     assert parser.parse_args(["knife", "stability", "--pattern", "x", "--tolerance", "1", "--table"]).table is True
     assert parser.parse_args(["knife", "campaign", "status", "--table"]).table is True
