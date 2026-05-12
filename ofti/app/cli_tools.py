@@ -180,6 +180,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     )
     receipt_verify.add_argument("receipt", type=Path)
     receipt_verify.add_argument("--case", dest="case_dir", default=None, type=Path)
+    _add_table_flag(receipt_verify)
     receipt_verify.add_argument("--json", action="store_true")
     receipt_verify.set_defaults(func=_knife_receipt_verify)
 
@@ -736,6 +737,45 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     jobs.add_argument("--json", action="store_true")
     jobs.set_defaults(func=_watch_jobs)
 
+    cases = watch_sub.add_parser(
+        "cases",
+        help="Monitor a live case set as a read-only grid",
+        description=(
+            "Show a read-only live cases monitor for explicit cases or for "
+            "cases discovered under --set/--glob."
+        ),
+    )
+    cases.add_argument("cases", nargs="*", type=Path, help="Explicit case directories")
+    cases.add_argument(
+        "--set",
+        dest="set_dir",
+        default=Path.cwd(),
+        type=Path,
+        help="Case-set root used when explicit cases are omitted",
+    )
+    cases.add_argument("--glob", default="*", help="Case directory glob under --set")
+    cases.add_argument(
+        "--summary-csv",
+        default=None,
+        type=Path,
+        help="Read case paths from a campaign summary CSV",
+    )
+    cases_mode = cases.add_mutually_exclusive_group()
+    cases_mode.add_argument("--fast", action="store_true", help="Use lightweight status parsing")
+    cases_mode.add_argument("--full", action="store_true", help="Parse full logs (slower)")
+    _add_easy_on_cpu_flag(cases)
+    cases.add_argument(
+        "--tail-bytes",
+        type=int,
+        default=None,
+        help="Max solver log bytes to parse",
+    )
+    cases.add_argument("--follow", action="store_true", help="Refresh until interrupted")
+    cases.add_argument("--interval", type=float, default=2.0, help="Refresh interval for --follow")
+    _add_table_flag(cases)
+    cases.add_argument("--json", action="store_true", help="Print result as JSON")
+    cases.set_defaults(func=_watch_cases)
+
     status = watch_sub.add_parser("status", help="Alias of watch jobs")
     status.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
     status.add_argument("--all", action="store_true", help="Include finished/stopped jobs")
@@ -1061,6 +1101,7 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     tool.add_argument("--case", dest="case_dir", default=Path.cwd(), type=Path)
     tool.add_argument("--list", action="store_true")
     tool.add_argument("--background", action="store_true")
+    _add_table_flag(tool)
     tool.add_argument("--json", action="store_true", help="Print result as JSON")
     tool.set_defaults(func=_run_tool)
 
@@ -1574,6 +1615,9 @@ def _knife_receipt_verify(args: argparse.Namespace) -> int:
     )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if bool(payload.get("ok")) else 1
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.receipt_verify_table_lines(payload)))
         return 0 if bool(payload.get("ok")) else 1
     print(f"receipt={payload['receipt']}")
     print(f"case={payload['case']}")
@@ -2251,6 +2295,40 @@ def _watch_jobs(args: argparse.Namespace) -> int:
             f"pid={job.get('pid', '?')} status={job.get('status', 'unknown')}",
         )
     return 0
+
+
+def _watch_cases(args: argparse.Namespace) -> int:
+    if bool(getattr(args, "follow", False)) and bool(getattr(args, "json", False)):
+        print("ofti: --json cannot be used with --follow", file=sys.stderr)
+        return 2
+    if not bool(getattr(args, "follow", False)):
+        payload = _watch_cases_payload(args)
+        if bool(getattr(args, "json", False)):
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0
+        print("\n".join(table_render_service.live_cases_table_lines(payload)))
+        return 0
+
+    interval = _interval_with_cpu_mode(args, max(float(getattr(args, "interval", 2.0)), 0.25))
+    try:
+        while True:
+            payload = _watch_cases_payload(args)
+            print("\033[H\033[J", end="")
+            print("\n".join(table_render_service.live_cases_table_lines(payload)))
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        return 0
+
+
+def _watch_cases_payload(args: argparse.Namespace) -> dict[str, object]:
+    return run_ops.status_set_payload(
+        set_dir=getattr(args, "set_dir", Path.cwd()),
+        explicit_cases=list(getattr(args, "cases", [])),
+        case_glob=str(getattr(args, "glob", "*")),
+        summary_csv=getattr(args, "summary_csv", None),
+        lightweight=not bool(getattr(args, "full", False)),
+        tail_bytes=_tail_bytes_with_cpu_mode(args),
+    )
 
 
 def _watch_log(args: argparse.Namespace) -> int:
@@ -3005,6 +3083,9 @@ def _run_tool(args: argparse.Namespace) -> int:
         payload = run_ops.tool_catalog_payload(args.case_dir)
         if args.json:
             print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0
+        if bool(getattr(args, "table", False)):
+            print("\n".join(table_render_service.tool_catalog_table_lines(payload)))
             return 0
         for name in payload["tools"]:
             print(name)

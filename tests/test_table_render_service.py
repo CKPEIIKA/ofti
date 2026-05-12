@@ -261,3 +261,44 @@ def test_campaign_and_run_status_tables() -> None:
         },
     )
     assert "Stop reason" in "\n".join(run_status)
+
+
+def test_live_cases_catalog_and_receipt_tables() -> None:
+    live_cases = tables.live_cases_table_lines(
+        {
+            "set_dir": "root",
+            "glob": "*",
+            "summary_csv": None,
+            "count": 1,
+            "rows": [{"case": "case_1", "state": "running", "jobs_running": 1}],
+        },
+    )
+    live_text = "\n".join(live_cases)
+    assert "Case grid" in live_cases
+    assert "running" in live_text
+    assert "case_1" in live_text
+
+    catalog = tables.tool_catalog_table_lines({"case": "case", "tools": ["blockMesh"]})
+    assert "Tools" in catalog
+    assert "blockMesh" in "\n".join(catalog)
+
+    receipt = tables.receipt_verify_table_lines(
+        {
+            "receipt": "runs/receipt.json",
+            "case": "case",
+            "ok": False,
+            "expected_tree_hash": "a",
+            "actual_tree_hash": "b",
+            "recorded_inputs_copy": True,
+            "restorable": True,
+            "openfoam": {"match": True},
+            "build": {"solver": {"match": False}, "linked_libs": {"match": True}},
+            "missing_files": [],
+            "changed_files": [{"path": "system/controlDict"}],
+            "extra_files": ["system/newDict"],
+        },
+    )
+    receipt_text = "\n".join(receipt)
+    assert "Checks" in receipt
+    assert "Changed files" in receipt
+    assert "system/controlDict" in receipt_text

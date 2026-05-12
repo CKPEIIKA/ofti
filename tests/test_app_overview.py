@@ -99,6 +99,7 @@ def test_overview_text_aggregates_readonly_sections(monkeypatch: pytest.MonkeyPa
 
     assert "Runtime Status" in text
     assert "Live Jobs And Processes" in text
+    assert "Live Cases Monitor" in text
     assert "Log + Residual Split View" in text
     assert "Log metrics" in text
     assert "Residuals" in text

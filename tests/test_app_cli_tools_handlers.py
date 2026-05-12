@@ -131,6 +131,36 @@ def test_knife_compare_table_output(
     assert "system/controlDict" in out
 
 
+def test_receipt_verify_supports_table_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli_tools.receipt_ops,
+        "verify_run_receipt",
+        lambda *_a, **_k: {
+            "receipt": "runs/receipt.json",
+            "case": "/case",
+            "ok": False,
+            "expected_tree_hash": "a",
+            "actual_tree_hash": "b",
+            "recorded_inputs_copy": True,
+            "restorable": True,
+            "openfoam": {"match": True},
+            "build": {"solver": {"match": False}, "linked_libs": {"match": True}},
+            "missing_files": [],
+            "changed_files": [{"path": "system/controlDict"}],
+            "extra_files": ["system/newDict"],
+        },
+    )
+
+    code = cli_tools._knife_receipt_verify(_ns(receipt=Path("receipt.json"), case_dir=None, json=False, table=True))
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "Checks" in out
+    assert "Changed files" in out
+
+
 def test_knife_preflight_status_current_and_set_plain(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -260,6 +290,34 @@ def test_readonly_handlers_support_table_output(
     )
     assert cli_tools._watch_jobs(_ns(case_dir=Path(), all=False, kind="any", json=False, table=True)) == 0
     assert "Jobs" in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "status_set_payload",
+        lambda **_k: {
+            "set_dir": "root",
+            "glob": "*",
+            "summary_csv": None,
+            "count": 1,
+            "rows": [{"case": "case_1", "state": "running", "jobs_running": 1}],
+        },
+    )
+    args = _ns(
+        set_dir=Path(),
+        cases=[],
+        glob="*",
+        summary_csv=None,
+        full=False,
+        tail_bytes=None,
+        easy_on_cpu=False,
+        follow=False,
+        json=False,
+        table=True,
+    )
+    assert cli_tools._watch_cases(args) == 0
+    out = capsys.readouterr().out
+    assert "Case grid" in out
+    assert "case_1" in out
 
 
 def test_campaign_handlers_support_table_output(
@@ -509,7 +567,9 @@ def test_table_flags_parse_for_readonly_commands() -> None:
     assert parser.parse_args(["knife", "stability", "--pattern", "x", "--tolerance", "1", "--table"]).table is True
     assert parser.parse_args(["knife", "campaign", "status", "--table"]).table is True
     assert parser.parse_args(["plot", "metrics", "--table"]).table is True
+    assert parser.parse_args(["watch", "cases", "--table"]).table is True
     assert parser.parse_args(["watch", "jobs", "--table"]).table is True
+    assert parser.parse_args(["run", "tool", "--list", "--table"]).table is True
     assert parser.parse_args(["run", "status", "--table"]).table is True
 
 
@@ -710,6 +770,17 @@ def test_watch_stop_plain_failed(monkeypatch: pytest.MonkeyPatch, capsys: pytest
 def test_run_tool_branches(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(ValueError, match="tool name is required"):
         cli_tools._run_tool(_ns(list=False, json=False, name=None, case_dir=Path(), background=False))
+
+    monkeypatch.setattr(
+        cli_tools.run_ops,
+        "tool_catalog_payload",
+        lambda _case: {"case": "case-path", "tools": ["blockMesh"]},
+    )
+    code = cli_tools._run_tool(_ns(list=True, json=False, table=True, name=None, case_dir=Path(), background=False))
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Tools" in out
+    assert "blockMesh" in out
 
     monkeypatch.setattr(cli_tools.run_ops, "resolve_tool", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cli_tools.run_ops, "tool_catalog_names", lambda _case: ["blockMesh"])
