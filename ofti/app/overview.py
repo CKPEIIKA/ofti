@@ -4,9 +4,15 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ofti.tools import table_render_service
+from ofti.tools.alert_service import overview_alert_cards
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import plot as plot_ops
 from ofti.tools.cli_tools import run as run_ops
+from ofti.tools.cli_tools import watch as watch_ops
+from ofti.tools.cockpit_service import case_dna_payload, mission_scope_payload
+from ofti.tools.log_fold_service import fold_log_lines
+from ofti.tools.mesh_radar_service import mesh_radar_payload
+from ofti.tools.resource_watch_service import resource_watch_payload
 
 _OVERVIEW_TAIL_BYTES = 256 * 1024
 
@@ -23,13 +29,19 @@ def overview_text(case_path: Path) -> str:
                 ),
             ],
         ),
+        _safe_section("Case DNA", lambda: _case_dna_lines(case_path)),
+        _safe_section("Mission Scopes", lambda: _scope_lines(case_path)),
+        _safe_section("Mesh Radar", lambda: _mesh_radar_lines(case_path)),
+        _safe_section("Resource Watch", lambda: _resource_watch_lines(case_path)),
         _safe_section("Preflight", lambda: _preflight_lines(case_path)),
         _safe_section("Case Doctor", lambda: _doctor_lines(case_path)),
+        _safe_section("Alert Cards", lambda: _alert_lines(case_path)),
         _safe_section("Runtime Status", lambda: _status_lines(case_path)),
         _safe_section("Live Jobs And Processes", lambda: _current_lines(case_path)),
         _safe_section("Live Cases Monitor", lambda: _live_cases_lines(case_path)),
         _safe_section("ETA", lambda: _eta_lines(case_path)),
         _safe_section("Log + Residual Split View", lambda: _log_residual_split_lines(case_path)),
+        _safe_section("Folded Log", lambda: _folded_log_lines(case_path)),
     ]
     return "\n".join(line for section in sections for line in section).rstrip()
 
@@ -74,6 +86,24 @@ def _preflight_lines(case_path: Path) -> list[str]:
     return table_render_service.preflight_table_lines(payload)
 
 
+def _case_dna_lines(case_path: Path) -> list[str]:
+    return table_render_service.case_dna_table_lines(
+        case_dna_payload(case_path, tail_bytes=_OVERVIEW_TAIL_BYTES),
+    )
+
+
+def _scope_lines(case_path: Path) -> list[str]:
+    return table_render_service.scope_table_lines(mission_scope_payload(case_path))
+
+
+def _mesh_radar_lines(case_path: Path) -> list[str]:
+    return table_render_service.mesh_radar_table_lines(mesh_radar_payload(case_path))
+
+
+def _resource_watch_lines(case_path: Path) -> list[str]:
+    return table_render_service.resource_watch_table_lines(resource_watch_payload(case_path))
+
+
 def _doctor_lines(case_path: Path) -> list[str]:
     payload = knife_ops.doctor_payload(case_path)
     return table_render_service.doctor_table_lines(payload)
@@ -94,6 +124,31 @@ def _current_lines(case_path: Path) -> list[str]:
     except TypeError:
         payload = knife_ops.current_payload(case_path)
     return table_render_service.current_table_lines(payload)
+
+
+def _alert_lines(case_path: Path) -> list[str]:
+    preflight = knife_ops.preflight_payload(case_path)
+    doctor = knife_ops.doctor_payload(case_path)
+    status = knife_ops.status_payload(
+        case_path,
+        lightweight=True,
+        tail_bytes=_OVERVIEW_TAIL_BYTES,
+    )
+    try:
+        current = knife_ops.current_payload(case_path, live=True)
+    except TypeError:
+        current = knife_ops.current_payload(case_path)
+    metrics = plot_ops.metrics_payload(case_path)
+    residuals = plot_ops.residuals_payload(case_path, limit=20)
+    cards = overview_alert_cards(
+        preflight=preflight,
+        doctor=doctor,
+        status=status,
+        current=current,
+        metrics=metrics,
+        residuals=residuals,
+    )
+    return table_render_service.alert_cards_table_lines(cards)
 
 
 def _live_cases_lines(case_path: Path) -> list[str]:
@@ -137,6 +192,14 @@ def _log_residual_split_lines(case_path: Path) -> list[str]:
     metrics = _log_metrics_lines(case_path)
     residuals = _residual_lines(case_path)
     return _split_columns("Log metrics", metrics, "Residuals", residuals)
+
+
+def _folded_log_lines(case_path: Path) -> list[str]:
+    payload = watch_ops.log_tail_payload(case_path, lines=80)
+    folded = fold_log_lines(list(payload.get("lines", [])))
+    return table_render_service.folded_log_table_lines(
+        {"log": payload.get("log"), "rows": folded},
+    )
 
 
 def _split_columns(

@@ -22,7 +22,12 @@ from ofti.app.cli_help import (
     _output_mode_conflict,
 )
 from ofti.core import run_receipt as receipt_ops
-from ofti.tools import parallel_resize_service, status_render_service, table_render_service
+from ofti.tools import (
+    cockpit_service,
+    parallel_resize_service,
+    status_render_service,
+    table_render_service,
+)
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import plot as plot_ops
 from ofti.tools.cli_tools import run as run_ops
@@ -213,6 +218,41 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     _add_table_flag(initials)
     initials.add_argument("--json", action="store_true")
     initials.set_defaults(func=_knife_initials)
+
+    cockpit = knife_sub.add_parser(
+        "cockpit",
+        help="Read-only cockpit summary: DNA, scopes, mesh radar, resources",
+    )
+    cockpit.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    cockpit.add_argument("--tail-bytes", type=int, default=None)
+    _add_table_flag(cockpit)
+    cockpit.add_argument("--json", action="store_true")
+    cockpit.set_defaults(func=_knife_cockpit)
+
+    dna = knife_sub.add_parser("dna", help="Show read-only case DNA and setup fingerprint")
+    dna.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    dna.add_argument("--tail-bytes", type=int, default=None)
+    _add_table_flag(dna)
+    dna.add_argument("--json", action="store_true")
+    dna.set_defaults(func=_knife_dna)
+
+    scopes = knife_sub.add_parser("scopes", help="Show read-only cockpit mission scopes")
+    scopes.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    _add_table_flag(scopes)
+    scopes.add_argument("--json", action="store_true")
+    scopes.set_defaults(func=_knife_scopes)
+
+    mesh_radar = knife_sub.add_parser("mesh-radar", help="Show read-only checkMesh radar")
+    mesh_radar.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    _add_table_flag(mesh_radar)
+    mesh_radar.add_argument("--json", action="store_true")
+    mesh_radar.set_defaults(func=_knife_mesh_radar)
+
+    resource = knife_sub.add_parser("resource", help="Show read-only disk/log resource watch")
+    resource.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    _add_table_flag(resource)
+    resource.add_argument("--json", action="store_true")
+    resource.set_defaults(func=_knife_resource)
 
     status = knife_sub.add_parser("status", help="Show solver/job status for a case")
     status.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
@@ -772,6 +812,13 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     )
     cases.add_argument("--follow", action="store_true", help="Refresh until interrupted")
     cases.add_argument("--interval", type=float, default=2.0, help="Refresh interval for --follow")
+    cases.add_argument(
+        "--sort",
+        choices=["case", "state", "latest", "eta", "jobs"],
+        default="state",
+        help="Sort case grid rows",
+    )
+    cases.add_argument("--group-state", action="store_true", help="Group case grid rows by state")
     _add_table_flag(cases)
     cases.add_argument("--json", action="store_true", help="Print result as JSON")
     cases.set_defaults(func=_watch_cases)
@@ -1690,6 +1737,57 @@ def _knife_initials(args: argparse.Namespace) -> int:
     return 0
 
 
+def _knife_cockpit(args: argparse.Namespace) -> int:
+    payload = cockpit_service.cockpit_payload(
+        args.case_dir,
+        tail_bytes=_tail_bytes_with_cpu_mode(args),
+    )
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print("\n".join(table_render_service.cockpit_table_lines(payload)))
+    return 0
+
+
+def _knife_dna(args: argparse.Namespace) -> int:
+    payload = cockpit_service.case_dna_payload(
+        args.case_dir,
+        tail_bytes=_tail_bytes_with_cpu_mode(args),
+    )
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print("\n".join(table_render_service.case_dna_table_lines(payload)))
+    return 0
+
+
+def _knife_scopes(args: argparse.Namespace) -> int:
+    payload = cockpit_service.mission_scope_payload(args.case_dir)
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print("\n".join(table_render_service.scope_table_lines(payload)))
+    return 0
+
+
+def _knife_mesh_radar(args: argparse.Namespace) -> int:
+    payload = cockpit_service.mesh_radar_payload(args.case_dir)
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print("\n".join(table_render_service.mesh_radar_table_lines(payload)))
+    return 0
+
+
+def _knife_resource(args: argparse.Namespace) -> int:
+    payload = cockpit_service.resource_watch_payload(args.case_dir)
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print("\n".join(table_render_service.resource_watch_table_lines(payload)))
+    return 0
+
+
 def _knife_use_lightweight_mode(args: argparse.Namespace) -> bool:
     return not bool(getattr(args, "full", False))
 
@@ -2321,7 +2419,7 @@ def _watch_cases(args: argparse.Namespace) -> int:
 
 
 def _watch_cases_payload(args: argparse.Namespace) -> dict[str, object]:
-    return run_ops.status_set_payload(
+    payload = run_ops.status_set_payload(
         set_dir=getattr(args, "set_dir", Path.cwd()),
         explicit_cases=list(getattr(args, "cases", [])),
         case_glob=str(getattr(args, "glob", "*")),
@@ -2329,6 +2427,41 @@ def _watch_cases_payload(args: argparse.Namespace) -> dict[str, object]:
         lightweight=not bool(getattr(args, "full", False)),
         tail_bytes=_tail_bytes_with_cpu_mode(args),
     )
+    rows = sorted(
+        payload.get("rows", []),
+        key=lambda row: _watch_case_sort_key(row, str(getattr(args, "sort", "state"))),
+    )
+    payload["rows"] = rows
+    payload["sort"] = getattr(args, "sort", "state")
+    payload["group_state"] = bool(getattr(args, "group_state", False))
+    return payload
+
+
+def _watch_case_sort_key(row: object, sort_by: str) -> tuple[object, ...]:
+    data = cast("dict[str, object]", row) if isinstance(row, dict) else {}
+    state_rank = {"running": 0, "queued": 1, "failed": 2, "unknown": 3, "done": 4}
+    state = str(data.get("state") or "unknown")
+    case = str(data.get("case") or "")
+    if sort_by == "case":
+        return (case,)
+    if sort_by == "latest":
+        return (_none_last(data.get("latest_time")), case)
+    if sort_by == "eta":
+        return (_none_last(data.get("eta_seconds")), case)
+    if sort_by == "jobs":
+        return (-int(data.get("jobs_running") or 0), state_rank.get(state, 99), case)
+    return (state_rank.get(state, 99), case)
+
+
+def _none_last(value: object) -> tuple[int, float, str]:
+    if value is None:
+        return (1, 0.0, "")
+    if isinstance(value, (int, float)):
+        return (0, float(value), "")
+    try:
+        return (0, float(str(value)), str(value))
+    except ValueError:
+        return (0, 0.0, str(value))
 
 
 def _watch_log(args: argparse.Namespace) -> int:

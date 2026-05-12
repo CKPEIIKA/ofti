@@ -96,6 +96,12 @@ def test_runtime_tables_cover_nested_rows() -> None:
     )
     assert "No live jobs or solver processes detected." in current
 
+    alerts = tables.alert_cards_table_lines(
+        [{"severity": "WARN", "title": "High Courant", "evidence": "CoMax=2", "action": "reduce deltaT"}],
+    )
+    assert "High Courant" in "\n".join(alerts)
+    assert tables.alert_cards_table_lines([]) == ["No alerts."]
+
 
 def test_payload_tables_for_cli_outputs() -> None:
     criteria = tables.criteria_payload_table_lines(
@@ -270,13 +276,93 @@ def test_live_cases_catalog_and_receipt_tables() -> None:
             "glob": "*",
             "summary_csv": None,
             "count": 1,
-            "rows": [{"case": "case_1", "state": "running", "jobs_running": 1}],
+            "group_state": True,
+            "rows": [
+                {"case": "case_1", "state": "running", "jobs_running": 1},
+                {"case": "case_2", "state": "queued", "jobs_running": 0},
+            ],
         },
     )
     live_text = "\n".join(live_cases)
     assert "Case grid" in live_cases
     assert "running" in live_text
+    assert "State: running" in live_text
+    assert "queued" in live_text
     assert "case_1" in live_text
+
+    dna = tables.case_dna_table_lines(
+        {
+            "case": "case",
+            "solver": "simpleFoam",
+            "running": True,
+            "latest_time": 1,
+            "latest_iteration": 2,
+            "fields": 3,
+            "patches": 4,
+            "residual_fields": ["Ux", "p"],
+            "jobs_running": 1,
+            "criteria_failed": 0,
+            "risk": "low",
+            "fingerprint": {"hash": "abc", "files": 3, "skipped": 0},
+        },
+    )
+    dna_text = "\n".join(dna)
+    assert "risk" in dna_text
+    assert "abc" in dna_text
+
+    scopes = tables.scope_table_lines({"rows": [{"scope": "Courant max", "value": 0.5, "plot": "██"}]})
+    assert "Courant max" in "\n".join(scopes)
+    assert tables.scope_table_lines({"rows": []}) == ["No scope data available."]
+
+    folded = tables.folded_log_table_lines(
+        {"log": "log.simpleFoam", "rows": [{"kind": "time", "message": "Time = 1"}]},
+    )
+    assert "Signals" in folded
+
+    radar = tables.mesh_radar_table_lines(
+        {
+            "case": "case",
+            "status": "warn",
+            "has_mesh": True,
+            "log": "log.checkMesh",
+            "metrics": [{"metric": "Max non-orth", "value": 72.0, "status": "warn", "bar_value": 72, "bar_max": 80}],
+            "notes": ["Failed checks: 1"],
+        },
+    )
+    radar_text = "\n".join(radar)
+    assert "Mesh quality" in radar
+    assert "Max non-orth" in radar_text
+    assert "Notes" in radar
+
+    resources = tables.resource_watch_table_lines(
+        {
+            "case": "case",
+            "risk": "low",
+            "free_bytes": 1024,
+            "time_dirs": 2,
+            "processor_dirs": 1,
+            "log_bytes": 10,
+            "logs": [{"log": "log.simpleFoam", "size": "10B"}],
+        },
+    )
+    resources_text = "\n".join(resources)
+    assert "free_disk" in resources_text
+    assert "Logs" in resources
+    assert "log.simpleFoam" in resources_text
+
+    cockpit = tables.cockpit_table_lines(
+        {
+            "case": "case",
+            "case_dna": {"case": "case", "risk": "low", "fingerprint": {"hash": "abc"}},
+            "scopes": {"rows": [{"scope": "Courant max", "value": 0.5, "plot": "██"}]},
+            "mesh_radar": {"case": "case", "status": "ok", "metrics": [], "notes": []},
+            "resource_watch": {"case": "case", "risk": "low", "logs": []},
+        },
+    )
+    cockpit_text = "\n".join(cockpit)
+    assert "Case DNA" in cockpit_text
+    assert "Mission Scopes" in cockpit_text
+    assert "Resource Watch" in cockpit_text
 
     catalog = tables.tool_catalog_table_lines({"case": "case", "tools": ["blockMesh"]})
     assert "Tools" in catalog
