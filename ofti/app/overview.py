@@ -6,6 +6,7 @@ from pathlib import Path
 from ofti.tools import table_render_service
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import plot as plot_ops
+from ofti.tools.cli_tools import run as run_ops
 
 _OVERVIEW_TAIL_BYTES = 256 * 1024
 
@@ -26,6 +27,7 @@ def overview_text(case_path: Path) -> str:
         _safe_section("Case Doctor", lambda: _doctor_lines(case_path)),
         _safe_section("Runtime Status", lambda: _status_lines(case_path)),
         _safe_section("Live Jobs And Processes", lambda: _current_lines(case_path)),
+        _safe_section("Live Cases Monitor", lambda: _live_cases_lines(case_path)),
         _safe_section("ETA", lambda: _eta_lines(case_path)),
         _safe_section("Log + Residual Split View", lambda: _log_residual_split_lines(case_path)),
     ]
@@ -92,6 +94,18 @@ def _current_lines(case_path: Path) -> list[str]:
     except TypeError:
         payload = knife_ops.current_payload(case_path)
     return table_render_service.current_table_lines(payload)
+
+
+def _live_cases_lines(case_path: Path) -> list[str]:
+    payload = run_ops.status_set_payload(
+        set_dir=case_path.parent,
+        explicit_cases=[],
+        case_glob="*",
+        summary_csv=None,
+        lightweight=True,
+        tail_bytes=_OVERVIEW_TAIL_BYTES,
+    )
+    return table_render_service.live_cases_table_lines(payload)
 
 
 def _eta_lines(case_path: Path) -> list[str]:

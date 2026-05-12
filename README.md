@@ -110,6 +110,8 @@ ofti run tool -h
 Most read-only diagnostic commands support `--json` for machine-readable output
 and `--table` for aligned terminal tables. The TUI `Overview` screen uses the
 same table rendering as the CLI instead of raw key/value dumps.
+Use `ofti watch cases --table` for a read-only live case grid over a case set,
+or add `--follow` to refresh it until interrupted.
 For streaming tails (`watch log --follow` / `watch attach`), JSON is only for
 non-follow mode.
 Use `--easy-on-cpu` when you want bounded log reads and slower polling to keep
@@ -124,6 +126,7 @@ ofti knife status CASE --table
 ofti knife current --root REPO --recursive --live --table
 ofti plot metrics CASE --table
 ofti watch jobs CASE --table
+ofti watch cases --set STUDY --glob 'case_*' --table
 ofti knife initials CASE --json
 ofti knife copy CASE_COPY --case CASE
 ofti knife current --root REPO --recursive --live --json

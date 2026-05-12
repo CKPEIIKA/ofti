@@ -427,6 +427,84 @@ def jobs_payload_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
+def live_cases_table_lines(payload: dict[str, Any]) -> list[str]:
+    rows = list(payload.get("rows", []))
+    state_counts: dict[str, int] = {}
+    for row in rows:
+        state = str(_dict(row).get("state") or "unknown")
+        state_counts[state] = state_counts.get(state, 0) + 1
+    lines = render_kv(
+        [
+            ("set", payload.get("set_dir")),
+            ("glob", payload.get("glob")),
+            ("summary_csv", payload.get("summary_csv")),
+            ("count", payload.get("count", len(rows))),
+            ("running", state_counts.get("running", 0)),
+            ("queued", state_counts.get("queued", 0)),
+            ("done", state_counts.get("done", 0)),
+            ("failed", state_counts.get("failed", 0)),
+            ("unknown", state_counts.get("unknown", 0)),
+        ],
+    )
+    if rows:
+        lines.extend(["", "Case grid", *run_status_rows_table(rows)])
+    else:
+        lines.append("No cases found.")
+    return lines
+
+
+def tool_catalog_table_lines(payload: dict[str, Any]) -> list[str]:
+    tools = [{"tool": name} for name in list(payload.get("tools", []))]
+    lines = render_kv([("case", payload.get("case")), ("tools", len(tools))])
+    if tools:
+        lines.extend(["", "Tools", *render_table(tools, [("tool", "Tool")])])
+    return lines
+
+
+def receipt_verify_table_lines(payload: dict[str, Any]) -> list[str]:
+    openfoam = _dict(payload.get("openfoam"))
+    build = _dict(payload.get("build"))
+    solver = _dict(build.get("solver"))
+    linked_libs = _dict(build.get("linked_libs"))
+    missing = list(payload.get("missing_files", []))
+    changed = list(payload.get("changed_files", []))
+    extra = list(payload.get("extra_files", []))
+    lines = render_kv(
+        [
+            ("receipt", payload.get("receipt")),
+            ("case", payload.get("case")),
+            ("ok", payload.get("ok")),
+            ("expected_tree_hash", payload.get("expected_tree_hash")),
+            ("actual_tree_hash", payload.get("actual_tree_hash")),
+            ("recorded_inputs_copy", payload.get("recorded_inputs_copy")),
+            ("restorable", payload.get("restorable")),
+        ],
+    )
+    checks = [
+        {"check": "openfoam_version", "match": openfoam.get("match")},
+        {"check": "solver_binary", "match": solver.get("match")},
+        {"check": "linked_libs", "match": linked_libs.get("match")},
+        {"check": "missing_files", "match": not missing, "count": len(missing)},
+        {"check": "changed_files", "match": not changed, "count": len(changed)},
+        {"check": "extra_files", "match": not extra, "count": len(extra)},
+    ]
+    lines.extend(
+        [
+            "",
+            "Checks",
+            *render_table(checks, [("check", "Check"), ("match", "Match"), ("count", "Count")]),
+        ],
+    )
+    if changed:
+        changed_paths = [_dict(row).get("path") for row in changed]
+        lines.extend(_single_path_table("Changed files", changed_paths))
+    if missing:
+        lines.extend(_single_path_table("Missing files", missing))
+    if extra:
+        lines.extend(_single_path_table("Extra files", extra))
+    return lines
+
+
 def campaign_list_table_lines(payload: dict[str, Any]) -> list[str]:
     lines = render_kv(
         [
@@ -624,6 +702,10 @@ def _initial_boundary_rows(fields: list[object]) -> list[dict[str, object]]:
                 },
             )
     return rows
+
+
+def _single_path_table(title: str, paths: list[object]) -> list[str]:
+    return ["", title, *render_table([{"path": path} for path in paths], [("path", "Path")])]
 
 
 def _warning_lines(warning: object) -> list[str]:

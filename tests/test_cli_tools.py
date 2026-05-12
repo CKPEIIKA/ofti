@@ -64,7 +64,7 @@ def test_cli_group_without_subcommand_prints_help(capsys) -> None:
     out = capsys.readouterr().out
     assert code == 0
     assert "usage: ofti watch" in out
-    assert "{jobs,status,log,attach,start,pause,resume,interval,output,run,stop,external}" in out
+    assert "{jobs,cases,status,log,attach,start,pause,resume,interval,output,run,stop,external}" in out
 
 
 def test_knife_group_help_lists_new_commands(capsys) -> None:
