@@ -18,6 +18,7 @@ build/
 .vscode
 .ruff_cache
 qa_output.txt
+.coverage
 *.txt
 scripts/foamlib_mcp.py
 refs/

@@ -2,10 +2,16 @@ from __future__ import annotations
 
 CONTEXT_HELP: dict[str, list[str]] = {
     "main": [
-        "Choose a top-level area (overview, mesh, physics, simulation, post, clean, config).",
-        "Overview consolidates safe read-only status, live process, ETA, and log diagnostics.",
+        (
+            "Choose a workflow area: Captains Deck, Prepare, Mesh, Physics, "
+            "Numerics, Launch, Flight, Analyze, or Case Ops."
+        ),
+        (
+            "Captains Deck consolidates safe read-only status, live process, "
+            "ETA, and log diagnostics."
+        ),
         "Use :tool <name> or :run for direct command-mode shortcuts.",
-        "Clean case groups cleanup helpers in one place.",
+        "Case Ops groups cleanup helpers in one place.",
     ],
     "preprocessing": [
         "Mesh construction & quality tools.",
@@ -85,13 +91,15 @@ CONTEXT_HELP: dict[str, list[str]] = {
 
 MENU_HINTS: dict[str, dict[str, str]] = {
     "menu:root": {
-        "Overview": "Read-only case status, live jobs, ETA, criteria, and log metrics.",
+        "Captains Deck": "Read-only case status, live jobs, ETA, criteria, and log metrics.",
+        "Prepare": "Case identity, templates, preflight checks, and environment.",
         "Mesh": "Mesh generation and quality tools.",
-        "Physics & Boundary Conditions": "BCs, initial conditions, thermophysical setup.",
-        "Simulation": "Run solver, pipeline, safe stop/resume.",
-        "Post-Processing": "Logs, residuals, probes, sampling.",
-        "Clean case": "Remove logs/time dirs and cleanup.",
-        "Config Manager": "Browse/edit dictionaries and templates.",
+        "Physics": "BCs, initial conditions, thermophysical setup.",
+        "Numerics": "Schemes, solution controls, tolerances, and dictionary checks.",
+        "Launch": "Run solver and pipeline actions.",
+        "Flight": "Live jobs, runtime control, safe stop/resume.",
+        "Analyze": "Logs, residuals, probes, sampling.",
+        "Case Ops": "Cleanup, generated files, logs, and time directories.",
         "Quit": "Exit OFTI.",
     },
     "menu:pre": {
@@ -116,6 +124,8 @@ MENU_HINTS: dict[str, dict[str, str]] = {
         "Back": "Return to main menu.",
     },
     "menu:sim": {
+        "Launch checklist": "Read-only go/no-go checklist before solver launch.",
+        "Flight deck": "Live jobs, criteria, ETA, and safe runtime actions.",
         "Edit case pipeline": "Edit Allrun pipeline steps.",
         "Run case pipeline": "Execute pipeline steps in order.",
         "Run solver": "Run solver with live log tail.",
@@ -268,7 +278,9 @@ MENU_HINTS: dict[str, dict[str, str]] = {
         "Config Editor": "Browse/edit dictionaries.",
         "Create missing config": "Create templates for missing dicts.",
         "Preflight checks": "Quick required-file and solver sanity checks.",
+        "Numerics deck": "Read-only fvSchemes/fvSolution/controlDict summary.",
         "Case doctor": "Readiness diagnostics for case files and mesh.",
+        "Change queue": "Show pending VCS-backed edits under system/constant/0.",
         "Case status": "Structured status view from knife service.",
         "Initial fields summary": "Summarize internalField and per-patch values in 0/ files.",
         "Set dictionary entry": "Set one dictionary key path to a new value.",

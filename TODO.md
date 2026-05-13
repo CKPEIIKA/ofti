@@ -2,47 +2,53 @@
 
 Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib_adoption.md`, `docs/layering.md`, and the GUI overhaul brief preserved in local ignored `gui-overhaul.md`.
 
-## P0 - cockpit/control deck overhaul
+## P0 - captains deck/control deck overhaul
 
-- Replace the default vertical main menu with a persistent Cockpit screen: run state, mesh/env/log health, ETA, criteria, residual/log telemetry, alerts, and action hints.
-- Re-map top-level TUI navigation into workflow tabs: Cockpit, Prepare, Mesh, Physics, Numerics, Launch, Flight, Analyze, Case Ops.
-- Split Physics from Numerics: keep materials/thermo/BCs/initials under Physics; move fvSchemes, fvSolution, relaxation, residualControl, runtime controls, and function/result controls into Numerics.
-- Turn Simulation into Launch + Flight: add a launch checklist before solver runs and a live runtime-control deck for jobs, criteria, logs, safe stop, pause/resume, and adopt.
-- Add a central change queue with diff-before-write and snapshot+apply for case edits, presets, launch changes, and runtime mutations.
+- Expand Numerics deck beyond v0 read-only summaries into editable fvSchemes/fvSolution/relaxation presets with diff-before-write.
+- Expand Launch checklist beyond v0 into hard go/no-go launch gating, log rotation, monitor checks, and direct failing-item navigation.
+- Expand Flight deck beyond v0 into live runtime mutation queue for safe stop, writeNow, deltaT/endTime, pause/resume, adopt, and log confirmation.
+- Expand parallel resize/resume beyond CLI/TUI v0 with stronger live `writeNow` acknowledgement, full input snapshots, and rollback guidance.
+- Expand Change Queue beyond v1 read-only VCS diff preview into snapshot+apply for case edits, presets, launch changes, and runtime mutations.
 - Add compact alert cards that explain impact, evidence, suggested action, and affected files instead of dumping raw warnings.
+- Add soundless alarm states for captains deck actions: NORMAL, CAUTION, WARNING, and ABORT; destructive actions must require a snapshot/diff path.
 - Upgrade command mode toward a fuzzy command palette with previews for run/edit/monitor/safe-stop/diff/log actions.
 
-## P1 - cockpit-grade CFD screens
+## P1 - captains deck-grade CFD screens
 
-- Expand mission scopes beyond v0 residual/Courant/performance dashboard plots to forces, probes, mass imbalance, yPlus, and full-screen Braille scope views.
+- Add Braille mission scopes as OFTI's oscilloscope layer: residuals, Courant, forces, probes, mass imbalance, thermal fields, yPlus, performance, and sweep comparisons.
 - Add a plot fallback stack: ASCII/block plots for dumb terminals, Unicode sparklines, Braille plots, optional Kitty/Sixel image previews, and external ParaView as the final fallback.
+- Add full-screen scope controls: log scale, rolling window, cursor, zoom, target bands, and scope mode switching.
 - Build Boundary Matrix v2 with patch roles, patch groups, column paste/bulk apply, selected-cell inspector, and compatibility checks.
-- Add Patch Cockpit details: role guess, patch area/normal, field BC status, live flux, reverse-flow detector, wall distance/yPlus summary, and bulk wall-function actions.
+- Add Patch Captains Deck details: role guess, patch area/normal, field BC status, live flux, reverse-flow detector, wall distance/yPlus summary, and bulk wall-function actions.
 - Add a Numerics deck summarizing fvSolution/fvSchemes, relaxation, solver tolerances, convergence contract, and transparent presets with diffs.
 - Add a Monitors / Result Control editor for residuals, Courant, forces, probes, yPlus, sampling, field calculations, and stop/alert rules.
-- Add a Monitor Builder that writes `system/controlDict.functions` with diff/test/validate flow instead of requiring manual functionObject edits.
+- Expand Monitor Builder beyond v0 `system/controlDict.functions` writing into controlDict include wiring, test/validate flow, probes/forces/yPlus editors, and TUI integration.
 - Add Autopilot / run-condition rules for stop/warn/writeNow/reduce-deltaT actions; show each rule as plain English and as the OpenFOAM dictionary snippet.
 - Add a universal setup tree + right-side inspector pattern for Physics, Numerics, Monitors, and Case Ops screens.
 - Expand the log + residual split view with alert-to-evidence links.
 - Expand log folding beyond v0 signal folding into an interactive searchable folded/raw log view.
+- Add anomaly cards for residual flatline, Co spikes, force plateau/stall, disk growth, stale logs, and suspicious runtime mutations.
 - Keep wizard, dictionary, and diff views available for every write path; never hide raw OpenFOAM changes.
 
 ## P1 - run intelligence and reproducibility
 
+- Expand the opt-in real OpenFOAM profile test suite beyond current canonical cases into stronger runtime dictionary reread evidence, cleanup verification, replay artifacts, and heavier compressible/HPC profiles.
 - Add a Black Box recorder: interpreted timeline of launch, solver milestones, user edits, dictionary rereads, warnings, process events, and monitor milestones.
 - Add Replay mode for finished runs with synchronized log cursor, residual/Co scopes, bookmarks, and exportable clips.
 - Expand Case DNA beyond v0 identity/fingerprint into physics, turbulence, numerics, monitors, and parallel summaries.
 - Add Dictionary Time Machine over snapshots: before launch, after user edits, after autopilot changes, final; include blame source for user/wizard/autopilot/template/external edits.
-- Add Case Doctor Pro / `ofti lint` for BC compatibility, missing dictionaries, dimensions, turbulence wall functions, pressure reference, decomposition sanity, disk-risk settings, and solver/physics mismatch.
+- Expand Case Doctor Pro / `ofti lint` beyond v0 missing dictionaries, pressure reference, decomposition sanity, and disk-risk settings into BC compatibility, dimensions, turbulence wall functions, and solver/physics mismatch.
 - Add Explain Warning mode for alerts/lint findings with evidence, impact, suggested fix, affected file, diff, and ignore option.
-- Expand Resource Watch beyond v0 free disk/time-dir/processor/log summary into disk growth ETA, writeInterval risk, and safe cleanup actions.
+- Expand Resource Watch beyond v1 free disk/time-dir/processor/log summary and write-setting risk into disk growth ETA and safe cleanup actions.
 - Add one-key Markdown report generation with case summary, mesh quality, solver setup, BC table, residual/force/probe plots, warnings, dictionary diffs, and reproducibility fingerprint.
 
 ## P2 - multi-case and HPC control
 
 - Expand Multi-case Flight Deck beyond v0 live grouped/sorted case grid into residuals, force metrics, alerts, kill/safe-stop/rerun, and Braille comparison plots.
-- Expand Mesh Radar beyond v0 checkMesh metrics/warning bars into hot patches, non-orthogonality/skewness distributions, and links to numerics advice or ParaView sets.
+- Expand Mesh Radar beyond v1 checkMesh metrics/warning bars/advice into hot patches, non-orthogonality/skewness distributions, and links to ParaView sets.
+- Add mesh-quality heatmaps with block/Braille distributions for non-orthogonality, skewness, aspect ratio, and bad-cell counts.
 - Add HPC / Slurm control panel with queue state, job id, case, nodes, runtime, logs, cancel/attach/submit actions, and reusable job templates.
+- Add inline field previews with layered fallback: ASCII/block, Unicode sparklines, Braille, optional Kitty/Sixel raster previews, then external ParaView.
 
 ## P1 - foamlib integration cleanup
 
@@ -54,7 +60,7 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 
 ## P2 - layering and shared services
 
-- Extract cockpit data into shared services: process supervisor, telemetry collector, case model, monitor builder, runtime controller, alert stack, and change queue.
+- Extract captains deck data into shared services: process supervisor, telemetry collector, case model, monitor builder, runtime controller, alert stack, and change queue.
 - Move any reused CLI/TUI formatting or diagnostics out of screen modules into shared service/core modules.
 - Keep UI modules as adapters: prompt, dispatch, display, keybinding, and error presentation only.
 - Keep shell/OpenFOAM subprocess calls outside `ofti/core`; route them through `ofti/foam` or tool services.
@@ -70,9 +76,28 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 ## Done / no longer TODO
 
 - Project depends on `foamlib[preprocessing,postprocessing]` by default.
-- TUI Overview exists and reuses read-only CLI services.
-- Overview has alert cards v0, Case DNA v0 with setup fingerprint, mission scopes v0, Mesh Radar v0, Resource Watch v0, and folded log v0.
-- Shared cockpit service and `ofti knife cockpit` / `dna` / `scopes` / `mesh-radar` / `resource` expose the read-only cockpit data outside the TUI.
+- TUI Captains Deck exists and reuses read-only CLI services.
+- TUI starts from a fast adaptive menu after case selection; Captains Deck opens on demand.
+- Wide TUI menus show a cheap right-side inspector; small/SSH terminals keep a compact header and list-first layout.
+- Captains Deck v0 panels are focusable and Enter opens selected panel details.
+- Captains Deck v1 has manual refresh, cached periodic refresh while open, and a selected-panel compact layout for small/SSH terminals.
+- Root menu inspector changes shape per workflow area with mode, focus, safety, and action hints.
+- Top-level TUI navigation uses workflow tabs: Captains Deck, Prepare, Mesh, Physics, Numerics, Launch, Flight, Analyze, Case Ops.
+- Physics/Numerics and Launch/Flight have separated workflow entry points while still reusing existing shared config/simulation services.
+- Numerics deck v0 summarizes fvSchemes, fvSolution, and controlDict from a shared service.
+- Launch checklist v0 exposes read-only go/no-go rows for case, solver, numerics, mesh, parallel, and monitors.
+- Flight deck v0 exposes live status, jobs, criteria, ETA, and safe action hints from shared services.
+- Parallel resize/resume v0 exists as `ofti run resize-parallel` and a TUI Flight action: snapshot, writeNow wait, reconstruct latest, clean processors, update subdomains, resume from latest, decompose latest, and restart.
+- Captains Deck has alert cards v0, Case DNA v0 with setup fingerprint, mission scopes v0, Mesh Radar v0, Resource Watch v0, and folded log v0.
+- Resource Watch v1 flags risky `writeInterval`/`purgeWrite` settings; Mesh Radar v1 adds more checkMesh metrics and read-only advice.
+- Case Doctor Pro / `ofti knife lint` v0 exists with evidence/advice findings for doctor issues, pressure reference, decomposition sanity, and resource risks.
+- TUI Captains Deck shows Case Lint findings explicitly alongside Case Doctor.
+- Shared captains deck service and `ofti knife captains-deck` / `dna` / `scopes` / `mesh-radar` / `resource` expose the read-only captains deck data outside the TUI.
+- Change Queue v1 is read-only and shared by the TUI Config menu and `ofti knife changes`, including a bounded VCS diff preview.
+- Monitor Builder v0 plans/writes `system/controlDict.functions` for residual/Courant/yPlus monitors with diff preview via `ofti knife monitors`.
 - `ofti watch cases` has grouped/sorted live case grid output for queue-style monitoring.
+- Opt-in real OpenFOAM/PyFoam profile harness exists for critical run-control flows and is skipped by default.
+- Opt-in real OpenFOAM/PyFoam profile tests cover `icoFoam-cavity`, `simpleFoam-pitzDaily`, and `interFoam-damBreak`, with `OFTI_REAL_CASES` selection.
+- Opt-in real OpenFOAM/PyFoam tests exercise prelaunch decks, lint/resource/mesh services, monitor builder writes, report artifact generation, untracked solver adoption, tracked live solver discovery, runtime controlDict mutation, change queue diffing, pause/resume/stop, optional parallel restart, and latest-time reconstruction.
 - CLI table rendering exists for status/current/criteria/ETA/report, plot metrics/residuals, watch jobs, campaign summaries, and run status.
 - Quality gate is `ruff`, `ty`, and full `pytest` with coverage target >=85%.

@@ -21,7 +21,7 @@ def run_case(
     parallel: bool | None = None,
     cpus: int | None = None,
     check: bool = True,
-    log: bool = True,
+    log: bool | str = True,
 ) -> None:
     if not available() or FoamCase is None:
         raise FoamlibUnavailableError()

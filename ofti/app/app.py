@@ -25,6 +25,7 @@ from ofti.app.menus.physics import physics_menu
 from ofti.app.menus.postprocessing import postprocessing_menu
 from ofti.app.menus.simulation import simulation_menu
 from ofti.app.screens import check as check_screen
+from ofti.app.screens import cockpit as cockpit_screen
 from ofti.app.screens import editor as editor_screen
 from ofti.app.screens import main as main_screen
 from ofti.app.screens import search as search_screen
@@ -210,6 +211,10 @@ def _screen_main_menu(stdscr: Any, case_path: Path, state: AppState) -> Screen |
     )
 
 
+def _screen_cockpit(stdscr: Any, case_path: Path, state: AppState) -> Screen | None:
+    return cockpit_screen.cockpit_screen(stdscr, case_path, state)
+
+
 def _main_loop(stdscr: Any, case_path: Path, state: AppState) -> None:
     foam_case = Case(root=case_path)
     sections = discover_case_files(foam_case.root)
@@ -224,6 +229,7 @@ def _main_loop(stdscr: Any, case_path: Path, state: AppState) -> None:
     adapter = CursesAdapter(stdscr)
     router = ScreenRouter(
         handlers={
+            Screen.COCKPIT: _screen_cockpit,
             Screen.MAIN_MENU: _screen_main_menu,
             Screen.CHECK: _screen_check,
             Screen.TOOLS: _screen_tools,

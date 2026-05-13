@@ -469,6 +469,34 @@ def test_initials_converge_stability_support_table_output(
     assert "risk" in capsys.readouterr().out
 
     monkeypatch.setattr(
+        cli_tools.lint_service,
+        "lint_payload",
+        lambda _case: {
+            "case": "case-path",
+            "errors": 0,
+            "warnings": 1,
+            "info": 0,
+            "findings": [{"severity": "WARN", "rule": "resource", "message": "risk"}],
+        },
+    )
+    monkeypatch.setattr(cli_tools.lint_service, "lint_exit_code", lambda _payload: 0)
+    assert cli_tools._knife_lint(_ns(case_dir=Path(), json=False, table=True)) == 0
+    assert "Findings" in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        cli_tools.change_queue_service,
+        "change_queue_payload",
+        lambda _case: {
+            "case": "case-path",
+            "source": "git",
+            "count": 1,
+            "changes": [{"status": "M", "path": "system/controlDict"}],
+        },
+    )
+    assert cli_tools._knife_changes(_ns(case_dir=Path(), json=False, table=True)) == 0
+    assert "system/controlDict" in capsys.readouterr().out
+
+    monkeypatch.setattr(
         cli_tools.knife_ops,
         "converge_payload",
         lambda *_a, **_k: {
@@ -611,12 +639,15 @@ def test_table_flags_parse_for_readonly_commands() -> None:
     parser = cli_tools.build_parser()
 
     assert parser.parse_args(["knife", "status", "--table"]).table is True
+    assert parser.parse_args(["knife", "lint", "--table"]).table is True
+    assert parser.parse_args(["knife", "changes", "--table"]).table is True
     assert parser.parse_args(["knife", "current", "--table"]).table is True
     assert parser.parse_args(["knife", "compare", "a", "b", "--table"]).table is True
     assert parser.parse_args(["knife", "initials", "--table"]).table is True
-    assert parser.parse_args(["knife", "cockpit", "--table"]).table is True
+    assert parser.parse_args(["knife", "captains-deck", "--table"]).table is True
     assert parser.parse_args(["knife", "dna", "--table"]).table is True
     assert parser.parse_args(["knife", "scopes", "--table"]).table is True
+    assert parser.parse_args(["knife", "monitors", "--table"]).table is True
     assert parser.parse_args(["knife", "mesh-radar", "--table"]).table is True
     assert parser.parse_args(["knife", "resource", "--table"]).table is True
     assert parser.parse_args(["knife", "converge", "--table"]).table is True
@@ -626,6 +657,7 @@ def test_table_flags_parse_for_readonly_commands() -> None:
     assert parser.parse_args(["watch", "cases", "--table"]).table is True
     assert parser.parse_args(["watch", "jobs", "--table"]).table is True
     assert parser.parse_args(["run", "tool", "--list", "--table"]).table is True
+    assert parser.parse_args(["run", "resize-parallel", "--to", "4", "--table"]).table is True
     assert parser.parse_args(["run", "status", "--table"]).table is True
 
 

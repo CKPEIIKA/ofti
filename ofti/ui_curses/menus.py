@@ -149,6 +149,7 @@ class Menu:
         command_handler: Callable[[str], str | None] | None = None,
         command_suggestions: Callable[[], list[str]] | None = None,
         hint_provider: Callable[[int], str | None] | None = None,
+        inspector_provider: Callable[[int], list[str]] | None = None,
         status_line: str | None = None,
         disabled_indices: set[int] | None = None,
         help_lines: list[str] | None = None,
@@ -171,6 +172,7 @@ class Menu:
         self.hint_provider = hint_provider or _default_hint_provider(
             command_handler is not None,
         )
+        self.inspector_provider = inspector_provider
         self.status_line = status_line
         self.disabled_indices = disabled_indices or set()
         self.disabled_reasons = disabled_reasons or {}
@@ -218,6 +220,12 @@ class Menu:
         # Options
         available = max(0, height - row - (1 if show_status else 0))
         if available > 0:
+            inspector_lines = (
+                self.inspector_provider(self.current_option)
+                if self.inspector_provider and width >= 96
+                else []
+            )
+            option_width = max(24, min(width - 1, 44 if inspector_lines else width - 1))
             if self.current_option < self._scroll:
                 self._scroll = self.current_option
             elif self.current_option >= self._scroll + available:
@@ -228,23 +236,25 @@ class Menu:
 
             for idx in range(self._scroll, min(len(self.options), self._scroll + available)):
                 prefix = "  >> " if idx == self.current_option else "     "
-                max_label_len = max(1, width - 1 - len(prefix))
+                max_label_len = max(1, option_width - len(prefix))
                 label = self.options[idx][:max_label_len]
                 line = f"{prefix}{label}"
                 try:
                     if idx == self.current_option and idx not in self.disabled_indices:
                         self.stdscr.attron(curses.color_pair(1))
-                        self.stdscr.addstr(row, 0, line[: max(1, width - 1)])
+                        self.stdscr.addstr(row, 0, line[:option_width])
                         self.stdscr.attroff(curses.color_pair(1))
                     elif idx in self.disabled_indices:
                         self.stdscr.attron(curses.A_DIM)
-                        self.stdscr.addstr(row, 0, line[: max(1, width - 1)])
+                        self.stdscr.addstr(row, 0, line[:option_width])
                         self.stdscr.attroff(curses.A_DIM)
                     else:
-                        self.stdscr.addstr(row, 0, line[: max(1, width - 1)])
+                        self.stdscr.addstr(row, 0, line[:option_width])
                 except curses.error:
                     break
                 row += 1
+            if inspector_lines:
+                self._draw_inspector(inspector_lines, option_width + 2, available)
 
         if show_status:
             hint = self.hint_provider(self.current_option) if self.hint_provider else ""
@@ -286,6 +296,24 @@ class Menu:
         if not lines:
             lines = ["This option is currently unavailable."]
         _show_help(self.stdscr, "Option unavailable", lines)
+
+
+    def _draw_inspector(self, lines: list[str], column: int, available: int) -> None:
+        _height, width = self.stdscr.getmaxyx()
+        body_width = max(1, width - column - 1)
+        for idx, line in enumerate(lines[:available]):
+            try:
+                self.stdscr.addstr(
+                    self._inspector_row_offset() + idx,
+                    column,
+                    line[:body_width],
+                )
+            except curses.error:
+                break
+
+
+    def _inspector_row_offset(self) -> int:
+        return len(self.banner_lines) + 3 + len(self.extra_lines) + (1 if self.extra_lines else 0)
 
 
     def _run_terminal_fallback(self) -> None:
@@ -437,6 +465,7 @@ class Submenu(Menu):
         command_handler: Callable[[str], str | None] | None = None,
         command_suggestions: Callable[[], list[str]] | None = None,
         hint_provider: Callable[[int], str | None] | None = None,
+        inspector_provider: Callable[[int], list[str]] | None = None,
         status_line: str | None = None,
         disabled_indices: set[int] | None = None,
         help_lines: list[str] | None = None,
@@ -450,6 +479,7 @@ class Submenu(Menu):
             command_handler=command_handler,
             command_suggestions=command_suggestions,
             hint_provider=hint_provider,
+            inspector_provider=inspector_provider,
             status_line=status_line,
             disabled_indices=disabled_indices,
             help_lines=help_lines,
@@ -527,6 +557,7 @@ class RootMenu(Menu):
         command_handler: Callable[[str], str | None] | None = None,
         command_suggestions: Callable[[], list[str]] | None = None,
         hint_provider: Callable[[int], str | None] | None = None,
+        inspector_provider: Callable[[int], list[str]] | None = None,
         status_line: str | None = None,
         disabled_indices: set[int] | None = None,
         disabled_reasons: dict[int, str] | None = None,
@@ -544,6 +575,7 @@ class RootMenu(Menu):
             command_handler=command_handler,
             command_suggestions=command_suggestions,
             hint_provider=hint_provider,
+            inspector_provider=inspector_provider,
             status_line=status_line,
             disabled_indices=disabled_indices,
             disabled_reasons=disabled_reasons,

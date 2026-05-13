@@ -46,6 +46,69 @@ def test_table_render_service_branches() -> None:
     clean_doctor = tables.doctor_table_lines({"case": "case", "errors": [], "warnings": []})
     assert "OK: no issues found." in clean_doctor
 
+    lint = tables.lint_table_lines(
+        {
+            "case": "case",
+            "errors": 0,
+            "warnings": 1,
+            "info": 0,
+            "findings": [
+                {
+                    "severity": "WARN",
+                    "rule": "pressure-reference",
+                    "message": "missing pRefCell",
+                    "evidence": "system/fvSolution",
+                    "advice": "add pRefCell",
+                },
+            ],
+        },
+    )
+    assert "Findings" in lint
+    assert "pressure-reference" in "\n".join(lint)
+    assert "OK" in tables.lint_table_lines({"case": "case", "findings": []})[-1]
+    changes = tables.change_queue_table_lines(
+        {
+            "case": "case",
+            "source": "git",
+            "count": 1,
+            "changes": [{"status": "M", "path": "system/controlDict"}],
+            "diff": ["diff --git a/system/controlDict b/system/controlDict"],
+        },
+    )
+    assert "Pending case changes" in "\n".join(changes)
+    assert "system/controlDict" in "\n".join(changes)
+    assert "Diff preview" in "\n".join(changes)
+
+    numerics = tables.numerics_table_lines(
+        {
+            "case": "case",
+            "files": [{"file": "system/fvSolution", "status": "ok", "keys": "solvers"}],
+            "controls": [{"key": "endTime", "value": "10", "status": "set"}],
+            "solution": [{"key": "solvers", "value": "{}", "status": "set"}],
+        },
+    )
+    assert "Numerics files" in numerics
+
+    launch = tables.launch_checklist_table_lines(
+        {
+            "case": "case",
+            "ready": False,
+            "rows": [{"item": "Mesh", "status": "fail", "required": True, "evidence": "x"}],
+        },
+    )
+    assert "Go / no-go checklist" in launch
+
+    flight = tables.flight_deck_table_lines(
+        {
+            "case": "case",
+            "status": {"solver": "simpleFoam", "running": True},
+            "current": {"jobs_running": 1},
+            "criteria": {"criteria": [{"name": "U", "status": "pass", "value": 1}]},
+            "actions": [{"key": "s", "action": "safe stop", "risk": "low"}],
+        },
+    )
+    assert "Safe actions" in flight
+
 
 def test_runtime_tables_cover_nested_rows() -> None:
     status = tables.status_table_lines(
@@ -326,12 +389,15 @@ def test_live_cases_catalog_and_receipt_tables() -> None:
             "has_mesh": True,
             "log": "log.checkMesh",
             "metrics": [{"metric": "Max non-orth", "value": 72.0, "status": "warn", "bar_value": 72, "bar_max": 80}],
+            "advice": [{"issue": "High non-orthogonality", "advice": "inspect mesh"}],
             "notes": ["Failed checks: 1"],
         },
     )
     radar_text = "\n".join(radar)
     assert "Mesh quality" in radar
     assert "Max non-orth" in radar_text
+    assert "Advice" in radar
+    assert "inspect mesh" in radar_text
     assert "Notes" in radar
 
     resources = tables.resource_watch_table_lines(
@@ -342,11 +408,15 @@ def test_live_cases_catalog_and_receipt_tables() -> None:
             "time_dirs": 2,
             "processor_dirs": 1,
             "log_bytes": 10,
+            "write_settings": {"writeControl": "timeStep", "writeInterval": "10", "purgeWrite": "0"},
+            "suggestions": ["Review write settings."],
             "logs": [{"log": "log.simpleFoam", "size": "10B"}],
         },
     )
     resources_text = "\n".join(resources)
     assert "free_disk" in resources_text
+    assert "Write settings" in resources
+    assert "Suggestions" in resources
     assert "Logs" in resources
     assert "log.simpleFoam" in resources_text
 
@@ -363,6 +433,52 @@ def test_live_cases_catalog_and_receipt_tables() -> None:
     assert "Case DNA" in cockpit_text
     assert "Mission Scopes" in cockpit_text
     assert "Resource Watch" in cockpit_text
+
+    monitors = tables.monitor_builder_table_lines(
+        {
+            "case": "case",
+            "target": "case/system/controlDict.functions",
+            "configured": False,
+            "changed": True,
+            "written": False,
+            "activation": "include system/controlDict.functions",
+            "monitors": [
+                {
+                    "monitor": "residuals",
+                    "status": "planned",
+                    "writes": "system/controlDict.functions",
+                    "note": "live residual scope",
+                },
+            ],
+            "diff": ["--- old", "+++ new"],
+        },
+    )
+    monitors_text = "\n".join(monitors)
+    assert "Monitor plan" in monitors
+    assert "residuals" in monitors_text
+    assert "Diff preview" in monitors
+
+    resize = tables.parallel_resize_table_lines(
+        {
+            "case": "case",
+            "ok": True,
+            "from": 2,
+            "to": 4,
+            "dry_run": True,
+            "start": False,
+            "steps": [
+                {
+                    "step": "decompose",
+                    "status": "pending",
+                    "label": "decompose latest",
+                    "command": "decomposePar -force -latestTime",
+                },
+            ],
+        },
+    )
+    resize_text = "\n".join(resize)
+    assert "Parallel resize plan" in resize
+    assert "decomposePar -force -latestTime" in resize_text
 
     catalog = tables.tool_catalog_table_lines({"case": "case", "tools": ["blockMesh"]})
     assert "Tools" in catalog

@@ -19,6 +19,7 @@ def mesh_radar_payload(case_path: Path) -> dict[str, Any]:
         "status": "unknown",
         "metrics": [],
         "notes": [],
+        "advice": [],
     }
     if log_path is None:
         cells, faces, points = mesh_counts(case_path)
@@ -34,7 +35,7 @@ def mesh_radar_payload(case_path: Path) -> dict[str, Any]:
     if failed and failed != "0":
         status = "fail"
     payload["status"] = status
-    payload["metrics"] = [
+    metrics = [
         *_count_metrics(
             cells=_as_int(_first_number(text, [r"(?i)number of cells\s*:\s*([0-9,]+)"])),
             faces=_as_int(_first_number(text, [r"(?i)number of faces\s*:\s*([0-9,]+)"])),
@@ -55,8 +56,38 @@ def mesh_radar_payload(case_path: Path) -> dict[str, Any]:
             fail=80.0,
         ),
         _quality_metric(
+            "Avg non-orth",
+            _as_float(
+                _first_number(
+                    text,
+                    [
+                        r"(?i)average\s+non-orthogonality\s*=\s*([0-9eE.+-]+)",
+                        r"(?i)non-orthogonality.*average\s*[:=]\s*([0-9eE.+-]+)",
+                    ],
+                ),
+            ),
+            warn=20.0,
+            fail=40.0,
+        ),
+        _quality_metric(
             "Max skewness",
             _as_float(_first_number(text, [r"(?i)max\s+skewness\s*=\s*([0-9eE.+-]+)"])),
+            warn=4.0,
+            fail=20.0,
+        ),
+        _quality_metric(
+            "Max boundary skew",
+            _as_float(
+                _first_number(text, [r"(?i)max\s+boundary\s+skewness\s*=\s*([0-9eE.+-]+)"]),
+            ),
+            warn=4.0,
+            fail=20.0,
+        ),
+        _quality_metric(
+            "Max internal skew",
+            _as_float(
+                _first_number(text, [r"(?i)max\s+internal\s+skewness\s*=\s*([0-9eE.+-]+)"]),
+            ),
             warn=4.0,
             fail=20.0,
         ),
@@ -67,15 +98,35 @@ def mesh_radar_payload(case_path: Path) -> dict[str, Any]:
             fail=1_000.0,
         ),
         _quality_metric(
+            "Max openness",
+            _as_float(_first_number(text, [r"(?i)max\s+cell\s+openness\s*=\s*([0-9eE.+-]+)"])),
+            warn=0.1,
+            fail=0.5,
+        ),
+        _quality_metric(
             "Min volume",
             _as_float(_first_number(text, [r"(?i)min\s+volume\s*=\s*([0-9eE.+-]+)"])),
             warn=None,
             fail=0.0,
             lower_is_worse=True,
         ),
+        _quality_metric(
+            "Min determinant",
+            _as_float(_first_number(text, [r"(?i)min\s+determinant\s*=\s*([0-9eE.+-]+)"])),
+            warn=0.001,
+            fail=0.0,
+            lower_is_worse=True,
+        ),
     ]
+    metrics = [
+        metric
+        for metric in metrics
+        if metric.get("value") is not None or metric.get("status") == "info"
+    ]
+    payload["metrics"] = metrics
     if failed:
         payload["notes"] = [f"Failed checks: {failed}"]
+    payload["advice"] = _mesh_advice(metrics)
     return payload
 
 
@@ -120,6 +171,50 @@ def _quality_metric(
             status = "warn"
     top = fail or warn or value
     return {"metric": metric, "value": value, "status": status, "bar_value": value, "bar_max": top}
+
+
+def _mesh_advice(metrics: list[dict[str, Any]]) -> list[dict[str, str]]:
+    advice: list[dict[str, str]] = []
+    by_name = {str(row.get("metric")): row for row in metrics}
+    if _metric_bad(by_name.get("Max non-orth")):
+        advice.append(
+            {
+                "issue": "High non-orthogonality",
+                "advice": "Use more non-orthogonal correctors and inspect/refine bad cells.",
+            },
+        )
+    if _metric_bad(by_name.get("Max skewness")) or _metric_bad(by_name.get("Max internal skew")):
+        advice.append(
+            {
+                "issue": "High skewness",
+                "advice": (
+                    "Inspect mesh quality near hot regions; consider mesh "
+                    "refinement/smoothing."
+                ),
+            },
+        )
+    if _metric_bad(by_name.get("Max aspect")):
+        advice.append(
+            {
+                "issue": "High aspect ratio",
+                "advice": (
+                    "Check boundary-layer and stretched-cell regions before "
+                    "trusting gradients."
+                ),
+            },
+        )
+    if _metric_bad(by_name.get("Min volume")) or _metric_bad(by_name.get("Min determinant")):
+        advice.append(
+            {
+                "issue": "Invalid or near-zero cells",
+                "advice": "Fix mesh before launch; solver stability is likely compromised.",
+            },
+        )
+    return advice
+
+
+def _metric_bad(row: dict[str, Any] | None) -> bool:
+    return bool(row and row.get("status") in {"warn", "fail"})
 
 
 def _first_number(text: str, patterns: list[str]) -> str | None:

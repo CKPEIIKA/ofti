@@ -15,8 +15,11 @@ def test_mesh_radar_payload_parses_checkmesh_log(tmp_path: Path) -> None:
                 "Number of faces: 2,000",
                 "Number of points: 3,000",
                 "Max non-orthogonality = 72",
+                "Average non-orthogonality = 24",
                 "Max skewness = 2.1",
+                "Max internal skewness = 6.1",
                 "Max aspect ratio = 120",
+                "Min determinant = -0.2",
                 "Failed 1 mesh checks",
             ],
         ),
@@ -28,7 +31,11 @@ def test_mesh_radar_payload_parses_checkmesh_log(tmp_path: Path) -> None:
     text = "\n".join(str(row) for row in payload["metrics"])
     assert "1000" in text
     assert "Max non-orth" in text
+    assert "Avg non-orth" in text
     assert "warn" in text
+    advice = "\n".join(str(row) for row in payload["advice"])
+    assert "High non-orthogonality" in advice
+    assert "Invalid or near-zero cells" in advice
     assert payload["notes"] == ["Failed checks: 1"]
 
 
@@ -42,3 +49,4 @@ def test_mesh_radar_payload_without_log_reports_missing_or_mesh(tmp_path: Path) 
 
     assert payload["status"] == "mesh"
     assert payload["notes"] == ["No checkMesh log found."]
+    assert payload["advice"] == []

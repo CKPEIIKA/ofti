@@ -8,6 +8,10 @@ from ofti.tools.resource_watch_service import resource_watch_payload
 def test_resource_watch_payload_counts_runtime_artifacts(tmp_path: Path) -> None:
     case = tmp_path / "case"
     case.mkdir()
+    (case / "system").mkdir()
+    (case / "system" / "controlDict").write_text(
+        "writeControl timeStep;\nwriteInterval 10;\npurgeWrite 0;\n",
+    )
     (case / "0.1").mkdir()
     (case / "1").mkdir()
     (case / "processor0").mkdir()
@@ -18,7 +22,9 @@ def test_resource_watch_payload_counts_runtime_artifacts(tmp_path: Path) -> None
     assert payload["time_dirs"] == 2
     assert payload["processor_dirs"] == 1
     assert payload["log_bytes"] == 10
-    assert payload["risk"] == "low"
+    assert payload["risk"] == "frequent writes without purgeWrite"
+    assert payload["write_settings"]["writeInterval"] == "10"
+    assert payload["suggestions"] == ["Review system/controlDict writeInterval and purgeWrite."]
     assert payload["logs"] == [{"log": "log.simpleFoam", "bytes": 10, "size": "10B"}]
 
 
@@ -28,3 +34,16 @@ def test_resource_watch_payload_handles_missing_case(tmp_path: Path) -> None:
     assert payload["free_bytes"] is None
     assert payload["time_dirs"] == 0
     assert payload["logs"] == []
+
+
+def test_resource_watch_payload_low_risk_with_purge_write(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "controlDict").write_text(
+        "writeControl timeStep;\nwriteInterval 10;\npurgeWrite 5;\n",
+    )
+
+    payload = resource_watch_payload(case)
+
+    assert payload["risk"] == "low"
+    assert payload["suggestions"] == []

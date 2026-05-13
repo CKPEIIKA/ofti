@@ -127,6 +127,7 @@ def test_main_loop_handles_empty_and_dispatch(monkeypatch: pytest.MonkeyPatch, t
 
     class _Router:
         def __init__(self, handlers: dict[Screen, Any]) -> None:
+            assert Screen.COCKPIT in handlers
             assert Screen.MAIN_MENU in handlers
 
         def dispatch(self, current: Screen, *_a, **_k) -> Screen | None:

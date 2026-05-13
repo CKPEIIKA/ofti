@@ -73,13 +73,21 @@ def test_main_menu_navigates_config_manager(monkeypatch, tmp_path: Path) -> None
     (case_dir / "system").mkdir(parents=True)
     (case_dir / "system" / "controlDict").write_text("application simpleFoam;")
 
-    keys = [ord("j"), ord("j"), ord("j"), ord("j"), 10, ord("h")]
-    screen = FakeScreen(keys=keys)
+    screen = FakeScreen()
 
     from ofti.app.screens import main as main_screen
     from ofti.app.state import AppState, Screen
 
     monkeypatch.setattr(main_screen, "fzf_enabled", lambda: False)
+    class _RootMenu:
+        def __init__(self, _stdscr, _title, options, **_kwargs) -> None:
+            self.options = options
+
+        def navigate(self) -> int:
+            return self.options.index("Prepare")
+
+    monkeypatch.setattr(main_screen, "RootMenu", _RootMenu)
+    monkeypatch.setattr(main_screen, "config_menu", lambda *_args, **_kwargs: Screen.MAIN_MENU)
     callbacks = app._command_callbacks()
     result = main_screen.main_menu_screen(
         screen,

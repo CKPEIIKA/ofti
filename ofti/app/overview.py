@@ -10,11 +10,13 @@ from ofti.tools.cli_tools import plot as plot_ops
 from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.cli_tools import watch as watch_ops
 from ofti.tools.cockpit_service import case_dna_payload, mission_scope_payload
+from ofti.tools.lint_service import lint_payload
 from ofti.tools.log_fold_service import fold_log_lines
 from ofti.tools.mesh_radar_service import mesh_radar_payload
 from ofti.tools.resource_watch_service import resource_watch_payload
 
 _OVERVIEW_TAIL_BYTES = 256 * 1024
+_COCKPIT_PANEL_MIN_WIDTH = 32
 
 
 def overview_text(case_path: Path) -> str:
@@ -35,6 +37,7 @@ def overview_text(case_path: Path) -> str:
         _safe_section("Resource Watch", lambda: _resource_watch_lines(case_path)),
         _safe_section("Preflight", lambda: _preflight_lines(case_path)),
         _safe_section("Case Doctor", lambda: _doctor_lines(case_path)),
+        _safe_section("Case Lint", lambda: _lint_lines(case_path)),
         _safe_section("Alert Cards", lambda: _alert_lines(case_path)),
         _safe_section("Runtime Status", lambda: _status_lines(case_path)),
         _safe_section("Live Jobs And Processes", lambda: _current_lines(case_path)),
@@ -44,6 +47,111 @@ def overview_text(case_path: Path) -> str:
         _safe_section("Folded Log", lambda: _folded_log_lines(case_path)),
     ]
     return "\n".join(line for section in sections for line in section).rstrip()
+
+
+def cockpit_panel_names() -> list[str]:
+    return [
+        "Flight",
+        "Mission scopes",
+        "Alerts",
+        "Live cases",
+        "Case lint",
+        "Mesh radar",
+        "Resource watch",
+        "Log radar",
+    ]
+
+
+def cockpit_panel_detail_lines(case_path: Path, panel: str) -> list[str]:
+    producers: dict[str, Callable[[], list[str]]] = {
+        "Flight": lambda: _status_lines(case_path),
+        "Mission scopes": lambda: _scope_lines(case_path),
+        "Alerts": lambda: _alert_lines(case_path),
+        "Live cases": lambda: _live_cases_lines(case_path),
+        "Case lint": lambda: _lint_lines(case_path),
+        "Mesh radar": lambda: _mesh_radar_lines(case_path),
+        "Resource watch": lambda: _resource_watch_lines(case_path),
+        "Log radar": lambda: _log_residual_split_lines(case_path),
+    }
+    return _safe_lines(producers.get(panel, lambda: ["unknown panel"]))
+
+
+def cockpit_lines(case_path: Path, width: int = 100, selected_panel: int = 0) -> list[str]:
+    """Render the default read-only captains deck as dense, bounded text panels."""
+    width = max(60, width)
+    inner_width = max(_COCKPIT_PANEL_MIN_WIDTH, width - 2)
+    column_width = max(_COCKPIT_PANEL_MIN_WIDTH, (width - 3) // 2)
+    panel_names = cockpit_panel_names()
+    selected_name = panel_names[selected_panel % len(panel_names)]
+
+    if width < 88:
+        return [
+            _title_line("OFTI CAPTAINS DECK", f"case={case_path.name}", width),
+            _panel_selector(panel_names, selected_panel, width),
+            *_panel(
+                _focus_title(selected_name, panel_names, selected_panel),
+                _compact_lines(
+                    _selected_panel_lines(case_path, selected_name),
+                    limit=14,
+                ),
+                inner_width,
+            ),
+            _title_line("Keys", "tab/l next | h prev | Enter detail | r refresh | m menu", width),
+        ]
+
+    return [
+        _title_line("OFTI CAPTAINS DECK", f"case={case_path.name}", width),
+        _panel_selector(panel_names, selected_panel, width),
+        *_mission_strip(case_path, width),
+        *_panel(
+            _focus_title("Flight", panel_names, selected_panel),
+            _compact_lines(_safe_lines(lambda: _status_lines(case_path)), limit=9),
+            inner_width,
+        ),
+        *_two_column_panels(
+            (
+                _focus_title("Mission scopes", panel_names, selected_panel),
+                _compact_lines(_safe_lines(lambda: _scope_lines(case_path)), limit=8),
+            ),
+            (
+                _focus_title("Alerts", panel_names, selected_panel),
+                _compact_lines(_safe_lines(lambda: _alert_lines(case_path)), limit=8),
+            ),
+            column_width,
+        ),
+        *_two_column_panels(
+            (
+                _focus_title("Live cases", panel_names, selected_panel),
+                _compact_lines(_safe_lines(lambda: _live_cases_lines(case_path)), limit=8),
+            ),
+            (
+                _focus_title("Case lint", panel_names, selected_panel),
+                _compact_lines(_safe_lines(lambda: _lint_lines(case_path)), limit=8),
+            ),
+            column_width,
+        ),
+        *_two_column_panels(
+            (
+                _focus_title("Mesh radar", panel_names, selected_panel),
+                _compact_lines(_safe_lines(lambda: _mesh_radar_lines(case_path)), limit=8),
+            ),
+            (
+                _focus_title("Resource watch", panel_names, selected_panel),
+                _compact_lines(_safe_lines(lambda: _resource_watch_lines(case_path)), limit=8),
+            ),
+            column_width,
+        ),
+        *_panel(
+            _focus_title("Log radar", panel_names, selected_panel),
+            _compact_lines(_safe_lines(lambda: _log_residual_split_lines(case_path)), limit=12),
+            inner_width,
+        ),
+        _title_line(
+            "Keys",
+            "tab/l next | h prev | Enter detail | r refresh | m menu | q quit",
+            width,
+        ),
+    ]
 
 
 def running_header_metadata(case_path: Path, meta: dict[str, str]) -> dict[str, str]:
@@ -81,6 +189,86 @@ def running_header_metadata(case_path: Path, meta: dict[str, str]) -> dict[str, 
     return enriched
 
 
+def _title_line(left: str, right: str, width: int) -> str:
+    text = f" {left} // {right} "
+    return text[:width].center(width, "=")
+
+
+def _panel_selector(names: list[str], selected: int, width: int) -> str:
+    parts = [
+        f"[{name}]" if index == selected % len(names) else name
+        for index, name in enumerate(names)
+    ]
+    return ("Panels: " + " | ".join(parts))[:width]
+
+
+def _focus_title(title: str, names: list[str], selected: int) -> str:
+    return f">> {title}" if names[selected % len(names)] == title else title
+
+
+def _selected_panel_lines(case_path: Path, panel: str) -> list[str]:
+    return cockpit_panel_detail_lines(case_path, panel)
+
+
+def _mission_strip(case_path: Path, width: int) -> list[str]:
+    lines = _safe_lines(lambda: _status_lines(case_path))
+    values = _extract_key_values(lines)
+    items = [
+        ("solver", values.get("solver", "unknown")),
+        ("running", values.get("running", "no")),
+        ("t", values.get("latest_time", "n/a")),
+        ("iter", values.get("latest_iteration", "n/a")),
+        ("jobs", values.get("jobs_running", "0")),
+    ]
+    rendered = "  ".join(f"{key}:{value}" for key, value in items)
+    return [_title_line("Flight Snapshot", rendered, width)]
+
+
+def _extract_key_values(lines: list[str]) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in lines:
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] not in {"Key", "-----", "Runtime"}:
+            values.setdefault(parts[0], " ".join(parts[1:]))
+    return values
+
+
+def _panel(title: str, lines: list[str], width: int) -> list[str]:
+    width = max(_COCKPIT_PANEL_MIN_WIDTH, width)
+    top = f"+- {title} " + "-" * max(0, width - len(title) - 4) + "+"
+    bottom = "+" + "-" * width + "+"
+    body = [f"| {_clip(line, width - 2).ljust(width - 2)} |" for line in (lines or ["(no data)"])]
+    return [top, *body, bottom]
+
+
+def _two_column_panels(
+    left: tuple[str, list[str]],
+    right: tuple[str, list[str]],
+    width: int,
+) -> list[str]:
+    left_panel = _panel(left[0], left[1], width)
+    right_panel = _panel(right[0], right[1], width)
+    height = max(len(left_panel), len(right_panel))
+    left_panel.extend(" " * (width + 2) for _ in range(height - len(left_panel)))
+    right_panel.extend(" " * (width + 2) for _ in range(height - len(right_panel)))
+    return [
+        f"{left_line} {right_line}"
+        for left_line, right_line in zip(left_panel, right_panel, strict=True)
+    ]
+
+
+def _compact_lines(lines: list[str], *, limit: int) -> list[str]:
+    compact = [line for line in lines if line.strip()]
+    if len(compact) <= limit:
+        return compact
+    return [*compact[: max(0, limit - 1)], f"... {len(compact) - limit + 1} more"]
+
+
+def _clip(text: object, width: int) -> str:
+    value = str(text).replace("\t", " ")
+    return value[: max(1, width)]
+
+
 def _preflight_lines(case_path: Path) -> list[str]:
     payload = knife_ops.preflight_payload(case_path)
     return table_render_service.preflight_table_lines(payload)
@@ -107,6 +295,10 @@ def _resource_watch_lines(case_path: Path) -> list[str]:
 def _doctor_lines(case_path: Path) -> list[str]:
     payload = knife_ops.doctor_payload(case_path)
     return table_render_service.doctor_table_lines(payload)
+
+
+def _lint_lines(case_path: Path) -> list[str]:
+    return table_render_service.lint_table_lines(lint_payload(case_path))
 
 
 def _status_lines(case_path: Path) -> list[str]:
@@ -226,6 +418,13 @@ def _safe_section(title: str, build_lines: Callable[[], list[str]]) -> list[str]
     except (OSError, RuntimeError, ValueError) as exc:
         lines = [f"unavailable: {exc}"]
     return _section(title, lines)
+
+
+def _safe_lines(build_lines: Callable[[], list[str]]) -> list[str]:
+    try:
+        return list(build_lines())
+    except (OSError, RuntimeError, ValueError, TypeError) as exc:
+        return [f"unavailable: {exc}"]
 
 
 def _section(title: str, lines: list[str]) -> list[str]:
