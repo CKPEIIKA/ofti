@@ -38,8 +38,12 @@ def validate_initial_fields(case_path: Path) -> list[str]:
     if not fields:
         errors.append("No field files detected in 0/ (or 0.orig).")
         return errors
-    required = {"U", "p"}
-    missing = sorted(required - set(fields))
+    field_set = set(fields)
+    missing = []
+    if "U" not in field_set:
+        missing.append("U")
+    if not {"p", "p_rgh"}.intersection(field_set):
+        missing.append("p/p_rgh")
     if missing:
         folder_name = "0" if zero_dir.is_dir() else "0.orig"
         errors.append(f"Missing fields in {folder_name}: {', '.join(missing)}")

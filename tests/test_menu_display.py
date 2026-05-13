@@ -56,3 +56,17 @@ def test_menu_display_uses_banner_provider() -> None:
     menu = Menu(screen, "Title", options, banner_provider=banner_provider)
     menu.display()
     assert called["count"] == 1
+
+
+def test_menu_display_draws_wide_inspector() -> None:
+    screen = FakeScreen(width=120, height=14)
+    menu = Menu(
+        screen,
+        "Title",
+        ["one", "two"],
+        inspector_provider=lambda _idx: ["Inspector", "detail"],
+    )
+
+    menu.display()
+
+    assert any("Inspector" in line for line in screen.lines)

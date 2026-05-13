@@ -6,6 +6,7 @@ from ofti.core.case import (
     latest_checkmesh_log,
     parse_cells_count,
     parse_max_skewness,
+    read_number_of_subdomains,
 )
 
 
@@ -30,3 +31,13 @@ def test_detect_mesh_stats_from_log(tmp_path: Path) -> None:
     summary = detect_mesh_stats(case_dir)
     assert "10 cells" in summary
     assert "skew=1.2" in summary
+
+
+def test_read_number_of_subdomains_accepts_floatish_integer(tmp_path: Path) -> None:
+    decompose = tmp_path / "decomposeParDict"
+    decompose.write_text("numberOfSubdomains 2.0;\n")
+
+    assert read_number_of_subdomains(decompose) == 2
+
+    decompose.write_text("numberOfSubdomains 2.5;\n")
+    assert read_number_of_subdomains(decompose) is None

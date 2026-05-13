@@ -23,7 +23,10 @@ from ofti.app.cli_help import (
 )
 from ofti.core import run_receipt as receipt_ops
 from ofti.tools import (
+    change_queue_service,
     cockpit_service,
+    lint_service,
+    monitor_builder_service,
     parallel_resize_service,
     status_render_service,
     table_render_service,
@@ -87,6 +90,24 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     _add_table_flag(doctor)
     doctor.add_argument("--json", action="store_true")
     doctor.set_defaults(func=_knife_doctor)
+
+    lint = knife_sub.add_parser(
+        "lint",
+        help="Run read-only Case Doctor Pro lint checks",
+    )
+    lint.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    _add_table_flag(lint)
+    lint.add_argument("--json", action="store_true")
+    lint.set_defaults(func=_knife_lint)
+
+    changes = knife_sub.add_parser(
+        "changes",
+        help="Show read-only pending case dictionary changes",
+    )
+    changes.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    _add_table_flag(changes)
+    changes.add_argument("--json", action="store_true")
+    changes.set_defaults(func=_knife_changes)
 
     preflight = knife_sub.add_parser("preflight", help="Check basic case/run prerequisites")
     preflight.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
@@ -219,15 +240,15 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     initials.add_argument("--json", action="store_true")
     initials.set_defaults(func=_knife_initials)
 
-    cockpit = knife_sub.add_parser(
-        "cockpit",
-        help="Read-only cockpit summary: DNA, scopes, mesh radar, resources",
+    captain_deck = knife_sub.add_parser(
+        "captains-deck",
+        help="Read-only Captains Deck summary: DNA, scopes, mesh radar, resources",
     )
-    cockpit.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    cockpit.add_argument("--tail-bytes", type=int, default=None)
-    _add_table_flag(cockpit)
-    cockpit.add_argument("--json", action="store_true")
-    cockpit.set_defaults(func=_knife_cockpit)
+    captain_deck.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    captain_deck.add_argument("--tail-bytes", type=int, default=None)
+    _add_table_flag(captain_deck)
+    captain_deck.add_argument("--json", action="store_true")
+    captain_deck.set_defaults(func=_knife_cockpit)
 
     dna = knife_sub.add_parser("dna", help="Show read-only case DNA and setup fingerprint")
     dna.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
@@ -236,11 +257,32 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     dna.add_argument("--json", action="store_true")
     dna.set_defaults(func=_knife_dna)
 
-    scopes = knife_sub.add_parser("scopes", help="Show read-only cockpit mission scopes")
+    scopes = knife_sub.add_parser("scopes", help="Show read-only Captains Deck mission scopes")
     scopes.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
     _add_table_flag(scopes)
     scopes.add_argument("--json", action="store_true")
     scopes.set_defaults(func=_knife_scopes)
+
+    monitors = knife_sub.add_parser(
+        "monitors",
+        help="Plan or write a functionObject monitor include file",
+        description=(
+            "Create a small system/controlDict.functions include file for safe live "
+            "monitoring. Use --diff first, then --write when the plan is acceptable."
+        ),
+    )
+    monitors.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    monitors.add_argument(
+        "--monitor",
+        action="append",
+        choices=sorted(monitor_builder_service.SUPPORTED_MONITORS),
+        help="Monitor to include; repeatable. Defaults to residuals and courant.",
+    )
+    monitors.add_argument("--write", action="store_true", help="Write system/controlDict.functions")
+    monitors.add_argument("--diff", action="store_true", help="Show the proposed file diff")
+    _add_table_flag(monitors)
+    monitors.add_argument("--json", action="store_true")
+    monitors.set_defaults(func=_knife_monitors)
 
     mesh_radar = knife_sub.add_parser("mesh-radar", help="Show read-only checkMesh radar")
     mesh_radar.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
@@ -1152,6 +1194,33 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     tool.add_argument("--json", action="store_true", help="Print result as JSON")
     tool.set_defaults(func=_run_tool)
 
+    resize = run_sub.add_parser(
+        "resize-parallel",
+        help="Safely migrate a parallel case from one MPI size to another",
+        description=(
+            "Request writeNow, wait for solver stop, reconstruct latest time, clean old "
+            "processor directories, update decomposeParDict, decompose latest time, "
+            "and optionally restart with the new MPI rank count."
+        ),
+    )
+    resize.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    resize.add_argument("--from", dest="from_ranks", type=int, default=None)
+    resize.add_argument("--to", dest="to_ranks", type=int, required=True)
+    resize.add_argument("--timeout", type=float, default=45.0)
+    resize.add_argument("--dry-run", action="store_true")
+    resize.add_argument("--no-start", dest="start", action="store_false", default=True)
+    resize.add_argument("--no-write-now", dest="write_now", action="store_false", default=True)
+    resize.add_argument("--force-stop", action="store_true")
+    resize.add_argument(
+        "--clean-processors",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Remove old processor* directories before decomposing to --to",
+    )
+    _add_table_flag(resize)
+    resize.add_argument("--json", action="store_true")
+    resize.set_defaults(func=_run_resize_parallel)
+
     solver = run_sub.add_parser("solver", help="Run the solver from controlDict application")
     solver.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
     solver.add_argument("--solver", default=None)
@@ -1505,6 +1574,24 @@ def _knife_doctor(args: argparse.Namespace) -> int:
     return knife_ops.doctor_exit_code(payload)
 
 
+def _knife_lint(args: argparse.Namespace) -> int:
+    payload = lint_service.lint_payload(args.case_dir)
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return lint_service.lint_exit_code(payload)
+    print("\n".join(table_render_service.lint_table_lines(payload)))
+    return lint_service.lint_exit_code(payload)
+
+
+def _knife_changes(args: argparse.Namespace) -> int:
+    payload = change_queue_service.change_queue_payload(args.case_dir)
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print("\n".join(table_render_service.change_queue_table_lines(payload)))
+    return 0
+
+
 def _knife_preflight(args: argparse.Namespace) -> int:
     payload = knife_ops.preflight_payload(args.case_dir)
     if args.json:
@@ -1767,6 +1854,20 @@ def _knife_scopes(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
     print("\n".join(table_render_service.scope_table_lines(payload)))
+    return 0
+
+
+def _knife_monitors(args: argparse.Namespace) -> int:
+    payload = monitor_builder_service.monitor_builder_payload(
+        args.case_dir,
+        monitors=getattr(args, "monitor", None),
+        write=bool(getattr(args, "write", False)),
+        include_diff=bool(getattr(args, "diff", False)),
+    )
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print("\n".join(table_render_service.monitor_builder_table_lines(payload)))
     return 0
 
 
@@ -3276,6 +3377,29 @@ def _run_tool(args: argparse.Namespace) -> int:
     if result.stderr:
         print(result.stderr, file=sys.stderr, end="")
     return result.returncode
+
+
+def _run_resize_parallel(args: argparse.Namespace) -> int:
+    payload = parallel_resize_service.parallel_resize_payload(
+        args.case_dir,
+        to_ranks=int(args.to_ranks),
+        from_ranks=getattr(args, "from_ranks", None),
+        dry_run=bool(getattr(args, "dry_run", False)),
+        start=bool(getattr(args, "start", True)),
+        write_now=bool(getattr(args, "write_now", True)),
+        force_stop=bool(getattr(args, "force_stop", False)),
+        clean_processors=bool(getattr(args, "clean_processors", True)),
+        stop_timeout=float(getattr(args, "timeout", 45.0)),
+    )
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload.get("ok") else 1
+    if bool(getattr(args, "table", False)):
+        print("\n".join(table_render_service.parallel_resize_table_lines(payload)))
+        return 0 if payload.get("ok") else 1
+    for line in table_render_service.parallel_resize_table_lines(payload):
+        print(line)
+    return 0 if payload.get("ok") else 1
 
 
 def _run_solver(args: argparse.Namespace) -> int:

@@ -1057,6 +1057,14 @@ def test_run_execute_solver_case_command_fallback_paths(
     )
     assert cast("tuple[object, ...]", seen["args"])[0] == case.resolve()
 
+    _ = run.execute_solver_case_command(
+        case,
+        "simpleFoam",
+        ["simpleFoam"],
+        background=True,
+    )
+    assert cast("dict[str, object]", seen["kwargs"])["background"] is True
+
 
 def test_run_execute_solver_case_command_maps_called_process_error(
     tmp_path: Path,

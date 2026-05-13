@@ -68,11 +68,23 @@ def read_number_of_subdomains(decompose_dict: Path) -> int | None:
     try:
         number = read_entry(decompose_dict, "numberOfSubdomains").strip().rstrip(";")
     except OpenFOAMError:
-        return None
+        number = _read_number_of_subdomains_fallback(decompose_dict)
+        if number is None:
+            return None
     try:
-        return int(number) if number else None
+        value = float(number)
     except ValueError:
         return None
+    return int(value) if value.is_integer() else None
+
+
+def _read_number_of_subdomains_fallback(decompose_dict: Path) -> str | None:
+    try:
+        text = decompose_dict.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    match = re.search(r"(?m)^\s*numberOfSubdomains\s+([0-9eE.+-]+)\s*;", text)
+    return match.group(1) if match else None
 
 
 def set_start_from_latest(control_dict: Path, latest: str) -> bool:

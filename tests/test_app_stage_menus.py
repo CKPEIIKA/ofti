@@ -50,7 +50,7 @@ def test_main_menu_no_tools_option(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         global_search_screen=lambda *_a, **_k: None,
     )
     assert result is None
-    assert captured["options"][0] == "Overview"
+    assert captured["options"][0] == "Captains Deck"
     assert "Tools" not in captured["options"]
 
 
@@ -270,10 +270,10 @@ def test_simulation_menu_disables_parametric_without_preprocessing_extras(
     assert simulation_menu(object(), case, AppState()) == Screen.MAIN_MENU
     disabled = captured["disabled"]
     assert isinstance(disabled, set)
-    assert 18 in disabled
+    assert 21 in disabled
     reasons = captured["reasons"]
     assert isinstance(reasons, dict)
-    assert "preprocessing extras" in str(reasons[18])
+    assert "preprocessing extras" in str(reasons[21])
 
 
 def test_postprocessing_menu_disables_tables_without_postprocessing_extras(

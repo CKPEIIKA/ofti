@@ -56,13 +56,31 @@ to select a valid case directory.
 On startup, the TUI first shows a case chooser with currently visible running
 solver cases, the current case when applicable, and a "Choose from a directory"
 entry that opens the folder picker.
-The first main-menu entry is `Overview`, a read-only dashboard that consolidates
-safe CLI diagnostics such as case status, live jobs/processes, runtime criteria,
-ETA, log metrics, residual summaries, alert cards, Case DNA, mission-scope
-sparklines, a folded log signal view, Resource Watch, setup fingerprinting,
-and a Mesh Radar summary from checkMesh data when available.
+After a case is selected, the TUI opens the fast `OFTI menu`. The menu uses
+cheap case metadata by default so startup stays responsive over SSH and small
+terminals get a compact two-line header instead of a tall banner. The first
+menu is workflow-oriented: `Captains Deck`, `Prepare`, `Mesh`, `Physics`,
+`Numerics`, `Launch`, `Flight`, `Analyze`, and `Case Ops`. Open `Captains Deck`
+from the menu to enter the heavier read-only control deck on demand. Wide
+terminals show a right-side inspector for the currently selected menu item;
+narrow terminals keep the compact list-first layout.
+The captains deck consolidates safe CLI diagnostics such as case status, live jobs/
+processes, runtime criteria, ETA, log metrics, residual summaries, alert cards,
+Case DNA, mission-scope sparklines, a folded log signal view, Resource Watch,
+setup fingerprinting, Case Lint findings, and a Mesh Radar summary from
+checkMesh data when available. Inside the captains deck, use Tab/`l` and `h` to move
+between panels and Enter to open the selected panel details.
+Resource Watch flags risky write settings such as frequent writes without
+`purgeWrite`; Mesh Radar surfaces common checkMesh quality risks with read-only
+advice.
+`ofti knife lint` exposes the first Case Doctor Pro checks as scriptable
+read-only diagnostics with evidence and advice.
+The `Numerics`, `Launch`, and `Flight` workflow entries now expose first-pass
+decks: fvSchemes/fvSolution/controlDict summary, a go/no-go launch checklist,
+and live solver/job/criteria action hints. `Change queue` includes a bounded
+VCS diff preview for `system/`, `constant/`, and initial-condition files.
 
-Main menu/interface sketch (example):
+Menu/captains deck interface sketch (example):
 
 ```text
 *------------------------------*- ofti -*-------------------------------*
@@ -74,16 +92,28 @@ Main menu/interface sketch (example):
 | Path: /path/to/openfoam/case        | Log: log.hy2Foam                |
 *------------------------------------------------------------------------*
 
-Main menu
+OFTI menu
 
->> Overview
+>> Captains Deck
+   Prepare
    Mesh
-   Physics & Boundary Conditions
-   Simulation
-   Post-Processing
-   Clean case
-   Config Manager
+   Physics
+   Numerics
+   Launch
+   Flight
+   Analyze
+   Case Ops
    Quit
+
+Captains Deck opens the read-only control deck:
+
+== OFTI CAPTAINS DECK // case=reactiveShockTube ======================
++- Flight --------------------------------------------------------------+
+| solver simpleFoam  running yes  latest_time 0.5  jobs_running 1      |
++-----------------------------------------------------------------------+
++- Mission scopes -------------------+ +- Alerts -----------------------+
+| Courant max  0.82  ####           | | WARN U residual above target   |
++------------------------------------+ +--------------------------------+
 
 [normal mode: OpenFOAM env loaded | j/k move | Enter open | q quit]
 ```
@@ -110,8 +140,9 @@ ofti run tool -h
 ```
 
 Most read-only diagnostic commands support `--json` for machine-readable output
-and `--table` for aligned terminal tables. The TUI `Overview` screen uses the
-same table rendering as the CLI instead of raw key/value dumps.
+and `--table` for aligned terminal tables. The TUI captains deck and related read-only
+screens use the same service/table rendering as the CLI instead of raw key/value
+dumps.
 Use `ofti watch cases --table` for a read-only live case grid over a case set,
 or add `--follow` to refresh it until interrupted. Add `--group-state` to make
 the queue easier to scan and `--sort case|state|latest|eta|jobs` to choose the
@@ -126,9 +157,13 @@ Examples:
 
 ```bash
 ofti knife preflight CASE --json
+ofti knife lint CASE --table
+ofti knife changes CASE --table
 ofti knife status CASE --table
-ofti knife cockpit CASE --table
+ofti knife captains-deck CASE --table
 ofti knife dna CASE --json
+ofti knife monitors CASE --diff --table
+ofti knife monitors CASE --write --monitor residuals --monitor courant --table
 ofti knife resource CASE --table
 ofti knife mesh-radar CASE --table
 ofti knife current --root REPO --recursive --live --table
@@ -155,6 +190,8 @@ ofti run solver CASE --write-receipt --json
 ofti run solver CASE --write-receipt --record-inputs-copy --json
 ofti run solver CASE --parallel 8 --clean-processors --json
 ofti run solver CASE --parallel 8 --no-prepare-parallel --json
+ofti run resize-parallel CASE --from 8 --to 16 --table
+ofti run resize-parallel CASE --to 16 --dry-run --table
 ofti run matrix CASE --param application=simpleFoam,pisoFoam --no-launch --json
 ofti run parametric CASE --entry application --values simpleFoam,pisoFoam --json
 ofti run parametric CASE --csv studies/parametric.csv --run-solver --max-parallel 4 --json
@@ -196,6 +233,19 @@ ofti knife run CASE --parallel 2 --sync-subdomains --prepare-parallel --json
 - `--sync-subdomains` updates `system/decomposeParDict:numberOfSubdomains`.
 - `--prepare-parallel` runs parallel prelaunch (`decomposePar -force`, optional cleanup).
 - Optional opt-out flags: `--no-sync-subdomains`, `--no-prepare-parallel`.
+
+Safe parallel resize/resume flow:
+
+```bash
+ofti run resize-parallel CASE --from 8 --to 16 --dry-run --table
+ofti run resize-parallel CASE --from 8 --to 16 --table
+```
+
+The resize workflow writes a case snapshot, requests `stopAt writeNow`, waits for
+solver stop, reconstructs the latest decomposed time, removes old `processor*`
+directories, updates `numberOfSubdomains`, sets `startFrom latestTime`, runs
+`decomposePar -force -latestTime`, and restarts the solver with the new rank
+count unless `--no-start` is used.
 
 Runtime criteria now respect explicit runTimeControl gate messages in logs:
 
@@ -268,6 +318,37 @@ Current repo checks:
 - `ty check`
 - `pytest` with coverage gate `--cov-fail-under=85`
 
+Opt-in real OpenFOAM tests are available for critical run-control paths across
+canonical tutorial profiles. They clone real tutorial cases with PyFoam, run
+`blockMesh`/`checkMesh`, exercise read-only decks/lint/resource/mesh services,
+discover and adopt an untracked live solver, start a tracked solver, mutate
+`controlDict` while it is running, verify the change queue diff,
+pause/resume/stop it, write monitor include files, generate a report artifact,
+and attempt short parallel restarts/reconstructed mesh checks when MPI is
+available. The default opt-in profile set is `icoFoam-cavity`,
+`simpleFoam-pitzDaily`, and `interFoam-damBreak`:
+
+```bash
+OFTI_ENABLE_REAL_CASE_TESTS=1 \
+pytest -o addopts='' tests/test_real_openfoam_toy_case.py
+```
+
+Limit or expand the profile matrix with `OFTI_REAL_CASES`:
+
+```bash
+OFTI_ENABLE_REAL_CASE_TESTS=1 OFTI_REAL_CASES=icoFoam-cavity \
+pytest -o addopts='' tests/test_real_openfoam_toy_case.py
+
+OFTI_ENABLE_REAL_CASE_TESTS=1 OFTI_REAL_CASES=all \
+pytest -o addopts='' tests/test_real_openfoam_toy_case.py
+```
+
+These tests are skipped by default because they launch real OpenFOAM/PyFoam
+processes and mutate a temporary cloned case. They require `pyFoamCloneCase.py`,
+`blockMesh`, `checkMesh`, `decomposePar`, `reconstructParMesh`, `git`, and the
+tutorial solver on `PATH`; MPI is optional and only gates the parallel-restart
+scenarios.
+
 ## MODES
 
 - **Normal**: OpenFOAM environment detected; tools available.
@@ -294,9 +375,11 @@ Current repo checks:
 
 ## STAGES AND COMMAND MODE
 
-Common actions are grouped under Mesh, Physics, Simulation, Post‑Processing,
-Clean case, and Config Manager. Actions are disabled with a clear reason when
-required files/environment are missing.
+Common actions are grouped under workflow tabs: Captains Deck, Prepare, Mesh,
+Physics, Numerics, Launch, Flight, Analyze, and Case Ops. Numerics, Launch,
+and Flight now open first-pass shared-service decks; deeper edit/run actions
+still route through existing config/simulation services. Actions are disabled
+with a clear reason when required files/environment are missing.
 
 Command mode shortcuts:
 - `:tool <name>` or `:<name>` runs tool aliases/presets.

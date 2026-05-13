@@ -45,6 +45,16 @@ def test_validate_initial_fields_missing_required_field(tmp_path: Path) -> None:
     assert "Missing fields" in errors[0]
 
 
+def test_validate_initial_fields_accepts_p_rgh_pressure_field(tmp_path: Path) -> None:
+    case_dir = tmp_path / "case"
+    zero_dir = case_dir / "0"
+    zero_dir.mkdir(parents=True)
+    (zero_dir / "U").write_text("internalField uniform (0 0 0);\n")
+    (zero_dir / "p_rgh").write_text("internalField uniform 0;\n")
+
+    assert validate_initial_fields(case_dir) == []
+
+
 def test_remove_empty_log(tmp_path: Path) -> None:
     log_path = tmp_path / "log.simpleFoam"
     log_path.write_text("")

@@ -30,3 +30,14 @@ def test_case_banner_lines_smoke(tmp_path) -> None:
     }
     banner = layout.case_banner_lines(meta)
     assert any("Case:" in line for line in banner)
+
+    compact = layout.compact_case_banner_lines(meta, width=40)
+    assert compact[0].startswith("OFTI")
+    assert all(len(line) < 40 for line in compact)
+
+    overview = layout.case_overview_lines(meta)
+    assert "Captains Deck opens" in overview[0]
+    assert layout.case_overview_lines(meta, compact=True) == []
+    assert layout.status_chip("clean") == "[OK]"
+    assert layout.status_chip("running") == "[RUN]"
+    assert layout.ascii_meter(0.5, width=4) == "[##..]"

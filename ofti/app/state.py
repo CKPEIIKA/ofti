@@ -11,6 +11,7 @@ from ofti.foam.tasks import TaskRegistry
 
 
 class Screen(Enum):
+    COCKPIT = "cockpit"
     MAIN_MENU = "main_menu"
     EDITOR = "editor"
     ENTRY_BROWSER = "entry_browser"

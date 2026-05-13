@@ -11,12 +11,16 @@ from ofti.app.menus.case_tools import (
     set_dictionary_entry_screen,
     show_case_status_screen,
     show_initial_fields_screen,
+    show_numerics_deck_screen,
     show_preflight_screen,
 )
 from ofti.app.state import AppState, Screen
 from ofti.foam.config import get_config
 from ofti.tools.case_doctor import case_doctor_screen
+from ofti.tools.change_queue_service import change_queue_payload
+from ofti.tools.table_render_service import change_queue_table_lines
 from ofti.ui_curses.help import config_help
+from ofti.ui_curses.viewer import Viewer
 
 
 def config_menu(
@@ -31,12 +35,15 @@ def config_menu(
     *,
     command_handler: Any | None = None,
     command_suggestions: Any | None = None,
+    title: str = "Config Manager",
 ) -> Screen:
     options = [
         "Config Editor",
         "Create missing config",
         "Preflight checks",
+        "Numerics deck",
         "Case doctor",
+        "Change queue",
         "Case status",
         "Initial fields summary",
         "Set dictionary entry",
@@ -56,7 +63,7 @@ def config_menu(
         while True:
             choice = menu_choice(
                 stdscr,
-                "Config Manager",
+                title,
                 options,
                 state,
                 "menu:config",
@@ -73,22 +80,31 @@ def config_menu(
             elif choice == 2:
                 show_preflight_screen(stdscr, case_path)
             elif choice == 3:
-                case_doctor_screen(stdscr, case_path)
+                show_numerics_deck_screen(stdscr, case_path)
             elif choice == 4:
-                show_case_status_screen(stdscr, case_path)
+                case_doctor_screen(stdscr, case_path)
             elif choice == 5:
-                show_initial_fields_screen(stdscr, case_path)
+                show_change_queue_screen(stdscr, case_path)
             elif choice == 6:
-                set_dictionary_entry_screen(stdscr, case_path)
+                show_case_status_screen(stdscr, case_path)
             elif choice == 7:
-                compare_dictionaries_screen(stdscr, case_path)
+                show_initial_fields_screen(stdscr, case_path)
             elif choice == 8:
-                clone_case(stdscr, case_path)
+                set_dictionary_entry_screen(stdscr, case_path)
             elif choice == 9:
-                openfoam_env_screen(stdscr)
+                compare_dictionaries_screen(stdscr, case_path)
             elif choice == 10:
+                clone_case(stdscr, case_path)
+            elif choice == 11:
+                openfoam_env_screen(stdscr)
+            elif choice == 12:
                 check_syntax_screen(stdscr, case_path, state)
-            elif has_fzf and choice == 11:
+            elif has_fzf and choice == 13:
                 global_search_screen(stdscr, case_path, state)
     finally:
         cfg.keys["search"] = original_search
+
+
+def show_change_queue_screen(stdscr: Any, case_path: Path) -> None:
+    lines = change_queue_table_lines(change_queue_payload(case_path))
+    Viewer(stdscr, "\n".join(lines)).display()

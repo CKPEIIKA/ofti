@@ -4,13 +4,15 @@ from ofti.ui_curses.help import menu_hint
 def test_menu_hints_cover_primary_menus() -> None:
     menus = {
         "menu:root": [
-            "Overview",
+            "Captains Deck",
+            "Prepare",
             "Mesh",
-            "Physics & Boundary Conditions",
-            "Simulation",
-            "Post-Processing",
-            "Clean case",
-            "Config Manager",
+            "Physics",
+            "Numerics",
+            "Launch",
+            "Flight",
+            "Analyze",
+            "Case Ops",
             "Quit",
         ],
         "menu:pre": [
@@ -35,6 +37,8 @@ def test_menu_hints_cover_primary_menus() -> None:
             "Back",
         ],
         "menu:sim": [
+            "Launch checklist",
+            "Flight deck",
             "Edit case pipeline",
             "Run case pipeline",
             "Run solver",
@@ -89,7 +93,9 @@ def test_menu_hints_cover_primary_menus() -> None:
             "Config Editor",
             "Create missing config",
             "Preflight checks",
+            "Numerics deck",
             "Case doctor",
+            "Change queue",
             "Case status",
             "Initial fields summary",
             "Set dictionary entry",

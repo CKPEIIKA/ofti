@@ -6,6 +6,16 @@ from typing import Any
 from ofti.app.helpers import show_message
 from ofti.tools import status_render_service
 from ofti.tools.cli_tools import knife as knife_ops
+from ofti.tools.flight_deck_service import flight_deck_payload
+from ofti.tools.launch_checklist_service import launch_checklist_payload
+from ofti.tools.numerics_service import numerics_payload
+from ofti.tools.parallel_resize_service import parallel_resize_payload
+from ofti.tools.table_render_service import (
+    flight_deck_table_lines,
+    launch_checklist_table_lines,
+    numerics_table_lines,
+    parallel_resize_table_lines,
+)
 from ofti.ui_curses.prompts import prompt_line
 from ofti.ui_curses.viewer import Viewer
 
@@ -23,6 +33,48 @@ def show_preflight_screen(stdscr: Any, case_path: Path) -> None:
         lines.append(f"solver_error={payload['solver_error']}")
     lines.append(f"ok={payload['ok']}")
     Viewer(stdscr, "\n".join(lines)).display()
+
+
+def show_numerics_deck_screen(stdscr: Any, case_path: Path) -> None:
+    Viewer(stdscr, "\n".join(numerics_table_lines(numerics_payload(case_path)))).display()
+
+
+def show_launch_checklist_screen(stdscr: Any, case_path: Path) -> None:
+    Viewer(
+        stdscr,
+        "\n".join(launch_checklist_table_lines(launch_checklist_payload(case_path))),
+    ).display()
+
+
+def show_flight_deck_screen(stdscr: Any, case_path: Path) -> None:
+    Viewer(stdscr, "\n".join(flight_deck_table_lines(flight_deck_payload(case_path)))).display()
+
+
+def resize_parallel_screen(stdscr: Any, case_path: Path) -> None:
+    to_raw = prompt_line(stdscr, "Resize parallel run to np: ")
+    if not to_raw:
+        return
+    try:
+        to_ranks = int(to_raw)
+    except ValueError:
+        show_message(stdscr, "np must be an integer greater than 1.")
+        return
+    from_raw = prompt_line(stdscr, "Expected current np (optional): ")
+    try:
+        from_ranks = int(from_raw) if from_raw else None
+    except ValueError:
+        show_message(stdscr, "Current np must be an integer if provided.")
+        return
+    try:
+        payload = parallel_resize_payload(
+            case_path,
+            from_ranks=from_ranks,
+            to_ranks=to_ranks,
+        )
+    except ValueError as exc:
+        show_message(stdscr, str(exc))
+        return
+    Viewer(stdscr, "\n".join(parallel_resize_table_lines(payload))).display()
 
 
 def show_case_status_screen(stdscr: Any, case_path: Path) -> None:

@@ -115,6 +115,25 @@ def test_overview_text_aggregates_readonly_sections(monkeypatch: pytest.MonkeyPa
         lambda _case: {"rows": [{"scope": "Courant max", "value": 0.5, "plot": "████"}]},
     )
     monkeypatch.setattr(
+        overview,
+        "lint_payload",
+        lambda _case: {
+            "case": str(tmp_path),
+            "errors": 0,
+            "warnings": 1,
+            "info": 0,
+            "findings": [
+                {
+                    "severity": "WARN",
+                    "rule": "pressure-reference",
+                    "message": "missing pRefCell",
+                    "evidence": "system/fvSolution",
+                    "advice": "add pRefCell",
+                },
+            ],
+        },
+    )
+    monkeypatch.setattr(
         overview.watch_ops,
         "log_tail_payload",
         lambda *_a, **_k: {
@@ -134,6 +153,7 @@ def test_overview_text_aggregates_readonly_sections(monkeypatch: pytest.MonkeyPa
     assert "Mission Scopes" in text
     assert "Mesh Radar" in text
     assert "Resource Watch" in text
+    assert "Case Lint" in text
     assert "Alert Cards" in text
     assert "Case doctor warnings" in text
     assert "Runtime Status" in text
@@ -151,7 +171,18 @@ def test_overview_text_aggregates_readonly_sections(monkeypatch: pytest.MonkeyPa
     assert "Count" in text
     assert "Courant max" in text
     assert "fingerprint" in text
+    assert "pressure-reference" in text
     assert "Signals" in text
+
+    deck = "\n".join(overview.cockpit_lines(tmp_path, width=100))
+    assert "OFTI CAPTAINS DECK" in deck
+    assert "Mission scopes" in deck
+    assert "Live cases" in deck
+    assert "Case lint" in deck
+    assert "Log radar" in deck
+    assert ">> Alerts" in "\n".join(overview.cockpit_lines(tmp_path, width=100, selected_panel=2))
+    assert "Flight" in overview.cockpit_panel_names()
+    assert "solver_status" in "\n".join(overview.cockpit_panel_detail_lines(tmp_path, "Flight"))
 
 
 def test_running_header_metadata_and_banner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -317,6 +348,13 @@ def test_overview_branches_for_errors_and_empty_data(
     )
     dna = "\n".join(overview._case_dna_lines(tmp_path))
     assert "risk" in dna
+
+    monkeypatch.setattr(
+        overview,
+        "lint_payload",
+        lambda _case: {"case": str(tmp_path), "errors": 0, "warnings": 0, "info": 0, "findings": []},
+    )
+    assert "OK" in "\n".join(overview._lint_lines(tmp_path))
 
     monkeypatch.setattr(
         overview.watch_ops,

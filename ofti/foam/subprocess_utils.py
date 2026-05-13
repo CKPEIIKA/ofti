@@ -24,6 +24,7 @@ def run_trusted(
     text: bool = True,
     capture_output: bool = True,
     check: bool = False,
+    timeout: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
     args_list = list(args)
     if not args_list:
@@ -37,4 +38,5 @@ def run_trusted(
         text=text,
         capture_output=capture_output,
         check=check,
+        timeout=timeout,
     )

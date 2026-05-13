@@ -66,6 +66,38 @@ def doctor_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
+def lint_table_lines(payload: dict[str, Any]) -> list[str]:
+    findings = [_dict(row) for row in list(payload.get("findings", []))]
+    lines = render_kv(
+        [
+            ("case", payload.get("case")),
+            ("errors", payload.get("errors")),
+            ("warnings", payload.get("warnings")),
+            ("info", payload.get("info")),
+        ],
+    )
+    if findings:
+        lines.extend(
+            [
+                "",
+                "Findings",
+                *render_table(
+                    findings,
+                    [
+                        ("severity", "Severity"),
+                        ("rule", "Rule"),
+                        ("message", "Message"),
+                        ("evidence", "Evidence"),
+                        ("advice", "Advice"),
+                    ],
+                ),
+            ],
+        )
+    else:
+        lines.append("OK: no lint findings.")
+    return lines
+
+
 def status_table_lines(payload: dict[str, Any]) -> list[str]:
     rtc = _dict(payload.get("run_time_control"))
     lines = render_kv(
@@ -355,6 +387,15 @@ def mesh_radar_table_lines(payload: dict[str, Any]) -> list[str]:
                 ),
             ],
         )
+    advice = [_dict(row) for row in list(payload.get("advice", []))]
+    if advice:
+        lines.extend(
+            [
+                "",
+                "Advice",
+                *render_table(advice, [("issue", "Issue"), ("advice", "Advice")]),
+            ],
+        )
     notes = [{"note": note} for note in list(payload.get("notes", []))]
     if notes:
         lines.extend(["", "Notes", *render_table(notes, [("note", "Note")])])
@@ -372,6 +413,26 @@ def resource_watch_table_lines(payload: dict[str, Any]) -> list[str]:
             ("log_total", _format_bytes_value(payload.get("log_bytes"))),
         ],
     )
+    write_settings = _dict(payload.get("write_settings"))
+    if write_settings:
+        lines.extend(
+            [
+                "",
+                "Write settings",
+                *render_kv(
+                    [
+                        ("writeControl", write_settings.get("writeControl")),
+                        ("writeInterval", write_settings.get("writeInterval")),
+                        ("purgeWrite", write_settings.get("purgeWrite")),
+                    ],
+                ),
+            ],
+        )
+    suggestions = [{"suggestion": item} for item in list(payload.get("suggestions", []))]
+    if suggestions:
+        lines.extend(
+            ["", "Suggestions", *render_table(suggestions, [("suggestion", "Suggestion")])],
+        )
     logs = list(payload.get("logs", []))
     if logs:
         lines.extend(
@@ -379,6 +440,203 @@ def resource_watch_table_lines(payload: dict[str, Any]) -> list[str]:
                 "",
                 "Logs",
                 *render_table([_dict(row) for row in logs], [("log", "Log"), ("size", "Size")]),
+            ],
+        )
+    return lines
+
+
+def change_queue_table_lines(payload: dict[str, Any]) -> list[str]:
+    changes = [_dict(row) for row in list(payload.get("changes", []))]
+    lines = render_kv(
+        [
+            ("case", payload.get("case")),
+            ("source", payload.get("source")),
+            ("pending_changes", payload.get("count")),
+            ("error", payload.get("error")),
+        ],
+    )
+    if changes:
+        lines.extend(
+            [
+                "",
+                "Pending case changes",
+                *render_table(changes, [("status", "Status"), ("path", "Path")]),
+            ],
+        )
+    else:
+        paths = ", ".join(str(item) for item in list(payload.get("paths", [])))
+        lines.append(f"No pending VCS-backed case changes found for: {paths}")
+    if payload.get("diff_error"):
+        lines.append(f"diff_error={payload.get('diff_error')}")
+    diff = [str(line) for line in list(payload.get("diff", []))]
+    if diff:
+        lines.extend(["", "Diff preview", *diff])
+    return lines
+
+
+def numerics_table_lines(payload: dict[str, Any]) -> list[str]:
+    lines = render_kv([("case", payload.get("case"))])
+    files = [_dict(row) for row in list(payload.get("files", []))]
+    if files:
+        lines.extend(
+            [
+                "",
+                "Numerics files",
+                *render_table(files, [("file", "File"), ("status", "Status"), ("keys", "Keys")]),
+            ],
+        )
+    controls = [_dict(row) for row in list(payload.get("controls", []))]
+    if controls:
+        lines.extend(
+            [
+                "",
+                "Time controls",
+                *render_table(controls, [("key", "Key"), ("value", "Value"), ("status", "Status")]),
+            ],
+        )
+    solution = [_dict(row) for row in list(payload.get("solution", []))]
+    if solution:
+        lines.extend(
+            [
+                "",
+                "Solution controls",
+                *render_table(solution, [("key", "Key"), ("value", "Value"), ("status", "Status")]),
+            ],
+        )
+    return lines
+
+
+def launch_checklist_table_lines(payload: dict[str, Any]) -> list[str]:
+    rows = [_dict(row) for row in list(payload.get("rows", []))]
+    lines = render_kv([("case", payload.get("case")), ("ready", payload.get("ready"))])
+    if rows:
+        lines.extend(
+            [
+                "",
+                "Go / no-go checklist",
+                *render_table(
+                    rows,
+                    [
+                        ("item", "Item"),
+                        ("status", "Status"),
+                        ("required", "Required"),
+                        ("evidence", "Evidence"),
+                        ("advice", "Advice"),
+                    ],
+                ),
+            ],
+        )
+    return lines
+
+
+def monitor_builder_table_lines(payload: dict[str, Any]) -> list[str]:
+    rows = [_dict(row) for row in list(payload.get("monitors", []))]
+    lines = render_kv(
+        [
+            ("case", payload.get("case")),
+            ("target", payload.get("target")),
+            ("configured", payload.get("configured")),
+            ("changed", payload.get("changed")),
+            ("written", payload.get("written")),
+            ("activation", payload.get("activation")),
+        ],
+    )
+    if rows:
+        lines.extend(
+            [
+                "",
+                "Monitor plan",
+                *render_table(
+                    rows,
+                    [
+                        ("monitor", "Monitor"),
+                        ("status", "Status"),
+                        ("writes", "Writes"),
+                        ("note", "Note"),
+                    ],
+                ),
+            ],
+        )
+    diff = [str(line) for line in list(payload.get("diff", []))]
+    if diff:
+        lines.extend(["", "Diff preview", *diff[:80]])
+        if len(diff) > 80:
+            lines.append(f"... {len(diff) - 80} more")
+    return lines
+
+
+def parallel_resize_table_lines(payload: dict[str, Any]) -> list[str]:
+    steps = [_dict(row) for row in list(payload.get("steps", []))]
+    lines = render_kv(
+        [
+            ("case", payload.get("case")),
+            ("ok", payload.get("ok")),
+            ("from", payload.get("from")),
+            ("to", payload.get("to")),
+            ("dry_run", payload.get("dry_run")),
+            ("start", payload.get("start")),
+            ("pid", payload.get("pid")),
+            ("log", payload.get("log_path")),
+            ("error", payload.get("error")),
+        ],
+    )
+    if steps:
+        lines.extend(
+            [
+                "",
+                "Parallel resize plan",
+                *render_table(
+                    steps,
+                    [
+                        ("step", "Step"),
+                        ("status", "Status"),
+                        ("label", "Action"),
+                        ("command", "Command"),
+                    ],
+                ),
+            ],
+        )
+    return lines
+
+
+def flight_deck_table_lines(payload: dict[str, Any]) -> list[str]:
+    status = _dict(payload.get("status"))
+    current = _dict(payload.get("current"))
+    criteria = _dict(payload.get("criteria"))
+    lines = render_kv(
+        [
+            ("case", payload.get("case")),
+            ("solver", status.get("solver_error") or status.get("solver")),
+            ("running", status.get("running")),
+            ("jobs_running", current.get("jobs_running")),
+            ("latest_time", status.get("latest_time")),
+            ("eta_to_end_time", status.get("eta_seconds_to_end_time")),
+        ],
+    )
+    criteria_rows = [_dict(row) for row in list(criteria.get("criteria", []))]
+    if criteria_rows:
+        lines.extend(
+            [
+                "",
+                "Runtime criteria",
+                *render_table(
+                    criteria_rows,
+                    [
+                        ("name", "Name"),
+                        ("status", "Status"),
+                        ("value", "Value"),
+                        ("target", "Target"),
+                    ],
+                ),
+            ],
+        )
+    actions = [_dict(row) for row in list(payload.get("actions", []))]
+    if actions:
+        lines.extend(
+            [
+                "",
+                "Safe actions",
+                *render_table(actions, [("key", "Key"), ("action", "Action"), ("risk", "Risk")]),
             ],
         )
     return lines

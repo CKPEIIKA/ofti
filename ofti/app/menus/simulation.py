@@ -6,11 +6,14 @@ from typing import Any
 from ofti.app.menu_utils import menu_choice
 from ofti.app.menus.case_tools import (
     adopt_untracked_screen,
+    resize_parallel_screen,
     run_convergence_check_screen,
     run_stability_check_screen,
     show_case_status_screen,
     show_current_jobs_screen,
     show_eta_forecast_screen,
+    show_flight_deck_screen,
+    show_launch_checklist_screen,
     show_runtime_criteria_screen,
     show_runtime_report_screen,
 )
@@ -37,8 +40,12 @@ def simulation_menu(
     *,
     command_handler: Any | None = None,
     command_suggestions: Any | None = None,
+    title: str = "Simulation",
 ) -> Screen:
     options = [
+        "Launch checklist",
+        "Flight deck",
+        "Resize parallel run",
         "Edit case pipeline",
         "Run case pipeline",
         "Run solver",
@@ -66,20 +73,25 @@ def simulation_menu(
     control_dict = case_path / "system" / "controlDict"
     decompose_dict = case_path / "system" / "decomposeParDict"
     if not control_dict.is_file():
-        for idx in (2, 3, 16, 17):
+        for idx in (5, 6, 19, 20):
             disabled.add(idx)
             disabled_reasons[idx] = (
                 "Simulation requires system/controlDict; create a sample config in Config Manager."
             )
             disabled_helpers[idx] = "config"
     if not decompose_dict.is_file():
-        disabled.add(4)
-        disabled_reasons[4] = (
+        disabled.add(7)
+        disabled_reasons[7] = (
             "Parallel run requires system/decomposeParDict; create it in Config Manager."
         )
-        disabled_helpers[4] = "config"
+        disabled_helpers[7] = "config"
+        disabled.add(2)
+        disabled_reasons[2] = (
+            "Parallel resize requires system/decomposeParDict; create it in Config Manager."
+        )
+        disabled_helpers[2] = "config"
     if state.no_foam:
-        no_foam_sensitive = (0, 1, 2, 3, 4, 16, 17, 18)
+        no_foam_sensitive = (2, 3, 4, 5, 6, 7, 19, 20, 21)
         disabled.update(no_foam_sensitive)
         for idx in no_foam_sensitive:
             disabled_reasons.setdefault(
@@ -87,9 +99,9 @@ def simulation_menu(
                 "OpenFOAM environment not initialized; run :foamenv to enable simulation features.",
             )
     if not preprocessing_available():
-        disabled.add(18)
+        disabled.add(21)
         disabled_reasons.setdefault(
-            18,
+            21,
             "Parametric wizard requires foamlib preprocessing extras.",
         )
     solver_running = solver_job_running(case_path)
@@ -99,7 +111,7 @@ def simulation_menu(
     while True:
         choice = menu_choice(
             stdscr,
-            "Simulation",
+            title,
             options,
             state,
             "menu:sim",
@@ -114,40 +126,46 @@ def simulation_menu(
         if choice in (-1, len(options) - 1):
             return Screen.MAIN_MENU
         if choice == 0:
-            pipeline_editor_screen(stdscr, case_path)
+            show_launch_checklist_screen(stdscr, case_path)
         elif choice == 1:
-            pipeline_runner_screen(stdscr, case_path)
+            show_flight_deck_screen(stdscr, case_path)
         elif choice == 2:
-            run_current_solver_live(stdscr, case_path)
+            resize_parallel_screen(stdscr, case_path)
         elif choice == 3:
-            run_current_solver_live_custom_log(stdscr, case_path)
+            pipeline_editor_screen(stdscr, case_path)
         elif choice == 4:
-            run_current_solver_parallel(stdscr, case_path)
+            pipeline_runner_screen(stdscr, case_path)
         elif choice == 5:
-            show_case_status_screen(stdscr, case_path)
+            run_current_solver_live(stdscr, case_path)
         elif choice == 6:
-            show_current_jobs_screen(stdscr, case_path, live=True)
+            run_current_solver_live_custom_log(stdscr, case_path)
         elif choice == 7:
-            show_runtime_criteria_screen(stdscr, case_path)
+            run_current_solver_parallel(stdscr, case_path)
         elif choice == 8:
-            show_eta_forecast_screen(stdscr, case_path)
+            show_case_status_screen(stdscr, case_path)
         elif choice == 9:
-            show_runtime_report_screen(stdscr, case_path)
+            show_current_jobs_screen(stdscr, case_path, live=True)
         elif choice == 10:
-            run_convergence_check_screen(stdscr, case_path)
+            show_runtime_criteria_screen(stdscr, case_path)
         elif choice == 11:
-            run_stability_check_screen(stdscr, case_path)
+            show_eta_forecast_screen(stdscr, case_path)
         elif choice == 12:
-            adopt_untracked_screen(stdscr, case_path)
+            show_runtime_report_screen(stdscr, case_path)
         elif choice == 13:
-            stop_job_screen(stdscr, case_path)
+            run_convergence_check_screen(stdscr, case_path)
         elif choice == 14:
-            pause_job_screen(stdscr, case_path)
+            run_stability_check_screen(stdscr, case_path)
         elif choice == 15:
-            resume_job_screen(stdscr, case_path)
+            adopt_untracked_screen(stdscr, case_path)
         elif choice == 16:
-            safe_stop_screen(stdscr, case_path)
+            stop_job_screen(stdscr, case_path)
         elif choice == 17:
-            solver_resurrection_screen(stdscr, case_path)
+            pause_job_screen(stdscr, case_path)
         elif choice == 18:
+            resume_job_screen(stdscr, case_path)
+        elif choice == 19:
+            safe_stop_screen(stdscr, case_path)
+        elif choice == 20:
+            solver_resurrection_screen(stdscr, case_path)
+        elif choice == 21:
             foamlib_parametric_study_screen(stdscr, case_path)

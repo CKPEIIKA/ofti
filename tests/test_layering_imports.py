@@ -40,3 +40,14 @@ def test_ui_layer_does_not_import_ui_curses() -> None:
         imports = _imported_modules(tree)
         for module in imports:
             assert not module.startswith("ofti.ui_curses"), f"{path} imports ui_curses"
+
+
+def test_shared_services_do_not_import_ui_or_app_layers() -> None:
+    service_files = sorted((Path("ofti") / "tools").glob("*_service.py"))
+    assert service_files, "Expected shared tool services to exist"
+    _assert_no_ui_imports(service_files)
+    for path in service_files:
+        tree = ast.parse(path.read_text())
+        imports = _imported_modules(tree)
+        for module in imports:
+            assert not module.startswith("ofti.app"), f"{path} imports app layer"

@@ -38,9 +38,20 @@ def status_message(stdscr: Any, message: str) -> None:
         pass
 
 
-def case_overview_lines(_meta: dict[str, str]) -> list[str]:
-    # No separate dashboard block; header banner carries the summary.
-    return []
+def case_overview_lines(meta: dict[str, str], *, compact: bool = False) -> list[str]:
+    if compact:
+        return []
+    return [
+        (
+            "Captains Deck opens the read-only control deck: live cases, alerts, lint, "
+            "mesh/resource watch, scopes, and log radar."
+        ),
+        (
+            f"Current: {meta.get('status', 'unknown')} | "
+            f"latest={meta.get('latest_time', 'n/a')} | "
+            f"log={meta.get('log', 'none')}"
+        ),
+    ]
 
 
 def case_banner_lines(meta: dict[str, str]) -> list[str]:
@@ -94,6 +105,44 @@ def case_banner_lines(meta: dict[str, str]) -> list[str]:
     return foam_style_banner("ofti", rows)
 
 
+def compact_case_banner_lines(meta: dict[str, str], width: int = 80) -> list[str]:
+    width = max(20, width)
+    pieces = [
+        "OFTI",
+        f"case={meta.get('case_name', 'unknown')}",
+        f"solver={meta.get('solver', 'unknown')}",
+        f"status={meta.get('status', 'unknown')}",
+        f"t={meta.get('latest_time', 'n/a')}",
+    ]
+    path = str(meta.get("case_path", ""))
+    return [
+        _clip_join(pieces, width),
+        _clip_join([f"mesh={meta.get('mesh', 'unknown')}", f"path={path}"], width),
+    ]
+
+
+def status_chip(value: object) -> str:
+    text = str(value or "unknown").lower()
+    if text in {"ok", "clean", "ready", "ran", "done", "pass", "passed"}:
+        return "[OK]"
+    if text in {"running", "run"}:
+        return "[RUN]"
+    if text in {"warn", "warning", "caution"}:
+        return "[WARN]"
+    if text in {"error", "fail", "failed", "crit", "critical"}:
+        return "[CRIT]"
+    return "[--]"
+
+
+def ascii_meter(value: float | int | None, *, width: int = 12) -> str:
+    width = max(1, width)
+    if value is None:
+        return "[" + "." * width + "]"
+    bounded = min(1.0, max(0.0, float(value)))
+    filled = round(bounded * width)
+    return "[" + "#" * filled + "." * (width - filled) + "]"
+
+
 def foam_style_banner(label: str, rows: list[tuple[str, str]]) -> list[str]:
     top = f"/*--------------------------------*- {label} -*----------------------------------*\\"
     bottom = "\\*---------------------------------------------------------------------------*/"
@@ -109,3 +158,7 @@ def format_banner_row(left: str, right: str, column_width: int = 36) -> str:
         return text[:column_width]
 
     return f"| {clip(left).ljust(column_width)} | {clip(right).ljust(column_width)} |"
+
+
+def _clip_join(parts: list[str], width: int) -> str:
+    return " | ".join(parts)[: max(1, width - 1)]
