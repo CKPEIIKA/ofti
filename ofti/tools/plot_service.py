@@ -16,6 +16,36 @@ def metrics_payload(source: Path) -> dict[str, Any]:
     log_path = case_source_service.resolve_log_source(source)
     text = read_log_text(log_path)
     metrics, residuals = parse_log_metrics_and_residuals(text)
+    return _metrics_payload(log_path, metrics, residuals)
+
+
+def log_summary_payload(
+    source: Path,
+    *,
+    residual_fields: list[str] | None = None,
+    residual_limit: int = 20,
+) -> dict[str, Any]:
+    """Read a log once and return both metrics and residual summaries."""
+    log_path = case_source_service.resolve_log_source(source)
+    text = read_log_text(log_path)
+    metrics, residuals = parse_log_metrics_and_residuals(text)
+    return {
+        "log": str(log_path),
+        "metrics": _metrics_payload(log_path, metrics, residuals),
+        "residuals": _residuals_payload(
+            log_path,
+            residuals,
+            fields=residual_fields,
+            limit=residual_limit,
+        ),
+    }
+
+
+def _metrics_payload(
+    log_path: Path,
+    metrics: Any,
+    residuals: dict[str, list[float]],
+) -> dict[str, Any]:
     deltas = execution_time_deltas(metrics.execution_times)
     return {
         "log": str(log_path),
@@ -47,6 +77,16 @@ def residuals_payload(
     log_path = case_source_service.resolve_log_source(source)
     text = read_log_text(log_path)
     residuals = parse_residuals(text)
+    return _residuals_payload(log_path, residuals, fields=fields, limit=limit)
+
+
+def _residuals_payload(
+    log_path: Path,
+    residuals: dict[str, list[float]],
+    *,
+    fields: list[str] | None,
+    limit: int,
+) -> dict[str, Any]:
     selected = set(fields or [])
     rows: list[dict[str, Any]] = []
     for field in sorted(residuals):

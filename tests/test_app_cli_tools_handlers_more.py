@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 
 from ofti.app import cli_tools
+from ofti.app.cli_handlers import manifest as manifest_cli
+from ofti.app.cli_handlers import run as run_cli
+from ofti.app.cli_handlers import watch as watch_cli
 
 
 def _ns(**kwargs: object) -> argparse.Namespace:
@@ -159,16 +162,16 @@ def test_receipt_handlers_and_run_solver_recording(
     restored_dir = tmp_path / "restored"
     restored_receipt = restored_dir / ".ofti" / "restored_from_receipt.json"
     monkeypatch.setattr(
-        cli_tools.receipt_ops,
-        "write_case_run_receipt",
+        manifest_cli.manifest_ops,
+        "write_case_run_manifest",
         lambda *_a, **_k: receipt_path,
     )
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_cli.run_ops,
         "solver_command",
         lambda *_a, **_k: ("simpleFoam", ["simpleFoam"]),
     )
-    monkeypatch.setattr(cli_tools.run_ops, "dry_run_command", lambda _cmd: "simpleFoam")
+    monkeypatch.setattr(run_cli.run_ops, "dry_run_command", lambda _cmd: "simpleFoam")
 
     args = _ns(
         case_dir=Path("/case"),
@@ -188,8 +191,8 @@ def test_receipt_handlers_and_run_solver_recording(
     assert payload["recorded_inputs_copy"] is True
 
     monkeypatch.setattr(
-        cli_tools.receipt_ops,
-        "verify_run_receipt",
+        manifest_cli.manifest_ops,
+        "verify_run_manifest",
         lambda *_a, **_k: {
             "receipt": str(receipt_path),
             "case": "/case",
@@ -212,8 +215,8 @@ def test_receipt_handlers_and_run_solver_recording(
     assert "extra_files:" in out
 
     monkeypatch.setattr(
-        cli_tools.receipt_ops,
-        "restore_run_receipt",
+        manifest_cli.manifest_ops,
+        "restore_run_manifest",
         lambda *_a, **_k: {
             "receipt": str(receipt_path),
             "destination": str(restored_dir),
@@ -230,11 +233,11 @@ def test_receipt_handlers_and_run_solver_recording(
     assert payload["destination"] == str(restored_dir)
     assert payload["selected_roots"] == ["system", "constant"]
 
-    monkeypatch.setattr(cli_tools, "_parallel_setup_payload", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_cli, "_parallel_setup_payload", lambda *_a, **_k: None)
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_cli.run_ops,
         "execute_solver_case_command",
-        lambda *_a, **_k: cli_tools.run_ops.RunResult(
+        lambda *_a, **_k: run_cli.run_ops.RunResult(
             0,
             "",
             "",
@@ -242,7 +245,7 @@ def test_receipt_handlers_and_run_solver_recording(
             log_path=Path("/case/log.simpleFoam"),
         ),
     )
-    assert cli_tools._run_solver_execute(
+    assert run_cli._run_solver_execute(
         _ns(
             case_dir=Path("/case"),
             mpi=None,
@@ -264,7 +267,9 @@ def test_receipt_handlers_and_run_solver_recording(
         prepare_parallel=True,
     ) == 0
     payload = json.loads(capsys.readouterr().out)
+    assert payload["manifest_path"] == str(receipt_path)
     assert payload["receipt_path"] == str(receipt_path)
+    assert payload["write_manifest"] is True
     assert payload["write_receipt"] is True
 
 
@@ -630,7 +635,7 @@ def test_watch_interval_output_and_adopt_handlers(
         captured["follow"] = args.follow
         return 0
 
-    monkeypatch.setattr(cli_tools, "_watch_log", _watch_log)
+    monkeypatch.setattr(watch_cli, "_watch_log", _watch_log)
     assert (
         cli_tools._watch_attach(
             _ns(

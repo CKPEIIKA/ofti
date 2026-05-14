@@ -5,7 +5,6 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from ofti.core.tool_dicts_service import apply_assignment_or_write
-from ofti.foam.subprocess_utils import run_trusted
 
 PIPELINE_FILENAME = "Allrun"
 PIPELINE_HEADER = "# OFTI-PIPELINE"
@@ -71,6 +70,7 @@ def run_pipeline_commands(
     commands: Iterable[Iterable[str]],
     *,
     status_cb: Callable[[str], None] | None = None,
+    runner: Callable[..., object] | None = None,
 ) -> list[str]:
     results: list[str] = []
     command_list = [list(cmd) for cmd in commands]
@@ -81,8 +81,12 @@ def run_pipeline_commands(
             results.extend(_run_pipeline_set(case_path, cmd))
             results.append("")
             continue
+        if runner is None:
+            results.append(f"$ {' '.join(cmd)}")
+            results.append("status: ERROR (no command runner supplied)")
+            break
         try:
-            result = run_trusted(
+            result = runner(
                 cmd,
                 cwd=case_path,
                 capture_output=True,
@@ -94,17 +98,20 @@ def run_pipeline_commands(
             results.append(f"$ {' '.join(cmd)}")
             results.append(f"status: ERROR ({exc})")
             break
-        status = "OK" if result.returncode == 0 else f"ERROR ({result.returncode})"
+        returncode = int(getattr(result, "returncode", 1))
+        stdout = str(getattr(result, "stdout", "") or "")
+        stderr = str(getattr(result, "stderr", "") or "")
+        status = "OK" if returncode == 0 else f"ERROR ({returncode})"
         results.append(f"$ {' '.join(cmd)}")
         results.append(f"status: {status}")
-        if result.stdout:
+        if stdout:
             results.append("stdout:")
-            results.append(tail_text(result.stdout))
-        if result.stderr:
+            results.append(tail_text(stdout))
+        if stderr:
             results.append("stderr:")
-            results.append(tail_text(result.stderr))
+            results.append(tail_text(stderr))
         results.append("")
-        if result.returncode != 0:
+        if returncode != 0:
             break
     return results
 

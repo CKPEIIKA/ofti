@@ -7,6 +7,7 @@ from ofti.tools.cli_tools import knife, plot, watch
 def test_plot_wrapper_exports_service_functions() -> None:
     assert plot.metrics_payload is plot_service.metrics_payload
     assert plot.residuals_payload is plot_service.residuals_payload
+    assert plot.log_summary_payload is plot_service.log_summary_payload
 
 
 def test_watch_wrapper_exports_service_functions() -> None:

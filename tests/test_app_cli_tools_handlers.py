@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 
 from ofti.app import cli_tools
+from ofti.app.cli_handlers import manifest as manifest_cli
+from ofti.app.cli_handlers import run as run_cli
+from ofti.app.cli_handlers import watch as watch_cli
 from ofti.tools.cli_tools.run import RunResult
 
 
@@ -136,8 +139,8 @@ def test_receipt_verify_supports_table_output(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        cli_tools.receipt_ops,
-        "verify_run_receipt",
+        manifest_cli.manifest_ops,
+        "verify_run_manifest",
         lambda *_a, **_k: {
             "receipt": "runs/receipt.json",
             "case": "/case",
@@ -292,7 +295,7 @@ def test_readonly_handlers_support_table_output(
     assert "Jobs" in capsys.readouterr().out
 
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_cli.run_ops,
         "status_set_payload",
         lambda **_k: {
             "set_dir": "root",
@@ -697,7 +700,7 @@ def test_watch_jobs_plain_and_watch_attach_forwarding(
         captured["easy_on_cpu"] = args.easy_on_cpu
         return 7
 
-    monkeypatch.setattr(cli_tools, "_watch_log", fake_watch_log)
+    monkeypatch.setattr(watch_cli, "_watch_log", fake_watch_log)
     case_dir = Path("relative-case")
     code = cli_tools._watch_attach(
         _ns(source=None, lines=10, job_id="j1", case_dir=case_dir, easy_on_cpu=True, json=False),
@@ -735,7 +738,7 @@ def test_watch_log_follow_paths(
         "log_tail_payload",
         lambda _source, **_kwargs: {"log": str(log_path), "lines": []},
     )
-    monkeypatch.setattr(cli_tools.time, "sleep", lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt()))
+    monkeypatch.setattr(watch_cli.time, "sleep", lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt()))
 
     args = _ns(source=tmp_path, case_dir=tmp_path, lines=5, follow=True, job_id=None, json=False)
     assert cli_tools._watch_log(args) == 0
@@ -807,7 +810,7 @@ def test_watch_log_follow_prints_new_lines(
             return "new-line\n" if self._read_count == 1 else ""
 
     monkeypatch.setattr(Path, "open", lambda *_a, **_k: _Handle())
-    monkeypatch.setattr(cli_tools.time, "sleep", lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt()))
+    monkeypatch.setattr(watch_cli.time, "sleep", lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt()))
     args = _ns(source=tmp_path, case_dir=tmp_path, lines=5, follow=True, job_id=None, json=False)
     assert cli_tools._watch_log(args) == 0
     assert "new-line" in capsys.readouterr().out
@@ -831,7 +834,7 @@ def test_watch_log_easy_on_cpu_enforces_min_follow_interval(
         seen["interval"] = interval
         return 0
 
-    monkeypatch.setattr(cli_tools, "_follow_log_path", _follow)
+    monkeypatch.setattr(watch_cli, "_follow_log_path", _follow)
     args = _ns(source=tmp_path, case_dir=tmp_path, lines=5, follow=True, job_id=None, easy_on_cpu=True, json=False)
     assert cli_tools._watch_log(args) == 0
     assert seen["interval"] == pytest.approx(1.0)
@@ -860,7 +863,7 @@ def test_run_tool_branches(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Captu
         cli_tools._run_tool(_ns(list=False, json=False, name=None, case_dir=Path(), background=False))
 
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_cli.run_ops,
         "tool_catalog_payload",
         lambda _case: {"case": "case-path", "tools": ["blockMesh"]},
     )
@@ -870,8 +873,8 @@ def test_run_tool_branches(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Captu
     assert "Tools" in out
     assert "blockMesh" in out
 
-    monkeypatch.setattr(cli_tools.run_ops, "resolve_tool", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(cli_tools.run_ops, "tool_catalog_names", lambda _case: ["blockMesh"])
+    monkeypatch.setattr(run_cli.run_ops, "resolve_tool", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(run_cli.run_ops, "tool_catalog_names", lambda _case: ["blockMesh"])
     code = cli_tools._run_tool(_ns(list=False, json=False, name="missing", case_dir=Path(), background=False))
     assert code == 1
     err = capsys.readouterr().err
@@ -891,11 +894,11 @@ def test_run_tool_outputs_json_and_background_message(
 ) -> None:
     case = tmp_path / "case"
     case.mkdir()
-    monkeypatch.setattr(cli_tools.run_ops, "resolve_tool", lambda *_args, **_kwargs: ("blockMesh", ["blockMesh"]))
-    monkeypatch.setattr(cli_tools.run_ops, "dry_run_command", lambda _cmd: "blockMesh")
+    monkeypatch.setattr(run_cli.run_ops, "resolve_tool", lambda *_args, **_kwargs: ("blockMesh", ["blockMesh"]))
+    monkeypatch.setattr(run_cli.run_ops, "dry_run_command", lambda _cmd: "blockMesh")
 
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_cli.run_ops,
         "execute_case_command",
         lambda *_args, **_kwargs: RunResult(0, "", "", pid=321, log_path=case / "log.blockMesh"),
     )
@@ -905,7 +908,7 @@ def test_run_tool_outputs_json_and_background_message(
     assert payload["pid"] == 321
 
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_cli.run_ops,
         "execute_case_command",
         lambda *_args, **_kwargs: RunResult(0, "done\n", "warn\n", pid=None, log_path=None),
     )
@@ -923,9 +926,9 @@ def test_run_tool_background_plain_message(
 ) -> None:
     case = tmp_path / "case"
     case.mkdir()
-    monkeypatch.setattr(cli_tools.run_ops, "resolve_tool", lambda *_args, **_kwargs: ("blockMesh", ["blockMesh"]))
+    monkeypatch.setattr(run_cli.run_ops, "resolve_tool", lambda *_args, **_kwargs: ("blockMesh", ["blockMesh"]))
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_cli.run_ops,
         "execute_case_command",
         lambda *_args, **_kwargs: RunResult(0, "", "", pid=55, log_path=case / "log.blockMesh"),
     )
@@ -940,40 +943,40 @@ def test_run_solver_with_mode_branches(
 ) -> None:
     case = tmp_path / "case"
     case.mkdir()
-    monkeypatch.setattr(cli_tools.run_ops, "solver_command", lambda *_args, **_kwargs: ("simpleFoam", ["simpleFoam"]))
-    monkeypatch.setattr(cli_tools.run_ops, "dry_run_command", lambda _cmd: "simpleFoam")
+    monkeypatch.setattr(run_cli.run_ops, "solver_command", lambda *_args, **_kwargs: ("simpleFoam", ["simpleFoam"]))
+    monkeypatch.setattr(run_cli.run_ops, "dry_run_command", lambda _cmd: "simpleFoam")
 
     args = _ns(case_dir=case, solver=None, parallel=0, mpi=None, dry_run=True, json=False)
-    assert cli_tools._run_solver_with_mode(args, background=False) == 0
+    assert run_cli._run_solver_with_mode(args, background=False) == 0
     assert "simpleFoam" in capsys.readouterr().out
 
     args = _ns(case_dir=case, solver=None, parallel=0, mpi=None, dry_run=True, json=True)
-    assert cli_tools._run_solver_with_mode(args, background=False) == 0
+    assert run_cli._run_solver_with_mode(args, background=False) == 0
     assert json.loads(capsys.readouterr().out)["dry_run"] is True
 
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_cli.run_ops,
         "execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(0, "", "", pid=777, log_path=case / "log.simpleFoam"),
     )
     args = _ns(case_dir=case, solver=None, parallel=0, mpi=None, json=False, dry_run=False)
-    assert cli_tools._run_solver_with_mode(args, background=True) == 0
+    assert run_cli._run_solver_with_mode(args, background=True) == 0
     assert "pid=777" in capsys.readouterr().out
 
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_cli.run_ops,
         "execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(1, "stdout\n", "stderr\n", pid=None, log_path=None),
     )
     args = _ns(case_dir=case, solver=None, parallel=0, mpi=None, json=False, dry_run=False)
-    assert cli_tools._run_solver_with_mode(args, background=False) == 1
+    assert run_cli._run_solver_with_mode(args, background=False) == 1
     out = capsys.readouterr()
     assert "stdout" in out.out
     assert "stderr" in out.err
 
 
 def test_watch_run_wrapper(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli_tools, "_run_solver_with_mode", lambda _args, **_kwargs: 9)
+    monkeypatch.setattr(run_cli, "_run_solver_with_mode", lambda _args, **_kwargs: 9)
     assert cli_tools._watch_run(_ns()) == 9
 
 
@@ -984,15 +987,15 @@ def test_run_solver_with_mode_json_result(
 ) -> None:
     case = tmp_path / "case"
     case.mkdir()
-    monkeypatch.setattr(cli_tools.run_ops, "solver_command", lambda *_args, **_kwargs: ("simpleFoam", ["simpleFoam"]))
-    monkeypatch.setattr(cli_tools.run_ops, "dry_run_command", lambda _cmd: "simpleFoam")
+    monkeypatch.setattr(run_cli.run_ops, "solver_command", lambda *_args, **_kwargs: ("simpleFoam", ["simpleFoam"]))
+    monkeypatch.setattr(run_cli.run_ops, "dry_run_command", lambda _cmd: "simpleFoam")
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_cli.run_ops,
         "execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(0, "ok", "", pid=None, log_path=None),
     )
     args = _ns(case_dir=case, solver=None, parallel=0, mpi=None, json=True, dry_run=False)
-    assert cli_tools._run_solver_with_mode(args, background=False) == 0
+    assert run_cli._run_solver_with_mode(args, background=False) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["dry_run"] is False
 
@@ -1009,9 +1012,9 @@ def test_run_solver_with_mode_forwards_sync_subdomains_flag(
         seen["sync_subdomains"] = kwargs.get("sync_subdomains")
         return ("simpleFoam", ["simpleFoam"])
 
-    monkeypatch.setattr(cli_tools.run_ops, "solver_command", _solver_command)
+    monkeypatch.setattr(run_cli.run_ops, "solver_command", _solver_command)
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_cli.run_ops,
         "execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(0, "ok", "", pid=None, log_path=None),
     )
@@ -1024,7 +1027,7 @@ def test_run_solver_with_mode_forwards_sync_subdomains_flag(
         json=False,
         dry_run=False,
     )
-    assert cli_tools._run_solver_with_mode(args, background=False) == 0
+    assert run_cli._run_solver_with_mode(args, background=False) == 0
     assert seen["sync_subdomains"] is False
 
 
@@ -1184,7 +1187,7 @@ def test_watch_external_attach_easy_on_cpu_enforces_min_interval(
         seen["interval"] = interval
         return 0
 
-    monkeypatch.setattr(cli_tools, "_follow_log_path", _follow)
+    monkeypatch.setattr(watch_cli, "_follow_log_path", _follow)
     args = _ns(case_dir=Path("/case"), output=None, follow=True, interval=0.25, easy_on_cpu=True)
     payload = {"log": "/case/log.watch.external", "lines": []}
     assert cli_tools._print_watch_external_attach(args, payload) == 0

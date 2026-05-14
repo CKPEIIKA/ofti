@@ -14,7 +14,7 @@ from ofti.core.dict_compare import compare_case_dicts
 from ofti.core.entry_io import list_subkeys, write_entry
 from ofti.core.solver_checks import resolve_solver_name
 from ofti.core.solver_status import latest_solver_job, solver_status_text
-from ofti.core.times import latest_time
+from ofti.foam.times import latest_time
 from ofti.foamlib.logs import (
     parse_residuals,
     read_log_text,

@@ -48,6 +48,33 @@ def test_plot_metrics_payload_without_deltas(monkeypatch: pytest.MonkeyPatch) ->
     assert payload["residual_fields"] == ["rho"]
 
 
+def test_plot_log_summary_reads_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    log_path = Path("log.simpleFoam")
+    calls = {"count": 0}
+    monkeypatch.setattr(plot_service, "case_source_service", types.SimpleNamespace(resolve_log_source=lambda _source: log_path))
+
+    def read_log(_path: Path) -> str:
+        calls["count"] += 1
+        return "log"
+
+    monkeypatch.setattr(plot_service, "read_log_text", read_log)
+    monkeypatch.setattr(
+        plot_service,
+        "parse_log_metrics_and_residuals",
+        lambda _text: (
+            types.SimpleNamespace(times=[1.0], courants=[0.5], execution_times=[2.0]),
+            {"U": [1e-3, 1e-4]},
+        ),
+    )
+    monkeypatch.setattr(plot_service, "execution_time_deltas", lambda _values: [])
+
+    payload = plot.log_summary_payload(Path(), residual_limit=1)
+
+    assert calls["count"] == 1
+    assert payload["metrics"]["courant"]["max"] == 0.5
+    assert payload["residuals"]["fields"][0]["field"] == "U"
+
+
 def test_watch_stop_payload_selection_and_external(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     case = tmp_path / "case"
     case.mkdir()

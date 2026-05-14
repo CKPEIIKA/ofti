@@ -4,7 +4,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any, cast
 
-from ofti.core.times import latest_time
+from ofti.foam.times import latest_time
 from ofti.foamlib import adapter as foamlib_integration
 from ofti.ui_curses.prompts import _show_message
 from ofti.ui_curses.viewer import Viewer

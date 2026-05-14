@@ -178,27 +178,36 @@ def test_tool_dicts_service_generate_with_helper_paths(
     assert tool_dicts_service._generate_with_helper(case, ["helper"], out) is True
 
     monkeypatch.setattr(tool_dicts_service, "write_example_template", lambda *_a, **_k: False)
-    monkeypatch.setattr(
-        tool_dicts_service,
-        "run_trusted",
-        lambda *_a, **_k: types.SimpleNamespace(returncode=0, stdout="FoamFile\n{}\n", stderr=""),
-    )
-    assert tool_dicts_service._generate_with_helper(case, ["helper"], out) is True
+    def runner_ok(*_a: object, **_k: object) -> types.SimpleNamespace:
+        return types.SimpleNamespace(returncode=0, stdout="FoamFile\n{}\n", stderr="")
+
+    assert tool_dicts_service._generate_with_helper(
+        case,
+        ["helper"],
+        out,
+        helper_runner=runner_ok,
+    ) is True
     assert "FoamFile" in out.read_text()
 
-    monkeypatch.setattr(
-        tool_dicts_service,
-        "run_trusted",
-        lambda *_a, **_k: types.SimpleNamespace(returncode=1, stdout="", stderr="bad"),
-    )
-    assert tool_dicts_service._generate_with_helper(case, ["helper"], out) is False
+    def runner_bad(*_a: object, **_k: object) -> types.SimpleNamespace:
+        return types.SimpleNamespace(returncode=1, stdout="", stderr="bad")
 
-    monkeypatch.setattr(
-        tool_dicts_service,
-        "run_trusted",
-        lambda *_a, **_k: (_ for _ in ()).throw(OSError("boom")),
-    )
-    assert tool_dicts_service._generate_with_helper(case, ["helper"], out) is False
+    assert tool_dicts_service._generate_with_helper(
+        case,
+        ["helper"],
+        out,
+        helper_runner=runner_bad,
+    ) is False
+
+    def runner_raises(*_a: object, **_k: object) -> types.SimpleNamespace:
+        raise OSError("boom")
+
+    assert tool_dicts_service._generate_with_helper(
+        case,
+        ["helper"],
+        out,
+        helper_runner=runner_raises,
+    ) is False
 
 
 def test_yplus_screen_and_capture_branches(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

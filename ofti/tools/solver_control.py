@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.case import set_start_from_latest
-from ofti.core.times import latest_time
+from ofti.foam.times import latest_time
 from ofti.tools.runner import _show_message
 
 

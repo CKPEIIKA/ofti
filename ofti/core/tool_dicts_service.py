@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from ofti.core import entry_io
 from ofti.core.templates import write_example_template
-from ofti.foam.subprocess_utils import run_trusted
 from ofti.foamlib import adapter as foamlib_integration
+
+
+class CommandRunner(Protocol):
+    def __call__(self, cmd: list[str], **kwargs: object) -> object: ...
 
 
 @dataclass(frozen=True)
@@ -22,6 +26,7 @@ def ensure_dict(
     helper_cmd: list[str] | None,
     *,
     generate: bool,
+    helper_runner: CommandRunner | None = None,
 ) -> DictCreationResult:
     if path.is_file():
         return DictCreationResult(True, None)
@@ -29,7 +34,7 @@ def ensure_dict(
         return DictCreationResult(False, None)
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    generated = _generate_with_helper(case_path, helper_cmd, path)
+    generated = _generate_with_helper(case_path, helper_cmd, path, helper_runner=helper_runner)
     if not generated:
         _write_stub_dict(path, name)
         return DictCreationResult(True, "stub")
@@ -89,6 +94,8 @@ def _generate_with_helper(
     case_path: Path,
     helper_cmd: list[str] | None,
     path: Path,
+    *,
+    helper_runner: CommandRunner | None = None,
 ) -> bool:
     if not helper_cmd:
         return False
@@ -97,7 +104,9 @@ def _generate_with_helper(
     if write_example_template(path, rel_path):
         return True
     try:
-        result = run_trusted(
+        if helper_runner is None:
+            return False
+        result = helper_runner(
             helper_cmd,
             cwd=case_path,
             capture_output=True,
@@ -106,14 +115,21 @@ def _generate_with_helper(
         )
     except OSError:
         return False
-    output = (result.stdout or "").strip()
-    if result.returncode == 0 and output and "FoamFile" in output:
-        try:
-            path.write_text(output + "\n")
-        except OSError:
-            return False
-        return True
-    return False
+    output = (getattr(result, "stdout", "") or "").strip()
+    return bool(
+        getattr(result, "returncode", 1) == 0
+        and output
+        and "FoamFile" in output
+        and _write_helper_output(path, output),
+    )
+
+
+def _write_helper_output(path: Path, output: str) -> bool:
+    try:
+        path.write_text(output + "\n")
+    except OSError:
+        return False
+    return True
 
 
 def _write_stub_dict(path: Path, tool_name: str) -> None:

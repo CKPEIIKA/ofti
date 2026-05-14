@@ -5,18 +5,19 @@ from pathlib import Path
 
 from ofti.core.case import (
     detect_mesh_stats,
+    detect_mesh_stats_quick,
     detect_parallel_settings,
     detect_solver,
     preferred_log_name,
 )
 from ofti.core.case_headers import detect_case_header_version
 from ofti.core.mesh_info import mesh_counts
-from ofti.core.times import latest_time
+from ofti.core.times import latest_time_scan
 from ofti.foam.openfoam_env import detect_openfoam_version
 
 
 def case_metadata(case_path: Path) -> dict[str, str]:
-    latest = latest_time(case_path)
+    latest = latest_time_scan(case_path)
     status = "ran" if latest not in ("0", "0.0", "") else "clean"
     parallel = detect_parallel_settings(case_path)
     mesh = detect_mesh_stats(case_path)
@@ -44,9 +45,8 @@ def case_metadata(case_path: Path) -> dict[str, str]:
 
 
 def case_metadata_quick(case_path: Path) -> dict[str, str]:
-    latest = latest_time(case_path)
+    latest = latest_time_scan(case_path)
     status = "ran" if latest not in ("0", "0.0", "") else "clean"
-    cells, faces, points = mesh_counts(case_path)
     header_version = detect_case_header_version(case_path)
     foam_version = detect_openfoam_version()
     if foam_version == "unknown" and header_version != "unknown":
@@ -59,11 +59,11 @@ def case_metadata_quick(case_path: Path) -> dict[str, str]:
         "case_header_version": header_version,
         "latest_time": latest or "unknown",
         "status": status,
-        "mesh": detect_mesh_stats(case_path),
-        "cells": str(cells) if cells is not None else "n/a",
-        "faces": str(faces) if faces is not None else "n/a",
-        "points": str(points) if points is not None else "n/a",
-        "disk": _format_bytes(_directory_size(case_path)),
+        "mesh": detect_mesh_stats_quick(case_path),
+        "cells": "n/a",
+        "faces": "n/a",
+        "points": "n/a",
+        "disk": "deferred",
         "parallel": detect_parallel_settings(case_path),
         "log": preferred_log_name(case_path),
     }

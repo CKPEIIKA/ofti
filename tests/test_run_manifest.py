@@ -5,13 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from ofti.core import run_receipt
-from ofti.core.run_receipt import (
-    build_run_receipt,
-    restore_run_receipt,
-    verify_run_receipt,
-    write_case_run_receipt,
+from ofti.core import run_manifest
+from ofti.core.run_manifest import (
+    build_run_manifest,
+    restore_run_manifest,
+    verify_run_manifest,
+    write_case_run_manifest,
 )
+from ofti.foam import run_provenance
 
 
 def _make_case(path: Path) -> Path:
@@ -26,14 +27,14 @@ def _make_case(path: Path) -> Path:
     return path
 
 
-def test_write_receipt_with_recorded_inputs_copy(
+def test_write_manifest_with_recorded_inputs_copy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.chdir(tmp_path)
 
-    receipt_path = write_case_run_receipt(
+    manifest_path = write_case_run_manifest(
         case,
         name="simpleFoam",
         command="simpleFoam",
@@ -47,22 +48,22 @@ def test_write_receipt_with_recorded_inputs_copy(
         record_inputs_copy=True,
     )
 
-    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
-    assert receipt_path.is_relative_to(tmp_path / "runs")
-    assert payload["receipt_kind"] == "ofti_run_receipt"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest_path.is_relative_to(tmp_path / "runs")
+    assert payload["receipt_kind"] == "ofti_run_manifest"
     assert payload["inputs"]["recorded_inputs_copy"] is True
     assert payload["inputs"]["inputs_copy_path"] == "inputs"
-    assert (receipt_path.parent / "inputs" / "system" / "controlDict").is_file()
+    assert (manifest_path.parent / "inputs" / "system" / "controlDict").is_file()
     assert any(row["path"] == "system/controlDict" for row in payload["inputs"]["files"])
 
 
-def test_verify_receipt_detects_changed_and_extra_files(
+def test_verify_manifest_detects_changed_and_extra_files(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.chdir(tmp_path)
-    receipt_path = write_case_run_receipt(
+    manifest_path = write_case_run_manifest(
         case,
         name="simpleFoam",
         command="simpleFoam",
@@ -78,19 +79,24 @@ def test_verify_receipt_detects_changed_and_extra_files(
     (case / "system" / "controlDict").write_text("application pisoFoam;\n", encoding="utf-8")
     (case / "system" / "newDict").write_text("x 1;\n", encoding="utf-8")
 
-    payload = verify_run_receipt(receipt_path)
+    payload = verify_run_manifest(
+        manifest_path,
+        build_provenance_check=run_provenance.verify_build_provenance(
+            run_manifest.load_run_manifest(manifest_path),
+        ),
+    )
     assert payload["ok"] is False
     assert payload["changed_files"][0]["path"] == "system/controlDict"
     assert payload["extra_files"] == ["system/newDict"]
 
 
-def test_restore_receipt_requires_recorded_inputs_copy(
+def test_restore_manifest_requires_recorded_inputs_copy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.chdir(tmp_path)
-    receipt_path = write_case_run_receipt(
+    manifest_path = write_case_run_manifest(
         case,
         name="simpleFoam",
         command="simpleFoam",
@@ -104,16 +110,16 @@ def test_restore_receipt_requires_recorded_inputs_copy(
     )
 
     with pytest.raises(ValueError, match="does not include recorded inputs"):
-        restore_run_receipt(receipt_path, tmp_path / "restored")
+        restore_run_manifest(manifest_path, tmp_path / "restored")
 
 
-def test_restore_receipt_copies_case_inputs(
+def test_restore_manifest_copies_case_inputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.chdir(tmp_path)
-    receipt_path = write_case_run_receipt(
+    manifest_path = write_case_run_manifest(
         case,
         name="simpleFoam",
         command="simpleFoam",
@@ -127,7 +133,7 @@ def test_restore_receipt_copies_case_inputs(
         record_inputs_copy=True,
     )
 
-    payload = restore_run_receipt(receipt_path, tmp_path / "restored")
+    payload = restore_run_manifest(manifest_path, tmp_path / "restored")
 
     restored = Path(payload["destination"])
     assert (restored / "system" / "controlDict").read_text(encoding="utf-8").startswith("application")
@@ -135,13 +141,13 @@ def test_restore_receipt_copies_case_inputs(
     assert payload["selected_roots"] == ["system", "constant", "0"]
 
 
-def test_restore_receipt_only_selected_roots(
+def test_restore_manifest_only_selected_roots(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.chdir(tmp_path)
-    receipt_path = write_case_run_receipt(
+    manifest_path = write_case_run_manifest(
         case,
         name="simpleFoam",
         command="simpleFoam",
@@ -155,8 +161,8 @@ def test_restore_receipt_only_selected_roots(
         record_inputs_copy=True,
     )
 
-    payload = restore_run_receipt(
-        receipt_path,
+    payload = restore_run_manifest(
+        manifest_path,
         tmp_path / "restored-system",
         only=["system"],
     )
@@ -168,13 +174,13 @@ def test_restore_receipt_only_selected_roots(
     assert not (restored / "0").exists()
 
 
-def test_restore_receipt_skip_selected_roots(
+def test_restore_manifest_skip_selected_roots(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.chdir(tmp_path)
-    receipt_path = write_case_run_receipt(
+    manifest_path = write_case_run_manifest(
         case,
         name="simpleFoam",
         command="simpleFoam",
@@ -188,8 +194,8 @@ def test_restore_receipt_skip_selected_roots(
         record_inputs_copy=True,
     )
 
-    payload = restore_run_receipt(
-        receipt_path,
+    payload = restore_run_manifest(
+        manifest_path,
         tmp_path / "restored-skip",
         skip=["0"],
     )
@@ -201,13 +207,13 @@ def test_restore_receipt_skip_selected_roots(
     assert not (restored / "0").exists()
 
 
-def test_restore_receipt_rejects_empty_selection(
+def test_restore_manifest_rejects_empty_selection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.chdir(tmp_path)
-    receipt_path = write_case_run_receipt(
+    manifest_path = write_case_run_manifest(
         case,
         name="simpleFoam",
         command="simpleFoam",
@@ -222,18 +228,18 @@ def test_restore_receipt_rejects_empty_selection(
     )
 
     with pytest.raises(ValueError, match="selection is empty"):
-        restore_run_receipt(
-            receipt_path,
+        restore_run_manifest(
+            manifest_path,
             tmp_path / "restored-empty",
             only=["system"],
             skip=["system"],
         )
 
 
-def test_build_receipt_marks_recorded_inputs_copy_flag(tmp_path: Path) -> None:
+def test_build_manifest_marks_recorded_inputs_copy_flag(tmp_path: Path) -> None:
     case = _make_case(tmp_path / "case")
 
-    receipt = build_run_receipt(
+    manifest = build_run_manifest(
         case,
         name="simpleFoam",
         command="simpleFoam",
@@ -247,18 +253,18 @@ def test_build_receipt_marks_recorded_inputs_copy_flag(tmp_path: Path) -> None:
         recorded_inputs_copy=True,
     )
 
-    assert receipt["launch"]["background"] is True
-    assert receipt["inputs"]["recorded_inputs_copy"] is True
+    assert manifest["launch"]["background"] is True
+    assert manifest["inputs"]["recorded_inputs_copy"] is True
 
 
-def test_build_receipt_records_solver_binary_libs_and_env(
+def test_build_manifest_records_solver_binary_libs_and_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
 
     monkeypatch.setattr(
-        run_receipt,
+        run_provenance,
         "_effective_openfoam_env",
         lambda _bashrc: {
             "WM_COMPILER": "Gcc",
@@ -267,7 +273,7 @@ def test_build_receipt_records_solver_binary_libs_and_env(
         },
     )
     monkeypatch.setattr(
-        run_receipt,
+        run_provenance,
         "_solver_binary_row",
         lambda _solver, **_k: {
             "name": "simpleFoam",
@@ -277,7 +283,7 @@ def test_build_receipt_records_solver_binary_libs_and_env(
         },
     )
     monkeypatch.setattr(
-        run_receipt,
+        run_provenance,
         "_linked_library_rows",
         lambda _path: {
             "count": 2,
@@ -287,7 +293,7 @@ def test_build_receipt_records_solver_binary_libs_and_env(
         },
     )
 
-    receipt = build_run_receipt(
+    manifest = build_run_manifest(
         case,
         name="simpleFoam",
         command="simpleFoam",
@@ -299,31 +305,28 @@ def test_build_receipt_records_solver_binary_libs_and_env(
         prepare_parallel=True,
         clean_processors=False,
         solver_name="simpleFoam",
+        build_provenance=run_provenance.build_provenance("simpleFoam", bashrc=None),
     )
 
-    assert receipt["build"]["solver"]["sha256"] == "solver-hash"
-    assert receipt["build"]["linked_libs"]["hash"] == "libs-hash"
-    assert receipt["build"]["compiler"]["compiler"] == "Gcc"
-    assert receipt["build"]["openfoam_env"]["WM_PROJECT_VERSION"] == "v2212"
+    assert manifest["build"]["solver"]["sha256"] == "solver-hash"
+    assert manifest["build"]["linked_libs"]["hash"] == "libs-hash"
+    assert manifest["build"]["compiler"]["compiler"] == "Gcc"
+    assert manifest["build"]["openfoam_env"]["WM_PROJECT_VERSION"] == "v2212"
 
 
-def test_verify_receipt_reports_build_drift(
+def test_verify_manifest_reports_build_drift(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(
-        run_receipt,
-        "_build_provenance",
-        lambda _solver, **_k: {
-            "solver": {"name": "simpleFoam", "path": "/x", "sha256": "old-solver", "size": 1},
-            "linked_libs": {"count": 1, "hash": "old-libs", "files": [], "missing": []},
-            "compiler": {},
-            "openfoam_env": {},
-        },
-    )
-    receipt_path = write_case_run_receipt(
+    old_provenance = {
+        "solver": {"name": "simpleFoam", "path": "/x", "sha256": "old-solver", "size": 1},
+        "linked_libs": {"count": 1, "hash": "old-libs", "files": [], "missing": []},
+        "compiler": {},
+        "openfoam_env": {},
+    }
+    manifest_path = write_case_run_manifest(
         case,
         name="simpleFoam",
         command="simpleFoam",
@@ -335,9 +338,10 @@ def test_verify_receipt_reports_build_drift(
         prepare_parallel=True,
         clean_processors=False,
         solver_name="simpleFoam",
+        build_provenance=old_provenance,
     )
     monkeypatch.setattr(
-        run_receipt,
+        run_provenance,
         "_solver_binary_row",
         lambda _solver, **_k: {
             "name": "simpleFoam",
@@ -347,7 +351,7 @@ def test_verify_receipt_reports_build_drift(
         },
     )
     monkeypatch.setattr(
-        run_receipt,
+        run_provenance,
         "_linked_library_rows",
         lambda _path: {
             "count": 1,
@@ -357,14 +361,19 @@ def test_verify_receipt_reports_build_drift(
         },
     )
 
-    payload = verify_run_receipt(receipt_path)
+    payload = verify_run_manifest(
+        manifest_path,
+        build_provenance_check=run_provenance.verify_build_provenance(
+            run_manifest.load_run_manifest(manifest_path),
+        ),
+    )
 
     assert payload["ok"] is False
     assert payload["build"]["solver"]["match"] is False
     assert payload["build"]["linked_libs"]["match"] is False
 
 
-def test_relative_receipt_output_resolves_from_launch_directory(
+def test_relative_manifest_output_resolves_from_launch_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -373,7 +382,7 @@ def test_relative_receipt_output_resolves_from_launch_directory(
     launch_dir.mkdir()
     monkeypatch.chdir(launch_dir)
 
-    receipt_path = write_case_run_receipt(
+    manifest_path = write_case_run_manifest(
         case,
         name="simpleFoam",
         command="simpleFoam",
@@ -387,4 +396,4 @@ def test_relative_receipt_output_resolves_from_launch_directory(
         output=Path("receipts/run-a"),
     )
 
-    assert receipt_path == (launch_dir / "receipts" / "run-a" / "receipt.json").resolve()
+    assert manifest_path == (launch_dir / "receipts" / "run-a" / "receipt.json").resolve()

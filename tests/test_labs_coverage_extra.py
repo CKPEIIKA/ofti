@@ -9,7 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from ofti.core import run_receipt
+from ofti.core import run_manifest
+from ofti.foam import run_provenance
 from ofti.tools import process_scan_service as scan
 from ofti.tools import watch_service
 
@@ -40,35 +41,35 @@ def _write_proc_entry(
     return proc_dir
 
 
-def test_run_receipt_load_verify_and_restore_error_branches(tmp_path: Path) -> None:
+def test_run_manifest_load_verify_and_restore_error_branches(tmp_path: Path) -> None:
     bad_type = tmp_path / "bad-type.json"
     bad_type.write_text("[]", encoding="utf-8")
     with pytest.raises(TypeError, match="invalid receipt payload"):
-        run_receipt.load_run_receipt(bad_type)
+        run_manifest.load_run_manifest(bad_type)
 
     bad_kind = tmp_path / "bad-kind.json"
     bad_kind.write_text('{"receipt_kind": "other"}', encoding="utf-8")
     with pytest.raises(ValueError, match="unsupported receipt kind"):
-        run_receipt.load_run_receipt(bad_kind)
+        run_manifest.load_run_manifest(bad_kind)
 
     missing_case = tmp_path / "missing-case.json"
     missing_case.write_text(
-        '{"receipt_kind": "ofti_run_receipt", "case": {"path": "missing"}, "inputs": {"files": []}}',
+        '{"receipt_kind": "ofti_run_manifest", "case": {"path": "missing"}, "inputs": {"files": []}}',
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="case directory not found"):
-        run_receipt.verify_run_receipt(missing_case)
+        run_manifest.verify_run_manifest(missing_case)
 
     missing_inputs = tmp_path / "missing-inputs.json"
     missing_inputs.write_text(
         (
-            '{"receipt_kind": "ofti_run_receipt", "case": {"path": "."}, '
+            '{"receipt_kind": "ofti_run_manifest", "case": {"path": "."}, '
             '"inputs": {"inputs_copy_path": "inputs"}}'
         ),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="recorded inputs directory not found"):
-        run_receipt.restore_run_receipt(missing_inputs, tmp_path / "restored")
+        run_manifest.restore_run_manifest(missing_inputs, tmp_path / "restored")
 
     inputs = tmp_path / "inputs"
     inputs.mkdir()
@@ -76,59 +77,59 @@ def test_run_receipt_load_verify_and_restore_error_branches(tmp_path: Path) -> N
     nonempty.mkdir()
     (nonempty / "x").write_text("x", encoding="utf-8")
     with pytest.raises(ValueError, match="destination already exists and is not empty"):
-        run_receipt.restore_run_receipt(missing_inputs, nonempty)
+        run_manifest.restore_run_manifest(missing_inputs, nonempty)
 
 
-def test_run_receipt_helpers_cover_provenance_and_selection_branches(
+def test_run_manifest_helpers_cover_provenance_and_selection_branches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
-    assert run_receipt.collect_case_inputs(case, roots=["system", "missing"])
-    assert run_receipt.resolve_receipt_output(case, tmp_path / "explicit.json") == (tmp_path / "explicit.json").resolve()
-    assert run_receipt._mesh_hash([{"path": "system/controlDict", "sha256": "x"}]) is None
-    assert run_receipt._receipt_roots({"inputs": {"roots": "bad"}}) == run_receipt.DEFAULT_INPUT_ROOTS
-    assert run_receipt._normalize_receipt_roots(["system,constant", "system"]) == ["system", "constant"]
+    assert run_manifest.collect_case_inputs(case, roots=["system", "missing"])
+    assert run_manifest.resolve_manifest_output(case, tmp_path / "explicit.json") == (tmp_path / "explicit.json").resolve()
+    assert run_manifest._mesh_hash([{"path": "system/controlDict", "sha256": "x"}]) is None
+    assert run_manifest._manifest_roots({"inputs": {"roots": "bad"}}) == run_manifest.DEFAULT_INPUT_ROOTS
+    assert run_manifest._normalize_manifest_roots(["system,constant", "system"]) == ["system", "constant"]
     with pytest.raises(ValueError, match="invalid receipt root"):
-        run_receipt._normalize_receipt_roots(["bad"])
-    assert run_receipt._slug(" a//b  c ") == "a_b_c"
+        run_manifest._normalize_manifest_roots(["bad"])
+    assert run_manifest._slug(" a//b  c ") == "a_b_c"
 
     file_root = case / "singleRoot"
     file_root.write_text("single\n", encoding="utf-8")
-    monkeypatch.setattr(run_receipt, "DEFAULT_INPUT_ROOTS", ("missing", "singleRoot"))
+    monkeypatch.setattr(run_manifest, "DEFAULT_INPUT_ROOTS", ("missing", "singleRoot"))
     copied = tmp_path / "copied"
-    run_receipt._copy_input_roots(case, copied)
+    run_manifest._copy_input_roots(case, copied)
     assert (copied / "singleRoot").read_text(encoding="utf-8") == "single\n"
 
     monkeypatch.setenv("WM_PROJECT_VERSION", "v2312")
-    assert run_receipt._selected_env(os.environ)["WM_PROJECT_VERSION"] == "v2312"
-    assert run_receipt._parse_env_lines("A=1\nbad\nB=two=2\n") == {"A": "1", "B": "two=2"}
+    assert run_provenance._selected_env(os.environ)["WM_PROJECT_VERSION"] == "v2312"
+    assert run_provenance._parse_env_lines("A=1\nbad\nB=two=2\n") == {"A": "1", "B": "two=2"}
 
 
-def test_run_receipt_binary_library_and_git_branches(
+def test_run_manifest_binary_library_and_git_branches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     solver = tmp_path / "simpleFoam"
     solver.write_text("#!/bin/sh\n", encoding="utf-8")
-    monkeypatch.setattr(run_receipt, "resolve_executable", lambda _name: str(solver))
-    assert run_receipt._solver_binary_row("simpleFoam", bashrc=None)["size"] == solver.stat().st_size
-    assert run_receipt._solver_binary_row(None, bashrc=None)["name"] is None
+    monkeypatch.setattr(run_provenance, "resolve_executable", lambda _name: str(solver))
+    assert run_provenance._solver_binary_row("simpleFoam", bashrc=None)["size"] == solver.stat().st_size
+    assert run_provenance._solver_binary_row(None, bashrc=None)["name"] is None
 
-    monkeypatch.setattr(run_receipt, "resolve_executable", lambda _name: (_ for _ in ()).throw(FileNotFoundError))
+    monkeypatch.setattr(run_provenance, "resolve_executable", lambda _name: (_ for _ in ()).throw(FileNotFoundError))
     bashrc = tmp_path / "bashrc"
     bashrc.write_text("# env\n", encoding="utf-8")
     missing_result = SimpleNamespace(returncode=0, stdout=str(tmp_path / "missing"), stderr="")
-    monkeypatch.setattr(run_receipt, "run_trusted", lambda *_a, **_k: missing_result)
-    assert run_receipt._resolve_solver_binary_path("simpleFoam", bashrc=bashrc) is None
+    monkeypatch.setattr(run_provenance, "run_trusted", lambda *_a, **_k: missing_result)
+    assert run_provenance._resolve_solver_binary_path("simpleFoam", bashrc=bashrc) is None
 
     env_result = SimpleNamespace(returncode=0, stdout="WM_PROJECT_VERSION=v2312\nbad\n", stderr="")
-    monkeypatch.setattr(run_receipt, "run_trusted", lambda *_a, **_k: env_result)
-    assert run_receipt._effective_openfoam_env(bashrc)["WM_PROJECT_VERSION"] == "v2312"
+    monkeypatch.setattr(run_provenance, "run_trusted", lambda *_a, **_k: env_result)
+    assert run_provenance._effective_openfoam_env(bashrc)["WM_PROJECT_VERSION"] == "v2312"
 
     fail_result = SimpleNamespace(returncode=1, stdout="", stderr="bad")
-    monkeypatch.setattr(run_receipt, "run_trusted", lambda *_a, **_k: fail_result)
-    assert run_receipt._linked_library_rows(solver)["files"] == []
+    monkeypatch.setattr(run_provenance, "run_trusted", lambda *_a, **_k: fail_result)
+    assert run_provenance._linked_library_rows(solver)["files"] == []
 
     lib = tmp_path / "libA.so"
     lib.write_text("lib\n", encoding="utf-8")
@@ -143,14 +144,14 @@ def test_run_receipt_binary_library_and_git_branches(
         ),
         stderr="",
     )
-    monkeypatch.setattr(run_receipt, "run_trusted", lambda *_a, **_k: ldd)
-    rows = run_receipt._linked_library_rows(solver)
+    monkeypatch.setattr(run_provenance, "run_trusted", lambda *_a, **_k: ldd)
+    rows = run_provenance._linked_library_rows(solver)
     assert rows["count"] == 1
     assert rows["missing"] == ["libMissing.so => not found"]
-    assert run_receipt._ldd_resolved_path("libA.so => relative (0x1)") is None
+    assert run_provenance._ldd_resolved_path("libA.so => relative (0x1)") is None
 
-    monkeypatch.setattr(run_receipt, "run_trusted", lambda *_a, **_k: (_ for _ in ()).throw(OSError("git missing")))
-    assert run_receipt._git_capture(tmp_path, "status") == {"ok": False, "stdout": "", "stderr": ""}
+    monkeypatch.setattr(run_provenance, "run_trusted", lambda *_a, **_k: (_ for _ in ()).throw(OSError("git missing")))
+    assert run_provenance._git_capture(tmp_path, "status") == {"ok": False, "stdout": "", "stderr": ""}
 
     dirty = {
         ("rev-parse", "--show-toplevel"): SimpleNamespace(returncode=0, stdout=f"{tmp_path}\n", stderr=""),
@@ -161,15 +162,15 @@ def test_run_receipt_binary_library_and_git_branches(
     def _run_git(cmd: list[str], **_kwargs: object) -> SimpleNamespace:
         return dirty[tuple(cmd[3:])]
 
-    monkeypatch.setattr(run_receipt, "run_trusted", _run_git)
-    info = run_receipt._git_info(tmp_path)
+    monkeypatch.setattr(run_provenance, "run_trusted", _run_git)
+    info = run_provenance.git_info(tmp_path)
     assert info["git_dirty"] is True
     assert info["git_dirty_files"] == ["system/controlDict"]
-    assert run_receipt._iter_files(solver) == [solver]
-    assert run_receipt._normalize_receipt_roots(["system,,0"]) == ["system", "0"]
+    assert run_provenance._iter_files(solver) == [solver]
+    assert run_manifest._normalize_manifest_roots(["system,,0"]) == ["system", "0"]
 
 
-def test_run_receipt_remaining_error_and_copy_branches(
+def test_run_manifest_remaining_error_and_copy_branches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -179,33 +180,33 @@ def test_run_receipt_remaining_error_and_copy_branches(
     (inputs / "system").write_text("flat system input\n", encoding="utf-8")
     receipt.write_text(
         (
-            '{"receipt_kind": "ofti_run_receipt", "case": {"path": "."}, '
+            '{"receipt_kind": "ofti_run_manifest", "case": {"path": "."}, '
             '"inputs": {"inputs_copy_path": "inputs"}}'
         ),
         encoding="utf-8",
     )
-    restored = run_receipt.restore_run_receipt(receipt, tmp_path / "flat-restored", only=["system"])
+    restored = run_manifest.restore_run_manifest(receipt, tmp_path / "flat-restored", only=["system"])
     assert Path(restored["destination"], "system").read_text(encoding="utf-8") == "flat system input\n"
 
     bashrc = tmp_path / "bashrc"
     bashrc.write_text("# env\n", encoding="utf-8")
-    monkeypatch.setattr(run_receipt, "run_trusted", lambda *_a, **_k: (_ for _ in ()).throw(OSError("shell missing")))
-    monkeypatch.setattr(run_receipt, "resolve_executable", lambda _name: (_ for _ in ()).throw(FileNotFoundError))
-    assert run_receipt._effective_openfoam_env(bashrc) == run_receipt._selected_env(os.environ)
-    assert run_receipt._resolve_solver_binary_path("simpleFoam", bashrc=bashrc) is None
-    assert run_receipt._linked_library_rows(tmp_path / "simpleFoam") == {
+    monkeypatch.setattr(run_provenance, "run_trusted", lambda *_a, **_k: (_ for _ in ()).throw(OSError("shell missing")))
+    monkeypatch.setattr(run_provenance, "resolve_executable", lambda _name: (_ for _ in ()).throw(FileNotFoundError))
+    assert run_provenance._effective_openfoam_env(bashrc) == run_provenance._selected_env(os.environ)
+    assert run_provenance._resolve_solver_binary_path("simpleFoam", bashrc=bashrc) is None
+    assert run_provenance._linked_library_rows(tmp_path / "simpleFoam") == {
         "count": 0,
         "hash": None,
         "files": [],
         "missing": [],
     }
 
-    monkeypatch.setattr(run_receipt, "run_trusted", lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="", stderr=""))
-    assert run_receipt._effective_openfoam_env(bashrc) == run_receipt._selected_env(os.environ)
-    assert run_receipt._resolve_solver_binary_path("simpleFoam", bashrc=bashrc) is None
+    monkeypatch.setattr(run_provenance, "run_trusted", lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="", stderr=""))
+    assert run_provenance._effective_openfoam_env(bashrc) == run_provenance._selected_env(os.environ)
+    assert run_provenance._resolve_solver_binary_path("simpleFoam", bashrc=bashrc) is None
 
-    monkeypatch.setattr(run_receipt, "run_trusted", lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="\n", stderr=""))
-    assert run_receipt._resolve_solver_binary_path("simpleFoam", bashrc=bashrc) is None
+    monkeypatch.setattr(run_provenance, "run_trusted", lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="\n", stderr=""))
+    assert run_provenance._resolve_solver_binary_path("simpleFoam", bashrc=bashrc) is None
 
 
 def test_process_scan_warning_and_proc_reader_branches(
