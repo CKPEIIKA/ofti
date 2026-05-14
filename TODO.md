@@ -10,7 +10,7 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
   live `writeNow`/dictionary-reread acknowledgement, and rollback guidance.
 - Expand parallel resize/resume beyond CLI/TUI v0 with stronger live `writeNow` acknowledgement, full input snapshots, and rollback guidance.
 - Expand Change Queue beyond v1 read-only VCS diff preview into snapshot+apply for case edits, presets, launch changes, and runtime mutations.
-- Expand alert cards with alert-to-evidence navigation and command/action previews.
+- Expand alert cards into executable command previews and evidence-opening actions.
 - Expand soundless alarm states into action confirmations; destructive actions must require a snapshot/diff path.
 - Upgrade command mode toward a fuzzy command palette with previews for run/edit/monitor/safe-stop/diff/log actions.
 
@@ -96,6 +96,7 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 - Parallel resize/resume v0 exists as `ofti run resize-parallel` and a TUI Flight action: snapshot, writeNow wait, reconstruct latest, clean processors, update subdomains, resume from latest, decompose latest, and restart.
 - Captains Deck has alert cards v0, Case DNA v0 with setup fingerprint, mission scopes v0, Mesh Radar v0, Resource Watch v0, and folded log v0.
 - Captains Deck alert cards v1 show alarm state plus impact, evidence, suggested action, affected files, and source command.
+- Captains Deck alert cards v2 add evidence open targets and command/action preview text.
 - Resource Watch v1 flags risky `writeInterval`/`purgeWrite` settings; Mesh Radar v1 adds more checkMesh metrics and read-only advice.
 - Resource Watch v2 estimates log-based disk growth, ETA-to-full, and exposes safe cleanup action rows.
 - Case Doctor Pro / `ofti knife lint` v0 exists with evidence/advice findings for doctor issues, pressure reference, decomposition sanity, and resource risks.
