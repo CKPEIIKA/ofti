@@ -72,11 +72,13 @@ def test_table_render_service_branches() -> None:
             "source": "git",
             "count": 1,
             "changes": [{"status": "M", "path": "system/controlDict"}],
+            "actions": [{"action": "snapshot", "status": "recommended", "target": ".ofti/case_snapshot.json"}],
             "diff": ["diff --git a/system/controlDict b/system/controlDict"],
         },
     )
     assert "Pending case changes" in "\n".join(changes)
     assert "system/controlDict" in "\n".join(changes)
+    assert "Change actions" in "\n".join(changes)
     assert "Diff preview" in "\n".join(changes)
 
     numerics = tables.numerics_table_lines(

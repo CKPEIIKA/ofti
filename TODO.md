@@ -9,7 +9,8 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 - Expand Flight deck runtime mutation queue v1 into executable apply flows with snapshots,
   live `writeNow`/dictionary-reread acknowledgement, and rollback guidance.
 - Expand parallel resize/resume beyond CLI/TUI v0 with stronger live `writeNow` acknowledgement, full input snapshots, and rollback guidance.
-- Expand Change Queue beyond v1 read-only VCS diff preview into snapshot+apply for case edits, presets, launch changes, and runtime mutations.
+- Expand Change Queue v2 snapshot/action plan into executable apply flows for case edits,
+  presets, launch changes, and runtime mutations.
 - Expand alert cards into executable command previews and evidence-opening actions.
 - Expand soundless alarm states into action confirmations; destructive actions must require a snapshot/diff path.
 - Upgrade command mode toward a fuzzy command palette with previews for run/edit/monitor/safe-stop/diff/log actions.
@@ -103,6 +104,8 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 - TUI Captains Deck shows Case Lint findings explicitly alongside Case Doctor.
 - Shared captains deck service and `ofti knife captains-deck` / `dna` / `scopes` / `mesh-radar` / `resource` expose the read-only captains deck data outside the TUI.
 - Change Queue v1 is read-only and shared by the TUI Config menu and `ofti knife changes`, including a bounded VCS diff preview.
+- Change Queue v2 exposes review/snapshot/apply action rows and `ofti knife changes --snapshot`
+  writes `.ofti/case_snapshot.json` before risky apply paths.
 - Monitor Builder v0 plans/writes `system/controlDict.functions` for residual/Courant/yPlus monitors with diff preview via `ofti knife monitors`.
 - `ofti watch cases` has grouped/sorted live case grid output for queue-style monitoring.
 - Opt-in real OpenFOAM/PyFoam profile harness exists for critical run-control flows and is skipped by default.

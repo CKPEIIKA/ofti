@@ -489,7 +489,7 @@ def test_initials_converge_stability_support_table_output(
     monkeypatch.setattr(
         cli_tools.change_queue_service,
         "change_queue_payload",
-        lambda _case: {
+        lambda _case, **_kwargs: {
             "case": "case-path",
             "source": "git",
             "count": 1,
@@ -644,6 +644,7 @@ def test_table_flags_parse_for_readonly_commands() -> None:
     assert parser.parse_args(["knife", "status", "--table"]).table is True
     assert parser.parse_args(["knife", "lint", "--table"]).table is True
     assert parser.parse_args(["knife", "changes", "--table"]).table is True
+    assert parser.parse_args(["knife", "changes", "--snapshot"]).snapshot is True
     assert parser.parse_args(["knife", "current", "--table"]).table is True
     assert parser.parse_args(["knife", "compare", "a", "b", "--table"]).table is True
     assert parser.parse_args(["knife", "initials", "--table"]).table is True
