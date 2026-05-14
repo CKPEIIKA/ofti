@@ -123,10 +123,28 @@ def test_table_render_service_branches() -> None:
             "status": {"solver": "simpleFoam", "running": True},
             "current": {"jobs_running": 1},
             "criteria": {"criteria": [{"name": "U", "status": "pass", "value": 1}]},
+            "control": {
+                "path": "system/controlDict",
+                "exists": True,
+                "values": {"stopAt": "endTime", "endTime": "10", "deltaT": "1"},
+                "runtime_modifiable": True,
+            },
+            "runtime_queue": [
+                {
+                    "key": "deltaT",
+                    "status": "needs-value",
+                    "action": "change deltaT",
+                    "target": "system/controlDict:deltaT",
+                    "change": "1 -> <prompt>",
+                    "confirm": "watch log",
+                },
+            ],
             "actions": [{"key": "s", "action": "safe stop", "risk": "low"}],
         },
     )
     assert "Safe actions" in flight
+    assert "Runtime mutation queue" in flight
+    assert "Diff before apply: yes" in flight
 
 
 def test_runtime_tables_cover_nested_rows() -> None:
