@@ -22,11 +22,15 @@ def _case(path: Path) -> Path:
 
 def test_numerics_payload_summarizes_core_dictionaries(tmp_path: Path) -> None:
     payload = numerics_payload(_case(tmp_path))
-    text = "\n".join(str(row) for row in payload["files"] + payload["controls"])
+    text = "\n".join(str(row) for row in payload["files"] + payload["controls"] + payload["schemes"])
 
     assert payload["case"].endswith("case")
     assert "system/fvSchemes" in text
     assert "endTime" in text
+    assert payload["diff_before_write"] is True
+    assert payload["convergence_contract"][0]["source"] == "system/fvSolution"
+    assert payload["presets"][0]["name"] == "conservative steady RANS"
+    assert payload["presets"][0]["diff"][0].startswith("--- current numerics")
 
 
 def test_launch_checklist_payload_reports_ready_rows(tmp_path: Path) -> None:

@@ -4,7 +4,7 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 
 ## P0 - captains deck/control deck overhaul
 
-- Expand Numerics deck beyond v0 read-only summaries into editable fvSchemes/fvSolution/relaxation presets with diff-before-write.
+- Expand Numerics deck v1 from transparent preset previews into apply/snapshot flows for fvSchemes/fvSolution/relaxation edits.
 - Expand Launch checklist from go/no-go v1 into executable TUI actions: launch, dry-run, edit failing item, and parallel wizard.
 - Expand Flight deck beyond v0 into live runtime mutation queue for safe stop, writeNow, deltaT/endTime, pause/resume, adopt, and log confirmation.
 - Expand parallel resize/resume beyond CLI/TUI v0 with stronger live `writeNow` acknowledgement, full input snapshots, and rollback guidance.
@@ -85,6 +85,7 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 - Top-level TUI navigation uses workflow tabs: Captains Deck, Prepare, Mesh, Physics, Numerics, Launch, Flight, Analyze, Case Ops.
 - Physics/Numerics and Launch/Flight have separated workflow entry points while still reusing existing shared config/simulation services.
 - Numerics deck v0 summarizes fvSchemes, fvSolution, and controlDict from a shared service.
+- Numerics deck v1 exposes scheme controls, convergence contract status, and transparent preset previews with diff-before-write.
 - Launch checklist v0 exposes read-only go/no-go rows for case, solver, numerics, mesh, parallel, and monitors.
 - Launch checklist v1 exposes explicit GO/NO-GO gate, log rotation strategy, safe action rows, and direct failing-item targets.
 - Flight deck v0 exposes live status, jobs, criteria, ETA, and safe action hints from shared services.

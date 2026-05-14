@@ -85,9 +85,20 @@ def test_table_render_service_branches() -> None:
             "files": [{"file": "system/fvSolution", "status": "ok", "keys": "solvers"}],
             "controls": [{"key": "endTime", "value": "10", "status": "set"}],
             "solution": [{"key": "solvers", "value": "{}", "status": "set"}],
+            "schemes": [{"key": "divSchemes", "value": "{}", "status": "set"}],
+            "convergence_contract": [
+                {"algorithm": "SIMPLE", "residualControl": "missing", "source": "system/fvSolution"},
+            ],
+            "presets": [
+                {"name": "conservative steady RANS", "description": "stable", "changes": [{}]},
+            ],
         },
     )
+    numerics_text = "\n".join(numerics)
     assert "Numerics files" in numerics
+    assert "Convergence contract" in numerics
+    assert "Transparent presets" in numerics
+    assert "Diff-before-write: yes" in numerics_text
 
     launch = tables.launch_checklist_table_lines(
         {
