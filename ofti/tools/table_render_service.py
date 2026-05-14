@@ -642,7 +642,7 @@ def flight_deck_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def cockpit_table_lines(payload: dict[str, Any]) -> list[str]:
+def captains_deck_table_lines(payload: dict[str, Any]) -> list[str]:
     sections = [
         ("Case DNA", case_dna_table_lines(_dict(payload.get("case_dna")))),
         ("Mission Scopes", scope_table_lines(_dict(payload.get("scopes")))),

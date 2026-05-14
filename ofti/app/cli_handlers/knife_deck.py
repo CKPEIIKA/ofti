@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from ofti.tools import cockpit_service, monitor_builder_service, table_render_service
+from ofti.tools import captains_deck_service, monitor_builder_service, table_render_service
 from ofti.tools.cli_tools import knife as knife_ops
 
 _EASY_ON_CPU_TAIL_BYTES = 256 * 1024
@@ -36,20 +36,20 @@ def _knife_initials(args: argparse.Namespace) -> int:
     return 0
 
 
-def _knife_cockpit(args: argparse.Namespace) -> int:
-    payload = cockpit_service.cockpit_payload(
+def _knife_captains_deck(args: argparse.Namespace) -> int:
+    payload = captains_deck_service.captains_deck_payload(
         args.case_dir,
         tail_bytes=_tail_bytes_with_cpu_mode(args),
     )
     if bool(getattr(args, "json", False)):
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
-    print("\n".join(table_render_service.cockpit_table_lines(payload)))
+    print("\n".join(table_render_service.captains_deck_table_lines(payload)))
     return 0
 
 
 def _knife_dna(args: argparse.Namespace) -> int:
-    payload = cockpit_service.case_dna_payload(
+    payload = captains_deck_service.case_dna_payload(
         args.case_dir,
         tail_bytes=_tail_bytes_with_cpu_mode(args),
     )
@@ -61,7 +61,7 @@ def _knife_dna(args: argparse.Namespace) -> int:
 
 
 def _knife_scopes(args: argparse.Namespace) -> int:
-    payload = cockpit_service.mission_scope_payload(args.case_dir)
+    payload = captains_deck_service.mission_scope_payload(args.case_dir)
     if bool(getattr(args, "json", False)):
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
@@ -84,7 +84,7 @@ def _knife_monitors(args: argparse.Namespace) -> int:
 
 
 def _knife_mesh_radar(args: argparse.Namespace) -> int:
-    payload = cockpit_service.mesh_radar_payload(args.case_dir)
+    payload = captains_deck_service.mesh_radar_payload(args.case_dir)
     if bool(getattr(args, "json", False)):
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
@@ -93,7 +93,7 @@ def _knife_mesh_radar(args: argparse.Namespace) -> int:
 
 
 def _knife_resource(args: argparse.Namespace) -> int:
-    payload = cockpit_service.resource_watch_payload(args.case_dir)
+    payload = captains_deck_service.resource_watch_payload(args.case_dir)
     if bool(getattr(args, "json", False)):
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0

@@ -7,6 +7,8 @@ from ofti.tools.captains_deck_service import (
     OVERVIEW_TAIL_BYTES,
     CaptainsDeckData,
     CaptainsDeckDeps,
+    case_dna_payload,
+    mission_scope_payload,
 )
 from ofti.tools.captains_deck_service import (
     safe_lines as deck_safe_lines,
@@ -15,7 +17,6 @@ from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import plot as plot_ops  # noqa: F401
 from ofti.tools.cli_tools import run as run_ops  # noqa: F401
 from ofti.tools.cli_tools import watch as watch_ops  # noqa: F401
-from ofti.tools.cockpit_service import case_dna_payload, mission_scope_payload
 from ofti.tools.lint_service import lint_payload
 from ofti.tools.mesh_radar_service import mesh_radar_payload
 from ofti.tools.resource_watch_service import resource_watch_payload

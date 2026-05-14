@@ -123,6 +123,7 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 - Watch case-grid behavior lives in `ofti/app/cli_handlers/watch_cases.py`; run case-set behavior lives in `ofti/app/cli_handlers/run_cases.py`.
 - `ofti knife manifest` is the preferred run-manifest command; `ofti knife receipt` remains as a compatibility alias.
 - `--write-manifest` / `--manifest-file` are preferred run-start flags; legacy receipt flag names still work.
+- Legacy `cockpit_service.py` was folded into `captains_deck_service.py`; Captains Deck payloads and table rendering now use Captains Deck names.
 
 ## P0 - clear architecture / layering plan
 
@@ -144,7 +145,7 @@ Implementation plan:
 2. Finish CLI split so `ofti/app/cli_tools.py` is a dispatcher only; move remaining handler bodies into `ofti/app/cli_handlers/{knife,run,watch,plot}.py` or focused handler modules.
 3. Rename/clarify CLI/service packages: `ofti/app/cli_handlers/*` are adapters; `ofti/tools/*` are shared workflows; consider `ofti/services/*` after the split stabilizes.
 4. Clean core purity: move subprocess/OpenFOAM command calls out of `ofti/core`, starting with `foamListTimes` in `core/times.py`.
-5. Split Captains Deck data aggregation out of `ofti/app/overview.py` into a shared deck/cockpit service; TUI should only request payloads, render, and handle keys.
+5. Split Captains Deck data aggregation out of `ofti/app/overview.py` into a shared Captains Deck service; TUI should only request payloads, render, and handle keys.
 6. Separate view models from rendering: services return structured data; CLI/TUI render with their adapters; avoid services returning screen text except renderer-specific helpers.
 7. Clarify TUI package intent: flows/controllers in app layer, widgets/primitives in `ui_curses`, contracts in `ui`.
 8. Inventory services by purpose: case, run, telemetry, edit/change; keep names explicit and avoid UI imports.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.tools import cockpit_service
+from ofti.tools import captains_deck_service
 
 
 def test_case_dna_payload_uses_shared_readonly_sources(
@@ -10,12 +10,12 @@ def test_case_dna_payload_uses_shared_readonly_sources(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(
-        cockpit_service.knife_service,
+        captains_deck_service.knife_service,
         "preflight_payload",
         lambda _case: {"ok": True, "solver": "simpleFoam"},
     )
     monkeypatch.setattr(
-        cockpit_service.knife_service,
+        captains_deck_service.knife_service,
         "status_payload",
         lambda *_a, **_k: {
             "solver": "simpleFoam",
@@ -25,17 +25,17 @@ def test_case_dna_payload_uses_shared_readonly_sources(
         },
     )
     monkeypatch.setattr(
-        cockpit_service.plot_service,
+        captains_deck_service.plot_service,
         "metrics_payload",
         lambda _case: {"residual_fields": ["Ux"]},
     )
     monkeypatch.setattr(
-        cockpit_service.knife_service,
+        captains_deck_service.knife_service,
         "initials_payload",
         lambda _case: {"field_count": 2, "patch_count": 3},
     )
 
-    payload = cockpit_service.case_dna_payload(tmp_path)
+    payload = captains_deck_service.case_dna_payload(tmp_path)
 
     assert payload["risk"] == "low"
     assert payload["fields"] == 2
@@ -44,7 +44,7 @@ def test_case_dna_payload_uses_shared_readonly_sources(
 
 def test_mission_scope_payload_builds_dashboard_rows(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
-        cockpit_service.plot_service,
+        captains_deck_service.plot_service,
         "metrics_payload",
         lambda _case: {
             "courant": {"max": 0.5},
@@ -52,46 +52,46 @@ def test_mission_scope_payload_builds_dashboard_rows(monkeypatch, tmp_path: Path
         },
     )
     monkeypatch.setattr(
-        cockpit_service.plot_service,
+        captains_deck_service.plot_service,
         "residuals_payload",
         lambda *_a, **_k: {"fields": [{"field": "Ux", "last": 1e-4, "min": 1e-4, "max": 1e-3}]},
     )
 
-    payload = cockpit_service.mission_scope_payload(tmp_path)
+    payload = captains_deck_service.mission_scope_payload(tmp_path)
 
     text = "\n".join(str(row) for row in payload["rows"])
     assert "Courant max" in text
     assert "Residual Ux" in text
 
 
-def test_cockpit_payload_degrades_when_logs_are_missing(monkeypatch, tmp_path: Path) -> None:
+def test_captains_deck_payload_degrades_when_logs_are_missing(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
-        cockpit_service.knife_service,
+        captains_deck_service.knife_service,
         "preflight_payload",
         lambda _case: {"ok": True, "solver": "simpleFoam"},
     )
     monkeypatch.setattr(
-        cockpit_service.knife_service,
+        captains_deck_service.knife_service,
         "status_payload",
         lambda *_a, **_k: {"solver": "simpleFoam", "run_time_control": {"failed": 0}},
     )
     monkeypatch.setattr(
-        cockpit_service.knife_service,
+        captains_deck_service.knife_service,
         "initials_payload",
         lambda _case: (_ for _ in ()).throw(ValueError("no initials")),
     )
     monkeypatch.setattr(
-        cockpit_service.plot_service,
+        captains_deck_service.plot_service,
         "metrics_payload",
         lambda _case: (_ for _ in ()).throw(ValueError("no log")),
     )
     monkeypatch.setattr(
-        cockpit_service.plot_service,
+        captains_deck_service.plot_service,
         "residuals_payload",
         lambda *_a, **_k: (_ for _ in ()).throw(ValueError("no log")),
     )
 
-    payload = cockpit_service.cockpit_payload(tmp_path)
+    payload = captains_deck_service.captains_deck_payload(tmp_path)
 
     assert payload["case_dna"]["risk"] == "medium"
     assert payload["case_dna"]["fingerprint"]["hash"]

@@ -424,8 +424,8 @@ def test_initials_converge_stability_support_table_output(
     assert "fixedValue" in out
 
     monkeypatch.setattr(
-        cli_tools.cockpit_service,
-        "cockpit_payload",
+        cli_tools.captains_deck_service,
+        "captains_deck_payload",
         lambda *_a, **_k: {
             "case": "case-path",
             "case_dna": {"case": "case-path", "risk": "low", "fingerprint": {"hash": "abc"}},
@@ -434,13 +434,13 @@ def test_initials_converge_stability_support_table_output(
             "resource_watch": {"case": "case-path", "risk": "low", "logs": []},
         },
     )
-    assert cli_tools._knife_cockpit(_ns(case_dir=Path(), tail_bytes=None, json=False)) == 0
+    assert cli_tools._knife_captains_deck(_ns(case_dir=Path(), tail_bytes=None, json=False)) == 0
     out = capsys.readouterr().out
     assert "Case DNA" in out
     assert "Resource Watch" in out
 
     monkeypatch.setattr(
-        cli_tools.cockpit_service,
+        cli_tools.captains_deck_service,
         "case_dna_payload",
         lambda *_a, **_k: {"case": "case-path", "risk": "low", "fingerprint": {"hash": "abc"}},
     )
@@ -448,7 +448,7 @@ def test_initials_converge_stability_support_table_output(
     assert "fingerprint" in capsys.readouterr().out
 
     monkeypatch.setattr(
-        cli_tools.cockpit_service,
+        cli_tools.captains_deck_service,
         "mission_scope_payload",
         lambda _case: {"rows": [{"scope": "Courant max", "value": 0.5, "plot": "██"}]},
     )
@@ -456,7 +456,7 @@ def test_initials_converge_stability_support_table_output(
     assert "Courant max" in capsys.readouterr().out
 
     monkeypatch.setattr(
-        cli_tools.cockpit_service,
+        cli_tools.captains_deck_service,
         "mesh_radar_payload",
         lambda _case: {"case": "case-path", "status": "ok", "metrics": [], "notes": []},
     )
@@ -464,7 +464,7 @@ def test_initials_converge_stability_support_table_output(
     assert "status" in capsys.readouterr().out
 
     monkeypatch.setattr(
-        cli_tools.cockpit_service,
+        cli_tools.captains_deck_service,
         "resource_watch_payload",
         lambda _case: {"case": "case-path", "risk": "low", "logs": []},
     )

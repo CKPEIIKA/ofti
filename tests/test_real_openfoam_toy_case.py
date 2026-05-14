@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from ofti.tools import (
+    captains_deck_service,
     change_queue_service,
-    cockpit_service,
     flight_deck_service,
     knife_service,
     launch_checklist_service,
@@ -80,7 +80,7 @@ def test_real_case_prelaunch_decks(real_case: RealOpenFOAMCase) -> None:
     lint = lint_service.lint_payload(case)
     assert lint["errors"] == 0
 
-    deck = cockpit_service.cockpit_payload(case)
+    deck = captains_deck_service.captains_deck_payload(case)
     assert deck["case_dna"]["solver"]
     assert deck["mesh_radar"]["has_mesh"] is True
 

@@ -420,7 +420,7 @@ def test_live_cases_catalog_and_receipt_tables() -> None:
     assert "Logs" in resources
     assert "log.simpleFoam" in resources_text
 
-    cockpit = tables.cockpit_table_lines(
+    captains_deck = tables.captains_deck_table_lines(
         {
             "case": "case",
             "case_dna": {"case": "case", "risk": "low", "fingerprint": {"hash": "abc"}},
@@ -429,10 +429,10 @@ def test_live_cases_catalog_and_receipt_tables() -> None:
             "resource_watch": {"case": "case", "risk": "low", "logs": []},
         },
     )
-    cockpit_text = "\n".join(cockpit)
-    assert "Case DNA" in cockpit_text
-    assert "Mission Scopes" in cockpit_text
-    assert "Resource Watch" in cockpit_text
+    captains_deck_text = "\n".join(captains_deck)
+    assert "Case DNA" in captains_deck_text
+    assert "Mission Scopes" in captains_deck_text
+    assert "Resource Watch" in captains_deck_text
 
     monitors = tables.monitor_builder_table_lines(
         {

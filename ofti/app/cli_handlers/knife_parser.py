@@ -234,7 +234,7 @@ def add_parser(
     captain_deck.add_argument("--tail-bytes", type=int, default=None)
     _add_table_flag(captain_deck)
     captain_deck.add_argument("--json", action="store_true")
-    captain_deck.set_defaults(func=handlers["knife_cockpit"])
+    captain_deck.set_defaults(func=handlers["knife_captains_deck"])
 
     dna = knife_sub.add_parser("dna", help="Show read-only case DNA and setup fingerprint")
     dna.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
