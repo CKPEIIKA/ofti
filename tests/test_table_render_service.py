@@ -197,12 +197,23 @@ def test_runtime_tables_cover_nested_rows() -> None:
     assert "No live jobs or solver processes detected." in current
 
     alerts = tables.alert_cards_table_lines(
-        [{"severity": "WARN", "title": "High Courant", "evidence": "CoMax=2", "action": "reduce deltaT"}],
+        [
+            {
+                "severity": "WARN",
+                "title": "High Courant",
+                "evidence": "CoMax=2",
+                "action": "reduce deltaT",
+                "preview": "ofti plot metrics --table",
+                "open": "system/controlDict",
+            },
+        ],
     )
     alert_text = "\n".join(alerts)
     assert "Alarm state: WARNING" in alert_text
     assert "High Courant" in alert_text
     assert "Impact" in alert_text
+    assert "Preview" in alert_text
+    assert "system/controlDict" in alert_text
     assert tables.alert_cards_table_lines([]) == ["Alarm state: NORMAL", "No alerts."]
 
 

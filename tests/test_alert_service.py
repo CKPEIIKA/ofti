@@ -26,7 +26,10 @@ def test_overview_alert_cards_collects_existing_warnings() -> None:
     assert overview_alarm_state(cards) == "ABORT"
     assert all("impact" in card for card in cards)
     assert all("files" in card for card in cards)
+    assert all("preview" in card for card in cards)
+    assert all("open" in card for card in cards)
     assert any(card["files"] == "system/controlDict" for card in cards)
+    assert any(card["open"] == "system/controlDict" for card in cards)
 
 
 def test_overview_alarm_state_maps_severity_to_soundless_state() -> None:

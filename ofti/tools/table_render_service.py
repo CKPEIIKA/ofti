@@ -4,6 +4,7 @@ from typing import Any
 
 from ofti.core.plot import block_bar
 from ofti.core.table import render_kv, render_table
+from ofti.tools.alert_service import overview_alarm_state
 
 
 def preflight_table_lines(payload: dict[str, Any]) -> list[str]:
@@ -176,7 +177,7 @@ def alert_cards_table_lines(cards: list[object]) -> list[str]:
     rows = [_dict(card) for card in cards]
     if not rows:
         return ["Alarm state: NORMAL", "No alerts."]
-    state = _alarm_state(rows)
+    state = overview_alarm_state(rows)
     return [
         f"Alarm state: {state}",
         *render_table(
@@ -187,23 +188,13 @@ def alert_cards_table_lines(cards: list[object]) -> list[str]:
                 ("impact", "Impact"),
                 ("evidence", "Evidence"),
                 ("action", "Action"),
+                ("preview", "Preview"),
+                ("open", "Open"),
                 ("files", "Files"),
                 ("source", "Source"),
             ],
         ),
     ]
-
-
-def _alarm_state(rows: list[dict[str, Any]]) -> str:
-    severities = {str(row.get("severity", "")).upper() for row in rows}
-    if "CRIT" in severities:
-        return "ABORT"
-    if "WARN" in severities:
-        return "WARNING"
-    if "INFO" in severities:
-        return "CAUTION"
-    return "NORMAL"
-
 
 def criteria_payload_table_lines(payload: dict[str, Any]) -> list[str]:
     criteria = list(payload.get("criteria", []))

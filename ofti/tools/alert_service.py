@@ -123,32 +123,12 @@ def _add_status_alerts(cards: list[dict[str, object]], payload: dict[str, Any]) 
             ),
         )
     if payload.get("proc_access_warning"):
-        cards.append(
-            _card(
-                "WARN",
-                "Process scan limited",
-                payload.get("proc_access_warning"),
-                "Live process and running-case discovery may be incomplete.",
-                "Live process discovery may be incomplete.",
-                "knife status",
-                [],
-            ),
-        )
+        _add_proc_warning_card(cards, "Process scan limited", payload, "knife status")
 
 
 def _add_current_alerts(cards: list[dict[str, object]], payload: dict[str, Any]) -> None:
     if payload.get("proc_access_warning"):
-        cards.append(
-            _card(
-                "WARN",
-                "Current process scan limited",
-                payload.get("proc_access_warning"),
-                "Tracked and untracked process lists may be incomplete.",
-                "Tracked and untracked process lists may be incomplete.",
-                "knife current",
-                [],
-            ),
-        )
+        _add_proc_warning_card(cards, "Current process scan limited", payload, "knife current")
 
 
 def _add_metric_alerts(cards: list[dict[str, object]], payload: dict[str, Any]) -> None:
@@ -193,6 +173,7 @@ def _card(
     source: str,
     files: list[str],
 ) -> dict[str, object]:
+    open_target = files[0] if files else "-"
     return {
         "severity": severity,
         "title": title,
@@ -200,8 +181,29 @@ def _card(
         "evidence": str(evidence),
         "action": action,
         "source": source,
+        "open": open_target,
+        "preview": f"ofti {source} --table | {action}",
         "files": ", ".join(files) if files else "-",
     }
+
+
+def _add_proc_warning_card(
+    cards: list[dict[str, object]],
+    title: str,
+    payload: dict[str, Any],
+    source: str,
+) -> None:
+    cards.append(
+        _card(
+            "WARN",
+            title,
+            payload.get("proc_access_warning"),
+            "Live process and running-case discovery may be incomplete.",
+            "Review process visibility and tracked/untracked jobs.",
+            source,
+            [],
+        ),
+    )
 
 
 def _sample(items: list[object]) -> str:
