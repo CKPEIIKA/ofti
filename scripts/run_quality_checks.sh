@@ -5,13 +5,15 @@ PYTHON="$(command -v python3)"
 if [[ -x ".venv/bin/python" ]]; then
   PYTHON=".venv/bin/python"
 fi
-RUFF="$(command -v ruff || true)"
-if [[ -z "$RUFF" && -x ".venv/bin/ruff" ]]; then
+if [[ -x ".venv/bin/ruff" ]]; then
   RUFF=".venv/bin/ruff"
+else
+  RUFF="$(command -v ruff || true)"
 fi
-TY="$(command -v ty || true)"
-if [[ -z "$TY" && -x ".venv/bin/ty" ]]; then
+if [[ -x ".venv/bin/ty" ]]; then
   TY=".venv/bin/ty"
+else
+  TY="$(command -v ty || true)"
 fi
 
 LOG_FILE="quality.txt"
