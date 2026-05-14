@@ -554,6 +554,51 @@ def numerics_table_lines(payload: dict[str, Any]) -> list[str]:
                 *render_table(solution, [("key", "Key"), ("value", "Value"), ("status", "Status")]),
             ],
         )
+    schemes = [_dict(row) for row in list(payload.get("schemes", []))]
+    if schemes:
+        lines.extend(
+            [
+                "",
+                "Scheme controls",
+                *render_table(schemes, [("key", "Key"), ("value", "Value"), ("status", "Status")]),
+            ],
+        )
+    contract = [_dict(row) for row in list(payload.get("convergence_contract", []))]
+    if contract:
+        lines.extend(
+            [
+                "",
+                "Convergence contract",
+                *render_table(
+                    contract,
+                    [
+                        ("algorithm", "Algorithm"),
+                        ("residualControl", "Residual control"),
+                        ("source", "Source"),
+                    ],
+                ),
+            ],
+        )
+    presets = [_dict(row) for row in list(payload.get("presets", []))]
+    if presets:
+        lines.extend(
+            [
+                "",
+                "Transparent presets",
+                *render_table(
+                    [
+                        {
+                            "name": row.get("name"),
+                            "description": row.get("description"),
+                            "changes": len(list(row.get("changes", []))),
+                        }
+                        for row in presets
+                    ],
+                    [("name", "Preset"), ("description", "Description"), ("changes", "Changes")],
+                ),
+                "Diff-before-write: yes",
+            ],
+        )
     return lines
 
 
