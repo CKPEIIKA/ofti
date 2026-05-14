@@ -755,6 +755,46 @@ def flight_deck_table_lines(payload: dict[str, Any]) -> list[str]:
                 ),
             ],
         )
+    control = _dict(payload.get("control"))
+    control_values = _dict(control.get("values"))
+    if control:
+        lines.extend(
+            [
+                "",
+                "Runtime controlDict",
+                *render_kv(
+                    [
+                        ("path", control.get("path")),
+                        ("exists", control.get("exists")),
+                        ("stopAt", control_values.get("stopAt")),
+                        ("endTime", control_values.get("endTime")),
+                        ("deltaT", control_values.get("deltaT")),
+                        ("runtimeModifiable", control.get("runtime_modifiable")),
+                    ],
+                ),
+            ],
+        )
+    runtime_queue = [_dict(row) for row in list(payload.get("runtime_queue", []))]
+    if runtime_queue:
+        lines.extend(
+            [
+                "",
+                "Runtime mutation queue",
+                *render_table(
+                    runtime_queue,
+                    [
+                        ("key", "Key"),
+                        ("status", "Status"),
+                        ("action", "Action"),
+                        ("target", "Target"),
+                        ("change", "Change"),
+                        ("confirm", "Confirm"),
+                    ],
+                ),
+                "",
+                "Diff before apply: yes",
+            ],
+        )
     actions = [_dict(row) for row in list(payload.get("actions", []))]
     if actions:
         lines.extend(

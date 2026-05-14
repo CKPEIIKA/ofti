@@ -6,7 +6,8 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 
 - Expand Numerics deck v1 from transparent preset previews into apply/snapshot flows for fvSchemes/fvSolution/relaxation edits.
 - Expand Launch checklist from go/no-go v1 into executable TUI actions: launch, dry-run, edit failing item, and parallel wizard.
-- Expand Flight deck beyond v0 into live runtime mutation queue for safe stop, writeNow, deltaT/endTime, pause/resume, adopt, and log confirmation.
+- Expand Flight deck runtime mutation queue v1 into executable apply flows with snapshots,
+  live `writeNow`/dictionary-reread acknowledgement, and rollback guidance.
 - Expand parallel resize/resume beyond CLI/TUI v0 with stronger live `writeNow` acknowledgement, full input snapshots, and rollback guidance.
 - Expand Change Queue beyond v1 read-only VCS diff preview into snapshot+apply for case edits, presets, launch changes, and runtime mutations.
 - Expand alert cards with alert-to-evidence navigation and command/action previews.
@@ -89,6 +90,9 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 - Launch checklist v0 exposes read-only go/no-go rows for case, solver, numerics, mesh, parallel, and monitors.
 - Launch checklist v1 exposes explicit GO/NO-GO gate, log rotation strategy, safe action rows, and direct failing-item targets.
 - Flight deck v0 exposes live status, jobs, criteria, ETA, and safe action hints from shared services.
+- Flight deck runtime mutation queue v1 previews safe stop, writeNow, deltaT/endTime,
+  pause/resume, and adoption actions with targets, proposed changes, confirmations,
+  risks, and diff-before-apply hints.
 - Parallel resize/resume v0 exists as `ofti run resize-parallel` and a TUI Flight action: snapshot, writeNow wait, reconstruct latest, clean processors, update subdomains, resume from latest, decompose latest, and restart.
 - Captains Deck has alert cards v0, Case DNA v0 with setup fingerprint, mission scopes v0, Mesh Radar v0, Resource Watch v0, and folded log v0.
 - Captains Deck alert cards v1 show alarm state plus impact, evidence, suggested action, affected files, and source command.

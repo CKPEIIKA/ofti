@@ -62,6 +62,10 @@ def test_flight_deck_payload_degrades_without_running_solver(tmp_path: Path) -> 
     assert payload["case"].endswith("case")
     assert payload["actions"]
     assert "status" in payload
+    assert payload["control"]["values"]["deltaT"] == "1"
+    assert payload["runtime_queue"][0]["key"] == "safe-stop"
+    assert payload["runtime_queue"][0]["diff"][0].startswith("--- current")
+    assert any(row["key"] == "deltaT" and row["status"] == "idle" for row in payload["runtime_queue"])
 
 
 def test_monitor_builder_plans_and_writes_function_object_include(tmp_path: Path) -> None:
