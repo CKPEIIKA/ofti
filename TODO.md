@@ -39,7 +39,7 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 - Add Dictionary Time Machine over snapshots: before launch, after user edits, after autopilot changes, final; include blame source for user/wizard/autopilot/template/external edits.
 - Expand Case Doctor Pro / `ofti lint` beyond v0 missing dictionaries, pressure reference, decomposition sanity, and disk-risk settings into BC compatibility, dimensions, turbulence wall functions, and solver/physics mismatch.
 - Add Explain Warning mode for alerts/lint findings with evidence, impact, suggested fix, affected file, diff, and ignore option.
-- Expand Resource Watch beyond v1 free disk/time-dir/processor/log summary and write-setting risk into disk growth ETA and safe cleanup actions.
+- Expand Resource Watch cleanup actions into executable TUI/CLI dry-run/apply flows with snapshots for destructive cleanup.
 - Add one-key Markdown report generation with case summary, mesh quality, solver setup, BC table, residual/force/probe plots, warnings, dictionary diffs, and reproducibility fingerprint.
 
 ## P2 - multi-case and HPC control
@@ -92,6 +92,7 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 - Captains Deck has alert cards v0, Case DNA v0 with setup fingerprint, mission scopes v0, Mesh Radar v0, Resource Watch v0, and folded log v0.
 - Captains Deck alert cards v1 show alarm state plus impact, evidence, suggested action, affected files, and source command.
 - Resource Watch v1 flags risky `writeInterval`/`purgeWrite` settings; Mesh Radar v1 adds more checkMesh metrics and read-only advice.
+- Resource Watch v2 estimates log-based disk growth, ETA-to-full, and exposes safe cleanup action rows.
 - Case Doctor Pro / `ofti knife lint` v0 exists with evidence/advice findings for doctor issues, pressure reference, decomposition sanity, and resource risks.
 - TUI Captains Deck shows Case Lint findings explicitly alongside Case Doctor.
 - Shared captains deck service and `ofti knife captains-deck` / `dna` / `scopes` / `mesh-radar` / `resource` expose the read-only captains deck data outside the TUI.

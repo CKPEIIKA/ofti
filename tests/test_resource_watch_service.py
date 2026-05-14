@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 
 from ofti.tools.resource_watch_service import resource_watch_payload
@@ -16,6 +18,8 @@ def test_resource_watch_payload_counts_runtime_artifacts(tmp_path: Path) -> None
     (case / "1").mkdir()
     (case / "processor0").mkdir()
     (case / "log.simpleFoam").write_text("x" * 10)
+    old = time.time() - 3600
+    os.utime(case / "log.simpleFoam", (old, old))
 
     payload = resource_watch_payload(case)
 
@@ -24,6 +28,10 @@ def test_resource_watch_payload_counts_runtime_artifacts(tmp_path: Path) -> None
     assert payload["log_bytes"] == 10
     assert payload["risk"] == "frequent writes without purgeWrite"
     assert payload["write_settings"]["writeInterval"] == "10"
+    assert payload["disk_growth"]["source"] == "logs"
+    assert payload["disk_growth"]["rate_bytes_per_hour"] >= 9
+    assert payload["cleanup_actions"][0]["action"] == "preview prune old time directories"
+    assert payload["cleanup_actions"][-1]["target"] == "system/controlDict"
     assert payload["suggestions"] == ["Review system/controlDict writeInterval and purgeWrite."]
     assert payload["logs"] == [{"log": "log.simpleFoam", "bytes": 10, "size": "10B"}]
 
@@ -34,6 +42,7 @@ def test_resource_watch_payload_handles_missing_case(tmp_path: Path) -> None:
     assert payload["free_bytes"] is None
     assert payload["time_dirs"] == 0
     assert payload["logs"] == []
+    assert payload["disk_growth"]["rate_bytes_per_hour"] == 0
 
 
 def test_resource_watch_payload_low_risk_with_purge_write(tmp_path: Path) -> None:
