@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import time
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +37,13 @@ def resource_watch_payload(case_path: Path) -> dict[str, Any]:
         "log_bytes": log_bytes,
         "logs": logs[:10],
         "risk": ", ".join(risks) if risks else "low",
+        "disk_growth": _disk_growth(case_path, log_bytes=log_bytes, free_bytes=free_bytes),
         "write_settings": write_settings,
+        "cleanup_actions": _cleanup_actions(
+            log_bytes=log_bytes,
+            time_dirs=time_dirs,
+            write_risk=write_risk,
+        ),
         "suggestions": _resource_suggestions(
             log_bytes=log_bytes,
             time_dirs=time_dirs,
@@ -129,6 +136,98 @@ def _resource_suggestions(
     return suggestions
 
 
+def _cleanup_actions(
+    *,
+    log_bytes: int,
+    time_dirs: int,
+    write_risk: str | None,
+) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    if time_dirs:
+        actions.append(
+            {
+                "key": "p",
+                "action": "preview prune old time directories",
+                "target": "time directories",
+                "safe": True,
+                "reason": f"{time_dirs} time directories present.",
+            },
+        )
+    if log_bytes:
+        actions.append(
+            {
+                "key": "z",
+                "action": "compress or rotate old logs",
+                "target": "log.*",
+                "safe": False,
+                "reason": f"Solver logs use {_format_bytes(log_bytes)}.",
+            },
+        )
+    if write_risk:
+        actions.append(
+            {
+                "key": "w",
+                "action": "edit write settings",
+                "target": "system/controlDict",
+                "safe": False,
+                "reason": write_risk,
+            },
+        )
+    return actions
+
+
+def _disk_growth(case_path: Path, *, log_bytes: int, free_bytes: int | None) -> dict[str, Any]:
+    if not log_bytes:
+        return {
+            "source": "logs",
+            "rate_bytes_per_hour": 0,
+            "rate": _format_bytes(0) + "/h",
+            "eta_to_full_seconds": None,
+            "eta_to_full": None,
+            "evidence": "no solver log bytes",
+        }
+    mtimes = _log_mtimes(case_path)
+    if not mtimes:
+        return {
+            "source": "logs",
+            "rate_bytes_per_hour": None,
+            "rate": "unknown",
+            "eta_to_full_seconds": None,
+            "eta_to_full": None,
+            "evidence": "log mtimes unavailable",
+        }
+    elapsed = max(time.time() - min(mtimes), 1.0)
+    rate_bytes_per_hour = int(log_bytes / elapsed * 3600)
+    rate_bytes_per_second = rate_bytes_per_hour / 3600
+    eta_seconds = (
+        int(free_bytes / rate_bytes_per_second)
+        if free_bytes and rate_bytes_per_second > 0
+        else None
+    )
+    return {
+        "source": "logs",
+        "rate_bytes_per_hour": rate_bytes_per_hour,
+        "rate": f"{_format_bytes(rate_bytes_per_hour)}/h",
+        "eta_to_full_seconds": eta_seconds,
+        "eta_to_full": _format_duration(eta_seconds),
+        "evidence": f"{_format_bytes(log_bytes)} across {len(mtimes)} log file(s)",
+    }
+
+
+def _log_mtimes(case_path: Path) -> list[float]:
+    try:
+        logs = sorted(case_path.glob("log.*"))
+    except OSError:
+        return []
+    mtimes: list[float] = []
+    for path in logs:
+        try:
+            mtimes.append(path.stat().st_mtime)
+        except OSError:
+            continue
+    return mtimes
+
+
 def _read_optional_entry(path: Path, key: str) -> str | None:
     try:
         return read_entry(path, key).strip().rstrip(";")
@@ -170,3 +269,18 @@ def _format_bytes(size: int) -> str:
             return f"{value:.1f}{unit}" if unit != "B" else f"{int(value)}B"
         value /= 1024
     return f"{value:.1f}TB"
+
+
+def _format_duration(seconds: int | None) -> str | None:
+    if seconds is None:
+        return None
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {sec}s"
+    hours, minute = divmod(minutes, 60)
+    if hours < 48:
+        return f"{hours}h {minute}m"
+    days, hour = divmod(hours, 24)
+    return f"{days}d {hour}h"

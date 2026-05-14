@@ -419,14 +419,23 @@ def test_live_cases_catalog_and_receipt_tables() -> None:
             "time_dirs": 2,
             "processor_dirs": 1,
             "log_bytes": 10,
+            "disk_growth": {
+                "source": "logs",
+                "rate": "10B/h",
+                "eta_to_full": "4d 6h",
+                "evidence": "10B across 1 log file(s)",
+            },
             "write_settings": {"writeControl": "timeStep", "writeInterval": "10", "purgeWrite": "0"},
+            "cleanup_actions": [{"key": "z", "action": "compress logs", "target": "log.*", "safe": False}],
             "suggestions": ["Review write settings."],
             "logs": [{"log": "log.simpleFoam", "size": "10B"}],
         },
     )
     resources_text = "\n".join(resources)
     assert "free_disk" in resources_text
+    assert "Disk growth" in resources
     assert "Write settings" in resources
+    assert "Cleanup actions" in resources
     assert "Suggestions" in resources
     assert "Logs" in resources
     assert "log.simpleFoam" in resources_text

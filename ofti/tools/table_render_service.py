@@ -431,6 +431,22 @@ def resource_watch_table_lines(payload: dict[str, Any]) -> list[str]:
         ],
     )
     write_settings = _dict(payload.get("write_settings"))
+    disk_growth = _dict(payload.get("disk_growth"))
+    if disk_growth:
+        lines.extend(
+            [
+                "",
+                "Disk growth",
+                *render_kv(
+                    [
+                        ("source", disk_growth.get("source")),
+                        ("rate", disk_growth.get("rate")),
+                        ("eta_to_full", disk_growth.get("eta_to_full")),
+                        ("evidence", disk_growth.get("evidence")),
+                    ],
+                ),
+            ],
+        )
     if write_settings:
         lines.extend(
             [
@@ -449,6 +465,24 @@ def resource_watch_table_lines(payload: dict[str, Any]) -> list[str]:
     if suggestions:
         lines.extend(
             ["", "Suggestions", *render_table(suggestions, [("suggestion", "Suggestion")])],
+        )
+    actions = [_dict(row) for row in list(payload.get("cleanup_actions", []))]
+    if actions:
+        lines.extend(
+            [
+                "",
+                "Cleanup actions",
+                *render_table(
+                    actions,
+                    [
+                        ("key", "Key"),
+                        ("action", "Action"),
+                        ("target", "Target"),
+                        ("safe", "Safe"),
+                        ("reason", "Reason"),
+                    ],
+                ),
+            ],
         )
     logs = list(payload.get("logs", []))
     if logs:
