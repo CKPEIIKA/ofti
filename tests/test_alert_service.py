@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ofti.tools.alert_service import overview_alert_cards
+from ofti.tools.alert_service import overview_alarm_state, overview_alert_cards
 
 
 def test_overview_alert_cards_collects_existing_warnings() -> None:
@@ -23,3 +23,14 @@ def test_overview_alert_cards_collects_existing_warnings() -> None:
     assert "Case doctor errors" in titles
     assert "High Courant number" in titles
     assert {str(card["severity"]) for card in cards} >= {"CRIT", "WARN", "INFO"}
+    assert overview_alarm_state(cards) == "ABORT"
+    assert all("impact" in card for card in cards)
+    assert all("files" in card for card in cards)
+    assert any(card["files"] == "system/controlDict" for card in cards)
+
+
+def test_overview_alarm_state_maps_severity_to_soundless_state() -> None:
+    assert overview_alarm_state([]) == "NORMAL"
+    assert overview_alarm_state([{"severity": "INFO"}]) == "CAUTION"
+    assert overview_alarm_state([{"severity": "WARN"}]) == "WARNING"
+    assert overview_alarm_state([{"severity": "CRIT"}]) == "ABORT"

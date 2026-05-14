@@ -33,7 +33,23 @@ def test_launch_checklist_payload_reports_ready_rows(tmp_path: Path) -> None:
     payload = launch_checklist_payload(_case(tmp_path))
 
     assert payload["ready"] is True
+    assert payload["gate"] == "GO"
+    assert payload["actions"][0]["action"] == "launch"
+    assert payload["log_strategy"]["rotate_before_launch"] is False
     assert any(row["item"] == "Mesh" and row["status"] == "pass" for row in payload["rows"])
+
+
+def test_launch_checklist_payload_blocks_and_points_to_failing_items(tmp_path: Path) -> None:
+    case = _case(tmp_path)
+    (case / "constant" / "polyMesh").rmdir()
+
+    payload = launch_checklist_payload(case)
+
+    assert payload["ready"] is False
+    assert payload["gate"] == "NO-GO"
+    assert any(row["item"] == "Mesh" for row in payload["blocking"])
+    assert payload["actions"][0]["action"] == "open failing item"
+    assert payload["actions"][0]["target"] == "constant/polyMesh"
 
 
 def test_flight_deck_payload_degrades_without_running_solver(tmp_path: Path) -> None:

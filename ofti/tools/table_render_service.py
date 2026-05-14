@@ -175,17 +175,34 @@ def current_table_lines(payload: dict[str, Any]) -> list[str]:
 def alert_cards_table_lines(cards: list[object]) -> list[str]:
     rows = [_dict(card) for card in cards]
     if not rows:
-        return ["No alerts."]
-    return render_table(
+        return ["Alarm state: NORMAL", "No alerts."]
+    state = _alarm_state(rows)
+    return [
+        f"Alarm state: {state}",
+        *render_table(
         rows,
         [
             ("severity", "Severity"),
             ("title", "Alert"),
+            ("impact", "Impact"),
             ("evidence", "Evidence"),
             ("action", "Action"),
+            ("files", "Files"),
             ("source", "Source"),
         ],
-    )
+        ),
+    ]
+
+
+def _alarm_state(rows: list[dict[str, Any]]) -> str:
+    severities = {str(row.get("severity", "")).upper() for row in rows}
+    if "CRIT" in severities:
+        return "ABORT"
+    if "WARN" in severities:
+        return "WARNING"
+    if "INFO" in severities:
+        return "CAUTION"
+    return "NORMAL"
 
 
 def criteria_payload_table_lines(payload: dict[str, Any]) -> list[str]:
@@ -508,7 +525,16 @@ def numerics_table_lines(payload: dict[str, Any]) -> list[str]:
 
 def launch_checklist_table_lines(payload: dict[str, Any]) -> list[str]:
     rows = [_dict(row) for row in list(payload.get("rows", []))]
-    lines = render_kv([("case", payload.get("case")), ("ready", payload.get("ready"))])
+    log_strategy = _dict(payload.get("log_strategy"))
+    actions = [_dict(row) for row in list(payload.get("actions", []))]
+    lines = render_kv(
+        [
+            ("case", payload.get("case")),
+            ("solver", payload.get("solver")),
+            ("gate", payload.get("gate")),
+            ("ready", payload.get("ready")),
+        ],
+    )
     if rows:
         lines.extend(
             [
@@ -522,6 +548,26 @@ def launch_checklist_table_lines(payload: dict[str, Any]) -> list[str]:
                         ("required", "Required"),
                         ("evidence", "Evidence"),
                         ("advice", "Advice"),
+                        ("open", "Open"),
+                    ],
+                ),
+            ],
+        )
+    if log_strategy:
+        lines.extend(["", "Log strategy", *render_kv(sorted(log_strategy.items()))])
+    if actions:
+        lines.extend(
+            [
+                "",
+                "Actions",
+                *render_table(
+                    actions,
+                    [
+                        ("key", "Key"),
+                        ("action", "Action"),
+                        ("target", "Target"),
+                        ("safe", "Safe"),
+                        ("reason", "Reason"),
                     ],
                 ),
             ],
