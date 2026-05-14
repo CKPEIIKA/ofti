@@ -16,8 +16,8 @@ from typing import Any, TypedDict
 from ofti.core.case import read_number_of_subdomains
 from ofti.core.entry_io import write_entry
 from ofti.core.solver_checks import resolve_solver_name, validate_initial_fields
-from ofti.core.times import latest_time
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
+from ofti.foam.times import latest_time
 from ofti.foamlib import runner as foamlib_runner
 from ofti.foamlib.adapter import FoamlibUnavailableError
 from ofti.foamlib.parametric import (

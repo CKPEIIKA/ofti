@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core import pipeline as pipeline_service
+from ofti.foam.subprocess_utils import run_trusted
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
 from ofti.tools.tool_catalog import tool_catalog
@@ -139,6 +140,7 @@ def _run_pipeline_commands(
         case_path,
         commands,
         status_cb=lambda msg: status_message(stdscr, msg),
+        runner=run_trusted,
     )
     Viewer(stdscr, "\n".join(results).strip()).display()
 
@@ -234,6 +236,5 @@ def _render_pipeline_editor(
         except curses.error:
             pass
     stdscr.refresh()
-
 
 

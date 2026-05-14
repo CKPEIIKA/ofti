@@ -24,6 +24,38 @@ def _assert_no_ui_imports(paths: list[Path]) -> None:
             assert not module.startswith("ofti.ui"), f"{path} imports ui"
 
 
+def _assert_no_import_prefixes(paths: list[Path], prefixes: tuple[str, ...]) -> None:
+    for path in paths:
+        tree = ast.parse(path.read_text())
+        imports = _imported_modules(tree)
+        for module in imports:
+            for prefix in prefixes:
+                assert not module.startswith(prefix), f"{path} imports forbidden {prefix}"
+
+
+def test_core_modules_are_ui_and_subprocess_free() -> None:
+    core_dir = Path("ofti") / "core"
+    py_files = sorted(core_dir.glob("*.py"))
+    assert py_files, "Expected core modules to exist"
+    _assert_no_import_prefixes(
+        py_files,
+        (
+            "subprocess",
+            "ofti.app",
+            "ofti.ui",
+            "ofti.ui_curses",
+            "ofti.foam.subprocess_utils",
+        ),
+    )
+
+
+def test_foamlib_modules_do_not_import_app_or_ui() -> None:
+    foamlib_dir = Path("ofti") / "foamlib"
+    py_files = sorted(foamlib_dir.glob("*.py"))
+    assert py_files, "Expected foamlib modules to exist"
+    _assert_no_import_prefixes(py_files, ("ofti.app", "ofti.ui", "ofti.ui_curses"))
+
+
 def test_foam_modules_do_not_import_ui() -> None:
     foam_dir = Path("ofti") / "foam"
     py_files = sorted(foam_dir.glob("*.py"))

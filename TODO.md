@@ -101,3 +101,57 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 - Opt-in real OpenFOAM/PyFoam tests exercise prelaunch decks, lint/resource/mesh services, monitor builder writes, report artifact generation, untracked solver adoption, tracked live solver discovery, runtime controlDict mutation, change queue diffing, pause/resume/stop, optional parallel restart, and latest-time reconstruction.
 - CLI table rendering exists for status/current/criteria/ETA/report, plot metrics/residuals, watch jobs, campaign summaries, and run status.
 - Quality gate is `ruff`, `ty`, and full `pytest` with coverage target >=85%.
+- Architecture rules are documented in `docs/architecture.md` and covered by import/layering tests.
+- `ofti/core/times.py` is filesystem-only; OpenFOAM-assisted latest-time lookup lives in `ofti/foam/times.py`.
+- `ofti/core/tool_dicts_service.py` no longer imports subprocess helpers; UI/tool adapters inject the OpenFOAM runner.
+- `ofti/core/pipeline.py` no longer imports subprocess helpers; tool services inject the command runner.
+- Watch CLI parser/output handlers live in `ofti/app/cli_handlers/watch.py`; `cli_tools.py` is smaller and remains a compatibility dispatcher for old tests/imports.
+- Watch attach/start/run/log handling now lives in `ofti/app/cli_handlers/watch.py`; `cli_tools.py` only keeps compatibility aliases for those watch entry points.
+- Run CLI parser plus tool/matrix/parametric/queue/status/resize/solver handlers live in `ofti/app/cli_handlers/run.py`; watch wrappers call the shared run handler instead of duplicating solver launch logic.
+- Run manifest / receipt CLI handlers live in `ofti/app/cli_handlers/manifest.py`; `cli_tools.py` only maps their existing public handler names.
+- Basic knife handlers live in `ofti/app/cli_handlers/knife_basic.py`: doctor, lint, changes, preflight, compare, copy, and set.
+- Captains Deck/read-only knife handlers live in `ofti/app/cli_handlers/knife_deck.py`: initials, Captains Deck, DNA, scopes, monitors, mesh radar, resource watch, and CPU-mode helpers.
+- Live/control knife handlers live in `ofti/app/cli_handlers/knife_live.py`: status, current, adopt, and stop.
+- Analysis/campaign knife handlers live in `ofti/app/cli_handlers/knife_analysis.py`: convergence, stability, criteria, ETA, report, and campaign operations.
+- Internal run manifest code replaces the old run_receipt module: pure core logic lives in `ofti/core/run_manifest.py`, OpenFOAM/git/ldd provenance lives in `ofti/foam/run_provenance.py`, and CLI/service wiring lives in `ofti/tools/run_manifest_service.py`.
+- Internal run manifest naming is cleaned up in new code; only legacy persisted schema/user-facing receipt labels remain for compatibility.
+- Core import tests now cover every `ofti/core/*.py` file without a subprocess exception.
+- `ofti/app/cli_tools.py` is now a small dispatcher below 300 lines; compatibility lookup is lazy and handler bodies live in focused CLI adapter modules.
+- Captains Deck aggregation now lives in `ofti/tools/captains_deck_service.py`; `ofti/app/overview.py` is mostly TUI/text rendering glue.
+- Watch and run CLI parser construction live in `ofti/app/cli_handlers/watch_parser.py` and `ofti/app/cli_handlers/run_parser.py`; handler modules now focus on command behavior.
+- Weak compatibility/helper modules were removed again: `cli_tools.py` imports `knife_parser.py` directly, and easy-on-CPU helpers are local to the few adapters that need them.
+- Watch case-grid behavior lives in `ofti/app/cli_handlers/watch_cases.py`; run case-set behavior lives in `ofti/app/cli_handlers/run_cases.py`.
+- `ofti knife manifest` is the preferred run-manifest command; `ofti knife receipt` remains as a compatibility alias.
+- `--write-manifest` / `--manifest-file` are preferred run-start flags; legacy receipt flag names still work.
+
+## P0 - clear architecture / layering plan
+
+Target structure:
+
+- `ofti/foamlib/`: optional foamlib integration only; no UI, no CLI formatting.
+- `ofti/foam/`: OpenFOAM process/env/subprocess boundary.
+- `ofti/core/`: pure OpenFOAM case/domain logic; no subprocess, no UI, no argparse.
+- `ofti/tools/` now, later possibly `ofti/services/`: shared application workflows used by both CLI and TUI.
+- `ofti/app/cli_handlers/`: argparse adapters and CLI output formatting by command group.
+- `ofti/app/menus/` and `ofti/app/screens/`: TUI flows and screen controllers.
+- `ofti/ui/`: UI-independent view models/contracts.
+- `ofti/ui_curses/`: concrete curses widgets/rendering.
+- `tests/`: mirror layers with explicit layering tests.
+
+Implementation plan:
+
+1. Freeze layer rules in `docs/architecture.md` and enforce them with import tests.
+2. Finish CLI split so `ofti/app/cli_tools.py` is a dispatcher only; move remaining handler bodies into `ofti/app/cli_handlers/{knife,run,watch,plot}.py` or focused handler modules.
+3. Rename/clarify CLI/service packages: `ofti/app/cli_handlers/*` are adapters; `ofti/tools/*` are shared workflows; consider `ofti/services/*` after the split stabilizes.
+4. Clean core purity: move subprocess/OpenFOAM command calls out of `ofti/core`, starting with `foamListTimes` in `core/times.py`.
+5. Split Captains Deck data aggregation out of `ofti/app/overview.py` into a shared deck/cockpit service; TUI should only request payloads, render, and handle keys.
+6. Separate view models from rendering: services return structured data; CLI/TUI render with their adapters; avoid services returning screen text except renderer-specific helpers.
+7. Clarify TUI package intent: flows/controllers in app layer, widgets/primitives in `ui_curses`, contracts in `ui`.
+8. Inventory services by purpose: case, run, telemetry, edit/change; keep names explicit and avoid UI imports.
+9. Mirror architecture in tests: services tested directly; CLI/TUI tests cover wiring and output only; real OpenFOAM tests should hit services first.
+10. Remove compatibility shims after migration: update tests to import new modules directly; keep only the public CLI entrypoint stable.
+
+Concrete next architecture tasks:
+
+- Split remaining oversized CLI behavior modules (`watch.py` and `run.py`) only around cohesive modes such as solver launch, watcher launch/attach, or external watcher rendering.
+- Continue moving Captains Deck line rendering toward explicit view-models so services return structured data and adapters render it.

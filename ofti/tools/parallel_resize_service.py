@@ -9,8 +9,8 @@ from typing import Any
 
 from ofti.core.case import read_number_of_subdomains, set_start_from_latest
 from ofti.core.case_snapshot import write_case_snapshot
-from ofti.core.times import latest_time
 from ofti.core.tool_dicts_service import apply_assignment_or_write
+from ofti.foam.times import latest_time
 from ofti.tools import case_source_service, knife_service, watch_service
 from ofti.tools.cli_tools import run as run_ops
 

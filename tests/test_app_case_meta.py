@@ -35,6 +35,21 @@ def test_case_meta_quick(tmp_path: Path) -> None:
     meta = case_metadata_quick(case_dir)
     assert meta["case_name"] == "case"
     assert meta["solver"] == "simpleFoam"
+    assert meta["disk"] == "deferred"
+
+
+def test_case_meta_quick_avoids_heavy_mesh_and_time_scans(tmp_path: Path, monkeypatch) -> None:
+    case_dir = _make_case(tmp_path)
+    (case_dir / "2").mkdir()
+    monkeypatch.setattr(
+        "ofti.core.case_meta.mesh_counts",
+        lambda _case: (_ for _ in ()).throw(AssertionError("no full mesh scan")),
+    )
+
+    meta = case_metadata_quick(case_dir)
+
+    assert meta["latest_time"] == "2"
+    assert meta["cells"] == "n/a"
 
 
 def test_case_metadata_cached_uses_placeholder(tmp_path: Path, monkeypatch) -> None:

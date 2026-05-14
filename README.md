@@ -175,9 +175,9 @@ ofti knife initials CASE --json
 ofti knife copy CASE_COPY --case CASE
 ofti knife current --root REPO --recursive --live --json
 ofti knife adopt --root REPO --all-untracked --json
-ofti knife receipt write CASE --record-inputs-copy --json
-ofti knife receipt verify runs/.../receipt.json --json
-ofti knife receipt restore runs/.../receipt.json --to RESTORED_CASE --json
+ofti knife manifest write CASE --record-inputs-copy --json
+ofti knife manifest verify runs/.../receipt.json --json
+ofti knife manifest restore runs/.../receipt.json --to RESTORED_CASE --json
 ofti watch jobs CASE --json
 ofti watch pause CASE --all
 ofti watch resume CASE --all
@@ -186,8 +186,8 @@ ofti watch log CASE --lines 80 --json
 ofti watch log CASE --follow --easy-on-cpu
 ofti run tool --list --case CASE --json
 ofti run solver CASE --dry-run --json
-ofti run solver CASE --write-receipt --json
-ofti run solver CASE --write-receipt --record-inputs-copy --json
+ofti run solver CASE --write-manifest --json
+ofti run solver CASE --write-manifest --record-inputs-copy --json
 ofti run solver CASE --parallel 8 --clean-processors --json
 ofti run solver CASE --parallel 8 --no-prepare-parallel --json
 ofti run resize-parallel CASE --from 8 --to 16 --table
@@ -256,18 +256,18 @@ For very large logs, analysis/tail paths use bounded recent log windows to stay
 responsive, and the TUI log viewer falls back to a bounded tail view for very
 large files.
 
-Run receipts for reproducible runs:
+Run manifests for reproducible runs:
 
 ```bash
-ofti run solver CASE --write-receipt --json
-ofti run solver CASE --write-receipt --record-inputs-copy --json
-ofti knife receipt write CASE --record-inputs-copy --json
-ofti knife receipt verify runs/.../receipt.json --json
-ofti knife receipt restore runs/.../receipt.json --to RESTORED_CASE --json
-ofti knife receipt restore runs/.../receipt.json --to CASE_COPY --only system,constant --json
+ofti run solver CASE --write-manifest --json
+ofti run solver CASE --write-manifest --record-inputs-copy --json
+ofti knife manifest write CASE --record-inputs-copy --json
+ofti knife manifest verify runs/.../receipt.json --json
+ofti knife manifest restore runs/.../receipt.json --to RESTORED_CASE --json
+ofti knife manifest restore runs/.../receipt.json --to CASE_COPY --only system,constant --json
 ```
 
-- `--write-receipt` writes an immutable receipt JSON under `./runs/` in the
+- `--write-manifest` writes an immutable manifest JSON under `./runs/` in the
   directory where you launch the command.
 - Hash-only receipts are verification-grade: they let you detect drift.
 - `--record-inputs-copy` upgrades the receipt to restore-grade by copying
@@ -277,12 +277,15 @@ ofti knife receipt restore runs/.../receipt.json --to CASE_COPY --only system,co
   OpenFOAM environment variables.
 - `--receipt-file` overrides the destination explicitly; relative paths resolve
   from the current working directory.
-- `knife receipt verify` checks the current case against recorded hashes.
-- `knife receipt verify` also checks solver binary and linked-library drift.
-- `knife receipt restore` recreates inputs only when the receipt includes the
+- `--write-receipt` and `--receipt-file` remain as legacy aliases for existing
+  scripts; new commands should prefer `--write-manifest` and `--manifest-file`.
+- `knife manifest verify` checks the current case against recorded hashes.
+- `knife manifest verify` also checks solver binary and linked-library drift.
+- `knife manifest restore` recreates inputs only when the receipt includes the
   recorded input copy.
-- `knife receipt restore --only/--skip` lets you restore only selected roots
+- `knife manifest restore --only/--skip` lets you restore only selected roots
   from `system`, `constant`, and `0`.
+- `knife receipt ...` remains as a legacy alias for existing scripts.
 
 External watcher integration (for example `scripts/oftools/ofwatch`) is
 expected to run through tool presets in `ofti.tools` and can be executed with

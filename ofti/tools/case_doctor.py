@@ -5,9 +5,9 @@ from typing import Any
 
 from ofti.core.boundary import list_field_files
 from ofti.core.case import detect_solver
-from ofti.core.times import latest_time
 from ofti.core.versioning import get_dict_path
 from ofti.foam import openfoam
+from ofti.foam.times import latest_time
 from ofti.foamlib import adapter as foamlib_integration
 
 

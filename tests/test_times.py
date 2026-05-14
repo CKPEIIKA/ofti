@@ -1,5 +1,4 @@
 from pathlib import Path
-from unittest import mock
 
 from ofti.core.times import latest_time, time_directories
 
@@ -15,5 +14,5 @@ def test_time_directories_sorted(tmp_path: Path) -> None:
 def test_latest_time_fallback(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "0").mkdir()
     (tmp_path / "1").mkdir()
-    monkeypatch.setattr("ofti.core.times.run_trusted", mock.Mock(side_effect=OSError))
+    _ = monkeypatch
     assert latest_time(tmp_path) == "1"

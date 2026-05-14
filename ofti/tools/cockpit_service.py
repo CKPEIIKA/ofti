@@ -55,8 +55,7 @@ def case_dna_payload(case_path: Path, *, tail_bytes: int = _DEFAULT_TAIL_BYTES) 
 
 
 def mission_scope_payload(case_path: Path) -> dict[str, Any]:
-    metrics = _safe_metrics_payload(case_path)
-    residuals = _safe_residuals_payload(case_path)
+    metrics, residuals = _safe_log_summary(case_path)
     rows: list[dict[str, object]] = []
     error = metrics.get("error")
     if error:
@@ -103,6 +102,16 @@ def mission_scope_payload(case_path: Path) -> dict[str, Any]:
             },
         )
     return {"rows": rows}
+
+
+def _safe_log_summary(case_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    try:
+        summary = plot_service.log_summary_payload(case_path, residual_limit=20)
+    except (AttributeError, OSError, RuntimeError, ValueError):
+        return _safe_metrics_payload(case_path), _safe_residuals_payload(case_path)
+    metrics = summary.get("metrics") if isinstance(summary.get("metrics"), dict) else {}
+    residuals = summary.get("residuals") if isinstance(summary.get("residuals"), dict) else {}
+    return metrics, residuals
 
 
 def _safe_metrics_payload(case_path: Path) -> dict[str, Any]:

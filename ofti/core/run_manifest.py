@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import platform
-import shlex
 import shutil
 from copy import deepcopy
 from datetime import UTC, datetime
@@ -13,38 +11,15 @@ from typing import Any
 
 from ofti.core.case import detect_parallel_settings, detect_solver
 from ofti.core.case_snapshot import build_case_snapshot
-from ofti.foam.openfoam_env import detect_openfoam_version, resolve_openfoam_bashrc
-from ofti.foam.subprocess_utils import resolve_executable, run_trusted
 
 SCHEMA_VERSION = 1
-RECEIPT_KIND = "ofti_run_receipt"
+RECEIPT_KIND = "ofti_run_manifest"
+LEGACY_RECEIPT_KIND = "ofti_run_receipt"
+SUPPORTED_RECEIPT_KINDS = {RECEIPT_KIND, LEGACY_RECEIPT_KIND}
 DEFAULT_INPUT_ROOTS = ("system", "constant", "0")
-_OF_ENV_KEYS = (
-    "WM_PROJECT",
-    "WM_PROJECT_DIR",
-    "WM_PROJECT_VERSION",
-    "FOAM_API",
-    "WM_OPTIONS",
-    "WM_COMPILER",
-    "WM_COMPILER_TYPE",
-    "WM_COMPILE_OPTION",
-    "WM_LABEL_SIZE",
-    "WM_PRECISION_OPTION",
-    "WM_CC",
-    "WM_CXX",
-    "WM_CFLAGS",
-    "WM_CXXFLAGS",
-    "WM_LDFLAGS",
-    "FOAM_APPBIN",
-    "FOAM_LIBBIN",
-    "FOAM_SITE_APPBIN",
-    "FOAM_SITE_LIBBIN",
-    "FOAM_USER_APPBIN",
-    "FOAM_USER_LIBBIN",
-)
 
 
-def build_run_receipt(
+def build_run_manifest(
     case_path: Path,
     *,
     name: str,
@@ -62,13 +37,20 @@ def build_run_receipt(
     returncode: int | None = None,
     recorded_inputs_copy: bool = False,
     solver_name: str | None = None,
+    openfoam_bashrc: Path | None = None,
+    openfoam_version: str | None = None,
+    build_provenance: dict[str, Any] | None = None,
+    source_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     case_dir = case_path.expanduser().resolve()
-    bashrc = resolve_openfoam_bashrc()
     snapshot = build_case_snapshot(case_dir)
     input_rows = collect_case_inputs(case_dir)
     chosen_solver = solver_name or detect_solver(case_dir)
-    build = _build_provenance(chosen_solver, bashrc=bashrc)
+    build = (
+        build_provenance
+        if build_provenance is not None
+        else _empty_build_provenance(chosen_solver)
+    )
     return {
         "schema_version": SCHEMA_VERSION,
         "receipt_kind": RECEIPT_KIND,
@@ -95,8 +77,8 @@ def build_run_receipt(
             "returncode": returncode,
         },
         "openfoam": {
-            "bashrc": str(bashrc.resolve()) if bashrc is not None else None,
-            "version": detect_openfoam_version(),
+            "bashrc": str(openfoam_bashrc.resolve()) if openfoam_bashrc is not None else None,
+            "version": openfoam_version or "unknown",
         },
         "build": build,
         "system": {
@@ -106,8 +88,8 @@ def build_run_receipt(
             "arch": platform.machine() or None,
             "python": platform.python_version(),
         },
-        "source": _git_info(case_dir),
-        "snapshot": _receipt_snapshot(snapshot),
+        "source": source_info if source_info is not None else _empty_source_info(),
+        "snapshot": _manifest_snapshot(snapshot),
         "inputs": {
             "roots": list(DEFAULT_INPUT_ROOTS),
             "files": input_rows,
@@ -119,28 +101,28 @@ def build_run_receipt(
     }
 
 
-def write_run_receipt(
+def write_run_manifest(
     case_path: Path,
-    receipt: dict[str, Any],
+    manifest: dict[str, Any],
     *,
     output: Path | None = None,
     record_inputs_copy: bool = False,
 ) -> Path:
     case_dir = case_path.expanduser().resolve()
-    receipt_path = resolve_receipt_output(case_dir, output)
-    receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = deepcopy(receipt)
+    manifest_path = resolve_manifest_output(case_dir, output)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = deepcopy(manifest)
     payload["inputs"]["recorded_inputs_copy"] = bool(record_inputs_copy)
     if record_inputs_copy:
-        inputs_dir = receipt_path.parent / "inputs"
+        inputs_dir = manifest_path.parent / "inputs"
         _copy_input_roots(case_dir, inputs_dir)
         payload["inputs"]["inputs_copy_path"] = "inputs"
-    payload["receipt_path"] = str(receipt_path.resolve())
-    receipt_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    return receipt_path.resolve()
+    payload["receipt_path"] = str(manifest_path.resolve())
+    manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return manifest_path.resolve()
 
 
-def write_case_run_receipt(
+def write_case_run_manifest(
     case_path: Path,
     *,
     name: str,
@@ -159,8 +141,12 @@ def write_case_run_receipt(
     output: Path | None = None,
     record_inputs_copy: bool = False,
     solver_name: str | None = None,
+    openfoam_bashrc: Path | None = None,
+    openfoam_version: str | None = None,
+    build_provenance: dict[str, Any] | None = None,
+    source_info: dict[str, Any] | None = None,
 ) -> Path:
-    receipt = build_run_receipt(
+    manifest = build_run_manifest(
         case_path,
         name=name,
         command=command,
@@ -177,34 +163,44 @@ def write_case_run_receipt(
         returncode=returncode,
         recorded_inputs_copy=record_inputs_copy,
         solver_name=solver_name,
+        openfoam_bashrc=openfoam_bashrc,
+        openfoam_version=openfoam_version,
+        build_provenance=build_provenance,
+        source_info=source_info,
     )
-    return write_run_receipt(
+    return write_run_manifest(
         case_path,
-        receipt,
+        manifest,
         output=output,
         record_inputs_copy=record_inputs_copy,
     )
 
 
-def load_run_receipt(path: Path) -> dict[str, Any]:
-    receipt_path = path.expanduser().resolve()
-    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+def load_run_manifest(path: Path) -> dict[str, Any]:
+    manifest_path = path.expanduser().resolve()
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
-        raise TypeError(f"invalid receipt payload: {receipt_path}")
-    if payload.get("receipt_kind") != RECEIPT_KIND:
-        raise ValueError(f"unsupported receipt kind: {receipt_path}")
+        raise TypeError(f"invalid receipt payload: {manifest_path}")
+    if payload.get("receipt_kind") not in SUPPORTED_RECEIPT_KINDS:
+        raise ValueError(f"unsupported receipt kind: {manifest_path}")
     return payload
 
 
-def verify_run_receipt(receipt_path: Path, *, case_path: Path | None = None) -> dict[str, Any]:
-    resolved_receipt = receipt_path.expanduser().resolve()
-    receipt = load_run_receipt(resolved_receipt)
-    default_case = Path(str(receipt["case"]["path"]))
+def verify_run_manifest(
+    manifest_path: Path,
+    *,
+    case_path: Path | None = None,
+    openfoam_version: str | None = None,
+    build_provenance_check: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    resolved_manifest = manifest_path.expanduser().resolve()
+    manifest = load_run_manifest(resolved_manifest)
+    default_case = Path(str(manifest["case"]["path"]))
     target_case = (case_path or default_case).expanduser().resolve()
     if not target_case.is_dir():
         raise ValueError(f"case directory not found: {target_case}")
-    expected_rows = list(receipt.get("inputs", {}).get("files", []))
-    actual_rows = collect_case_inputs(target_case, roots=_receipt_roots(receipt))
+    expected_rows = list(manifest.get("inputs", {}).get("files", []))
+    actual_rows = collect_case_inputs(target_case, roots=_manifest_roots(manifest))
     expected_map = {str(row["path"]): str(row["sha256"]) for row in expected_rows}
     actual_map = {str(row["path"]): str(row["sha256"]) for row in actual_rows}
     missing = sorted(path for path in expected_map if path not in actual_map)
@@ -215,13 +211,17 @@ def verify_run_receipt(receipt_path: Path, *, case_path: Path | None = None) -> 
     )
     extra = sorted(path for path in actual_map if path not in expected_map)
     actual_tree_hash = _tree_hash(actual_rows)
-    expected_tree_hash = str(receipt.get("inputs", {}).get("tree_hash") or "")
-    actual_version = detect_openfoam_version()
-    expected_version = str(receipt.get("openfoam", {}).get("version") or "")
+    expected_tree_hash = str(manifest.get("inputs", {}).get("tree_hash") or "")
+    actual_version = openfoam_version or "unknown"
+    expected_version = str(manifest.get("openfoam", {}).get("version") or "")
     version_match = not expected_version or expected_version in {"unknown", actual_version}
-    build_check = _verify_build_provenance(receipt)
+    build_check = (
+        build_provenance_check
+        if build_provenance_check is not None
+        else _unknown_manifest_build_provenance_check(manifest)
+    )
     return {
-        "receipt": str(resolved_receipt),
+        "receipt": str(resolved_manifest),
         "case": str(target_case),
         "ok": (
             not missing
@@ -249,24 +249,24 @@ def verify_run_receipt(receipt_path: Path, *, case_path: Path | None = None) -> 
             "match": version_match,
         },
         "build": build_check,
-        "recorded_inputs_copy": bool(receipt.get("inputs", {}).get("recorded_inputs_copy")),
-        "restorable": bool(receipt.get("inputs", {}).get("inputs_copy_path")),
+        "recorded_inputs_copy": bool(manifest.get("inputs", {}).get("recorded_inputs_copy")),
+        "restorable": bool(manifest.get("inputs", {}).get("inputs_copy_path")),
     }
 
 
-def restore_run_receipt(
-    receipt_path: Path,
+def restore_run_manifest(
+    manifest_path: Path,
     destination: Path,
     *,
     only: tuple[str, ...] | list[str] | None = None,
     skip: tuple[str, ...] | list[str] | None = None,
 ) -> dict[str, Any]:
-    resolved_receipt = receipt_path.expanduser().resolve()
-    receipt = load_run_receipt(resolved_receipt)
-    relative_inputs = receipt.get("inputs", {}).get("inputs_copy_path")
+    resolved_manifest = manifest_path.expanduser().resolve()
+    manifest = load_run_manifest(resolved_manifest)
+    relative_inputs = manifest.get("inputs", {}).get("inputs_copy_path")
     if not relative_inputs:
         raise ValueError("receipt does not include recorded inputs; restore is not possible")
-    inputs_path = resolved_receipt.parent / str(relative_inputs)
+    inputs_path = resolved_manifest.parent / str(relative_inputs)
     if not inputs_path.is_dir():
         raise ValueError(f"recorded inputs directory not found: {inputs_path}")
     dest = destination.expanduser().resolve()
@@ -275,7 +275,7 @@ def restore_run_receipt(
             raise ValueError(f"destination already exists and is not empty: {dest}")
     else:
         dest.mkdir(parents=True, exist_ok=False)
-    selected_roots = select_receipt_restore_roots(only=only, skip=skip)
+    selected_roots = select_manifest_restore_roots(only=only, skip=skip)
     restored: list[str] = []
     for entry in sorted(inputs_path.iterdir(), key=lambda item: item.name):
         if entry.name not in selected_roots:
@@ -288,9 +288,9 @@ def restore_run_receipt(
         restored.append(entry.name)
     restored_receipt = dest / ".ofti" / "restored_from_receipt.json"
     restored_receipt.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(resolved_receipt, restored_receipt, follow_symlinks=True)
+    shutil.copy2(resolved_manifest, restored_receipt, follow_symlinks=True)
     return {
-        "receipt": str(resolved_receipt),
+        "receipt": str(resolved_manifest),
         "destination": str(dest),
         "selected_roots": list(selected_roots),
         "restored": restored,
@@ -323,7 +323,7 @@ def collect_case_inputs(
     return rows
 
 
-def resolve_receipt_output(case_path: Path, output: Path | None) -> Path:
+def resolve_manifest_output(case_path: Path, output: Path | None) -> Path:
     if output is None:
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         launch_dir = Path.cwd().resolve()
@@ -337,16 +337,16 @@ def resolve_receipt_output(case_path: Path, output: Path | None) -> Path:
     return (destination / "receipt.json").resolve()
 
 
-def select_receipt_restore_roots(
+def select_manifest_restore_roots(
     *,
     only: tuple[str, ...] | list[str] | None = None,
     skip: tuple[str, ...] | list[str] | None = None,
 ) -> tuple[str, ...]:
     selected = list(DEFAULT_INPUT_ROOTS)
     if only:
-        selected = _normalize_receipt_roots(only)
+        selected = _normalize_manifest_roots(only)
     if skip:
-        skipped = set(_normalize_receipt_roots(skip))
+        skipped = set(_normalize_manifest_roots(skip))
         selected = [root for root in selected if root not in skipped]
     if not selected:
         raise ValueError("receipt restore selection is empty; nothing to restore")
@@ -368,195 +368,48 @@ def _copy_input_roots(case_path: Path, destination: Path) -> None:
             shutil.copy2(source, target, follow_symlinks=True)
 
 
-def _build_provenance(solver_name: str | None, *, bashrc: Path | None) -> dict[str, Any]:
-    env = _effective_openfoam_env(bashrc)
-    solver_binary = _solver_binary_row(solver_name, bashrc=bashrc)
-    linked_libs = _linked_library_rows(solver_binary.get("path"))
+def _empty_build_provenance(solver_name: str | None) -> dict[str, Any]:
     return {
-        "solver": solver_binary,
-        "linked_libs": linked_libs,
+        "solver": {"name": solver_name, "path": None, "sha256": None, "size": None},
+        "linked_libs": {"count": 0, "hash": None, "files": [], "missing": []},
         "compiler": {
-            "compiler": env.get("WM_COMPILER"),
-            "compiler_type": env.get("WM_COMPILER_TYPE"),
-            "compile_option": env.get("WM_COMPILE_OPTION"),
-            "cc": env.get("WM_CC"),
-            "cxx": env.get("WM_CXX"),
-            "cflags": env.get("WM_CFLAGS"),
-            "cxxflags": env.get("WM_CXXFLAGS"),
-            "ldflags": env.get("WM_LDFLAGS"),
+            "compiler": None,
+            "compiler_type": None,
+            "compile_option": None,
+            "cc": None,
+            "cxx": None,
+            "cflags": None,
+            "cxxflags": None,
+            "ldflags": None,
         },
-        "openfoam_env": dict(sorted(env.items())),
+        "openfoam_env": {},
     }
 
 
-def _verify_build_provenance(receipt: dict[str, Any]) -> dict[str, Any]:
-    expected = receipt.get("build", {})
-    solver = expected.get("solver", {})
-    solver_name = (
-        str(solver.get("name") or receipt.get("case", {}).get("solver") or "").strip() or None
-    )
-    bashrc_value = receipt.get("openfoam", {}).get("bashrc")
-    bashrc = Path(str(bashrc_value)).expanduser() if bashrc_value else resolve_openfoam_bashrc()
-    actual_solver = _solver_binary_row(solver_name, bashrc=bashrc)
-    expected_solver_hash = str(solver.get("sha256") or "")
-    actual_solver_hash = str(actual_solver.get("sha256") or "")
-    solver_match = not expected_solver_hash or expected_solver_hash == actual_solver_hash
-    expected_libs = expected.get("linked_libs", {})
-    actual_libs = _linked_library_rows(actual_solver.get("path"))
-    expected_lib_hash = str(expected_libs.get("hash") or "")
-    actual_lib_hash = str(actual_libs.get("hash") or "")
-    libs_match = not expected_lib_hash or expected_lib_hash == actual_lib_hash
+def _unknown_manifest_build_provenance_check(manifest: dict[str, Any]) -> dict[str, Any]:
+    expected = manifest.get("build", {})
+    solver = expected.get("solver", {}) if isinstance(expected, dict) else {}
+    libs = expected.get("linked_libs", {}) if isinstance(expected, dict) else {}
     return {
-        "ok": bool(solver_match and libs_match),
+        "ok": True,
         "solver": {
-            "expected_sha256": expected_solver_hash or None,
-            "actual_sha256": actual_solver_hash or None,
-            "match": solver_match,
-            "path": actual_solver.get("path"),
+            "expected_sha256": solver.get("sha256"),
+            "actual_sha256": None,
+            "match": True,
+            "path": solver.get("path"),
         },
         "linked_libs": {
-            "expected_hash": expected_lib_hash or None,
-            "actual_hash": actual_lib_hash or None,
-            "match": libs_match,
-            "count": actual_libs.get("count"),
-            "missing": actual_libs.get("missing", []),
+            "expected_hash": libs.get("hash"),
+            "actual_hash": None,
+            "match": True,
+            "count": libs.get("count", 0),
+            "missing": libs.get("missing", []),
         },
     }
 
 
-def _effective_openfoam_env(bashrc: Path | None) -> dict[str, str]:
-    if bashrc is None:
-        return _selected_env(os.environ)
-    shell = f". {shlex.quote(str(bashrc))}; env"
-    try:
-        result = run_trusted(
-            ["/bin/bash", "--noprofile", "--norc", "-c", shell],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except (OSError, FileNotFoundError):
-        return _selected_env(os.environ)
-    if result.returncode != 0:
-        return _selected_env(os.environ)
-    return _selected_env(_parse_env_lines(result.stdout))
-
-
-def _parse_env_lines(text: str) -> dict[str, str]:
-    payload: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        payload[key] = value
-    return payload
-
-
-def _selected_env(env: Any) -> dict[str, str]:
-    return {key: str(env[key]) for key in _OF_ENV_KEYS if key in env and str(env[key]).strip()}
-
-
-def _solver_binary_row(solver_name: str | None, *, bashrc: Path | None) -> dict[str, Any]:
-    if not solver_name:
-        return {"name": None, "path": None, "sha256": None, "size": None}
-    path = _resolve_solver_binary_path(solver_name, bashrc=bashrc)
-    if path is None:
-        return {"name": solver_name, "path": None, "sha256": None, "size": None}
-    return {
-        "name": solver_name,
-        "path": str(path),
-        "sha256": _sha256_file(path),
-        "size": path.stat().st_size,
-    }
-
-
-def _resolve_solver_binary_path(solver_name: str, *, bashrc: Path | None) -> Path | None:
-    try:
-        return Path(resolve_executable(solver_name)).resolve()
-    except (FileNotFoundError, OSError):
-        pass
-    if bashrc is None:
-        return None
-    shell = f". {shlex.quote(str(bashrc))}; command -v {shlex.quote(solver_name)}"
-    try:
-        result = run_trusted(
-            ["/bin/bash", "--noprofile", "--norc", "-c", shell],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except (OSError, FileNotFoundError):
-        return None
-    if result.returncode != 0:
-        return None
-    resolved = result.stdout.strip()
-    if not resolved:
-        return None
-    path = Path(resolved).expanduser()
-    return path.resolve() if path.exists() else None
-
-
-def _linked_library_rows(binary_path_value: Any) -> dict[str, Any]:
-    if not binary_path_value:
-        return {"count": 0, "hash": None, "files": [], "missing": []}
-    binary_path = Path(str(binary_path_value))
-    try:
-        result = run_trusted(
-            ["ldd", str(binary_path)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except (OSError, FileNotFoundError):
-        return {"count": 0, "hash": None, "files": [], "missing": []}
-    if result.returncode != 0:
-        return {"count": 0, "hash": None, "files": [], "missing": []}
-    files: list[dict[str, Any]] = []
-    missing: list[str] = []
-    seen: set[str] = set()
-    for line in result.stdout.splitlines():
-        row = line.strip()
-        if not row:
-            continue
-        resolved = _ldd_resolved_path(row)
-        if resolved == "missing":
-            missing.append(row)
-            continue
-        if resolved is None:
-            continue
-        if resolved in seen:
-            continue
-        seen.add(resolved)
-        path = Path(resolved)
-        if not path.is_file():
-            continue
-        files.append(
-            {
-                "path": str(path),
-                "sha256": _sha256_file(path),
-                "size": path.stat().st_size,
-            },
-        )
-    files.sort(key=lambda row: str(row["path"]))
-    return {
-        "count": len(files),
-        "hash": _tree_hash(files) if files else None,
-        "files": files,
-        "missing": missing,
-    }
-
-
-def _ldd_resolved_path(line: str) -> str | None:
-    if "=>" in line:
-        _, right = line.split("=>", 1)
-        trimmed = right.strip()
-        if trimmed.startswith("not found"):
-            return "missing"
-        path = trimmed.split(" ", 1)[0]
-        return path if path.startswith("/") else None
-    token = line.split(" ", 1)[0].strip()
-    return token if token.startswith("/") else None
-
+def _empty_source_info() -> dict[str, Any]:
+    return {"git_root": None, "git_sha": None, "git_dirty": False, "git_dirty_files": []}
 
 def _iter_files(root: Path) -> list[Path]:
     if root.is_file():
@@ -596,7 +449,7 @@ def _mesh_hash(rows: list[dict[str, Any]]) -> str | None:
     return _tree_hash(mesh_rows)
 
 
-def _receipt_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+def _manifest_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     mesh = dict(snapshot.get("mesh", {}))
     boundary = dict(mesh.get("boundary", {}))
     return {
@@ -613,60 +466,15 @@ def _receipt_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _git_info(case_path: Path) -> dict[str, Any]:
-    root = _git_capture(case_path, "rev-parse", "--show-toplevel")
-    sha = _git_capture(case_path, "rev-parse", "HEAD")
-    status = _git_capture(case_path, "status", "--porcelain")
-    dirty_files = []
-    dirty = False
-    if status["ok"] and status["stdout"]:
-        dirty = True
-        for line in str(status["stdout"]).splitlines():
-            token = line[3:].strip() if len(line) > 3 else line.strip()
-            if token:
-                dirty_files.append(token)
-    return {
-        "git_root": root["stdout"] if root["ok"] else None,
-        "git_sha": sha["stdout"] if sha["ok"] else None,
-        "git_dirty": dirty,
-        "git_dirty_files": dirty_files,
-    }
-
-
-def _git_capture(case_path: Path, *args: str) -> dict[str, Any]:
-    try:
-        result = run_trusted(
-            ["git", "-C", str(case_path), *args],
-            check=False,
-            capture_output=True,
-            text=True,
-            env=_git_env(),
-        )
-    except (OSError, FileNotFoundError):
-        return {"ok": False, "stdout": "", "stderr": ""}
-    return {
-        "ok": result.returncode == 0,
-        "stdout": result.stdout.strip(),
-        "stderr": result.stderr.strip(),
-    }
-
-
-def _git_env() -> dict[str, str]:
-    env = os.environ.copy()
-    env.pop("GIT_DIR", None)
-    env.pop("GIT_WORK_TREE", None)
-    return env
-
-
-def _receipt_roots(receipt: dict[str, Any]) -> tuple[str, ...]:
-    roots = receipt.get("inputs", {}).get("roots", DEFAULT_INPUT_ROOTS)
+def _manifest_roots(manifest: dict[str, Any]) -> tuple[str, ...]:
+    roots = manifest.get("inputs", {}).get("roots", DEFAULT_INPUT_ROOTS)
     if not isinstance(roots, list):
         return DEFAULT_INPUT_ROOTS
     cleaned = [str(item) for item in roots if str(item).strip()]
     return tuple(cleaned) if cleaned else DEFAULT_INPUT_ROOTS
 
 
-def _normalize_receipt_roots(values: tuple[str, ...] | list[str]) -> list[str]:
+def _normalize_manifest_roots(values: tuple[str, ...] | list[str]) -> list[str]:
     cleaned: list[str] = []
     seen: set[str] = set()
     for raw in values:

@@ -45,6 +45,29 @@ def detect_mesh_stats(case_path: Path) -> str:
     return "mesh (unparsed)" if has_mesh(case_path) else "unknown"
 
 
+def detect_mesh_stats_quick(case_path: Path) -> str:
+    """Return cheap mesh status for hot UI paths without scanning owner/neighbour."""
+    log_path = latest_checkmesh_log(case_path)
+    if log_path is not None:
+        try:
+            text = _read_log_snippet(log_path, limit=12000)
+        except OSError:
+            return "mesh (log unreadable)" if has_mesh(case_path) else "unknown"
+        cells = parse_cells_count(text)
+        skew = _format_float(parse_max_skewness(text))
+        non_orth = _format_float(parse_max_non_orth(text))
+        parts = []
+        if cells:
+            parts.append(f"{cells} cells")
+        if skew:
+            parts.append(f"skew={skew}")
+        if non_orth:
+            parts.append(f"nonOrth={non_orth}")
+        if parts:
+            return ", ".join(parts)
+    return "mesh" if has_mesh(case_path) else "unknown"
+
+
 def detect_solver(case_path: Path) -> str:
     control_dict = case_path / "system" / "controlDict"
     if not control_dict.is_file():

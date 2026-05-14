@@ -14,13 +14,18 @@ def test_time_directories_sorted(tmp_path: Path) -> None:
     assert [d.name for d in dirs] == ["0.5", "2", "10"]
 
 
-def test_latest_time_falls_back_when_command_missing(tmp_path: Path, monkeypatch) -> None:
+def test_latest_time_is_filesystem_scan(tmp_path: Path, monkeypatch) -> None:
     for name in ("0", "3.5", "2"):
         (tmp_path / name).mkdir()
-
-    def raise_oserror(*_args, **_kwargs):
-        raise OSError("no foamListTimes")
-
-    monkeypatch.setattr(times, "run_trusted", raise_oserror)
+    _ = monkeypatch
 
     assert times.latest_time(tmp_path) == "3.5"
+
+
+def test_latest_time_scan_never_shells(tmp_path: Path, monkeypatch) -> None:
+    for name in ("0", "4", "2.5"):
+        (tmp_path / name).mkdir()
+
+    _ = monkeypatch
+
+    assert times.latest_time_scan(tmp_path) == "4"

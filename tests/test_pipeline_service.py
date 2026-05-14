@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from ofti.core import pipeline as pipeline_service
 
@@ -32,7 +33,11 @@ def test_pipeline_missing_header(tmp_path: Path) -> None:
 
 def test_pipeline_run_echo(tmp_path: Path) -> None:
     commands = [["echo", "hello"]]
-    results = pipeline_service.run_pipeline_commands(tmp_path, commands)
+    results = pipeline_service.run_pipeline_commands(
+        tmp_path,
+        commands,
+        runner=lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="hello\n", stderr=""),
+    )
 
     assert results
     assert results[0].startswith("$ echo hello")
