@@ -150,6 +150,11 @@ def add_parser(
         help="Show read-only pending case dictionary changes",
     )
     changes.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    changes.add_argument(
+        "--snapshot",
+        action="store_true",
+        help="Write .ofti/case_snapshot.json before showing the change queue",
+    )
     _add_table_flag(changes)
     changes.add_argument("--json", action="store_true")
     changes.set_defaults(func=handlers["knife_changes"])

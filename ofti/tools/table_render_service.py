@@ -494,7 +494,9 @@ def change_queue_table_lines(payload: dict[str, Any]) -> list[str]:
             ("case", payload.get("case")),
             ("source", payload.get("source")),
             ("pending_changes", payload.get("count")),
+            ("snapshot_path", payload.get("snapshot_path")),
             ("error", payload.get("error")),
+            ("snapshot_error", payload.get("snapshot_error")),
         ],
     )
     if changes:
@@ -510,6 +512,24 @@ def change_queue_table_lines(payload: dict[str, Any]) -> list[str]:
         lines.append(f"No pending VCS-backed case changes found for: {paths}")
     if payload.get("diff_error"):
         lines.append(f"diff_error={payload.get('diff_error')}")
+    actions = [_dict(row) for row in list(payload.get("actions", []))]
+    if actions:
+        lines.extend(
+            [
+                "",
+                "Change actions",
+                *render_table(
+                    actions,
+                    [
+                        ("action", "Action"),
+                        ("status", "Status"),
+                        ("target", "Target"),
+                        ("requires", "Requires"),
+                        ("confirm", "Confirm"),
+                    ],
+                ),
+            ],
+        )
     diff = [str(line) for line in list(payload.get("diff", []))]
     if diff:
         lines.extend(["", "Diff preview", *diff])

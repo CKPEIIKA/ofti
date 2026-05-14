@@ -42,7 +42,10 @@ def _knife_lint(args: argparse.Namespace) -> int:
 
 
 def _knife_changes(args: argparse.Namespace) -> int:
-    payload = change_queue_service.change_queue_payload(args.case_dir)
+    payload = change_queue_service.change_queue_payload(
+        args.case_dir,
+        write_snapshot=bool(getattr(args, "snapshot", False)),
+    )
     if bool(getattr(args, "json", False)):
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
