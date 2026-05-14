@@ -180,16 +180,16 @@ def alert_cards_table_lines(cards: list[object]) -> list[str]:
     return [
         f"Alarm state: {state}",
         *render_table(
-        rows,
-        [
-            ("severity", "Severity"),
-            ("title", "Alert"),
-            ("impact", "Impact"),
-            ("evidence", "Evidence"),
-            ("action", "Action"),
-            ("files", "Files"),
-            ("source", "Source"),
-        ],
+            rows,
+            [
+                ("severity", "Severity"),
+                ("title", "Alert"),
+                ("impact", "Impact"),
+                ("evidence", "Evidence"),
+                ("action", "Action"),
+                ("files", "Files"),
+                ("source", "Source"),
+            ],
         ),
     ]
 
