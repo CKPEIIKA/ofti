@@ -92,11 +92,19 @@ def test_table_render_service_branches() -> None:
     launch = tables.launch_checklist_table_lines(
         {
             "case": "case",
+            "solver": "simpleFoam",
+            "gate": "NO-GO",
             "ready": False,
-            "rows": [{"item": "Mesh", "status": "fail", "required": True, "evidence": "x"}],
+            "rows": [{"item": "Mesh", "status": "fail", "required": True, "evidence": "x", "open": "constant/polyMesh"}],
+            "log_strategy": {"log": "log.simpleFoam", "rotate_before_launch": True},
+            "actions": [{"key": "1", "action": "open failing item", "target": "constant/polyMesh"}],
         },
     )
+    launch_text = "\n".join(launch)
     assert "Go / no-go checklist" in launch
+    assert "NO-GO" in launch_text
+    assert "Log strategy" in launch
+    assert "Actions" in launch
 
     flight = tables.flight_deck_table_lines(
         {
@@ -162,8 +170,11 @@ def test_runtime_tables_cover_nested_rows() -> None:
     alerts = tables.alert_cards_table_lines(
         [{"severity": "WARN", "title": "High Courant", "evidence": "CoMax=2", "action": "reduce deltaT"}],
     )
-    assert "High Courant" in "\n".join(alerts)
-    assert tables.alert_cards_table_lines([]) == ["No alerts."]
+    alert_text = "\n".join(alerts)
+    assert "Alarm state: WARNING" in alert_text
+    assert "High Courant" in alert_text
+    assert "Impact" in alert_text
+    assert tables.alert_cards_table_lines([]) == ["Alarm state: NORMAL", "No alerts."]
 
 
 def test_payload_tables_for_cli_outputs() -> None:
