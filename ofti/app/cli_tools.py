@@ -162,7 +162,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     knife_cli.add_parser(groups, _knife_handlers())
 
 
-_KNIFE_HANDLER_NAMES = ["adopt", "campaign_compare", "campaign_keep", "campaign_list", "campaign_rank", "campaign_status", "campaign_stop", "changes", "cockpit", "compare", "converge", "copy", "criteria", "current", "dna", "doctor", "eta", "initials", "lint", "mesh_radar", "monitors", "preflight", "receipt_restore", "receipt_verify", "receipt_write", "report", "resource", "scopes", "set", "stability", "status", "stop"]  # noqa: E501
+_KNIFE_HANDLER_NAMES = ["adopt", "campaign_compare", "campaign_keep", "campaign_list", "campaign_rank", "campaign_status", "campaign_stop", "changes", "captains_deck", "compare", "converge", "copy", "criteria", "current", "dna", "doctor", "eta", "initials", "lint", "mesh_radar", "monitors", "preflight", "receipt_restore", "receipt_verify", "receipt_write", "report", "resource", "scopes", "set", "stability", "status", "stop"]  # noqa: E501
 
 
 def _knife_handlers() -> dict[str, Handler]:
