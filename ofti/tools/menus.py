@@ -6,6 +6,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+from ofti.app import time_pruner
 from ofti.app.menus import case_tools as shared_case_tools
 from ofti.tools import (
     case_doctor,
@@ -26,7 +27,6 @@ from ofti.tools import (
     shell_tools,
     solver,
     solver_control,
-    time_pruner,
     tool_dicts_foamcalc,
     tool_dicts_postprocess,
     yplus,

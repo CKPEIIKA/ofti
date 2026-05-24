@@ -11,9 +11,9 @@ from ofti.foamlib.parametric import (
     preprocessing_available,
 )
 from ofti.foamlib.runner import run_cases
-from ofti.tools.input_prompts import prompt_line
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
+from ofti.ui_curses.prompts import prompt_line
 from ofti.ui_curses.viewer import Viewer
 
 

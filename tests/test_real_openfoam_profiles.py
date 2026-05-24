@@ -9,7 +9,10 @@ from pathlib import Path
 import pytest
 
 from ofti.core import entry_io
-from ofti.tools import parallel_resize_service
+from ofti.core.case_copy import copy_case_directory
+from ofti.core.case_snapshot import build_case_snapshot
+from ofti.tools import knife_service, parallel_resize_service
+from ofti.tools.case_doctor import build_case_doctor_report
 from ofti.tools.cli_tools import run, watch
 from ofti.tools.runtime_control_service import runtime_control_snapshot
 
@@ -77,6 +80,31 @@ def test_real_profiles_runtime_reread_cleanup_and_replay_artifacts(real_profiles
         assert any(path.exists() for path in replay_artifacts)
         jobs = watch.jobs_payload(case, include_all=True)
         assert isinstance(jobs["jobs"], list)
+
+
+@pytest.mark.slow
+@pytest.mark.real_openfoam
+def test_real_profiles_core_services_are_fixture_free(
+    real_profiles: list[tuple[str, Path]],
+    tmp_path: Path,
+) -> None:
+    for name, case in real_profiles:
+        snapshot = build_case_snapshot(case)
+        assert snapshot["case"]["path"] == str(case)
+        assert "fields" in snapshot
+
+        doctor = build_case_doctor_report(case)
+        assert doctor["lines"]
+        assert isinstance(doctor["errors"], list)
+        assert isinstance(doctor["warnings"], list)
+
+        preflight = knife_service.preflight_payload(case)
+        assert preflight["case"] == str(case)
+        assert isinstance(preflight["checks"], dict)
+
+        copied = copy_case_directory(case, tmp_path / f"{name}-clean-copy")
+        assert (copied / "system" / "controlDict").is_file()
+        assert not (copied / ".ofti").exists()
 
 
 @pytest.mark.slow

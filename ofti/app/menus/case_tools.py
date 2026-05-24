@@ -6,7 +6,7 @@ from typing import Any
 from ofti.app.helpers import show_message
 from ofti.tools import status_render_service
 from ofti.tools.cli_tools import knife as knife_ops
-from ofti.tools.input_prompts import prompt_line
+from ofti.ui_curses.prompts import prompt_line
 from ofti.ui_curses.viewer import Viewer
 
 

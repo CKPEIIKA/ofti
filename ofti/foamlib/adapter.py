@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -31,6 +32,15 @@ except Exception:  # pragma: no cover - optional fallback
     FOAMLIB_PREPROCESSING = False
     FOAMLIB_SYSTEM = False
 
+try:  # pragma: no cover - optional richer type helpers
+    from foamlib.typing import Dimensioned as FoamlibDimensioned
+    from foamlib.typing import DimensionSet as FoamlibDimensionSet
+    from foamlib.typing import Field as FoamlibField
+except Exception:  # pragma: no cover - foamlib missing or changed
+    FoamlibDimensionSet = None  # type: ignore[assignment]
+    FoamlibDimensioned = None  # type: ignore[assignment]
+    FoamlibField = None  # type: ignore[assignment]
+
 
 def available() -> bool:
     return FOAMLIB_AVAILABLE or fallback.available()
@@ -46,6 +56,88 @@ def clone_case_directory(source: Path, destination: Path) -> Path | None:
     except Exception:
         return None
     return Path(getattr(cloned, "path", destination)).expanduser().resolve()
+
+
+def validate_dimension_set(values: list[float]) -> bool:
+    if FoamlibDimensionSet is None:
+        return True
+    try:
+        FoamlibDimensionSet(*values)
+    except Exception:
+        return False
+    return True
+
+
+def validate_dimensioned_value(payload: float | list[float], dimensions: list[float]) -> bool:
+    if FoamlibDimensioned is None:
+        return True
+    try:
+        FoamlibDimensioned(payload, dimensions)
+    except Exception:
+        return False
+    return True
+
+
+def node_type_label(node: object) -> str | None:
+    for predicate, label in _node_label_predicates():
+        if predicate(node):
+            if label == "array":
+                return f"array {getattr(node, 'shape', '')}"
+            return label
+    numeric = _numeric_list_label(node)
+    if numeric is not None:
+        return numeric
+    if isinstance(node, (list, tuple)):
+        return f"list ({len(node)})"
+    return type(node).__name__
+
+
+def _node_label_predicates() -> list[tuple[Callable[[object], bool], str]]:
+    return [
+        (lambda node: hasattr(node, "keys"), "dict"),
+        (_is_dimension_set, "dimensions"),
+        (_is_dimensioned, "dimensioned"),
+        (_is_foamlib_field, "field"),
+        (lambda node: isinstance(node, bool), "bool"),
+        (lambda node: isinstance(node, int), "int"),
+        (lambda node: isinstance(node, float), "float"),
+        (lambda node: isinstance(node, str), "word"),
+        (lambda node: hasattr(node, "shape"), "array"),
+    ]
+
+
+def _is_dimension_set(node: object) -> bool:
+    return FoamlibDimensionSet is not None and isinstance(node, FoamlibDimensionSet)
+
+
+def _is_dimensioned(node: object) -> bool:
+    return FoamlibDimensioned is not None and isinstance(node, FoamlibDimensioned)
+
+
+def _is_foamlib_field(node: object) -> bool:
+    if FoamlibField is None:
+        return False
+    try:
+        return isinstance(node, cast("type[Any]", FoamlibField))
+    except TypeError:
+        return False
+
+
+def _numeric_list_label(values: object) -> str | None:
+    if not isinstance(values, (list, tuple)) or not values:
+        return None
+    floats: list[float] = []
+    for item in values:
+        if isinstance(item, bool):
+            return None
+        if not isinstance(item, (int, float)):
+            return None
+        floats.append(float(item))
+    if len(values) in (2, 3):
+        return "vector"
+    if len(values) == 7 and all(value.is_integer() for value in floats):
+        return "dimensions"
+    return None
 
 
 def is_foam_file(path: Path) -> bool:

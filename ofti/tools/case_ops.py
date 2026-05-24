@@ -7,8 +7,8 @@ from typing import Any
 
 from ofti.core.case_copy import copy_case_directory
 from ofti.foam.subprocess_utils import run_trusted
-from ofti.tools.input_prompts import prompt_line
 from ofti.tools.runner import _show_message
+from ofti.ui_curses.prompts import prompt_line
 from ofti.ui_curses.viewer import Viewer
 
 

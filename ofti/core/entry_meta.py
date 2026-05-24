@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any, cast
 
 from ofti.core.entry_io import list_subkeys, read_entry
 from ofti.core.validation import (
@@ -227,82 +225,6 @@ def _foamlib_type_info(file_path: Path, _full_key: str) -> list[str]:
     return []
 
 
-try:  # pragma: no cover - optional dependency for richer type labels
-    from foamlib.typing import Dimensioned as FoamlibDimensioned
-    from foamlib.typing import DimensionSet as FoamlibDimensionSet
-    from foamlib.typing import Field as FoamlibField
-except Exception:  # pragma: no cover - foamlib missing or changed
-    FoamlibDimensionSet = None  # type: ignore[assignment]
-    FoamlibDimensioned = None  # type: ignore[assignment]
-    FoamlibField = None  # type: ignore[assignment]
-
-
-def _foamlib_node_label(node: object) -> str | None:
-    for predicate, label in _foamlib_label_predicates():
-        if predicate(node):
-            if label == "array":
-                return f"array {getattr(node, 'shape', '')}"
-            return label
-    if isinstance(node, (list, tuple)):
-        numeric = _numeric_list_info(node)
-        if numeric == "vector":
-            return "vector"
-        if numeric == "dimensions":
-            return "dimensions"
-        return f"list ({len(node)})"
-    return type(node).__name__
-
-
-def _foamlib_label_predicates() -> list[tuple[Callable[[object], bool], str]]:
-    predicates: list[tuple[Callable[[object], bool], str]] = [
-        (lambda node: hasattr(node, "keys"), "dict"),
-        (_is_dimension_set, "dimensions"),
-        (_is_dimensioned, "dimensioned"),
-        (_is_foamlib_field, "field"),
-        (lambda node: isinstance(node, bool), "bool"),
-        (lambda node: isinstance(node, int), "int"),
-        (lambda node: isinstance(node, float), "float"),
-        (lambda node: isinstance(node, str), "word"),
-        (lambda node: hasattr(node, "shape"), "array"),
-    ]
-    return predicates
-
-
-def _is_dimension_set(node: object) -> bool:
-    return FoamlibDimensionSet is not None and isinstance(node, FoamlibDimensionSet)
-
-
-def _is_dimensioned(node: object) -> bool:
-    return FoamlibDimensioned is not None and isinstance(node, FoamlibDimensioned)
-
-
-def _is_foamlib_field(node: object) -> bool:
-    if FoamlibField is None:
-        return False
-    try:
-        return isinstance(node, cast("type[Any]", FoamlibField))
-    except TypeError:
-        return False
-
-
-def _numeric_list_info(values: object) -> str | None:
-    if not isinstance(values, (list, tuple)) or not values:
-        return None
-    floats: list[float] = []
-    for item in values:
-        if isinstance(item, bool):
-            return None
-        if isinstance(item, (int, float)):
-            floats.append(float(item))
-            continue
-        return None
-    if len(values) in (2, 3):
-        return "vector"
-    if len(values) == 7 and all(float(v).is_integer() for v in floats):
-        return "dimensions"
-    return None
-
-
 def detect_type_with_foamlib(
     file_path: Path,
     full_key: str,
@@ -319,7 +241,7 @@ def detect_type_with_foamlib(
     except (KeyError, Exception):
         node = None
 
-    label = _foamlib_node_label(node) if node is not None else None
+    label = foamlib_integration.node_type_label(node) if node is not None else None
     if not label:
         return validator, type_label
     mapping = {

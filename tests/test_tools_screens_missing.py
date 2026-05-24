@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from ofti.app.time_pruner import time_directory_pruner_screen
 from ofti.foamlib import adapter as foamlib_integration
 from ofti.tools import (
     logs_analysis,
@@ -22,7 +23,6 @@ from ofti.tools.job_control import run_tool_background_screen, stop_job_screen
 from ofti.tools.run import run_checkmesh, run_decomposepar
 from ofti.tools.solver import run_current_solver_live
 from ofti.tools.solver_control import safe_stop_screen, solver_resurrection_screen
-from ofti.tools.time_pruner import time_directory_pruner_screen
 from ofti.tools.tool_dicts_prompts import set_fields_prompt
 from ofti.tools.yplus import yplus_screen
 from ofti.ui_curses.viewer import Viewer
@@ -182,7 +182,7 @@ def test_time_pruner_and_setfields(monkeypatch, tmp_path: Path) -> None:
     (case_dir / "0").mkdir(parents=True)
     (case_dir / "1").mkdir(parents=True)
     (case_dir / "2").mkdir(parents=True)
-    monkeypatch.setattr("ofti.tools.time_pruner.prompt_line", lambda *_: "2")
+    monkeypatch.setattr("ofti.app.time_pruner.prompt_line", lambda *_: "2")
     time_directory_pruner_screen(FakeScreen(), case_dir)
 
     (case_dir / "system").mkdir(exist_ok=True)

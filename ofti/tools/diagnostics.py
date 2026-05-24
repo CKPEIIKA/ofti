@@ -11,11 +11,11 @@ from ofti.core.times import latest_time
 from ofti.core.tool_output import CommandResult, format_command_result
 from ofti.foam.subprocess_utils import run_trusted as _run_trusted
 from ofti.tools import run as run_tools
-from ofti.tools.input_prompts import prompt_line
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _no_foam_active, _show_message, _with_no_foam_hint, _write_tool_log
 from ofti.ui.status import status_message
 from ofti.ui_curses.help import diagnostics_help
+from ofti.ui_curses.prompts import prompt_line
 from ofti.ui_curses.viewer import Viewer
 
 run_trusted = _run_trusted

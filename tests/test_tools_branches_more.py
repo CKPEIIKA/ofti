@@ -6,7 +6,8 @@ from typing import Any
 
 import pytest
 
-from ofti.tools import diagnostics, postprocessing, shell_tools, time_pruner
+from ofti.app import time_pruner
+from ofti.tools import diagnostics, postprocessing, shell_tools
 from ofti.tools import parametric as parametric_tools
 from ofti.tools import tool_dicts_foamcalc as foamcalc
 from ofti.tools import tool_dicts_postprocess as postprocess

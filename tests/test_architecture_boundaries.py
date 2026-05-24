@@ -12,7 +12,6 @@ UPSTREAM_FOAMLIB = "foamlib"
 KNOWN_UI_IN_TOOLS = {
     Path("ofti/tools/case_ops.py"),
     Path("ofti/tools/diagnostics.py"),
-    Path("ofti/tools/input_prompts.py"),
     Path("ofti/tools/logs_analysis.py"),
     Path("ofti/tools/logs_fields.py"),
     Path("ofti/tools/logs_probes.py"),
@@ -31,10 +30,7 @@ KNOWN_UI_IN_TOOLS = {
     Path("ofti/tools/tool_dicts_prompts.py"),
     Path("ofti/tools/yplus.py"),
 }
-KNOWN_DIRECT_FOAMLIB = {
-    Path("ofti/core/entry_meta.py"),
-    Path("ofti/core/validation.py"),
-}
+KNOWN_DIRECT_FOAMLIB: set[Path] = set()
 
 
 def _imports(path: Path) -> set[str]:
