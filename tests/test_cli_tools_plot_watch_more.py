@@ -210,6 +210,33 @@ def test_watch_interval_output_and_adopt_helpers(
     adopted = watch.adopt_job_payload(case, adopt="101")
     assert adopted["adopted"] is True
     assert adopted["job_id"] == "job-new"
+    assert adopted["name"] == "simpleFoam"
+
+    monkeypatch.setattr(
+        watch_service.process_scan_service,
+        "proc_table",
+        lambda _root: {
+            200: watch_service.process_scan_service.ProcEntry(
+                pid=200,
+                ppid=1,
+                args=["mpirun", "-np", "2", "simpleFoam", "-parallel"],
+                cwd=case,
+            ),
+            201: watch_service.process_scan_service.ProcEntry(
+                pid=201,
+                ppid=200,
+                args=["simpleFoam", "-parallel"],
+                cwd=case,
+            ),
+        },
+    )
+    adopted_mpi = watch.adopt_job_payload(case, adopt="201")
+    assert adopted_mpi["adopted"] is True
+    assert adopted_mpi["pid"] == 200
+    assert adopted_mpi["role"] == "launcher"
+    assert adopted_mpi["launcher_pid"] == 200
+    assert adopted_mpi["solver_pids"] == [201]
+    assert adopted_mpi["name"] == "simpleFoam-launcher"
 
 
 def test_watch_log_path_from_job_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

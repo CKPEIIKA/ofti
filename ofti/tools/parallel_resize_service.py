@@ -62,12 +62,16 @@ def parallel_resize_payload(
         "rollback": None,
         "steps": steps,
     }
+    processor_dirs = _processor_dirs(case_path)
+    payload["decomposed"] = bool(processor_dirs)
+    payload["processor_dirs"] = [path.name for path in processor_dirs]
     _add_plan_steps(steps, to_ranks=to_ranks, start=start, write_now=write_now)
     if dry_run:
         payload["rollback"] = _rollback_guidance(case_path, None)
         return payload
 
     try:
+        _require_decomposed_case(processor_dirs)
         snapshot_dir = _write_full_input_snapshot(case_path)
         case_snapshot = write_case_snapshot(case_path, snapshot_dir / "case_snapshot.json")
         payload["input_snapshot_path"] = str(snapshot_dir)
@@ -261,6 +265,15 @@ def _clean_processor_dirs(
         shutil.rmtree(path)
         removed.append(path.name)
     _mark_step(steps, "clean-processors", "done", removed=removed)
+
+
+def _require_decomposed_case(processor_dirs: list[Path]) -> None:
+    if processor_dirs:
+        return
+    raise ValueError(
+        "parallel resize requires existing processor* directories; "
+        "decompose the case first",
+    )
 
 
 def _set_subdomains(decompose_dict: Path, to_ranks: int) -> None:

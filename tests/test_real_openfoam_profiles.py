@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from ofti.core import entry_io
+from ofti.core.case import read_number_of_subdomains
 from ofti.core.case_copy import copy_case_directory
 from ofti.core.case_snapshot import build_case_snapshot
 from ofti.tools import knife_service, parallel_resize_service
@@ -117,6 +118,48 @@ def test_real_parallel_resize_dry_run_profiles(real_profiles: list[tuple[str, Pa
         payload = parallel_resize_service.parallel_resize_payload(case, to_ranks=2, dry_run=True)
         assert payload["ok"] is True
         assert any(row["step"] == "reconstruct" for row in payload["steps"])
+
+
+@pytest.mark.slow
+@pytest.mark.real_openfoam
+def test_real_parallel_resize_executes_on_stopped_decomposed_profile(
+    real_profiles: list[tuple[str, Path]],
+) -> None:
+    exercised = False
+    for name, case in real_profiles:
+        decompose_dict = case / "system" / "decomposeParDict"
+        if not decompose_dict.is_file():
+            continue
+        from_ranks = read_number_of_subdomains(decompose_dict)
+        if from_ranks is None or from_ranks <= 1:
+            continue
+        result = run.execute_case_command(
+            case,
+            "decomposePar",
+            ["decomposePar", "-force"],
+            background=False,
+        )
+        assert result.returncode == 0, f"{name}: {result.stderr or result.stdout}"
+        payload = parallel_resize_service.parallel_resize_payload(
+            case,
+            from_ranks=from_ranks,
+            to_ranks=from_ranks,
+            start=False,
+            write_now=False,
+        )
+        assert payload["ok"] is True, f"{name}: {payload.get('error')}"
+        assert payload["decomposed"] is True
+        assert any(
+            row["step"] == "reconstruct" and row["status"] == "done"
+            for row in payload["steps"]
+        )
+        assert any(
+            row["step"] == "decompose" and row["status"] == "done"
+            for row in payload["steps"]
+        )
+        exercised = True
+    if not exercised:
+        pytest.skip("No real profile with numberOfSubdomains > 1 was available.")
 
 
 @pytest.mark.slow

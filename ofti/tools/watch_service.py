@@ -801,7 +801,8 @@ def adopt_job_payload(
         entry = table[pid]
         solver = process_scan_service.guess_solver_from_args(entry.args)
         role = "launcher"
-    name = solver if solver and solver != "unknown" else "solver"
+    solver_label = solver if solver and solver != "unknown" else "solver"
+    name = solver_label if role == "solver" else f"{solver_label}-launcher"
     log_path = _adopt_log_path(case_path, solver)
     command = " ".join(entry.args) if entry.args else name
     solver_name = solver.lower() if solver and solver != "unknown" else None
