@@ -156,3 +156,24 @@ def test_parallel_resize_stop_timeout_reports_rollback(tmp_path: Path, monkeypat
     assert "writeNow" in payload["error"]
     assert payload["input_snapshot_path"]
     assert "To rollback inputs" in payload["rollback"]
+
+
+def test_parallel_resize_requires_decomposed_case_for_execution(tmp_path: Path, monkeypatch) -> None:
+    case = _case(tmp_path)
+    for path in (case / "processor0", case / "processor1"):
+        path.rmdir()
+    monkeypatch.setattr(
+        parallel_resize_service.knife_service,
+        "current_payload",
+        lambda *_a, **_k: {"jobs_running": 0},
+    )
+
+    payload = parallel_resize_service.parallel_resize_payload(
+        case,
+        from_ranks=2,
+        to_ranks=4,
+    )
+
+    assert payload["ok"] is False
+    assert payload["decomposed"] is False
+    assert "processor* directories" in str(payload["error"])
