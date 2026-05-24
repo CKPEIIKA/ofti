@@ -431,58 +431,12 @@ def _watch_log(args: argparse.Namespace) -> int:
 def _watch_attach(args: argparse.Namespace) -> int:
     watcher_raw = getattr(args, "watcher", None)
     if watcher_raw is not None:
-        if getattr(args, "adopt", None):
-            print("ofti: --adopt cannot be used with --watcher", file=sys.stderr)
-            return 2
-        try:
-            extra_env = parse_env_assignments(getattr(args, "env", []))
-        except ValueError as exc:
-            print(f"ofti: {exc}", file=sys.stderr)
-            return 2
-        payload = watch_ops.watcher_attach_payload(
-            args.case_dir,
-            command=list(watcher_raw),
-            background=bool(getattr(args, "background", False)),
-            log_file=getattr(args, "log_file", None),
-            env=extra_env,
-            dry_run=bool(getattr(args, "dry_run", False)),
-            name=str(getattr(args, "watcher_name", "watcher")),
-        )
-        if args.json:
-            print(
-                json.dumps(
-                    _watch_json_payload("attach.watcher", payload, profile="detailed"),
-                    indent=2,
-                    sort_keys=True,
-                ),
-            )
-            return 0 if bool(payload.get("ok", True)) else 1
-        print(f"case={payload['case']}")
-        print(f"kind={payload.get('kind', 'watcher')}")
-        print(f"name={payload.get('name')}")
-        print(f"command={payload.get('command')}")
-        if payload.get("dry_run"):
-            print("dry_run=True")
-            return 0
-        if payload.get("log_path"):
-            print(f"log_path={payload.get('log_path')}")
-        if payload.get("pid") is not None:
-            print(f"pid={payload.get('pid')}")
-        if payload.get("job_id") is not None:
-            print(f"job_id={payload.get('job_id')}")
-        if payload.get("returncode") is not None:
-            print(f"returncode={payload.get('returncode')}")
-        return 0 if bool(payload.get("ok", True)) else 1
+        return _watch_attach_watcher(args, list(watcher_raw))
 
     job_id = args.job_id
     if getattr(args, "adopt", None):
-        try:
-            adopted = watch_ops.adopt_job_payload(
-                args.case_dir,
-                adopt=str(args.adopt),
-            )
-        except ValueError as exc:
-            print(f"ofti: {exc}", file=sys.stderr)
+        adopted = _watch_adopt_payload(args)
+        if adopted is None:
             return 1
         job_id = adopted.get("job_id")
         if args.json:
@@ -505,6 +459,45 @@ def _watch_attach(args: argparse.Namespace) -> int:
         json=args.json,
     )
     return _watch_log(attached_args)
+
+def _watch_attach_watcher(args: argparse.Namespace, watcher_raw: list[str]) -> int:
+    if getattr(args, "adopt", None):
+        print("ofti: --adopt cannot be used with --watcher", file=sys.stderr)
+        return 2
+    try:
+        extra_env = parse_env_assignments(getattr(args, "env", []))
+    except ValueError as exc:
+        print(f"ofti: {exc}", file=sys.stderr)
+        return 2
+    payload = watch_ops.watcher_attach_payload(
+        args.case_dir,
+        command=watcher_raw,
+        background=bool(getattr(args, "background", False)),
+        log_file=getattr(args, "log_file", None),
+        env=extra_env,
+        dry_run=bool(getattr(args, "dry_run", False)),
+        name=str(getattr(args, "watcher_name", "watcher")),
+    )
+    if args.json:
+        print(
+            json.dumps(
+                _watch_json_payload("attach.watcher", payload, profile="detailed"),
+                indent=2,
+                sort_keys=True,
+            ),
+        )
+        return 0 if bool(payload.get("ok", True)) else 1
+    return _print_watch_external_attach(args, payload)
+
+def _watch_adopt_payload(args: argparse.Namespace) -> dict[str, object] | None:
+    try:
+        return watch_ops.adopt_job_payload(
+            args.case_dir,
+            adopt=str(args.adopt),
+        )
+    except ValueError as exc:
+        print(f"ofti: {exc}", file=sys.stderr)
+        return None
 
 def _watch_start(args: argparse.Namespace) -> int:
     watcher_raw = getattr(args, "watcher", None)
@@ -810,46 +803,50 @@ def _watch_json_payload(
         "case": payload.get("case"),
         "ok": payload.get("ok", True),
     }
-    if "count" in payload:
-        base["count"] = payload.get("count")
-    if "jobs" in payload:
-        jobs = cast("list[dict[str, object]]", payload.get("jobs", []))
-        base["items"] = [
-            {
-                "id": job.get("id"),
-                "name": job.get("name"),
-                "kind": job.get("kind"),
-                "case_dir": job.get("case_dir"),
-                "pid": job.get("pid"),
-                "status": job.get("status"),
-                "running": job.get("running"),
-                "detached": job.get("detached"),
-                "log_path": job.get("log_path"),
-            }
-            for job in jobs
-        ]
-    if "log" in payload:
-        lines = cast("list[str]", payload.get("lines", []))
-        base["log"] = payload.get("log")
-        base["line_count"] = len(lines)
-        base["lines"] = lines
-    if "selected" in payload:
-        base["selected"] = payload.get("selected")
-    if "signal" in payload:
-        base["signal"] = payload.get("signal")
-    if "pid" in payload:
-        base["pid"] = payload.get("pid")
-    if "job_id" in payload:
-        base["job_id"] = payload.get("job_id")
-    if "kind" in payload:
-        base["kind"] = payload.get("kind")
-    if "detached" in payload:
-        base["detached"] = payload.get("detached")
-    if "running" in payload:
-        base["running"] = payload.get("running")
-    if "log_path" in payload:
-        base["log_path"] = payload.get("log_path")
+    _add_watch_json_jobs(base, payload)
+    _add_watch_json_log(base, payload)
+    _copy_watch_json_scalars(
+        base,
+        payload,
+        ("count", "selected", "signal", "pid", "job_id", "kind", "detached", "running", "log_path"),
+    )
     return base
+
+def _add_watch_json_jobs(base: dict[str, object], payload: dict[str, object]) -> None:
+    if "jobs" not in payload:
+        return
+    jobs = cast("list[dict[str, object]]", payload.get("jobs", []))
+    base["items"] = [
+        {
+            "id": job.get("id"),
+            "name": job.get("name"),
+            "kind": job.get("kind"),
+            "case_dir": job.get("case_dir"),
+            "pid": job.get("pid"),
+            "status": job.get("status"),
+            "running": job.get("running"),
+            "detached": job.get("detached"),
+            "log_path": job.get("log_path"),
+        }
+        for job in jobs
+    ]
+
+def _add_watch_json_log(base: dict[str, object], payload: dict[str, object]) -> None:
+    if "log" not in payload:
+        return
+    lines = cast("list[str]", payload.get("lines", []))
+    base["log"] = payload.get("log")
+    base["line_count"] = len(lines)
+    base["lines"] = lines
+
+def _copy_watch_json_scalars(
+    base: dict[str, object],
+    payload: dict[str, object],
+    keys: tuple[str, ...],
+) -> None:
+    for key in keys:
+        if key in payload:
+            base[key] = payload.get(key)
 
 def _follow_log_path(log_path: Path, *, interval: float) -> int:
     sleep_interval = max(0.05, float(interval))

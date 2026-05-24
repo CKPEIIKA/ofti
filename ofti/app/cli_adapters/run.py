@@ -588,37 +588,12 @@ def _resize_step_details(row: dict[str, object]) -> str:
 
 def _run_tool(args: argparse.Namespace) -> int:
     if args.list:
-        payload = run_ops.tool_catalog_payload(args.case_dir)
-        if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True))
-            return 0
-        for name in payload["tools"]:
-            print(name)
-        return 0
+        return _run_tool_list(args)
     if not args.name:
         raise ValueError("tool name is required unless --list is used")
     resolved = run_ops.resolve_tool(args.case_dir, args.name)
     if resolved is None:
-        names = run_ops.tool_catalog_names(args.case_dir)
-        available = ", ".join(names)
-        if args.json:
-            print(
-                json.dumps(
-                    {
-                        "error": "unknown tool",
-                        "requested": args.name,
-                        "available": names,
-                    },
-                    indent=2,
-                    sort_keys=True,
-                ),
-                file=sys.stderr,
-            )
-            return 1
-        print(f"Unknown tool: {args.name}", file=sys.stderr)
-        if available:
-            print(f"Available tools: {available}", file=sys.stderr)
-        return 1
+        return _run_tool_unknown(args)
     display_name, cmd = resolved
     result = run_ops.execute_case_command(
         args.case_dir,
@@ -648,6 +623,37 @@ def _run_tool(args: argparse.Namespace) -> int:
     if result.stderr:
         print(result.stderr, file=sys.stderr, end="")
     return result.returncode
+
+def _run_tool_list(args: argparse.Namespace) -> int:
+    payload = run_ops.tool_catalog_payload(args.case_dir)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        for name in payload["tools"]:
+            print(name)
+    return 0
+
+def _run_tool_unknown(args: argparse.Namespace) -> int:
+    names = run_ops.tool_catalog_names(args.case_dir)
+    available = ", ".join(names)
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "error": "unknown tool",
+                    "requested": args.name,
+                    "available": names,
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Unknown tool: {args.name}", file=sys.stderr)
+    if available:
+        print(f"Available tools: {available}", file=sys.stderr)
+    return 1
 
 def _run_solver(args: argparse.Namespace) -> int:
     return _run_solver_with_mode(args, background=bool(args.background))
