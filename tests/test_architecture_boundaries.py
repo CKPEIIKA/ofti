@@ -4,6 +4,7 @@ import ast
 from pathlib import Path
 
 UI_PREFIXES = ("ofti.app", "ofti.ui", "ofti.ui_curses")
+CLI_ADAPTER_PREFIX = "ofti.app.cli_adapters"
 UPSTREAM_FOAMLIB = "foamlib"
 
 # Legacy TUI-screen modules still live under ofti/tools. This list makes the
@@ -58,5 +59,15 @@ def test_upstream_foamlib_imports_are_confined_or_declared() -> None:
             if name == UPSTREAM_FOAMLIB or name.startswith(f"{UPSTREAM_FOAMLIB}.")
         ]
         if bad and path not in KNOWN_DIRECT_FOAMLIB:
+            offenders[path] = bad
+    assert offenders == {}
+
+
+def test_library_modules_do_not_import_cli_adapters() -> None:
+    offenders: dict[Path, list[str]] = {}
+    for path in _py_files("ofti/core") + _py_files("ofti/foam") + _py_files("ofti/tools"):
+        imports = _imports(path)
+        bad = [name for name in imports if name.startswith(CLI_ADAPTER_PREFIX)]
+        if bad:
             offenders[path] = bad
     assert offenders == {}
