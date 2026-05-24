@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.times import time_directories
-from ofti.tools.runner import _show_message
-from ofti.ui_curses.prompts import prompt_line
+from ofti.ui_curses.prompts import _show_message, prompt_line
 
 
 def time_directory_pruner_screen(stdscr: Any, case_path: Path) -> None:

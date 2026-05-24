@@ -6,7 +6,7 @@ from typing import Any
 from ofti.core.templates import write_example_template
 from ofti.core.versioning import get_dict_path
 from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import _show_message
+from ofti.ui_curses.prompts import _show_message
 
 
 def create_missing_config_screen(stdscr: Any, case_path: Path) -> None:

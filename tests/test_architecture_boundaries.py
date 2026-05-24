@@ -10,10 +10,7 @@ UPSTREAM_FOAMLIB = "foamlib"
 # debt explicit and prevents it from spreading while the lib/adapter split is
 # completed.
 KNOWN_UI_IN_TOOLS = {
-    Path("ofti/tools/case_ops.py"),
     Path("ofti/tools/diagnostics.py"),
-    Path("ofti/tools/logs_analysis.py"),
-    Path("ofti/tools/logs_fields.py"),
     Path("ofti/tools/logs_probes.py"),
     Path("ofti/tools/logs_view.py"),
     Path("ofti/tools/menu_helpers.py"),

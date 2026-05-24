@@ -5,7 +5,7 @@ from math import sqrt
 from pathlib import Path
 from typing import Any
 
-from ofti.tools.logs_analysis import _sparkline
+from ofti.app.logs_analysis import _sparkline
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
 from ofti.ui_curses.viewer import Viewer

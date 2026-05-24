@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ofti.app.case_ops import clone_case
 from ofti.app.config_templates import create_missing_config_screen
 from ofti.app.menu_utils import menu_choice
 from ofti.app.menus.case_tools import (
@@ -15,7 +16,6 @@ from ofti.app.menus.case_tools import (
 from ofti.app.state import AppState, Screen
 from ofti.foam.config import get_config
 from ofti.tools.case_doctor import case_doctor_screen
-from ofti.tools.case_ops import clone_case
 from ofti.ui_curses.help import config_help
 
 

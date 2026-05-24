@@ -5,10 +5,10 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from ofti.app.logs_analysis import log_analysis_screen
 from ofti.core.checkmesh import extract_last_courant
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foamlib.logs import read_log_tail_lines, read_log_text
-from ofti.tools.logs_analysis import log_analysis_screen
 from ofti.tools.logs_select import _select_log_file
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message

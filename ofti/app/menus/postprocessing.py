@@ -3,12 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ofti.app.case_ops import open_paraview_screen
+from ofti.app.logs_analysis import residual_timeline_screen
+from ofti.app.logs_fields import field_summary_screen
 from ofti.app.menu_utils import has_processor_dirs, menu_choice
 from ofti.app.state import AppState, Screen
 from ofti.foamlib.postprocessing import available as postprocessing_tables_available
-from ofti.tools.case_ops import open_paraview_screen
-from ofti.tools.logs_analysis import residual_timeline_screen
-from ofti.tools.logs_fields import field_summary_screen
 from ofti.tools.logs_probes import probes_viewer_screen
 from ofti.tools.logs_view import logs_screen
 from ofti.tools.postprocessing import (

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.tools import case_ops
+from ofti.app import case_ops
 
 
 class DummyViewer:

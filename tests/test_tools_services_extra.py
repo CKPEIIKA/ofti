@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from ofti.app import case_ops
 from ofti.core import tool_dicts_service
-from ofti.tools import case_ops, reconstruct, shell_tools, yplus
+from ofti.tools import reconstruct, shell_tools, yplus
 
 
 class _Screen:

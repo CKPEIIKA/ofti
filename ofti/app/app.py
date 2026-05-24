@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from ofti.app.case_ops import clone_case
 from ofti.app.clean_menu import clean_all, clean_case_menu
 from ofti.app.commands import CommandCallbacks, command_suggestions, handle_command
 from ofti.app.config_templates import create_missing_config_screen
@@ -35,7 +36,6 @@ from ofti.foam.exceptions import QuitAppError
 from ofti.foam.openfoam import OpenFOAMError, discover_case_files
 from ofti.foam.openfoam_env import ensure_environment
 from ofti.foamlib.adapter import available as foamlib_available
-from ofti.tools.case_ops import clone_case
 from ofti.tools.diagnostics import diagnostics_screen
 from ofti.tools.solver import run_current_solver_live
 from ofti.ui.adapter import CursesAdapter

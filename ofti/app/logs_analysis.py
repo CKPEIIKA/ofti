@@ -9,8 +9,7 @@ from ofti.foamlib.logs import (
     parse_log_metrics_and_residuals,
     read_log_text,
 )
-from ofti.tools.logs_select import _select_solver_log_file
-from ofti.tools.runner import _show_message
+from ofti.ui_curses.prompts import _show_message
 from ofti.ui_curses.viewer import Viewer
 
 
@@ -76,14 +75,28 @@ def log_analysis_screen(stdscr: Any, case_path: Path) -> None:
         return
 
     _height, width = stdscr.getmaxyx()
-    plot_width = max(10, min(50, width - 28))
+    lines = _log_analysis_lines(path.name, metrics, residuals, max(10, min(50, width - 28)))
+    Viewer(stdscr, "\n".join(lines)).display()
 
+
+def _log_analysis_lines(
+    log_name: str,
+    metrics: Any,
+    residuals: dict[str, list[float]],
+    plot_width: int,
+) -> list[str]:
     lines = [
         "LOG ANALYSIS",
         "",
-        f"File: {path.name}",
+        f"File: {log_name}",
         "",
     ]
+    _append_time_metrics(lines, metrics, plot_width)
+    _append_residual_summary(lines, residuals)
+    return lines
+
+
+def _append_time_metrics(lines: list[str], metrics: Any, plot_width: int) -> None:
     if metrics.times:
         lines.append(f"Time steps: {len(metrics.times)} (last={metrics.times[-1]:.6g})")
     if metrics.courants:
@@ -99,6 +112,9 @@ def log_analysis_screen(stdscr: Any, case_path: Path) -> None:
                 f"Step time: min={min(deltas):.6g} avg={avg:.6g} max={max(deltas):.6g}",
             )
             lines.append(f"Step trend: {_sparkline(deltas, plot_width)}")
+
+
+def _append_residual_summary(lines: list[str], residuals: dict[str, list[float]]) -> None:
     if residuals:
         lines.append("")
         lines.append("Residuals:")
@@ -110,7 +126,12 @@ def log_analysis_screen(stdscr: Any, case_path: Path) -> None:
                 f"max={max(values):.3g}",
             )
 
-    Viewer(stdscr, "\n".join(lines)).display()
+
+def _select_solver_log_file(case_path: Path, stdscr: Any, *, title: str) -> Path | None:
+    from importlib import import_module
+
+    selector = import_module("ofti.tools.logs_select")._select_solver_log_file
+    return selector(case_path, stdscr, title=title)
 
 
 def _sparkline(values: list[float], width: int) -> str:

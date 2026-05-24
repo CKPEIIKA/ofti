@@ -6,16 +6,13 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from ofti.app import time_pruner
+from ofti.app import case_ops, logs_analysis, logs_fields, time_pruner
 from ofti.app.menus import case_tools as shared_case_tools
 from ofti.tools import (
     case_doctor,
-    case_ops,
     cleaning_ops,
     diagnostics,
     job_control,
-    logs_analysis,
-    logs_fields,
     logs_probes,
     logs_view,
     mesh_utils,
