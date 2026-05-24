@@ -1,26 +1,71 @@
 # Layering and simplicity rules
 
-This project keeps a very small set of layers to stay maintainable:
+OFTI is built as a small library plus thin adapters:
 
-1. core
-   - Pure logic only: parsers, helpers, data models.
-   - No curses or UI imports.
-   - No shelling out to OpenFOAM tools.
+```text
+foamlib adapter + OFTI library -> CLI adapter
+                            \-> TUI adapter
+```
 
-2. foam
-   - OpenFOAM environment discovery and subprocess wrappers.
-   - May depend on core, but must not depend on ui or ui_curses.
+This is an architecture decision, not a facade package. New code should make the
+data path obvious: use upstream `foamlib` through `ofti/foamlib`, implement OFTI
+behavior in reusable library modules, and keep CLI/TUI code as adapters.
 
-3. ui
-   - Thin screen router and adapter interfaces.
-   - Must not import ui_curses.
+## Layers
 
-4. ui_curses
-   - Curses screens and widgets.
-   - Calls into core/foam via small helpers.
+1. `ofti/foamlib`
+   - The only layer that imports upstream `foamlib` directly.
+   - Translates `foamlib` objects into plain OFTI values.
+   - Provides stable dictionary, field, post-processing, clone, and runner
+     operations.
+   - Keeps fallback parsing generic and small when `foamlib` cannot cover a
+     case.
 
-Rules of thumb:
+2. OFTI library: `ofti/core`, `ofti/foam`, `ofti/tools`
+   - `ofti/core`: pure domain/file logic; no curses, no UI, no OpenFOAM process
+     execution.
+   - `ofti/foam`: OpenFOAM environment discovery and trusted subprocess
+     boundary.
+   - `ofti/tools`: reusable case services shared by CLI and TUI.
+   - May use `ofti/foamlib`; must not duplicate capabilities that `foamlib`
+     covers reliably.
 
-- Add a new module only if it is reused in 2+ places.
-- Avoid "manager" classes; prefer small functions.
-- Keep UI code dumb: it should format and display data, not parse OpenFOAM files.
+3. CLI adapter: `ofti/app/cli_tools.py`, `ofti/app/cli_handlers/*`,
+   `ofti/tools/cli_tools/*`
+   - Argparse, dispatch, output modes, exit-code mapping, and help text.
+   - Calls OFTI library services.
+   - Does not parse OpenFOAM files or implement case management directly.
+
+4. TUI adapter: `ofti/app`, `ofti/ui`, `ofti/ui_curses`
+   - Flow, prompts, layout, rendering, key bindings.
+   - Calls OFTI library services.
+   - Does not own OpenFOAM parsing or process logic.
+
+## Test split
+
+- Fast unit tests cover library and adapter behavior with fixtures/mocks.
+- Slow real OpenFOAM tests use `@pytest.mark.slow` and run only with
+  `pytest --runslow`.
+- Real OpenFOAM tests should grow toward critical end-to-end flows:
+  discover/adopt runs, live writeNow, stop/resume, parallel resize, runtime
+  dictionary reread, cleanup, and replay/report artifacts.
+
+## Declared debt
+
+The final target is no UI imports below adapters and no direct upstream
+`foamlib` imports outside `ofti/foamlib`. Legacy debt remains explicit in
+`tests/test_architecture_boundaries.py`:
+
+- TUI screen helpers still live under `ofti/tools/*`.
+- `foamlib.typing` is still used in entry metadata/validation.
+
+New code must not add to these lists. Cleanup should shrink them.
+
+## Rules of thumb
+
+- Add a new module only when it has clear ownership and prevents duplication.
+- Avoid facade packages and "manager" classes.
+- Prefer small functions and explicit data flow.
+- Keep UI code dumb: format and display data, do not parse OpenFOAM files.
+- Keep adapters thin: parse arguments/input, call library functions, render
+  output, return stable exit codes.

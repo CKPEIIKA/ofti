@@ -9,20 +9,28 @@ from ofti.core.times import latest_time
 from ofti.core.versioning import get_dict_path
 from ofti.foam import openfoam
 from ofti.foamlib import adapter as foamlib_integration
-from ofti.ui_curses.viewer import Viewer
 
 
-def case_doctor_screen(stdscr: Any, case_path: Path) -> None:
+def case_doctor_screen(stdscr: Any, case_path: Path, viewer_cls: Any | None = None) -> None:
     report = build_case_doctor_report(case_path)
     if not report["errors"] and not report["warnings"]:
-        Viewer(stdscr, "\n".join(report["lines"] + ["", "OK: no issues found."])).display()
+        text = "\n".join(report["lines"] + ["", "OK: no issues found."])
+        _viewer(viewer_cls)(stdscr, text).display()
         return
     lines = report["lines"]
     if report["errors"]:
         lines += ["", "Errors:"] + [f"- {item}" for item in report["errors"]]
     if report["warnings"]:
         lines += ["", "Warnings:"] + [f"- {item}" for item in report["warnings"]]
-    Viewer(stdscr, "\n".join(lines)).display()
+    _viewer(viewer_cls)(stdscr, "\n".join(lines)).display()
+
+
+def _viewer(viewer_cls: Any | None) -> Any:
+    if viewer_cls is not None:
+        return viewer_cls
+    from importlib import import_module
+
+    return import_module("ofti.ui_curses.viewer").Viewer
 
 
 def build_case_doctor_report(case_path: Path) -> dict[str, list[str]]:

@@ -49,6 +49,7 @@ def real_profiles(tmp_path_factory: pytest.TempPathFactory) -> list[tuple[str, P
     return copied
 
 
+@pytest.mark.slow
 @pytest.mark.real_openfoam
 def test_real_profiles_runtime_reread_cleanup_and_replay_artifacts(real_profiles: list[tuple[str, Path]]) -> None:
     for name, case in real_profiles:
@@ -78,6 +79,7 @@ def test_real_profiles_runtime_reread_cleanup_and_replay_artifacts(real_profiles
         assert isinstance(jobs["jobs"], list)
 
 
+@pytest.mark.slow
 @pytest.mark.real_openfoam
 def test_real_parallel_resize_dry_run_profiles(real_profiles: list[tuple[str, Path]]) -> None:
     for _name, case in real_profiles:
@@ -89,6 +91,7 @@ def test_real_parallel_resize_dry_run_profiles(real_profiles: list[tuple[str, Pa
         assert any(row["step"] == "reconstruct" for row in payload["steps"])
 
 
+@pytest.mark.slow
 @pytest.mark.real_openfoam
 def test_real_hpc_profile_smoke_when_available() -> None:
     command = os.environ.get("OFTI_REAL_HPC_COMMAND", "").strip()
