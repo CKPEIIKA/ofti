@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
+from ofti.app import logs_analysis, logs_fields
+from ofti.app.case_ops import open_paraview_screen
 from ofti.app.time_pruner import time_directory_pruner_screen
 from ofti.foamlib import adapter as foamlib_integration
 from ofti.tools import (
-    logs_analysis,
-    logs_fields,
     logs_probes,
     logs_view,
     pipeline,
@@ -17,7 +17,6 @@ from ofti.tools import (
     reconstruct,
     run,
 )
-from ofti.tools.case_ops import open_paraview_screen
 from ofti.tools.diagnostics import case_report_screen
 from ofti.tools.job_control import run_tool_background_screen, stop_job_screen
 from ofti.tools.run import run_checkmesh, run_decomposepar

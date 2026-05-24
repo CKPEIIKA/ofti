@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
+from ofti.app.logs_fields import _field_summary_lines, _latest_time_dir
 from ofti.foamlib import adapter as foamlib_integration
-from ofti.tools.logs_fields import _field_summary_lines, _latest_time_dir
 
 
 @pytest.mark.skipif(not foamlib_integration.available(), reason="foamlib required")

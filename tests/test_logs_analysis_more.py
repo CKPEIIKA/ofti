@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ofti.tools import logs_analysis
+from ofti.app import logs_analysis
 from tests.testscreen import TestScreen as _Screen
 
 

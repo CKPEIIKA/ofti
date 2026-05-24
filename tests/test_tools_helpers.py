@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 
+from ofti.app.logs_analysis import _sparkline
+from ofti.app.logs_fields import _summarize_internal_field
 from ofti.core.postprocessing import _looks_like_time
 from ofti.tools.diagnostics import _directory_size, _human_size
-from ofti.tools.logs_analysis import _sparkline
-from ofti.tools.logs_fields import _summarize_internal_field
 from ofti.tools.logs_select import _tail_text
 
 

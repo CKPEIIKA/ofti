@@ -6,8 +6,7 @@ from typing import Any, cast
 
 from ofti.core.times import latest_time
 from ofti.foamlib import adapter as foamlib_integration
-from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import _show_message
+from ofti.ui_curses.prompts import _show_message
 from ofti.ui_curses.viewer import Viewer
 
 
@@ -88,23 +87,60 @@ def _read_optional_node(field_path: Path, key: str) -> object | None:
 
 
 def _summarize_internal_field(node: object | None) -> list[str]:
+    handlers = (
+        _summarize_missing_field,
+        _summarize_scalar_field,
+        _summarize_string_field,
+        _summarize_sequence_field,
+        _summarize_array_field,
+    )
+    for handler in handlers:
+        lines = handler(node)
+        if lines is not None:
+            return lines
+    return [f"Internal field: {type(node).__name__}"]
+
+
+def _summarize_missing_field(node: object | None) -> list[str] | None:
     if node is None:
         return ["Internal field: <missing>"]
+    return None
+
+
+def _summarize_scalar_field(node: object | None) -> list[str] | None:
     if isinstance(node, (int, float, bool)):
         return [f"Internal field: {node}"]
+    return None
+
+
+def _summarize_string_field(node: object | None) -> list[str] | None:
     if isinstance(node, str):
         return [f"Internal field: {node.strip()}"]
+    return None
+
+
+def _summarize_sequence_field(node: object | None) -> list[str] | None:
     if isinstance(node, (list, tuple)):
         return _summarize_sequence(cast("list[object] | tuple[object, ...]", node))
-    if hasattr(node, "shape"):
-        try:
-            size = int(getattr(node, "size", 0))
-            if size <= 0:
-                return [f"Internal field: array shape={getattr(node, 'shape', '')}"]
+    return None
+
+
+def _summarize_array_field(node: object | None) -> list[str] | None:
+    if not hasattr(node, "shape"):
+        return None
+    try:
+        size = int(getattr(node, "size", 0))
+        if size > 0:
             return _summarize_array(node)
-        except Exception:
-            return [f"Internal field: array shape={getattr(node, 'shape', '')}"]
-    return [f"Internal field: {type(node).__name__}"]
+    except Exception:
+        pass
+    return [f"Internal field: array shape={getattr(node, 'shape', '')}"]
+
+
+def build_menu(*args: Any, **kwargs: Any) -> Any:
+    from importlib import import_module
+
+    return import_module("ofti.tools.menu_helpers").build_menu(*args, **kwargs)
 
 
 def _summarize_sequence(values: list[object] | tuple[object, ...]) -> list[str]:
