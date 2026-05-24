@@ -1494,5 +1494,5 @@ def test_run_resize_parallel_cli_json_and_table(monkeypatch, capsys) -> None:
     code = cli_tools.main(["run", "resize-parallel", "/case", "--to", "4", "--dry-run", "--table"])
     out = capsys.readouterr().out
     assert code == 0
-    assert "STEP" in out
+    assert "Step" in out
     assert "write-now" in out
