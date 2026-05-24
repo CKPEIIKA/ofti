@@ -3,10 +3,12 @@ from __future__ import annotations
 import os
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import TypedDict
 
+from ofti.core.case_snapshot import write_case_snapshot
+from ofti.core.tool_dicts_service import apply_assignment_or_write
 from ofti.foamlib.logs import (
     execution_time_deltas,
     parse_log_metrics,
@@ -52,6 +54,7 @@ _GENERIC_CRITERION_TOKENS = {
 }
 _CONDITIONS_NOT_MET_TOKENS = ("conditions not met", "condition not met")
 _CONDITIONS_MET_TOKENS = ("conditions met", "condition met")
+_CONTROL_EDIT_KEYS = {"stopAt", "startFrom", "endTime", "deltaT", "writeInterval"}
 
 
 class CriterionRow(TypedDict, total=False):
@@ -87,6 +90,19 @@ class RuntimeControlSnapshot(TypedDict):
     eta_to_end_time: float | None
     eta_to_criteria_start: float | None
     residual_fields: list[str]
+
+
+class ControlDictEditPayload(TypedDict):
+    case: str
+    path: str
+    ok: bool
+    applied: bool
+    blocked: bool
+    snapshot_path: str | None
+    updates: list[dict[str, str]]
+    diff: list[str]
+    failures: list[str]
+    error: str | None
 
 
 def runtime_control_snapshot(
@@ -157,6 +173,65 @@ def runtime_control_snapshot(
         "eta_to_end_time": eta_to_end,
         "eta_to_criteria_start": eta_to_start,
         "residual_fields": sorted(residuals),
+    }
+
+
+def control_dict_edit_payload(
+    case_path: Path,
+    updates: dict[str, str],
+    *,
+    write_snapshot: bool = False,
+    apply: bool = False,
+) -> ControlDictEditPayload:
+    """Plan or apply a small, safe runtime edit to system/controlDict.
+
+    Applying is intentionally blocked unless a case snapshot is written in the
+    same call. This keeps live-run mutation paths explicit and recoverable.
+    """
+    control_dict = case_path / "system" / "controlDict"
+    if not control_dict.is_file():
+        return _control_edit_error(case_path, "system/controlDict is missing")
+    invalid = sorted(set(updates) - _CONTROL_EDIT_KEYS)
+    if invalid:
+        return _control_edit_error(case_path, f"unsupported controlDict keys: {', '.join(invalid)}")
+    if not updates:
+        return _control_edit_error(case_path, "no controlDict updates requested")
+
+    current = _control_dict_values(control_dict, updates.keys())
+    rows = [
+        {
+            "key": key,
+            "old": current.get(key) or "<missing>",
+            "new": str(value),
+            "path": "system/controlDict",
+        }
+        for key, value in sorted(updates.items())
+    ]
+    diff = _control_edit_diff(rows)
+    snapshot_path: Path | None = None
+    if write_snapshot:
+        try:
+            snapshot_path = write_case_snapshot(case_path)
+        except (OSError, RuntimeError, ValueError) as exc:
+            return _control_edit_error(case_path, str(exc), updates=rows, diff=diff)
+    blocked = bool(apply and snapshot_path is None)
+    failures: list[str] = []
+    if apply and not blocked:
+        for row in rows:
+            key = row["key"]
+            if not _apply_control_dict_edit(case_path, control_dict, key, row["new"]):
+                failures.append(key)
+    return {
+        "case": str(case_path),
+        "path": "system/controlDict",
+        "ok": not failures and not blocked,
+        "applied": bool(apply and not failures and not blocked),
+        "blocked": blocked,
+        "snapshot_path": str(snapshot_path) if snapshot_path is not None else None,
+        "updates": rows,
+        "diff": diff,
+        "failures": failures,
+        "error": "snapshot required before applying runtime edits" if blocked else None,
     }
 
 
@@ -871,6 +946,74 @@ def first_match(text: str, pattern: re.Pattern[str]) -> str | None:
     if match is None:
         return None
     return match.group("value").strip()
+
+
+def _control_dict_values(path: Path, keys: Iterable[str]) -> dict[str, str | None]:
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        text = ""
+    return {str(key): _control_entry_value(text, str(key)) for key in keys}
+
+
+def _control_entry_value(text: str, key: str) -> str | None:
+    match = re.search(rf"(?m)^\s*{re.escape(key)}\s+([^;]+);", text)
+    return match.group(1).strip() if match else None
+
+
+def _apply_control_dict_edit(case_path: Path, path: Path, key: str, value: str) -> bool:
+    if apply_assignment_or_write(case_path, path, [key], value):
+        return True
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    pattern = re.compile(rf"(?m)^(\s*{re.escape(key)}\s+)([^;]+)(;)")
+    replacement = rf"\g<1>{value}\g<3>"
+    if pattern.search(text):
+        updated = pattern.sub(replacement, text, count=1)
+    else:
+        updated = text.rstrip() + f"\n{key} {value};\n"
+    try:
+        path.write_text(updated, encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
+def _control_edit_diff(rows: list[dict[str, str]]) -> list[str]:
+    lines = ["--- current system/controlDict", "+++ proposed system/controlDict"]
+    for row in rows:
+        old = row["old"]
+        new = row["new"]
+        key = row["key"]
+        if old == "<missing>":
+            lines.append(f"+{key} {new};")
+        else:
+            lines.append(f"-{key} {old};")
+            lines.append(f"+{key} {new};")
+    return lines
+
+
+def _control_edit_error(
+    case_path: Path,
+    error: str,
+    *,
+    updates: list[dict[str, str]] | None = None,
+    diff: list[str] | None = None,
+) -> ControlDictEditPayload:
+    return {
+        "case": str(case_path),
+        "path": "system/controlDict",
+        "ok": False,
+        "applied": False,
+        "blocked": False,
+        "snapshot_path": None,
+        "updates": updates or [],
+        "diff": diff or [],
+        "failures": [],
+        "error": error,
+    }
 
 
 def last_float(text: str, pattern: re.Pattern[str]) -> float | None:
