@@ -60,9 +60,15 @@ _DISCOVERY_CACHE: dict[int, ProcessCaseCacheEntry] = {}
 def running_job_pids(jobs: list[dict[str, Any]]) -> list[int]:
     pids: list[int] = []
     for job in jobs:
-        pid = job.get("pid")
-        if isinstance(pid, int) and pid > 0:
-            pids.append(pid)
+        for key in ("pid", "launcher_pid"):
+            pid = job.get(key)
+            if isinstance(pid, int) and pid > 0 and pid not in pids:
+                pids.append(pid)
+        solver_pids = job.get("solver_pids")
+        if isinstance(solver_pids, list):
+            for pid in solver_pids:
+                if isinstance(pid, int) and pid > 0 and pid not in pids:
+                    pids.append(pid)
     return pids
 
 
@@ -104,12 +110,13 @@ def scan_proc_solver_processes(
     launcher_pids = launcher_pids_for_case(table, solver_name, case_root)
     processes: list[ProcRow] = []
     for entry in table.values():
-        if entry.pid in tracked_pids and not include_tracked:
-            continue
         if not entry.args:
             continue
         role = process_role(entry.args, solver_name)
         if role is None:
+            continue
+        tracked = _entry_tracked(entry, table, tracked_pids, role=role)
+        if tracked and not include_tracked:
             continue
         discovery = discover_case(
             entry,
@@ -142,7 +149,7 @@ def scan_proc_solver_processes(
             "ppid": entry.ppid,
             "solver": solver or guess_solver_from_args(entry.args),
             "role": role,
-            "tracked": entry.pid in tracked_pids,
+            "tracked": tracked,
             "case": _case_to_text(inferred_case),
             "command": " ".join(entry.args),
             "discovery_source": discovery.source,
@@ -154,6 +161,25 @@ def scan_proc_solver_processes(
         processes.append(row)
     processes.sort(key=lambda item: int(item.get("pid", 0)))
     return processes
+
+
+def _entry_tracked(
+    entry: ProcEntry,
+    table: dict[int, ProcEntry],
+    tracked_pids: set[int],
+    *,
+    role: str,
+) -> bool:
+    if entry.pid in tracked_pids:
+        return True
+    if has_ancestor(entry.pid, tracked_pids, table):
+        return True
+    if role != "launcher":
+        return False
+    base = Path(entry.args[0]).name.lower() if entry.args else ""
+    if base not in _SHELL_LAUNCHERS:
+        return False
+    return any(has_ancestor(pid, {entry.pid}, table) for pid in tracked_pids)
 
 
 def proc_table(proc_root: Path) -> dict[int, ProcEntry]:

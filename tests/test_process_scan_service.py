@@ -33,8 +33,16 @@ def _write_proc_entry(
 
 
 def test_running_job_pids_filters_invalid_values() -> None:
-    rows = svc.running_job_pids([{"pid": 10}, {"pid": 0}, {"pid": "x"}, {"pid": -4}, {"pid": 5}])
-    assert rows == [10, 5]
+    rows = svc.running_job_pids(
+        [
+            {"pid": 10, "launcher_pid": 10, "solver_pids": [11, 12, "x"]},
+            {"pid": 0},
+            {"pid": "x"},
+            {"pid": -4},
+            {"pid": 5},
+        ],
+    )
+    assert rows == [10, 11, 12, 5]
 
 
 def test_scan_proc_solver_processes_filters_tracked(tmp_path: Path) -> None:
@@ -77,6 +85,99 @@ def test_scan_proc_solver_processes_filters_tracked(tmp_path: Path) -> None:
     assert {int(row["pid"]) for row in rows_all} == {100, 101}
     solver_row = next(row for row in rows_all if int(row["pid"]) == 101)
     assert solver_row["launcher_pid"] == 100
+
+
+def test_scan_proc_solver_processes_hides_solver_descendants_of_tracked_launcher(
+    tmp_path: Path,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    _write_proc_entry(
+        proc_root,
+        pid=100,
+        ppid=1,
+        cmdline=b"mpirun\x00-case\x00.\x00hy2Foam\x00",
+        cwd=case,
+    )
+    _write_proc_entry(
+        proc_root,
+        pid=101,
+        ppid=100,
+        cmdline=b"hy2Foam\x00-parallel\x00-case\x00.\x00",
+        cwd=case,
+    )
+
+    rows = svc.scan_proc_solver_processes(
+        case,
+        "hy2Foam",
+        tracked_pids={100},
+        proc_root=proc_root,
+        include_tracked=False,
+    )
+    assert rows == []
+
+    rows_all = svc.scan_proc_solver_processes(
+        case,
+        "hy2Foam",
+        tracked_pids={100},
+        proc_root=proc_root,
+        include_tracked=True,
+    )
+    by_pid = {int(row["pid"]): row for row in rows_all}
+    assert by_pid[100]["tracked"] is True
+    assert by_pid[101]["tracked"] is True
+
+
+def test_scan_proc_solver_processes_marks_detached_shell_wrapper_tracked(
+    tmp_path: Path,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    _write_proc_entry(
+        proc_root,
+        pid=99,
+        ppid=1,
+        cmdline=f"bash\x00-lc\x00cd {case} && mpirun -np 2 hy2Foam -parallel\x00".encode(),
+        cwd=None,
+    )
+    _write_proc_entry(
+        proc_root,
+        pid=100,
+        ppid=99,
+        cmdline=b"mpirun\x00-np\x002\x00hy2Foam\x00-parallel\x00",
+        cwd=case,
+    )
+    _write_proc_entry(
+        proc_root,
+        pid=101,
+        ppid=100,
+        cmdline=b"hy2Foam\x00-parallel\x00",
+        cwd=case,
+    )
+
+    rows = svc.scan_proc_solver_processes(
+        case,
+        "hy2Foam",
+        tracked_pids={100},
+        proc_root=proc_root,
+        include_tracked=False,
+    )
+    assert rows == []
+
+    rows_all = svc.scan_proc_solver_processes(
+        case,
+        "hy2Foam",
+        tracked_pids={100},
+        proc_root=proc_root,
+        include_tracked=True,
+    )
+    by_pid = {int(row["pid"]): row for row in rows_all}
+    assert by_pid[99]["role"] == "launcher"
+    assert by_pid[99]["tracked"] is True
+    assert by_pid[100]["tracked"] is True
+    assert by_pid[101]["tracked"] is True
 
 
 def test_launcher_graph_helpers_scope_case(tmp_path: Path) -> None:
