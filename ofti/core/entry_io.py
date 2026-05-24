@@ -103,6 +103,28 @@ def read_dimensions(file_path: Path) -> str:
     return read_field_entry(file_path, "dimensions")
 
 
+def read_time_field_entries(
+    case_path: Path,
+    time_name: str,
+    field_name: str,
+    entries: list[str] | tuple[str, ...] = ("dimensions", "internalField", "boundaryField"),
+) -> dict[str, str]:
+    """Read selected entries from a field in a time directory."""
+    field_path = case_path / str(time_name) / field_name
+    return {entry: read_field_entry(field_path, entry) for entry in entries}
+
+
+def write_time_field_entry(
+    case_path: Path,
+    time_name: str,
+    field_name: str,
+    entry: str,
+    value: str,
+) -> bool:
+    """Write one entry in a field under a time directory."""
+    return write_field_entry(case_path / str(time_name) / field_name, entry, value)
+
+
 def _find_case_root(file_path: Path) -> Path | None:
     for parent in file_path.resolve().parents:
         if (parent / "system" / "controlDict").exists():

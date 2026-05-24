@@ -90,3 +90,45 @@ def test_entry_io_field_helpers(tmp_path: Path) -> None:
     assert "inlet" in entry_io.read_boundary_field(field)
     assert entry_io.write_field_entry(field, "internalField", "uniform 350")
     assert entry_io.read_field_entry(field, "internalField").startswith("uniform 350")
+
+
+@pytest.mark.skipif(
+    not foamlib_integration.available(),
+    reason="foamlib required for entry_io tests",
+)
+def test_entry_io_time_dir_field_round_trip_with_foamlib(tmp_path: Path) -> None:
+    case_dir = tmp_path / "case"
+    (case_dir / "system").mkdir(parents=True)
+    (case_dir / "system" / "controlDict").write_text("application simpleFoam;\n")
+    field = case_dir / "1.5" / "U"
+    field.parent.mkdir(parents=True)
+    field.write_text(
+        "\n".join(
+            [
+                "FoamFile",
+                "{",
+                "    version 2.0;",
+                "    format ascii;",
+                "    class volVectorField;",
+                '    location "1.5";',
+                "    object U;",
+                "}",
+                "dimensions [0 1 -1 0 0 0 0];",
+                "internalField uniform (0 0 0);",
+                "boundaryField",
+                "{",
+                "    inlet",
+                "    {",
+                "        type fixedValue;",
+                "        value uniform (1 0 0);",
+                "    }",
+                "}",
+            ],
+        ),
+    )
+
+    assert entry_io.write_time_field_entry(case_dir, "1.5", "U", "internalField", "uniform (2 0 0)")
+    rows = entry_io.read_time_field_entries(case_dir, "1.5", "U", ["dimensions", "internalField"])
+
+    assert rows["dimensions"].startswith("[0 1 -1 0 0 0 0]")
+    assert rows["internalField"].startswith("uniform (2")

@@ -34,7 +34,7 @@ def test_run_group_help_lists_new_subcommands(capsys) -> None:
     code = cli_tools.main(["run"])
     out = capsys.readouterr().out
     assert code == 0
-    assert "{tool,solver,matrix,parametric,queue,status}" in out
+    assert "{tool,solver,resize-parallel,matrix,parametric,queue,status}" in out
 
 
 def test_cli_tools_without_args_prints_short_help(capsys) -> None:
@@ -1404,3 +1404,38 @@ def test_watch_pause_resume_and_stop_signal_cli(tmp_path, capsys, monkeypatch) -
     code = cli_tools.main(["watch", "stop", str(case), "--signal", "INT"])
     assert code == 0
     assert "signal=INT" in capsys.readouterr().out
+
+
+def test_run_resize_parallel_cli_json_and_table(monkeypatch, capsys) -> None:
+    payload = {
+        "case": "/case",
+        "from": 2,
+        "to": 4,
+        "dry_run": True,
+        "start": False,
+        "ok": True,
+        "pid": None,
+        "log_path": None,
+        "input_snapshot_path": None,
+        "rollback": "Dry-run only: no files changed; no rollback needed.",
+        "steps": [
+            {"step": "snapshot", "status": "pending", "label": "copy inputs"},
+            {"step": "write-now", "status": "pending", "acknowledged": True},
+        ],
+    }
+    monkeypatch.setattr(
+        cli_tools.parallel_resize_service,
+        "parallel_resize_payload",
+        lambda *_a, **_k: payload,
+    )
+
+    code = cli_tools.main(["run", "resize-parallel", "/case", "--to", "4", "--dry-run", "--json"])
+    parsed = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert parsed["to"] == 4
+
+    code = cli_tools.main(["run", "resize-parallel", "/case", "--to", "4", "--dry-run", "--table"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "STEP" in out
+    assert "write-now" in out
