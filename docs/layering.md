@@ -30,7 +30,7 @@ behavior in reusable library modules, and keep CLI/TUI code as adapters.
    - May use `ofti/foamlib`; must not duplicate capabilities that `foamlib`
      covers reliably.
 
-3. CLI adapter: `ofti/app/cli_tools.py`, `ofti/app/cli_handlers/*`,
+3. CLI adapter: `ofti/app/cli_tools.py`, `ofti/app/cli_adapters/*`,
    `ofti/tools/cli_tools/*`
    - Argparse, dispatch, output modes, exit-code mapping, and help text.
    - Calls OFTI library services.
@@ -52,13 +52,11 @@ behavior in reusable library modules, and keep CLI/TUI code as adapters.
 
 ## Declared debt
 
-The final target is no UI imports below adapters and no direct upstream
-`foamlib` imports outside `ofti/foamlib`. Legacy debt remains explicit in
-`tests/test_architecture_boundaries.py`:
-
-- TUI screen helpers still live under `ofti/tools/*`.
-
-New code must not add to these lists. Cleanup should shrink them.
+The current enforced target is no UI imports below adapters, no CLI-adapter
+imports below adapters, and no direct upstream `foamlib` imports outside
+`ofti/foamlib`. The explicit allowlists in
+`tests/test_architecture_boundaries.py` are empty; new code must keep them
+empty.
 
 ## Rules of thumb
 

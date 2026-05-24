@@ -256,6 +256,17 @@ Current repo checks:
 - `ty check`
 - `pytest` with coverage gate `--cov-fail-under=85`
 
+Adapter layout:
+
+- `ofti/app/cli.py`: top-level `ofti` entrypoint; delegates non-interactive
+  groups to the CLI tools dispatcher and opens the TUI otherwise.
+- `ofti/app/cli_tools.py`: compatibility dispatcher for legacy imports.
+- `ofti/app/cli_adapters/`: argparse, output formatting, and exit-code mapping
+  by command group (`knife`, `plot`, `watch`, `run`).
+- `ofti/tools/` and `ofti/core/`: shared services and domain logic used by both
+  CLI and TUI.
+- `ofti/foamlib/`: the only direct upstream `foamlib` integration layer.
+
 ## MODES
 
 - **Normal**: OpenFOAM environment detected; tools available.
