@@ -26,6 +26,9 @@ ofti = "ofti.app.cli:main"
 [tool.pytest.ini_options]
 addopts = "--cov=ofti --cov-report=term-missing --cov-fail-under=85"
 norecursedirs = ["refs"]
+markers = [
+    "real_openfoam: opt-in tests that launch real OpenFOAM/PyFoam commands",
+]
 
 [tool.coverage.run]
 source = ["ofti"]
