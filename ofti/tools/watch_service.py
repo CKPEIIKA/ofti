@@ -791,6 +791,10 @@ def adopt_job_payload(
     name = solver if solver and solver != "unknown" else "solver"
     log_path = _adopt_log_path(case_path, solver)
     command = " ".join(entry.args) if entry.args else name
+    solver_name = solver.lower() if solver and solver != "unknown" else None
+    solver_pids: list[int] = []
+    if process_scan_service.process_role(entry.args, solver_name) == "launcher":
+        solver_pids = process_scan_service.solver_descendant_pids(pid, table, solver_name)
     job_id = register_job(
         case_path,
         name,
@@ -798,6 +802,10 @@ def adopt_job_payload(
         command,
         log_path,
         kind=_SOLVER_KIND,
+        extra={
+            "adopted": True,
+            "solver_pids": solver_pids,
+        },
     )
     return {
         "case": str(case_path),
