@@ -4,76 +4,76 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 
 ## P0 - captains deck/control deck overhaul
 
-- Expand Numerics deck v1 from transparent preset previews into apply/snapshot flows for fvSchemes/fvSolution/relaxation edits.
-- Expand Launch checklist from go/no-go v1 into executable TUI actions: launch, dry-run, edit failing item, and parallel wizard.
-- Expand Flight deck runtime mutation queue v1 into executable apply flows with snapshots,
+- [MAIN][TUI] Expand Numerics deck v1 from transparent preset previews into apply/snapshot flows for fvSchemes/fvSolution/relaxation edits.
+- [MAIN][TUI] Expand Launch checklist from go/no-go v1 into executable TUI actions: launch, dry-run, edit failing item, and parallel wizard.
+- [MAIN][TUI] Expand Flight deck runtime mutation queue v1 into executable apply flows with snapshots,
   live `writeNow`/dictionary-reread acknowledgement, and rollback guidance.
-- Expand parallel resize/resume beyond CLI/TUI v0 with stronger live `writeNow` acknowledgement, full input snapshots, and rollback guidance.
-- Expand Change Queue v2 snapshot/action plan into executable apply flows for case edits,
+- [MAIN] Expand parallel resize/resume beyond CLI/TUI v0 with stronger live `writeNow` acknowledgement, full input snapshots, and rollback guidance.
+- [MAIN][TUI] Expand Change Queue v2 snapshot/action plan into executable apply flows for case edits,
   presets, launch changes, and runtime mutations.
-- Expand alert cards into executable command previews and evidence-opening actions.
-- Expand soundless alarm states into action confirmations; destructive actions must require a snapshot/diff path.
-- Upgrade command mode toward a fuzzy command palette with previews for run/edit/monitor/safe-stop/diff/log actions.
+- [MAIN][TUI] Expand alert cards into executable command previews and evidence-opening actions.
+- [TUI] Expand soundless alarm states into action confirmations; destructive actions must require a snapshot/diff path.
+- [TUI] Upgrade command mode toward a fuzzy command palette with previews for run/edit/monitor/safe-stop/diff/log actions.
 
 ## P1 - captains deck-grade CFD screens
 
-- Add Braille mission scopes as OFTI's oscilloscope layer: residuals, Courant, forces, probes, mass imbalance, thermal fields, yPlus, performance, and sweep comparisons.
-- Add a plot fallback stack: ASCII/block plots for dumb terminals, Unicode sparklines, Braille plots, optional Kitty/Sixel image previews, and external ParaView as the final fallback.
-- Add full-screen scope controls: log scale, rolling window, cursor, zoom, target bands, and scope mode switching.
-- Build Boundary Matrix v2 with patch roles, patch groups, column paste/bulk apply, selected-cell inspector, and compatibility checks.
-- Add Patch Captains Deck details: role guess, patch area/normal, field BC status, live flux, reverse-flow detector, wall distance/yPlus summary, and bulk wall-function actions.
-- Add a Numerics deck summarizing fvSolution/fvSchemes, relaxation, solver tolerances, convergence contract, and transparent presets with diffs.
-- Add a Monitors / Result Control editor for residuals, Courant, forces, probes, yPlus, sampling, field calculations, and stop/alert rules.
-- Expand Monitor Builder beyond v0 `system/controlDict.functions` writing into controlDict include wiring, test/validate flow, probes/forces/yPlus editors, and TUI integration.
-- Add Autopilot / run-condition rules for stop/warn/writeNow/reduce-deltaT actions; show each rule as plain English and as the OpenFOAM dictionary snippet.
-- Add a universal setup tree + right-side inspector pattern for Physics, Numerics, Monitors, and Case Ops screens.
-- Expand the log + residual split view with alert-to-evidence links.
-- Expand log folding beyond v0 signal folding into an interactive searchable folded/raw log view.
-- Add anomaly cards for residual flatline, Co spikes, force plateau/stall, disk growth, stale logs, and suspicious runtime mutations.
-- Keep wizard, dictionary, and diff views available for every write path; never hide raw OpenFOAM changes.
+- [MAIN][TUI] Add Braille mission scopes as OFTI's oscilloscope layer: residuals, Courant, forces, probes, mass imbalance, thermal fields, yPlus, performance, and sweep comparisons.
+- [MAIN][TUI] Add a plot fallback stack: ASCII/block plots for dumb terminals, Unicode sparklines, Braille plots, optional Kitty/Sixel image previews, and external ParaView as the final fallback.
+- [TUI] Add full-screen scope controls: log scale, rolling window, cursor, zoom, target bands, and scope mode switching.
+- [MAIN][TUI] Build Boundary Matrix v2 with patch roles, patch groups, column paste/bulk apply, selected-cell inspector, and compatibility checks.
+- [MAIN][TUI] Add Patch Captains Deck details: role guess, patch area/normal, field BC status, live flux, reverse-flow detector, wall distance/yPlus summary, and bulk wall-function actions.
+- [MAIN][TUI] Add a Numerics deck summarizing fvSolution/fvSchemes, relaxation, solver tolerances, convergence contract, and transparent presets with diffs.
+- [MAIN][TUI] Add a Monitors / Result Control editor for residuals, Courant, forces, probes, yPlus, sampling, field calculations, and stop/alert rules.
+- [MAIN][TUI] Expand Monitor Builder beyond v0 `system/controlDict.functions` writing into controlDict include wiring, test/validate flow, probes/forces/yPlus editors, and TUI integration.
+- [MAIN][TUI] Add Autopilot / run-condition rules for stop/warn/writeNow/reduce-deltaT actions; show each rule as plain English and as the OpenFOAM dictionary snippet.
+- [TUI] Add a universal setup tree + right-side inspector pattern for Physics, Numerics, Monitors, and Case Ops screens.
+- [MAIN][TUI] Expand the log + residual split view with alert-to-evidence links.
+- [MAIN][TUI] Expand log folding beyond v0 signal folding into an interactive searchable folded/raw log view.
+- [MAIN][TUI] Add anomaly cards for residual flatline, Co spikes, force plateau/stall, disk growth, stale logs, and suspicious runtime mutations.
+- [MAIN][TUI] Keep wizard, dictionary, and diff views available for every write path; never hide raw OpenFOAM changes.
 
 ## P1 - run intelligence and reproducibility
 
-- Expand the opt-in real OpenFOAM profile test suite beyond current canonical cases into stronger runtime dictionary reread evidence, cleanup verification, replay artifacts, and heavier compressible/HPC profiles.
-- Add a Black Box recorder: interpreted timeline of launch, solver milestones, user edits, dictionary rereads, warnings, process events, and monitor milestones.
-- Add Replay mode for finished runs with synchronized log cursor, residual/Co scopes, bookmarks, and exportable clips.
-- Expand Case DNA beyond v0 identity/fingerprint into physics, turbulence, numerics, monitors, and parallel summaries.
-- Add Dictionary Time Machine over snapshots: before launch, after user edits, after autopilot changes, final; include blame source for user/wizard/autopilot/template/external edits.
-- Expand Case Doctor Pro / `ofti lint` beyond v0 missing dictionaries, pressure reference, decomposition sanity, and disk-risk settings into BC compatibility, dimensions, turbulence wall functions, and solver/physics mismatch.
-- Add Explain Warning mode for alerts/lint findings with evidence, impact, suggested fix, affected file, diff, and ignore option.
-- Expand Resource Watch cleanup actions into executable TUI/CLI dry-run/apply flows with snapshots for destructive cleanup.
-- Add one-key Markdown report generation with case summary, mesh quality, solver setup, BC table, residual/force/probe plots, warnings, dictionary diffs, and reproducibility fingerprint.
+- [MAIN] Expand the opt-in real OpenFOAM profile test suite beyond current canonical cases into stronger runtime dictionary reread evidence, cleanup verification, replay artifacts, and heavier compressible/HPC profiles.
+- [MAIN][TUI] Add a Black Box recorder: interpreted timeline of launch, solver milestones, user edits, dictionary rereads, warnings, process events, and monitor milestones.
+- [MAIN][TUI] Add Replay mode for finished runs with synchronized log cursor, residual/Co scopes, bookmarks, and exportable clips.
+- [MAIN][TUI] Expand Case DNA beyond v0 identity/fingerprint into physics, turbulence, numerics, monitors, and parallel summaries.
+- [MAIN][TUI] Add Dictionary Time Machine over snapshots: before launch, after user edits, after autopilot changes, final; include blame source for user/wizard/autopilot/template/external edits.
+- [MAIN][TUI] Expand Case Doctor Pro / `ofti lint` beyond v0 missing dictionaries, pressure reference, decomposition sanity, and disk-risk settings into BC compatibility, dimensions, turbulence wall functions, and solver/physics mismatch.
+- [MAIN][TUI] Add Explain Warning mode for alerts/lint findings with evidence, impact, suggested fix, affected file, diff, and ignore option.
+- [MAIN][TUI] Expand Resource Watch cleanup actions into executable TUI/CLI dry-run/apply flows with snapshots for destructive cleanup.
+- [MAIN][TUI] Add one-key Markdown report generation with case summary, mesh quality, solver setup, BC table, residual/force/probe plots, warnings, dictionary diffs, and reproducibility fingerprint.
 
 ## P2 - multi-case and HPC control
 
-- Expand Multi-case Flight Deck beyond v0 live grouped/sorted case grid into residuals, force metrics, alerts, kill/safe-stop/rerun, and Braille comparison plots.
-- Expand Mesh Radar beyond v1 checkMesh metrics/warning bars/advice into hot patches, non-orthogonality/skewness distributions, and links to ParaView sets.
-- Add mesh-quality heatmaps with block/Braille distributions for non-orthogonality, skewness, aspect ratio, and bad-cell counts.
-- Add HPC / Slurm control panel with queue state, job id, case, nodes, runtime, logs, cancel/attach/submit actions, and reusable job templates.
-- Add inline field previews with layered fallback: ASCII/block, Unicode sparklines, Braille, optional Kitty/Sixel raster previews, then external ParaView.
+- [MAIN][TUI] Expand Multi-case Flight Deck beyond v0 live grouped/sorted case grid into residuals, force metrics, alerts, kill/safe-stop/rerun, and Braille comparison plots.
+- [MAIN][TUI] Expand Mesh Radar beyond v1 checkMesh metrics/warning bars/advice into hot patches, non-orthogonality/skewness distributions, and links to ParaView sets.
+- [MAIN][TUI] Add mesh-quality heatmaps with block/Braille distributions for non-orthogonality, skewness, aspect ratio, and bad-cell counts.
+- [MAIN][TUI] Add HPC / Slurm control panel with queue state, job id, case, nodes, runtime, logs, cancel/attach/submit actions, and reusable job templates.
+- [MAIN][TUI] Add inline field previews with layered fallback: ASCII/block, Unicode sparklines, Braille, optional Kitty/Sixel raster previews, then external ParaView.
 
 ## P1 - foamlib integration cleanup
 
-- Verify `foamlib` 1.5.7 round-trip behavior for nested dictionaries, field files, and OpenFOAM fork/version syntax.
-- Extend field IO coverage for time directories: internal values, boundary values, and reconstructed-time cases.
-- Use `foamlib` for read-only mesh/case metadata where practical, especially cells/faces/points without `checkMesh`.
-- Replace custom boundary/dictionary parsing only where `foamlib` gives equivalent behavior with less code and stable formatting.
-- Expose richer foamlib type metadata in entry preview/edit validation if available.
+- [MAIN] Verify `foamlib` 1.5.7 round-trip behavior for nested dictionaries, field files, and OpenFOAM fork/version syntax.
+- [MAIN] Extend field IO coverage for time directories: internal values, boundary values, and reconstructed-time cases.
+- [MAIN] Use `foamlib` for read-only mesh/case metadata where practical, especially cells/faces/points without `checkMesh`.
+- [MAIN] Replace custom boundary/dictionary parsing only where `foamlib` gives equivalent behavior with less code and stable formatting.
+- [MAIN][TUI] Expose richer foamlib type metadata in entry preview/edit validation if available.
 
 ## P2 - layering and shared services
 
-- Extract captains deck data into shared services: process supervisor, telemetry collector, case model, monitor builder, runtime controller, alert stack, and change queue.
-- Move any reused CLI/TUI formatting or diagnostics out of screen modules into shared service/core modules.
-- Keep UI modules as adapters: prompt, dispatch, display, keybinding, and error presentation only.
-- Keep shell/OpenFOAM subprocess calls outside `ofti/core`; route them through `ofti/foam` or tool services.
-- Review remaining direct file parsing in curses screens and route it through `core/entry_io.py` or foamlib-backed services.
-- Evaluate Textual only after services are separated; do not block current curses improvements on a UI toolkit migration.
+- [MAIN] Extract captains deck data into shared services: process supervisor, telemetry collector, case model, monitor builder, runtime controller, alert stack, and change queue.
+- [MAIN] Move any reused CLI/TUI formatting or diagnostics out of screen modules into shared service/core modules.
+- [TUI] Keep UI modules as adapters: prompt, dispatch, display, keybinding, and error presentation only.
+- [MAIN] Keep shell/OpenFOAM subprocess calls outside `ofti/core`; route them through `ofti/foam` or tool services.
+- [MAIN][TUI] Review remaining direct file parsing in curses screens and route it through `core/entry_io.py` or foamlib-backed services.
+- [TUI] Evaluate Textual only after services are separated; do not block current curses improvements on a UI toolkit migration.
 
 ## P3 - Unix CLI polish
 
-- Continue adding `--json` for automation and `--table` for structured human diagnostics where commands return tabular data.
-- Keep output modes mutually exclusive and preserve stable exit codes: 0 success, 1 operational/check failure, 2 usage/input failure.
-- Improve `-h/--help` on commands that still have bare positional names without practical descriptions.
+- [MAIN] Continue adding `--json` for automation and `--table` for structured human diagnostics where commands return tabular data.
+- [MAIN] Keep output modes mutually exclusive and preserve stable exit codes: 0 success, 1 operational/check failure, 2 usage/input failure.
+- [MAIN] Improve `-h/--help` on commands that still have bare positional names without practical descriptions.
 
 ## Done / no longer TODO
 
@@ -166,5 +166,5 @@ Implementation plan:
 
 Concrete next architecture tasks:
 
-- Split remaining oversized CLI behavior modules (`watch.py` and `run.py`) only around cohesive modes such as solver launch, watcher launch/attach, or external watcher rendering.
-- Continue moving Captains Deck line rendering toward explicit view-models so services return structured data and adapters render it.
+- [MAIN] Split remaining oversized CLI behavior modules (`watch.py` and `run.py`) only around cohesive modes such as solver launch, watcher launch/attach, or external watcher rendering.
+- [MAIN][TUI] Continue moving Captains Deck line rendering toward explicit view-models so services return structured data and adapters render it.
