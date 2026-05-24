@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ofti.tools import solver
+from ofti.app.tool_screens import solver
 from tests.testscreen import TestScreen as _Screen
 
 

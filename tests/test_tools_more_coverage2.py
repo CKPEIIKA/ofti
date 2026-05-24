@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import pytest
 
-from ofti.tools import diagnostics, postprocessing, shell_tools, solver
+from ofti.app.tool_screens import diagnostics, postprocessing, shell_tools, solver
 
 
 class _Screen:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.tools import menus
+from ofti.app.tool_screens import menus
 
 
 def test_case_operations_screen_uses_shared_case_tools(

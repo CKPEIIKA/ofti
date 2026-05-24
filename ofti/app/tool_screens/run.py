@@ -3,12 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens.runner import _show_message, run_tool_command, run_tool_command_capture
 from ofti.core.case import read_number_of_subdomains
 from ofti.core.checkmesh import format_checkmesh_summary
 from ofti.core.templates import write_example_template
 from ofti.core.tool_output import format_log_blob
 from ofti.foam.config import key_hint
-from ofti.tools.runner import _show_message, run_tool_command, run_tool_command_capture
 from ofti.ui_curses.viewer import Viewer
 
 

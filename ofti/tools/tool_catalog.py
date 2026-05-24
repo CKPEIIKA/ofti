@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ofti.core.case import detect_solver
-from ofti.tools.runner import load_postprocessing_presets, load_tool_presets
+from ofti.core.tool_presets import load_postprocessing_presets, load_tool_presets
 
 
 def base_tools(case_path: Path) -> list[tuple[str, list[str]]]:

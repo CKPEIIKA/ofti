@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ofti.tools import watch_service
-from ofti.tools.cli_tools import run as run_ops
-from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import (
+from ofti.app.tool_screens.menu_helpers import build_menu
+from ofti.app.tool_screens.runner import (
     _show_message,
     _with_no_foam_hint,
 )
+from ofti.tools import watch_service
+from ofti.tools.cli_tools import run as run_ops
 
 
 def run_tool_background_screen(stdscr: Any, case_path: Path) -> None:

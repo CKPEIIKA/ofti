@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.tools.solver import _ensure_zero_dir
+from ofti.app.tool_screens.solver import _ensure_zero_dir
 
 
 class FakeScreen:

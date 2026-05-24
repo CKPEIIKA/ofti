@@ -7,6 +7,12 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens.cleaning_utils import _require_wm_project_dir
+from ofti.app.tool_screens.runner import (
+    _expand_shell_command,
+    _show_message,
+    _with_no_foam_hint,
+)
 from ofti.core.case import read_number_of_subdomains
 from ofti.core.solver_checks import (
     remove_empty_log,
@@ -27,14 +33,8 @@ from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.subprocess_utils import resolve_executable
 from ofti.foamlib.logs import read_log_tail_lines
 from ofti.tools import watch_service
-from ofti.tools.cleaning_utils import _require_wm_project_dir
 from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.helpers import resolve_openfoam_bashrc
-from ofti.tools.runner import (
-    _expand_shell_command,
-    _show_message,
-    _with_no_foam_hint,
-)
 from ofti.ui_curses.prompts import prompt_line
 from ofti.ui_curses.viewer import Viewer
 

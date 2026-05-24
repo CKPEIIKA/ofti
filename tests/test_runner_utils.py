@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.tools import runner
+from ofti.app.tool_screens import runner
 
 
 def test_normalize_tool_name_strips_and_lowercases() -> None:

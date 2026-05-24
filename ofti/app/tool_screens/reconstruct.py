@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens.menu_helpers import build_menu
+from ofti.app.tool_screens.runner import _show_message, _write_tool_log, run_tool_command
 from ofti.foam.subprocess_utils import run_trusted
-from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import _show_message, _write_tool_log, run_tool_command
 
 
 def _decomposed_processors(case_path: Path) -> list[Path]:
