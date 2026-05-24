@@ -13,7 +13,7 @@ from textwrap import dedent
 from typing import cast
 
 from ofti.core import run_receipt as receipt_ops
-from ofti.tools import status_render_service, table_render_service
+from ofti.tools import parallel_resize_service, status_render_service, table_render_service
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import plot as plot_ops
 from ofti.tools.cli_tools import run as run_ops
@@ -1201,6 +1201,68 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     solver.add_argument("--dry-run", action="store_true")
     solver.add_argument("--json", action="store_true", help="Print result as JSON")
     solver.set_defaults(func=_run_solver)
+
+    resize = run_sub.add_parser(
+        "resize-parallel",
+        help="Safely stop, reconstruct, redecompose, and resume with a new MPI size",
+        description=(
+            "Safely resize a running/decomposed parallel case: writeNow, wait for stop, "
+            "snapshot inputs, reconstruct latest time, update decomposeParDict, "
+            "decompose latest time, and optionally restart."
+        ),
+    )
+    resize.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    resize.add_argument(
+        "--to",
+        dest="to_ranks",
+        type=int,
+        required=True,
+        help="New MPI rank count",
+    )
+    resize.add_argument(
+        "--from",
+        dest="from_ranks",
+        type=int,
+        default=None,
+        help="Expected current rank count",
+    )
+    resize.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the plan without changing files",
+    )
+    resize.add_argument(
+        "--no-start",
+        dest="start",
+        action="store_false",
+        help="Do not restart solver after decompose",
+    )
+    resize.add_argument(
+        "--no-write-now",
+        dest="write_now",
+        action="store_false",
+        help="Skip live writeNow request",
+    )
+    resize.add_argument(
+        "--force-stop",
+        action="store_true",
+        help="TERM tracked jobs if writeNow does not stop in time",
+    )
+    resize.add_argument(
+        "--clean-processors",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Remove old processor* directories before redecompose",
+    )
+    resize.add_argument(
+        "--stop-timeout",
+        type=float,
+        default=45.0,
+        help="Seconds to wait for writeNow stop",
+    )
+    _add_table_flag(resize)
+    resize.add_argument("--json", action="store_true", help="Print result as JSON")
+    resize.set_defaults(func=_run_resize_parallel)
 
     matrix = run_sub.add_parser(
         "matrix",
@@ -2959,6 +3021,74 @@ def _run_status(args: argparse.Namespace) -> int:
         eta_text = f"{eta:.2f}" if isinstance(eta, (int, float)) else "-"
         print(f"{state:<7} {latest_text:<12} {eta_text:<8} {reason:<12} {case}")
     return 0
+
+
+def _run_resize_parallel(args: argparse.Namespace) -> int:
+    payload = parallel_resize_service.parallel_resize_payload(
+        args.case_dir,
+        to_ranks=int(args.to_ranks),
+        from_ranks=getattr(args, "from_ranks", None),
+        dry_run=bool(getattr(args, "dry_run", False)),
+        start=bool(getattr(args, "start", True)),
+        write_now=bool(getattr(args, "write_now", True)),
+        force_stop=bool(getattr(args, "force_stop", False)),
+        clean_processors=bool(getattr(args, "clean_processors", True)),
+        stop_timeout=float(getattr(args, "stop_timeout", 45.0)),
+    )
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if bool(payload.get("ok", False)) else 1
+    if bool(getattr(args, "table", False)):
+        _print_resize_table(payload)
+        return 0 if bool(payload.get("ok", False)) else 1
+    print(
+        f"case={payload['case']} from={payload.get('from')} to={payload['to']} "
+        f"dry_run={payload['dry_run']} ok={payload['ok']}",
+    )
+    for row in cast("list[dict[str, object]]", payload.get("steps", [])):
+        details = _resize_step_details(row)
+        print(f"{row.get('status', '-'):<8} {row.get('step', '-'):<18} {details}")
+    if payload.get("input_snapshot_path"):
+        print(f"snapshot={payload['input_snapshot_path']}")
+    if payload.get("rollback"):
+        print(f"rollback={payload['rollback']}")
+    if payload.get("error"):
+        print(f"error={payload['error']}", file=sys.stderr)
+    return 0 if bool(payload.get("ok", False)) else 1
+
+
+def _print_resize_table(payload: dict[str, object]) -> None:
+    print("STEP               STATUS    DETAILS")
+    for row in cast("list[dict[str, object]]", payload.get("steps", [])):
+        print(
+            f"{row.get('step', '-')!s:<18} "
+            f"{row.get('status', '-')!s:<8} "
+            f"{_resize_step_details(row)}",
+        )
+    if payload.get("rollback"):
+        print(f"\nRollback: {payload['rollback']}")
+
+
+def _resize_step_details(row: dict[str, object]) -> str:
+    parts: list[str] = []
+    for key in (
+        "command",
+        "output",
+        "latest",
+        "latest_time_before",
+        "latest_time_after",
+        "pid",
+        "log_path",
+        "error",
+    ):
+        value = row.get(key)
+        if value not in {None, ""}:
+            parts.append(f"{key}={value}")
+    if row.get("acknowledged") is not None:
+        parts.append(f"acknowledged={row['acknowledged']}")
+    if row.get("forced_stop"):
+        parts.append(f"forced_stop={row['forced_stop']}")
+    return " ".join(parts) or str(row.get("label", ""))
 
 
 def _run_tool(args: argparse.Namespace) -> int:
