@@ -13,6 +13,58 @@ def _make_case(path: Path) -> Path:
     return path
 
 
+def test_control_dict_edit_payload_requires_snapshot_to_apply(tmp_path: Path) -> None:
+    case = _make_case(tmp_path / "case")
+    control_dict = case / "system" / "controlDict"
+    control_dict.write_text("stopAt endTime;\ndeltaT 1;\n")
+
+    payload = svc.control_dict_edit_payload(
+        case,
+        {"stopAt": "writeNow", "deltaT": "0.5"},
+        apply=True,
+    )
+
+    assert payload["ok"] is False
+    assert payload["blocked"] is True
+    assert payload["applied"] is False
+    assert payload["snapshot_path"] is None
+    assert "-stopAt endTime;" in payload["diff"]
+    assert "+stopAt writeNow;" in payload["diff"]
+    assert "stopAt endTime;" in control_dict.read_text()
+
+
+def test_control_dict_edit_payload_snapshots_and_applies(tmp_path: Path) -> None:
+    case = _make_case(tmp_path / "case")
+    control_dict = case / "system" / "controlDict"
+    control_dict.write_text("stopAt endTime;\nendTime 10;\ndeltaT 1;\n")
+
+    payload = svc.control_dict_edit_payload(
+        case,
+        {"stopAt": "writeNow", "endTime": "20"},
+        write_snapshot=True,
+        apply=True,
+    )
+
+    assert payload["ok"] is True
+    assert payload["applied"] is True
+    assert payload["failures"] == []
+    assert payload["snapshot_path"]
+    assert Path(payload["snapshot_path"]).is_file()
+    text = control_dict.read_text()
+    assert "stopAt writeNow;" in text
+    assert "endTime 20;" in text
+
+
+def test_control_dict_edit_payload_rejects_unsupported_keys(tmp_path: Path) -> None:
+    case = _make_case(tmp_path / "case")
+    (case / "system" / "controlDict").write_text("stopAt endTime;\n")
+
+    payload = svc.control_dict_edit_payload(case, {"functions": "{}"})
+
+    assert payload["ok"] is False
+    assert payload["error"] == "unsupported controlDict keys: functions"
+
+
 def test_runtime_control_snapshot_reads_include_and_metrics(tmp_path: Path) -> None:
     case = _make_case(tmp_path / "case")
     include_file = case / "system" / "criteria.inc"
