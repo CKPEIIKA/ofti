@@ -129,12 +129,15 @@ def current_table_lines(payload: dict[str, Any]) -> list[str]:
     if payload.get("proc_access_warning"):
         lines.extend(_warning_lines(payload.get("proc_access_warning")))
     jobs = list(payload.get("jobs", []))
-    if jobs:
+    runs = list(payload.get("runs", []))
+    if runs:
+        lines.extend(["", "Runs", *runs_table_lines(runs)])
+    elif jobs:
         lines.extend(["", "Tracked jobs", *jobs_table_lines(jobs)])
     untracked = list(payload.get("untracked_processes", []))
     if untracked:
         lines.extend(["", "Untracked solver processes", *process_table_lines(untracked)])
-    if not jobs and not untracked:
+    if not runs and not jobs and not untracked:
         lines.append("No live jobs or solver processes detected.")
     return lines
 
@@ -171,6 +174,7 @@ def criteria_table_lines(rows: list[object]) -> list[str]:
             ("eta", "ETA(s)"),
             ("source", "Source"),
             ("unmet", "Unmet"),
+            ("reason", "Reason"),
         ],
     )
 
@@ -420,7 +424,10 @@ def jobs_payload_table_lines(payload: dict[str, Any]) -> list[str]:
         ],
     )
     jobs = list(payload.get("jobs", []))
-    if jobs:
+    runs = list(payload.get("runs", []))
+    if runs:
+        lines.extend(["", "Runs", *runs_table_lines(runs)])
+    elif jobs:
         lines.extend(["", "Jobs", *jobs_table_lines(jobs)])
     else:
         lines.append("No tracked jobs.")
@@ -550,6 +557,22 @@ def jobs_table_lines(rows: list[object]) -> list[str]:
             ("pid", "PID"),
             ("status", "Status"),
             ("case", "Case"),
+        ],
+    )
+
+
+def runs_table_lines(rows: list[object]) -> list[str]:
+    return render_table(
+        [_dict(row) for row in rows],
+        [
+            ("id", "ID"),
+            ("source", "Source"),
+            ("name", "Name"),
+            ("pid", "PID"),
+            ("launcher_pid", "Launcher"),
+            ("solver_pids", "Solvers"),
+            ("status", "Status"),
+            ("case_dir", "Case"),
         ],
     )
 

@@ -370,10 +370,10 @@ def _watch_jobs(args: argparse.Namespace) -> int:
         return 0
     if profile == "brief":
         print(f"case={payload['case']} kind={payload.get('kind', 'any')} count={payload['count']}")
-        for job in payload["jobs"]:
+        for job in payload.get("runs", payload["jobs"]):
             print(
                 f"- id={job.get('id')} kind={job.get('kind')} pid={job.get('pid')} "
-                f"status={job.get('status')}",
+                f"status={job.get('status')} source={job.get('source', 'registry')}",
             )
         return 0
     print(f"case={payload['case']}")
@@ -381,10 +381,11 @@ def _watch_jobs(args: argparse.Namespace) -> int:
     if not payload["jobs"]:
         print("No tracked jobs.")
         return 0
-    for job in payload["jobs"]:
+    for job in payload.get("runs", payload["jobs"]):
         print(
             f"{job.get('name', 'job')} kind={job.get('kind', 'unknown')} "
-            f"pid={job.get('pid', '?')} status={job.get('status', 'unknown')}",
+            f"pid={job.get('pid', '?')} status={job.get('status', 'unknown')} "
+            f"source={job.get('source', 'registry')}",
         )
     return 0
 
