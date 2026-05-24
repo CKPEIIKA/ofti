@@ -3,7 +3,8 @@ from __future__ import annotations
 import shlex
 from typing import Any
 
-from ofti.tools.runner import _show_message
+from ofti.foam.config import get_config, key_in
+from ofti.foam.exceptions import QuitAppError
 from ofti.ui_curses.inputs import prompt_input
 
 
@@ -35,3 +36,13 @@ def prompt_command_line(stdscr: Any, prompt: str) -> list[str] | None:
         _show_message(stdscr, "No command provided.")
         return None
     return args
+
+
+def _show_message(stdscr: Any, message: str) -> None:
+    stdscr.clear()
+    stdscr.addstr(message + "\n")
+    stdscr.addstr("Press any key to continue.\n")
+    stdscr.refresh()
+    key = stdscr.getch()
+    if key_in(key, get_config().keys.get("quit", [])):
+        raise QuitAppError()

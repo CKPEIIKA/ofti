@@ -5,10 +5,10 @@ from typing import Any
 
 from ofti.app.menu_utils import menu_choice
 from ofti.app.state import AppState, Screen
+from ofti.app.time_pruner import time_directory_pruner_screen
 from ofti.tools.cleaning_ops import clean_time_directories, remove_all_logs
 from ofti.tools.reconstruct import reconstruct_latest_once
 from ofti.tools.runner import _show_message
-from ofti.tools.time_pruner import time_directory_pruner_screen
 from ofti.ui.status import status_message
 from ofti.ui_curses.help import clean_case_help
 

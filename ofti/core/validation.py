@@ -1,11 +1,6 @@
 from collections.abc import Callable
 
-try:  # pragma: no cover - optional foamlib typing helpers
-    from foamlib.typing import Dimensioned as FoamlibDimensioned
-    from foamlib.typing import DimensionSet as FoamlibDimensionSet
-except Exception:  # pragma: no cover - foamlib missing or changed
-    FoamlibDimensioned = None  # type: ignore[assignment]
-    FoamlibDimensionSet = None  # type: ignore[assignment]
+from ofti.foamlib import adapter as foamlib_integration
 
 
 def non_empty(value: str) -> str | None:
@@ -81,11 +76,8 @@ def dimension_set_values(value: str) -> str | None:
     for part in parsed:
         if not float(part).is_integer():
             return "Dimensions entries must be integers."
-    if FoamlibDimensionSet is not None:
-        try:
-            FoamlibDimensionSet(*parsed)
-        except Exception:
-            return "Dimensions entries must be valid numbers."
+    if not foamlib_integration.validate_dimension_set(parsed):
+        return "Dimensions entries must be valid numbers."
     return None
 
 
@@ -111,11 +103,9 @@ def dimensioned_value(value: str) -> str | None:
             parsed = _parse_dimensioned_value(text)
             if parsed is None:
                 error = "Dimensioned value should be numeric or vector-like."
-    if error is None and parsed is not None and FoamlibDimensioned is not None:
+    if error is None and parsed is not None:
         dims, payload, _normalized = parsed
-        try:
-            FoamlibDimensioned(payload, dims)
-        except Exception:
+        if not foamlib_integration.validate_dimensioned_value(payload, dims):
             error = "Dimensioned value has invalid numeric/vector data."
     return error
 

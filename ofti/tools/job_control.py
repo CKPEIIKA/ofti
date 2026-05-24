@@ -5,7 +5,6 @@ from typing import Any
 
 from ofti.tools import watch_service
 from ofti.tools.cli_tools import run as run_ops
-from ofti.tools.input_prompts import prompt_command_line
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import (
     _show_message,
@@ -87,6 +86,12 @@ def _background_tool_catalog(case_path: Path) -> list[tuple[str, list[str]]]:
         base.append((resolved[0], resolved[1]))
     custom = [("[custom] command", [])]
     return base + custom
+
+
+def prompt_command_line(stdscr: Any, prompt: str) -> list[str] | None:
+    from importlib import import_module
+
+    return import_module("ofti.ui_curses.prompts").prompt_command_line(stdscr, prompt)
 
 
 def _start_background_command(

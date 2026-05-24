@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ofti.tools.input_prompts import prompt_args_line, prompt_line
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message, run_tool_command
+from ofti.ui_curses.prompts import prompt_args_line, prompt_line
 from ofti.ui_curses.viewer import Viewer
 
 

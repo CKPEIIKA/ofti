@@ -30,12 +30,12 @@ from ofti.tools import watch_service
 from ofti.tools.cleaning_utils import _require_wm_project_dir
 from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.helpers import resolve_openfoam_bashrc
-from ofti.tools.input_prompts import prompt_line
 from ofti.tools.runner import (
     _expand_shell_command,
     _show_message,
     _with_no_foam_hint,
 )
+from ofti.ui_curses.prompts import prompt_line
 from ofti.ui_curses.viewer import Viewer
 
 require_wm_project_dir = _require_wm_project_dir

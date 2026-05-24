@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core import pipeline as pipeline_service
-from ofti.tools.input_prompts import prompt_args_line, prompt_command_line, prompt_line
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message
 from ofti.tools.tool_catalog import tool_catalog
 from ofti.ui.status import status_message
+from ofti.ui_curses.prompts import prompt_args_line, prompt_command_line, prompt_line
 from ofti.ui_curses.viewer import Viewer
 
 PIPELINE_FILENAME = pipeline_service.PIPELINE_FILENAME

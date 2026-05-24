@@ -57,7 +57,6 @@ The final target is no UI imports below adapters and no direct upstream
 `tests/test_architecture_boundaries.py`:
 
 - TUI screen helpers still live under `ofti/tools/*`.
-- `foamlib.typing` is still used in entry metadata/validation.
 
 New code must not add to these lists. Cleanup should shrink them.
 

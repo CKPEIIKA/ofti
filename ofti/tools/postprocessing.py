@@ -7,9 +7,9 @@ from ofti.core import postprocessing as postprocessing_core
 from ofti.foamlib import postprocessing as foam_postprocessing
 from ofti.foamlib.parametric import build_parametric_cases
 from ofti.foamlib.runner import run_cases
-from ofti.tools.input_prompts import prompt_line
 from ofti.tools.menu_helpers import build_menu
 from ofti.tools.runner import _show_message, run_tool_command
+from ofti.ui_curses.prompts import prompt_line
 from ofti.ui_curses.viewer import Viewer
 
 
