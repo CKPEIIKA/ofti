@@ -65,6 +65,8 @@ def test_flight_deck_payload_degrades_without_running_solver(tmp_path: Path) -> 
     assert payload["control"]["values"]["deltaT"] == "1"
     assert payload["runtime_queue"][0]["key"] == "safe-stop"
     assert payload["runtime_queue"][0]["diff"][0].startswith("--- current")
+    assert payload["runtime_queue"][0]["edit_service"] == "control_dict_edit_payload"
+    assert payload["runtime_queue"][0]["snapshot_required"] is True
     assert any(row["key"] == "deltaT" and row["status"] == "idle" for row in payload["runtime_queue"])
 
 
