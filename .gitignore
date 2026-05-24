@@ -39,3 +39,5 @@ quality.txt
 **/0.[0-9]*e-[0-9]*/
 
 gui-overhaul.md
+
+.coverage
