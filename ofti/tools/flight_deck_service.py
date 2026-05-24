@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ofti.foamlib import adapter as foamlib_integration
-from ofti.tools import knife_service
+from ofti.tools import knife_service, runtime_control_service
 
 
 def flight_deck_payload(case_path: Path) -> dict[str, Any]:
@@ -34,6 +34,7 @@ def _control_dict_snapshot(case_path: Path) -> dict[str, Any]:
     keys = ("application", "startFrom", "startTime", "stopAt", "endTime", "deltaT", "writeInterval")
     values = {key: _read_control_entry(path, key) for key in keys}
     return {
+        "case": str(case_path),
         "path": "system/controlDict",
         "exists": path.is_file(),
         "values": values,
@@ -72,7 +73,7 @@ def _runtime_queue(
             "requires": "running solver; dictionary reread",
             "confirm": "wait for latest write and solver exit",
             "risk": "low",
-            "diff": _assignment_diff("stopAt", stop_at, "writeNow"),
+            **_runtime_edit_plan(control, {"stopAt": "writeNow"}),
         },
         {
             "key": "write-now",
@@ -83,7 +84,7 @@ def _runtime_queue(
             "requires": "running solver; snapshot first if preserving run state",
             "confirm": "watch log for write and restore stopAt if continuing",
             "risk": "medium",
-            "diff": _assignment_diff("stopAt", stop_at, "writeNow"),
+            **_runtime_edit_plan(control, {"stopAt": "writeNow"}),
         },
         {
             "key": "deltaT",
@@ -94,7 +95,7 @@ def _runtime_queue(
             "requires": f"runtimeModifiable={runtime_reload}; solver supports reread",
             "confirm": "watch log/next timestep for new deltaT",
             "risk": "medium",
-            "diff": _assignment_diff("deltaT", delta_t, "<new-deltaT>"),
+            **_runtime_edit_plan(control, {"deltaT": "<new-deltaT>"}),
         },
         {
             "key": "endTime",
@@ -105,7 +106,7 @@ def _runtime_queue(
             "requires": f"runtimeModifiable={runtime_reload}; solver supports reread",
             "confirm": "watch status ETA/end time refresh",
             "risk": "low",
-            "diff": _assignment_diff("endTime", end_time, "<new-endTime>"),
+            **_runtime_edit_plan(control, {"endTime": "<new-endTime>"}),
         },
         {
             "key": "pause",
@@ -175,10 +176,14 @@ def _runtime_modifiable(path: Path) -> bool | None:
     return None
 
 
-def _assignment_diff(key: str, old: str, new: str) -> list[str]:
-    return [
-        "--- current system/controlDict",
-        "+++ proposed system/controlDict",
-        f"-{key} {old};",
-        f"+{key} {new};",
-    ]
+def _runtime_edit_plan(control: dict[str, Any], updates: dict[str, str]) -> dict[str, Any]:
+    control_path = Path(str(control.get("case") or ".")) / "system" / "controlDict"
+    case_path = control_path.parent.parent
+    payload = runtime_control_service.control_dict_edit_payload(case_path, updates)
+    return {
+        "diff": list(payload.get("diff") or []),
+        "edit_service": "control_dict_edit_payload",
+        "snapshot_required": True,
+        "apply_mode": "snapshot+confirm",
+        "edit_error": payload.get("error"),
+    }
