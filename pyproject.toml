@@ -28,6 +28,7 @@ addopts = "--cov=ofti --cov-report=term-missing --cov-fail-under=85"
 norecursedirs = ["refs"]
 markers = [
     "real_openfoam: opt-in tests that launch real OpenFOAM/PyFoam commands",
+    "slow: slow integration tests excluded unless --runslow is passed",
 ]
 
 [tool.coverage.run]

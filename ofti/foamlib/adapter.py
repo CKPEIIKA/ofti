@@ -36,6 +36,18 @@ def available() -> bool:
     return FOAMLIB_AVAILABLE or fallback.available()
 
 
+def clone_case_directory(source: Path, destination: Path) -> Path | None:
+    if not FOAMLIB_AVAILABLE:
+        return None
+    try:
+        from foamlib import FoamCase
+
+        cloned = FoamCase(source).clone(destination)
+    except Exception:
+        return None
+    return Path(getattr(cloned, "path", destination)).expanduser().resolve()
+
+
 def is_foam_file(path: Path) -> bool:
     try:
         head = path.read_text(errors="ignore")[:2048]
