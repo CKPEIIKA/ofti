@@ -342,6 +342,8 @@ def test_watch_jobs_payload_schema_and_kind_filter(monkeypatch: pytest.MonkeyPat
     assert row["detached"] is True
     assert row["case_dir"] == str(case.resolve())
     assert str(row["log_path"]).endswith("log.watcher")
+    assert payload["runs"][0]["source"] == "registry"
+    assert payload["runs"][0]["launcher_pid"] == 22
 
     with pytest.raises(ValueError, match="unsupported job kind"):
         watch.jobs_payload(case, include_all=True, kind="bad")

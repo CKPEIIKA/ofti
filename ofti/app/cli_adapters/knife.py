@@ -960,25 +960,49 @@ def _print_knife_current(payload: dict[str, object]) -> None:
         print("solver=<mixed>")
     if payload.get("proc_access_warning"):
         print(f"proc_access_warning={payload['proc_access_warning']}")
-    if not payload["jobs"]:
+    visibility = payload.get("process_visibility")
+    if isinstance(visibility, dict) and visibility.get("message"):
+        print(f"process_visibility={visibility['message']}")
+    runs = list(payload.get("runs", []))
+    if runs:
+        _print_current_runs(runs)
+    elif not payload["jobs"]:
         print("No tracked running jobs.")
     else:
-        print("tracked_jobs:")
-        for job in payload["jobs"]:
-            print(
-                f"- {job.get('name', 'job')} pid={job.get('pid', '?')} "
-                f"status={job.get('status', 'unknown')}",
-            )
-    if payload["untracked_processes"]:
-        print("untracked_solver_processes:")
-        for process in payload["untracked_processes"]:
-            print(
-                f"- pid={process['pid']} solver={process['solver']} "
-                f"role={process.get('role')} case={process.get('case')} "
-                f"launcher_pid={process.get('launcher_pid')} cmd={process['command']}",
-            )
-    else:
+        _print_current_jobs(list(payload["jobs"]))
+    _print_current_untracked(list(payload["untracked_processes"]))
+
+def _print_current_runs(runs: list[object]) -> None:
+    print("runs:")
+    for run_obj in runs:
+        run = cast("dict[str, object]", run_obj)
+        print(
+            f"- {run.get('name', 'run')} pid={run.get('pid', '?')} "
+            f"source={run.get('source')} status={run.get('status', 'unknown')} "
+            f"launcher_pid={run.get('launcher_pid')} solvers={run.get('solver_pids', [])}",
+        )
+
+def _print_current_jobs(jobs: list[object]) -> None:
+    print("tracked_jobs:")
+    for job_obj in jobs:
+        job = cast("dict[str, object]", job_obj)
+        print(
+            f"- {job.get('name', 'job')} pid={job.get('pid', '?')} "
+            f"status={job.get('status', 'unknown')}",
+        )
+
+def _print_current_untracked(processes: list[object]) -> None:
+    if not processes:
         print("untracked_solver_processes=none")
+        return
+    print("untracked_solver_processes:")
+    for process_obj in processes:
+        process = cast("dict[str, object]", process_obj)
+        print(
+            f"- pid={process['pid']} solver={process['solver']} "
+            f"role={process.get('role')} case={process.get('case')} "
+            f"launcher_pid={process.get('launcher_pid')} cmd={process['command']}",
+        )
 
 def _knife_current_scope_payload(
     case_dir: Path,

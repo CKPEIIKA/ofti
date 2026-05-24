@@ -162,6 +162,8 @@ ofti knife current --root . --recursive --live --json
 - `jobs_tracked_running`: tracked jobs from OFTI registry only.
 - `jobs_running`: tracked + live untracked solver processes.
 - `jobs_total`: tracked jobs + currently discovered untracked running processes.
+- `runs`: canonical run view that collapses a launcher/wrapper and solver ranks
+  into one row where OFTI can identify the process group.
 
 Bulk-adopt externally launched runs under repo root:
 
@@ -185,10 +187,17 @@ ofti knife run CASE --parallel 2 --sync-subdomains --prepare-parallel --json
 - `--prepare-parallel` runs parallel prelaunch (`decomposePar -force`, optional cleanup).
 - Optional opt-out flags: `--no-sync-subdomains`, `--no-prepare-parallel`.
 
+Adopted runs are normalized into the same run registry used by `watch jobs`,
+`knife current`, and `knife status`. When procfs access is limited, OFTI reports
+that live process discovery may be incomplete instead of silently treating the
+registry as empty.
+
 Runtime criteria now respect explicit runTimeControl gate messages in logs:
 
 - `Conditions not met` prevents premature auto-pass from numeric-only checks.
 - Criteria stay `unknown`/unmet until gate lines report conditions are met.
+- Unknown criteria include a reason such as not enough samples, no matching log
+  samples, startup window, or unavailable trend.
 
 For very large logs, analysis/tail paths use bounded recent log windows to stay
 responsive, and the TUI log viewer falls back to a bounded tail view for very

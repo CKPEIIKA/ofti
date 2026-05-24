@@ -330,6 +330,7 @@ def test_knife_current_live_and_report_payloads(
     criteria = knife.criteria_payload(case, lightweight=True, tail_bytes=2048)
     assert criteria["criteria_count"] == 1
     assert criteria["criteria"][0]["unmet"] == "window"
+    assert criteria["criteria"][0]["reason"] == "window"
     assert seen["lightweight"] is True
     assert seen["tail_bytes"] == 2048
 
@@ -344,6 +345,21 @@ def test_knife_current_live_and_report_payloads(
     md = knife.report_markdown(report)
     assert "## Criteria" in md
     assert "criteria_seconds: 12.0" in md
+
+
+def test_criteria_unknown_reason_explains_missing_samples() -> None:
+    assert (
+        knife_service.criteria_unknown_reason(
+            {"status": "unknown", "unmet_reason": "not_enough_samples", "samples": 2},
+        )
+        == "not enough samples: 2 observed"
+    )
+    assert (
+        knife_service.criteria_unknown_reason(
+            {"status": "unknown", "live_value": None, "live_delta": None},
+        )
+        == "no matching runtime samples in log"
+    )
 
 
 def test_knife_current_scope_payload_tree_aggregates_jobs_and_untracked(
