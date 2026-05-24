@@ -1,7 +1,7 @@
 from pathlib import Path
 
+from ofti.app.tool_screens import pipeline
 from ofti.core import pipeline as pipeline_service
-from ofti.tools import pipeline
 
 
 def test_pipeline_catalog_includes_common_steps(tmp_path: Path) -> None:

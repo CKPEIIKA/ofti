@@ -7,8 +7,8 @@ from typing import cast
 
 from ofti.app import task_utils
 from ofti.app.state import AppState
+from ofti.app.tool_screens import zero_ops
 from ofti.foam.tasks import Task
-from ofti.tools import zero_ops
 
 
 def test_task_running_checks_thread_status() -> None:

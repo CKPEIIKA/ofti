@@ -5,14 +5,14 @@ from typing import Any
 
 from ofti.app.menu_utils import has_processor_dirs, menu_choice
 from ofti.app.state import AppState, Screen
-from ofti.tools.menus import run_tool_by_name
-from ofti.tools.mesh_utils import (
+from ofti.app.tool_screens.menus import run_tool_by_name
+from ofti.app.tool_screens.mesh_utils import (
     cfmesh_screen,
     renumber_mesh_screen,
     transform_points_screen,
 )
-from ofti.tools.reconstruct import reconstruct_manager_screen
-from ofti.tools.run import run_checkmesh
+from ofti.app.tool_screens.reconstruct import reconstruct_manager_screen
+from ofti.app.tool_screens.run import run_checkmesh
 from ofti.ui_curses.blockmesh_helper import blockmesh_helper_screen
 from ofti.ui_curses.help import preprocessing_help
 from ofti.ui_curses.snappy_toggle import snappy_staged_screen

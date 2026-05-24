@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens.runner import _show_message
 from ofti.core.case import set_start_from_latest
 from ofti.core.times import latest_time
-from ofti.tools.runner import _show_message
 
 
 def safe_stop_screen(stdscr: Any, case_path: Path) -> None:

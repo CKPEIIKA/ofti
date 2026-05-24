@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import run_tool_command
+from ofti.app.tool_screens.menu_helpers import build_menu
+from ofti.app.tool_screens.runner import run_tool_command
 from ofti.ui_curses.prompts import prompt_args_line
 from ofti.ui_curses.tool_dicts_ui import _ensure_tool_dict, _open_dict_preview
 

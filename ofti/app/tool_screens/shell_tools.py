@@ -5,10 +5,15 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens.menu_helpers import build_menu
+from ofti.app.tool_screens.runner import (
+    _run_shell_tool,
+    _show_message,
+    get_last_tool_run,
+    run_tool_command,
+)
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.tools.job_registry import refresh_jobs
-from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import _run_shell_tool, _show_message, get_last_tool_run, run_tool_command
 
 
 def job_status_poll_screen(stdscr: Any, case_path: Path) -> None:

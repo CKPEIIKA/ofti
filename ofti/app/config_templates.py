@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens.menu_helpers import build_menu
 from ofti.core.templates import write_example_template
 from ofti.core.versioning import get_dict_path
-from ofti.tools.menu_helpers import build_menu
 from ofti.ui_curses.prompts import _show_message
 
 

@@ -8,8 +8,7 @@ from typing import Any
 
 from ofti.app import case_ops, logs_analysis, logs_fields, time_pruner
 from ofti.app.menus import case_tools as shared_case_tools
-from ofti.tools import (
-    case_doctor,
+from ofti.app.tool_screens import (
     cleaning_ops,
     diagnostics,
     job_control,
@@ -28,18 +27,18 @@ from ofti.tools import (
     tool_dicts_postprocess,
     yplus,
 )
-from ofti.tools.cli_tools import run as run_ops
-from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import (
+from ofti.app.tool_screens.menu_helpers import build_menu
+from ofti.app.tool_screens.runner import (
     _no_foam_active,
     _show_message,
     get_last_tool_run,
     last_tool_status_line,
-    load_postprocessing_presets,
-    load_tool_presets,
     run_tool_command,
     tool_status_mode,
 )
+from ofti.core.tool_presets import load_postprocessing_presets, load_tool_presets
+from ofti.tools import case_doctor
+from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.tool_aliases import STATIC_TOOL_ALIAS_GROUPS
 from ofti.ui.help import menu_hint, tools_help, tools_physics_help
 from ofti.ui_curses.blockmesh_helper import blockmesh_helper_screen

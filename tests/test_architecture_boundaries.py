@@ -9,24 +9,7 @@ UPSTREAM_FOAMLIB = "foamlib"
 # Legacy TUI-screen modules still live under ofti/tools. This list makes the
 # debt explicit and prevents it from spreading while the lib/adapter split is
 # completed.
-KNOWN_UI_IN_TOOLS = {
-    Path("ofti/tools/diagnostics.py"),
-    Path("ofti/tools/logs_probes.py"),
-    Path("ofti/tools/logs_view.py"),
-    Path("ofti/tools/menu_helpers.py"),
-    Path("ofti/tools/menus.py"),
-    Path("ofti/tools/mesh_utils.py"),
-    Path("ofti/tools/parametric.py"),
-    Path("ofti/tools/pipeline.py"),
-    Path("ofti/tools/postprocessing.py"),
-    Path("ofti/tools/run.py"),
-    Path("ofti/tools/runner.py"),
-    Path("ofti/tools/solver.py"),
-    Path("ofti/tools/tool_dicts_foamcalc.py"),
-    Path("ofti/tools/tool_dicts_postprocess.py"),
-    Path("ofti/tools/tool_dicts_prompts.py"),
-    Path("ofti/tools/yplus.py"),
-}
+KNOWN_UI_IN_TOOLS: set[Path] = set()
 KNOWN_DIRECT_FOAMLIB: set[Path] = set()
 
 

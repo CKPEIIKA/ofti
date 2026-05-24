@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.tool_output import CommandResult, format_command_result, format_log_blob
+from ofti.core.tool_presets import load_presets_from_path
 from ofti.foam.config import get_config, key_in
 from ofti.foam.exceptions import QuitAppError
 from ofti.foam.subprocess_utils import run_trusted
@@ -91,33 +92,7 @@ def _maybe_job_hint(name: str) -> str | None:
 
 
 def _load_presets_from_path(cfg_path: Path) -> list[tuple[str, list[str]]]:
-    """Load tool presets from a colon-delimited config file.
-    """
-    presets: list[tuple[str, list[str]]] = []
-    if not cfg_path.is_file():
-        return presets
-
-    try:
-        for raw_line in cfg_path.read_text().splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if ":" not in line:
-                continue
-            name, cmd_str = line.split(":", 1)
-            name = name.strip()
-            cmd_str = cmd_str.strip()
-            if not name or not cmd_str:
-                continue
-            try:
-                cmd = shlex.split(cmd_str)
-            except ValueError:
-                continue
-            presets.append((name, cmd))
-    except OSError:
-        return presets
-
-    return presets
+    return load_presets_from_path(cfg_path)
 
 
 def _normalize_tool_name(name: str) -> str:
@@ -142,26 +117,6 @@ def _show_message(stdscr: Any, message: str) -> None:
     key = stdscr.getch()
     if key_in(key, get_config().keys.get("quit", [])):
         raise QuitAppError()
-
-
-def load_tool_presets(case_path: Path) -> list[tuple[str, list[str]]]:
-    """Load extra tools from an optional per-case file `ofti.tools`.
-
-    Format (one per line, lines starting with # are ignored):
-      name: command with args
-    Example:
-      simpleFoam: simpleFoam -case .
-    """
-    cfg_path = case_path / "ofti.tools"
-    return _load_presets_from_path(cfg_path)
-
-
-def load_postprocessing_presets(case_path: Path) -> list[tuple[str, list[str]]]:
-    """Load optional post-processing commands from `ofti.postprocessing`.
-    Same format as `ofti.tools`.
-    """
-    cfg_path = case_path / "ofti.postprocessing"
-    return _load_presets_from_path(cfg_path)
 
 
 def _expand_command(cmd: list[str], case_path: Path) -> list[str]:

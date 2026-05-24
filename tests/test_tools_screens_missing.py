@@ -8,8 +8,7 @@ import pytest
 from ofti.app import logs_analysis, logs_fields
 from ofti.app.case_ops import open_paraview_screen
 from ofti.app.time_pruner import time_directory_pruner_screen
-from ofti.foamlib import adapter as foamlib_integration
-from ofti.tools import (
+from ofti.app.tool_screens import (
     logs_probes,
     logs_view,
     pipeline,
@@ -17,13 +16,14 @@ from ofti.tools import (
     reconstruct,
     run,
 )
-from ofti.tools.diagnostics import case_report_screen
-from ofti.tools.job_control import run_tool_background_screen, stop_job_screen
-from ofti.tools.run import run_checkmesh, run_decomposepar
-from ofti.tools.solver import run_current_solver_live
-from ofti.tools.solver_control import safe_stop_screen, solver_resurrection_screen
-from ofti.tools.tool_dicts_prompts import set_fields_prompt
-from ofti.tools.yplus import yplus_screen
+from ofti.app.tool_screens.diagnostics import case_report_screen
+from ofti.app.tool_screens.job_control import run_tool_background_screen, stop_job_screen
+from ofti.app.tool_screens.run import run_checkmesh, run_decomposepar
+from ofti.app.tool_screens.solver import run_current_solver_live
+from ofti.app.tool_screens.solver_control import safe_stop_screen, solver_resurrection_screen
+from ofti.app.tool_screens.tool_dicts_prompts import set_fields_prompt
+from ofti.app.tool_screens.yplus import yplus_screen
+from ofti.foamlib import adapter as foamlib_integration
 from ofti.ui_curses.viewer import Viewer
 from tests.testscreen import TestScreen as FakeScreen
 
@@ -43,7 +43,7 @@ def test_logs_screen_and_tail(monkeypatch, tmp_path: Path) -> None:
     log_path.write_text("Time = 0.1\n")
     pick = iter([log_path, None])
     monkeypatch.setattr(
-        "ofti.tools.logs_view._select_log_file",
+        "ofti.app.tool_screens.logs_view._select_log_file",
         lambda *_a, **_k: next(pick),
     )
     monkeypatch.setattr(Viewer, "display", lambda *_: None)
@@ -62,7 +62,7 @@ def test_logs_screen_analysis_shortcut(monkeypatch, tmp_path: Path) -> None:
     choices = iter([2, 3])
     monkeypatch.setattr("ofti.ui_curses.menus.Menu.navigate", lambda *_: next(choices))
     monkeypatch.setattr(
-        "ofti.tools.logs_view.log_analysis_screen",
+        "ofti.app.tool_screens.logs_view.log_analysis_screen",
         lambda *_a, **_k: called.__setitem__("analysis", True),
     )
     logs_view.logs_screen(FakeScreen(), case_dir)
@@ -84,7 +84,7 @@ def test_log_analysis_and_residuals(monkeypatch, tmp_path: Path) -> None:
         ),
     )
     monkeypatch.setattr(
-        "ofti.tools.logs_select._select_solver_log_file",
+        "ofti.app.tool_screens.logs_select._select_solver_log_file",
         lambda *_a, **_k: log_path,
     )
     monkeypatch.setattr(Viewer, "display", lambda *_: None)
@@ -97,8 +97,8 @@ def test_run_checkmesh_and_decompose(monkeypatch, tmp_path: Path) -> None:
     (case_dir / "system").mkdir(parents=True)
     (case_dir / "system" / "decomposeParDict").write_text("numberOfSubdomains 2;\n")
     completed = types.SimpleNamespace(returncode=0, stdout="Mesh OK", stderr="")
-    monkeypatch.setattr("ofti.tools.run.run_tool_command_capture", lambda *_a, **_k: completed)
-    monkeypatch.setattr("ofti.tools.run.run_tool_command", lambda *_a, **_k: None)
+    monkeypatch.setattr("ofti.app.tool_screens.run.run_tool_command_capture", lambda *_a, **_k: completed)
+    monkeypatch.setattr("ofti.app.tool_screens.run.run_tool_command", lambda *_a, **_k: None)
     monkeypatch.setattr(Viewer, "display", lambda *_: None)
     run_checkmesh(FakeScreen(keys=[ord("h")]), case_dir)
     run_decomposepar(FakeScreen(), case_dir)
@@ -113,11 +113,11 @@ def test_run_current_solver_live(monkeypatch, tmp_path: Path) -> None:
     (zero_dir / "U").write_text("internalField uniform (0 0 0);\n")
     (zero_dir / "p").write_text("internalField uniform 0;\n")
     called = {}
-    monkeypatch.setattr("ofti.tools.solver.resolve_openfoam_bashrc", lambda: None)
-    monkeypatch.setattr("ofti.tools.solver.require_wm_project_dir", lambda *_: None)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.resolve_openfoam_bashrc", lambda: None)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.require_wm_project_dir", lambda *_: None)
     monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_a, **_k: "simpleFoam;")
     monkeypatch.setattr(
-        "ofti.tools.solver._run_solver_live_cmd",
+        "ofti.app.tool_screens.solver._run_solver_live_cmd",
         lambda *_a, **_k: called.setdefault("run", True),
     )
     run_current_solver_live(FakeScreen(), case_dir)
@@ -131,7 +131,7 @@ def test_solver_controls(monkeypatch, tmp_path: Path) -> None:
     (case_dir / "1").mkdir()
     safe_stop_screen(FakeScreen(), case_dir)
     assert (case_dir / "stop").is_file()
-    monkeypatch.setattr("ofti.tools.solver_control.set_start_from_latest", lambda *_: True)
+    monkeypatch.setattr("ofti.app.tool_screens.solver_control.set_start_from_latest", lambda *_: True)
     solver_resurrection_screen(FakeScreen(), case_dir)
 
 
@@ -186,8 +186,8 @@ def test_time_pruner_and_setfields(monkeypatch, tmp_path: Path) -> None:
 
     (case_dir / "system").mkdir(exist_ok=True)
     (case_dir / "system" / "setFieldsDict").write_text("defaultFieldValues();\n")
-    monkeypatch.setattr("ofti.tools.tool_dicts_prompts.run_tool_command", lambda *_a, **_k: None)
-    monkeypatch.setattr("ofti.tools.tool_dicts_prompts.prompt_args_line", lambda *_: [])
+    monkeypatch.setattr("ofti.app.tool_screens.tool_dicts_prompts.run_tool_command", lambda *_a, **_k: None)
+    monkeypatch.setattr("ofti.app.tool_screens.tool_dicts_prompts.prompt_args_line", lambda *_: [])
     set_fields_prompt(FakeScreen(), case_dir)
 
 
@@ -195,7 +195,7 @@ def test_yplus_screen(monkeypatch, tmp_path: Path) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
     monkeypatch.setattr(
-        "ofti.tools.yplus._run_tool_capture",
+        "ofti.app.tool_screens.yplus._run_tool_capture",
         lambda *_a, **_k: ("y+ min 1 max 2 avg 1.5", ""),
     )
     yplus_screen(FakeScreen(keys=[ord("h")]), case_dir)
@@ -227,7 +227,7 @@ def test_pipeline_editor_and_sampling(monkeypatch, tmp_path: Path) -> None:
     (case_dir / "system").mkdir()
     (case_dir / "system" / "topoSetDict").write_text("actions();\n")
     monkeypatch.setattr("ofti.ui_curses.menus.Menu.navigate", lambda *_: 0)
-    monkeypatch.setattr("ofti.tools.postprocessing.run_tool_command", lambda *_a, **_k: None)
+    monkeypatch.setattr("ofti.app.tool_screens.postprocessing.run_tool_command", lambda *_a, **_k: None)
     postprocessing.sampling_sets_screen(FakeScreen(), case_dir)
 
 
@@ -236,10 +236,10 @@ def test_parametric_presets_screen(monkeypatch, tmp_path: Path) -> None:
     case_dir.mkdir()
     presets = case_dir / "ofti.parametric"
     presets.write_text("demo | system/controlDict | application | simpleFoam\n")
-    monkeypatch.setattr("ofti.tools.postprocessing.build_parametric_cases", lambda *_a, **_k: [case_dir])
-    monkeypatch.setattr("ofti.tools.postprocessing.run_cases", lambda *_a, **_k: [])
+    monkeypatch.setattr("ofti.app.tool_screens.postprocessing.build_parametric_cases", lambda *_a, **_k: [case_dir])
+    monkeypatch.setattr("ofti.app.tool_screens.postprocessing.run_cases", lambda *_a, **_k: [])
     monkeypatch.setattr("ofti.ui_curses.menus.Menu.navigate", lambda *_: 0)
-    monkeypatch.setattr("ofti.tools.postprocessing.prompt_line", lambda *_: "n")
+    monkeypatch.setattr("ofti.app.tool_screens.postprocessing.prompt_line", lambda *_: "n")
     monkeypatch.setattr("ofti.ui_curses.viewer.Viewer.display", lambda *_: None)
     postprocessing.parametric_presets_screen(FakeScreen(), case_dir)
 
@@ -251,12 +251,12 @@ def test_parametric_presets_screen(monkeypatch, tmp_path: Path) -> None:
 def test_parametric_study_screen(monkeypatch, tmp_path: Path) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    monkeypatch.setattr("ofti.tools.parametric.build_parametric_cases", lambda *_a, **_k: [case_dir])
-    monkeypatch.setattr("ofti.tools.parametric.run_cases", lambda *_a, **_k: [])
-    monkeypatch.setattr("ofti.tools.parametric.prompt_line", lambda *_: "application")
+    monkeypatch.setattr("ofti.app.tool_screens.parametric.build_parametric_cases", lambda *_a, **_k: [case_dir])
+    monkeypatch.setattr("ofti.app.tool_screens.parametric.run_cases", lambda *_a, **_k: [])
+    monkeypatch.setattr("ofti.app.tool_screens.parametric.prompt_line", lambda *_: "application")
     monkeypatch.setattr("ofti.ui_curses.viewer.Viewer.display", lambda *_: None)
     monkeypatch.setattr("ofti.ui_curses.menus.fzf_enabled", lambda: False)
-    from ofti.tools.parametric import foamlib_parametric_study_screen
+    from ofti.app.tool_screens.parametric import foamlib_parametric_study_screen
     screen = FakeScreen(inputs=["system/controlDict", "application", "simpleFoam", "n"])
     foamlib_parametric_study_screen(screen, case_dir)
 
@@ -265,11 +265,11 @@ def test_reconstruct_and_parallel_screens(monkeypatch, tmp_path: Path) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
     (case_dir / "processor0").mkdir()
-    monkeypatch.setattr("ofti.tools.reconstruct.run_tool_command", lambda *_a, **_k: None)
+    monkeypatch.setattr("ofti.app.tool_screens.reconstruct.run_tool_command", lambda *_a, **_k: None)
     monkeypatch.setattr("ofti.ui_curses.menus.Menu.navigate", lambda *_: 0)
     reconstruct.reconstruct_manager_screen(FakeScreen(), case_dir)
 
-    monkeypatch.setattr("ofti.tools.reconstruct.run_trusted", lambda *_a, **_k: types.SimpleNamespace(returncode=0, stdout="", stderr=""))
+    monkeypatch.setattr("ofti.app.tool_screens.reconstruct.run_trusted", lambda *_a, **_k: types.SimpleNamespace(returncode=0, stdout="", stderr=""))
     ok, _ = reconstruct.reconstruct_latest_once(case_dir)
     assert ok
 
@@ -279,6 +279,6 @@ def test_reconstruct_and_parallel_screens(monkeypatch, tmp_path: Path) -> None:
 def test_job_status_poll_screen(monkeypatch, tmp_path: Path) -> None:
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    from ofti.tools.shell_tools import job_status_poll_screen
+    from ofti.app.tool_screens.shell_tools import job_status_poll_screen
 
     job_status_poll_screen(FakeScreen(keys=[ord("h")]), case_dir)

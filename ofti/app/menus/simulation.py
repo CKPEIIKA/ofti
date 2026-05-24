@@ -15,18 +15,18 @@ from ofti.app.menus.case_tools import (
     show_runtime_report_screen,
 )
 from ofti.app.state import AppState, Screen
-from ofti.foamlib.parametric import preprocessing_available
-from ofti.tools.job_control import pause_job_screen, resume_job_screen, stop_job_screen
-from ofti.tools.parametric import foamlib_parametric_study_screen
-from ofti.tools.pipeline import pipeline_editor_screen, pipeline_runner_screen
-from ofti.tools.solver import (
+from ofti.app.tool_screens.job_control import pause_job_screen, resume_job_screen, stop_job_screen
+from ofti.app.tool_screens.parametric import foamlib_parametric_study_screen
+from ofti.app.tool_screens.pipeline import pipeline_editor_screen, pipeline_runner_screen
+from ofti.app.tool_screens.solver import (
     run_current_solver_live,
     run_current_solver_live_custom_log,
     run_current_solver_parallel,
     solver_job_running,
     solver_status_line,
 )
-from ofti.tools.solver_control import safe_stop_screen, solver_resurrection_screen
+from ofti.app.tool_screens.solver_control import safe_stop_screen, solver_resurrection_screen
+from ofti.foamlib.parametric import preprocessing_available
 from ofti.ui_curses.help import simulation_help
 
 

@@ -7,11 +7,11 @@ from pathlib import Path
 import pytest
 
 from ofti.app import helpers
+from ofti.app.tool_screens import tool_dicts_foamcalc as foamcalc
+from ofti.app.tool_screens import tool_dicts_postprocess as postprocess
+from ofti.app.tool_screens import tool_dicts_prompts as prompts
 from ofti.foam.config import Config
 from ofti.foam.exceptions import QuitAppError
-from ofti.tools import tool_dicts_foamcalc as foamcalc
-from ofti.tools import tool_dicts_postprocess as postprocess
-from ofti.tools import tool_dicts_prompts as prompts
 from ofti.ui_curses import blockmesh_helper as bmh
 from ofti.ui_curses import initial_conditions as ic
 

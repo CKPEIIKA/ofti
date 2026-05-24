@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.tools import job_control, job_control_service, watch_service
+from ofti.app.tool_screens import job_control
+from ofti.tools import job_control_service, watch_service
 from ofti.tools.cli_tools import watch
 
 

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.tools import job_control_service, knife_service, runtime_control_service, watch_service
+from ofti.tools import (
+    job_control_service,
+    knife_service,
+    runtime_control_service,
+    watch_service,
+)
 from ofti.tools.cli_tools import knife, watch
 
 
