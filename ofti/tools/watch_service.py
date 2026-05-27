@@ -419,6 +419,8 @@ def stop_payload(
             signal_name=signal_name,
             kill_fn=os.kill,
             finish_job_fn=finish_job,
+            killpg_fn=os.killpg,
+            getpgid_fn=os.getpgid,
         ),
     )
 
@@ -753,6 +755,8 @@ def external_watch_stop_payload(
         signal_name=signal_name,
         kill_fn=os.kill,
         finish_job_fn=finish_job,
+        killpg_fn=os.killpg,
+        getpgid_fn=os.getpgid,
     )
     return {
         "case": str(case_path),
@@ -993,7 +997,7 @@ def _job_with_schema(case_path: Path, job: dict[str, Any]) -> dict[str, Any]:
     row["kind"] = kind
     row["case_dir"] = str(case_path)
     row["running"] = status in {"running", "paused"}
-    row["detached"] = bool(job.get("detached", kind == _SOLVER_KIND))
+    row["detached"] = bool(job.get("detached", False))
     row["log_path"] = _job_log_path(case_path, job)
     return row
 

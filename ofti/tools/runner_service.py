@@ -40,7 +40,7 @@ def execute_case_command(
     with_bashrc_fn: Callable[[str], str],
     run_trusted_fn: Callable[..., _RunTrustedResult],
     popen_fn: Callable[..., _PopenResult],
-    register_job_fn: Callable[[Path, str, int, str, Path | None], object],
+    register_job_fn: Callable[..., object],
 ) -> RunResult:
     command_text = " ".join(shlex.quote(part) for part in cmd)
     shell_cmd = with_bashrc_fn(command_text)
@@ -72,7 +72,15 @@ def execute_case_command(
             chosen_pid_path = pid_path if pid_path.is_absolute() else case_path / pid_path
             chosen_pid_path.parent.mkdir(parents=True, exist_ok=True)
             chosen_pid_path.write_text(f"{process_pid}\n")
-        register_job_fn(case_path, name, process_pid, shell_cmd, chosen_log_path)
+        _register_background_job(
+            register_job_fn,
+            case_path,
+            name,
+            process_pid,
+            shell_cmd,
+            chosen_log_path,
+            detached=detached,
+        )
         return RunResult(0, "", "", pid=process_pid, log_path=chosen_log_path)
 
     result = run_trusted_fn(
@@ -98,3 +106,19 @@ def dry_run_command(cmd: list[str], *, with_bashrc_fn: Callable[[str], str]) -> 
 def safe_name(value: str) -> str:
     safe = "".join(ch for ch in value if ch.isalnum() or ch in {"-", "_", "."})
     return safe or "tool"
+
+
+def _register_background_job(
+    register_job_fn: Callable[..., object],
+    case_path: Path,
+    name: str,
+    pid: int,
+    command: str,
+    log_path: Path | None,
+    *,
+    detached: bool,
+) -> None:
+    try:
+        register_job_fn(case_path, name, pid, command, log_path, detached=detached)
+    except TypeError:
+        register_job_fn(case_path, name, pid, command, log_path)

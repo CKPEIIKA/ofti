@@ -1273,8 +1273,15 @@ def _stop_untracked_solver_processes(case_path: Path, *, signal_name: str) -> di
         should_stop = pid in launchers or pid in solver_pids
         if not should_stop:
             continue
+        method = "process"
+        pgid: int | None = None
         try:
-            os.kill(pid, signal_code)
+            if role == "launcher" and os.getpgid(pid) == pid:
+                os.killpg(pid, signal_code)
+                method = "process_group"
+                pgid = pid
+            else:
+                os.kill(pid, signal_code)
         except OSError as exc:
             failed.append(
                 {
@@ -1288,19 +1295,21 @@ def _stop_untracked_solver_processes(case_path: Path, *, signal_name: str) -> di
                 },
             )
             continue
-        stopped.append(
-            {
-                "id": None,
-                "pid": pid,
-                "name": f"untracked-{role}",
-                "kind": "untracked",
-                "role": role,
-                "case": case_str,
-                "launcher_pid": row.get("launcher_pid"),
-                "solver_pids": row.get("solver_pids", []),
-                "command": row.get("command"),
-            },
-        )
+        stopped_row = {
+            "id": None,
+            "pid": pid,
+            "name": f"untracked-{role}",
+            "kind": "untracked",
+            "role": role,
+            "case": case_str,
+            "launcher_pid": row.get("launcher_pid"),
+            "solver_pids": row.get("solver_pids", []),
+            "command": row.get("command"),
+            "method": method,
+        }
+        if pgid is not None:
+            stopped_row["pgid"] = pgid
+        stopped.append(stopped_row)
     return {
         "case": case_str,
         "selected": len(stopped) + len(failed),

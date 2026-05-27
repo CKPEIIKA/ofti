@@ -1095,8 +1095,10 @@ def _knife_stop(args: argparse.Namespace) -> int:
     if payload["stopped"]:
         print("stopped:")
         for row in payload["stopped"]:
+            method = row.get("method", "process")
+            pgid = f" pgid={row['pgid']}" if row.get("pgid") is not None else ""
             print(
-                f"- pid={row['pid']} kind={row.get('kind', 'solver')} "
+                f"- pid={row['pid']}{pgid} method={method} kind={row.get('kind', 'solver')} "
                 f"name={row.get('name', 'job')}",
             )
     if payload["failed"]:

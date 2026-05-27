@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
+import signal
 import time
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from ofti.core import entry_io
 from ofti.core.case import read_number_of_subdomains
 from ofti.core.case_copy import copy_case_directory
 from ofti.core.case_snapshot import build_case_snapshot
-from ofti.tools import knife_service, parallel_resize_service
+from ofti.tools import knife_service, parallel_resize_service, watch_service
 from ofti.tools.case_doctor import build_case_doctor_report
 from ofti.tools.cli_tools import run, watch
 from ofti.tools.runtime_control_service import runtime_control_snapshot
@@ -81,6 +82,43 @@ def test_real_profiles_runtime_reread_cleanup_and_replay_artifacts(real_profiles
         assert any(path.exists() for path in replay_artifacts)
         jobs = watch.jobs_payload(case, include_all=True)
         assert isinstance(jobs["jobs"], list)
+
+
+@pytest.mark.slow
+@pytest.mark.real_openfoam
+def test_real_background_solver_start_stop_cleans_processes(
+    real_profiles: list[tuple[str, Path]],
+) -> None:
+    exercised = False
+    for name, case in real_profiles:
+        solver = _solver(case)
+        if solver is None:
+            continue
+        _prepare_real_case(case)
+        _write_long_run(case, solver)
+        payload = watch_service.start_payload(
+            case,
+            name=solver,
+            command=[solver],
+            detached=True,
+            log_file=f"log.ofti-stop-{solver}",
+        )
+        pid = payload.get("pid")
+        try:
+            assert isinstance(pid, int), f"{name}: missing started pid"
+            if not _wait_pid_running(pid, timeout=5.0):
+                continue
+            stopped = watch.stop_payload(case, job_id=str(payload.get("job_id")), signal_name="TERM")
+            assert stopped["selected"] == 1, f"{name}: {stopped}"
+            assert stopped["stopped"], f"{name}: {stopped}"
+            assert stopped["stopped"][0].get("method") in {"process_group", "processes"}
+            assert _wait_pids_gone([pid], timeout=5.0), f"{name}: pid still running after stop"
+            exercised = True
+        finally:
+            if isinstance(pid, int) and _pid_running(pid):
+                os.kill(pid, signal.SIGKILL)
+    if not exercised:
+        pytest.skip("No real profile stayed alive long enough for background stop.")
 
 
 @pytest.mark.slow
@@ -192,3 +230,67 @@ def _write_short_run(case: Path, solver: str) -> None:
     entry_io.write_entry(control, "endTime", os.environ.get("OFTI_REAL_END_TIME", "1"))
     entry_io.write_entry(control, "writeInterval", os.environ.get("OFTI_REAL_WRITE_INTERVAL", "1"))
     time.sleep(0.01)
+
+
+def _write_long_run(case: Path, solver: str) -> None:
+    control = case / "system" / "controlDict"
+    if not control.is_file():
+        return
+    entry_io.write_entry(control, "application", solver)
+    entry_io.write_entry(control, "startFrom", "startTime")
+    entry_io.write_entry(control, "startTime", "0")
+    entry_io.write_entry(control, "stopAt", "endTime")
+    entry_io.write_entry(control, "endTime", os.environ.get("OFTI_REAL_STOP_TEST_END_TIME", "100000"))
+    entry_io.write_entry(control, "writeInterval", os.environ.get("OFTI_REAL_STOP_TEST_WRITE_INTERVAL", "100000"))
+    time.sleep(0.01)
+
+
+def _prepare_real_case(case: Path) -> None:
+    zero_orig = case / "0.orig"
+    zero_dir = case / "0"
+    if zero_orig.is_dir() and not zero_dir.exists():
+        shutil.copytree(zero_orig, zero_dir)
+    poly_mesh = case / "constant" / "polyMesh"
+    block_mesh_dict = case / "system" / "blockMeshDict"
+    if poly_mesh.is_dir() or not block_mesh_dict.is_file():
+        return
+    result = run.execute_case_command(
+        case,
+        "blockMesh",
+        ["blockMesh"],
+        background=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def _pid_running(pid: int) -> bool:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        pass
+    else:
+        if ") Z " in stat:
+            return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _wait_pid_running(pid: int, *, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _pid_running(pid):
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def _wait_pids_gone(pids: list[int], *, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if all(not _pid_running(pid) for pid in pids):
+            return True
+        time.sleep(0.05)
+    return all(not _pid_running(pid) for pid in pids)

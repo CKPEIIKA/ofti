@@ -567,7 +567,9 @@ def _watch_stop(args: argparse.Namespace) -> int:
     if payload["stopped"]:
         print("stopped:")
         for row in payload["stopped"]:
-            print(f"- id={row['id']} pid={row['pid']} name={row['name']}")
+            method = row.get("method", "process")
+            pgid = f" pgid={row['pgid']}" if row.get("pgid") is not None else ""
+            print(f"- id={row['id']} pid={row['pid']}{pgid} method={method} name={row['name']}")
     if payload["failed"]:
         print("failed:")
         for row in payload["failed"]:

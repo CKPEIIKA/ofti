@@ -236,6 +236,40 @@ def test_canonical_run_rows_collapses_launcher_and_solver_ranks(tmp_path: Path) 
     assert rows[0]["process_group_pids"] == [100, 101, 102]
 
 
+def test_canonical_run_rows_hides_untracked_launcher_for_tracked_rank(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    active_jobs = [
+        {
+            "id": "job-1",
+            "name": "simpleFoam",
+            "pid": 101,
+            "launcher_pid": 100,
+            "solver_pids": [101],
+            "status": "running",
+            "case_dir": str(case),
+        },
+    ]
+    untracked: list[svc.SolverProcessRow] = [
+        {
+            "pid": 100,
+            "ppid": 1,
+            "solver": "simpleFoam",
+            "role": "launcher",
+            "tracked": False,
+            "launcher_pid": 100,
+            "solver_pids": [101],
+            "case": str(case),
+            "command": "mpirun -np 1 simpleFoam -parallel",
+        },
+    ]
+
+    rows = svc.canonical_run_rows(case, active_jobs, untracked)
+
+    assert len(rows) == 1
+    assert rows[0]["source"] == "registry"
+    assert rows[0]["process_group_pids"] == [100, 101]
+
+
 def test_attach_process_visibility_explains_limited_live_scan() -> None:
     payload: dict[str, object] = {
         "jobs_registry_running": 1,

@@ -33,8 +33,10 @@ def test_cli_and_tui_stop_use_same_job_control_service(
         signal_name,
         kill_fn,
         finish_job_fn,
+        killpg_fn,
+        getpgid_fn,
     ) -> dict[str, object]:
-        del jobs, job_id, name, all_jobs, signal_name, kill_fn, finish_job_fn
+        del jobs, job_id, name, all_jobs, signal_name, kill_fn, finish_job_fn, killpg_fn, getpgid_fn
         calls.append(str(case_path))
         return {"signal": "TERM", "selected": 1, "stopped": [{"id": "1", "pid": 7}], "failed": []}
 
