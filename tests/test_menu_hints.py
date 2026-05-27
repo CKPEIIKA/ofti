@@ -81,6 +81,7 @@ def test_menu_hints_cover_primary_menus() -> None:
             "Clean all",
             "Remove all logs",
             "Clean time directories",
+            "Auto clean",
             "Clear parallel",
             "Time directory pruner",
             "Back",

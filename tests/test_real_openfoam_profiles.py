@@ -9,10 +9,12 @@ from pathlib import Path
 
 import pytest
 
+from ofti.app.tool_screens.run import blockmesh_once
 from ofti.core import entry_io
 from ofti.core.case import read_number_of_subdomains
 from ofti.core.case_copy import copy_case_directory
 from ofti.core.case_snapshot import build_case_snapshot
+from ofti.foamlib import runner as foamlib_runner
 from ofti.tools import knife_service, parallel_resize_service, watch_service
 from ofti.tools.case_doctor import build_case_doctor_report
 from ofti.tools.cli_tools import run, watch
@@ -157,6 +159,49 @@ def test_real_sequential_queue_runs_cases_and_summarizes_outcomes(
 
 @pytest.mark.slow
 @pytest.mark.real_openfoam
+def test_real_foamlib_case_ops_blockmesh_restore_and_reconstruct(
+    real_profiles: list[tuple[str, Path]],
+    tmp_path: Path,
+) -> None:
+    if shutil.which("blockMesh") is None:
+        pytest.skip("foamlib case-op execution requires OpenFOAM tools on PATH.")
+    for name, source_case in real_profiles:
+        case = copy_case_directory(source_case, tmp_path / f"{name}-foamlib-ops")
+        solver = _solver(case)
+        if solver is None:
+            continue
+        _ensure_zero_orig(case)
+
+        shutil.rmtree(case / "0", ignore_errors=True)
+        foamlib_runner.restore_0_dir(case)
+        assert (case / "0").is_dir()
+
+        ok, message = blockmesh_once(case)
+        assert ok, message
+        assert (case / "constant" / "polyMesh").is_dir()
+
+        _write_short_run(case, solver)
+        _write_simple_decompose_dict(case, ranks=2)
+        prepared = run.prepare_parallel_case(case, parallel=2, clean_processors=True)
+        assert prepared["decompose_returncode"] == 0, prepared
+        assert (case / "processor0").is_dir()
+        display, command = run.solver_command(case, solver=solver, parallel=2)
+        result = run.execute_solver_case_command(
+            case,
+            display,
+            command,
+            parallel=2,
+            background=False,
+        )
+        assert result.returncode == 0, result.stderr
+        foamlib_runner.reconstruct_case(case, check=True, log="log.reconstructPar")
+        assert (case / "log.reconstructPar").is_file()
+        return
+    pytest.skip("No real profile was available for foamlib case-op coverage.")
+
+
+@pytest.mark.slow
+@pytest.mark.real_openfoam
 def test_real_profiles_core_services_are_fixture_free(
     real_profiles: list[tuple[str, Path]],
     tmp_path: Path,
@@ -288,13 +333,43 @@ def _prepare_real_case(case: Path) -> None:
     block_mesh_dict = case / "system" / "blockMeshDict"
     if poly_mesh.is_dir() or not block_mesh_dict.is_file():
         return
-    result = run.execute_case_command(
-        case,
-        "blockMesh",
-        ["blockMesh"],
-        background=False,
+    ok, message = blockmesh_once(case)
+    assert ok, message
+
+
+def _ensure_zero_orig(case: Path) -> None:
+    zero = case / "0"
+    zero_orig = case / "0.orig"
+    if zero_orig.is_dir():
+        return
+    if zero.is_dir():
+        shutil.copytree(zero, zero_orig)
+
+
+def _write_simple_decompose_dict(case: Path, *, ranks: int) -> None:
+    system = case / "system"
+    system.mkdir(exist_ok=True)
+    (system / "decomposeParDict").write_text(
+        "\n".join(
+            [
+                "FoamFile",
+                "{",
+                "    version 2.0;",
+                "    format ascii;",
+                "    class dictionary;",
+                "    object decomposeParDict;",
+                "}",
+                f"numberOfSubdomains {ranks};",
+                "method simple;",
+                "simpleCoeffs",
+                "{",
+                f"    n ({ranks} 1 1);",
+                "    delta 0.001;",
+                "}",
+                "",
+            ],
+        ),
     )
-    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def _pid_running(pid: int) -> bool:
