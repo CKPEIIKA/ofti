@@ -291,7 +291,12 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         default="process",
         help="Queue backend for case launches",
     )
-    queue.add_argument("--max-parallel", type=int, required=True)
+    queue.add_argument(
+        "--max-parallel",
+        type=int,
+        default=1,
+        help="Maximum cases running at once (default: 1, sequential queue)",
+    )
     queue.add_argument("--poll-interval", type=float, default=0.25)
     _add_easy_on_cpu_flag(queue)
     queue.add_argument(
@@ -487,7 +492,11 @@ def _run_queue(args: argparse.Namespace) -> int:
         f"failed_to_start={len(payload['failed_to_start'])}",
     )
     for row in payload["finished"]:
-        print(f"- {row['case']}: state={row['state']} latest_time={row['latest_time']}")
+        print(
+            f"- {row['case']}: outcome={row.get('outcome', '-')} "
+            f"state={row['state']} reason={row.get('stop_reason', '-')} "
+            f"latest_time={row['latest_time']}",
+        )
     if payload["failed_to_start"]:
         for row in payload["failed_to_start"]:
             print(f"failed {row['case']}: {row['error']}")

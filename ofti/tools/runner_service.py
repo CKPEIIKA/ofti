@@ -91,10 +91,20 @@ def execute_case_command(
         check=False,
         env=env,
     )
+    chosen_log_path: Path | None = None
+    if log_path is not None:
+        chosen_log_path = log_path if log_path.is_absolute() else case_path / log_path
+        chosen_log_path.parent.mkdir(parents=True, exist_ok=True)
+        chosen_log_path.write_text(
+            f"{result.stdout}{result.stderr}",
+            encoding="utf-8",
+            errors="ignore",
+        )
     return RunResult(
         int(result.returncode),
         str(result.stdout),
         str(result.stderr),
+        log_path=chosen_log_path,
     )
 
 

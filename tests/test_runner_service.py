@@ -43,6 +43,32 @@ def test_runner_service_foreground_env_and_output(tmp_path: Path, monkeypatch) -
     assert "ENV" not in env
 
 
+def test_runner_service_foreground_writes_requested_log(tmp_path: Path, monkeypatch) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+
+    class _Result:
+        returncode = 7
+        stdout = "stdout\n"
+        stderr = "stderr\n"
+
+    result = svc.execute_case_command(
+        case,
+        "simpleFoam",
+        ["simpleFoam"],
+        background=False,
+        log_path=Path("log.simpleFoam"),
+        with_bashrc_fn=lambda cmd: cmd,
+        run_trusted_fn=lambda *_a, **_k: _Result(),
+        popen_fn=lambda *_a, **_k: None,
+        register_job_fn=lambda *_a, **_k: None,
+    )
+
+    assert result.returncode == 7
+    assert result.log_path == case / "log.simpleFoam"
+    assert (case / "log.simpleFoam").read_text() == "stdout\nstderr\n"
+
+
 def test_runner_service_background_detached_and_files(tmp_path: Path) -> None:
     case = tmp_path / "case"
     case.mkdir()
