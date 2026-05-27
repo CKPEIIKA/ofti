@@ -123,6 +123,40 @@ def test_real_background_solver_start_stop_cleans_processes(
 
 @pytest.mark.slow
 @pytest.mark.real_openfoam
+def test_real_sequential_queue_runs_cases_and_summarizes_outcomes(
+    real_profiles: list[tuple[str, Path]],
+    tmp_path: Path,
+) -> None:
+    for name, source_case in real_profiles:
+        solver = _solver(source_case)
+        if solver is None:
+            continue
+        case_a = copy_case_directory(source_case, tmp_path / f"{name}-queue-a")
+        case_b = copy_case_directory(source_case, tmp_path / f"{name}-queue-b")
+        for case in (case_a, case_b):
+            _prepare_real_case(case)
+            _write_short_run(case, solver)
+
+        payload = run.queue_payload(
+            cases=[case_a, case_b],
+            solver=solver,
+            max_parallel=1,
+            backend="process",
+        )
+
+        assert payload["ok"] is True, payload
+        assert len(payload["started"]) == 2
+        assert len(payload["finished"]) == 2
+        for row in payload["finished"]:
+            assert row["returncode"] == 0, row
+            assert row["outcome"] in {"time", "criteria", "completed"}, row
+            assert row["outcome"] != "crashed", row
+        return
+    pytest.skip("No real profile with a resolvable serial solver was available.")
+
+
+@pytest.mark.slow
+@pytest.mark.real_openfoam
 def test_real_profiles_core_services_are_fixture_free(
     real_profiles: list[tuple[str, Path]],
     tmp_path: Path,

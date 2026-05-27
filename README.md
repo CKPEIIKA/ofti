@@ -128,9 +128,6 @@ ofti knife initials CASE --json
 ofti knife copy CASE_COPY --case CASE
 ofti knife current --root REPO --recursive --live --json
 ofti knife adopt --root REPO --all-untracked --json
-ofti knife receipt write CASE --record-inputs-copy --json
-ofti knife receipt verify runs/.../receipt.json --json
-ofti knife receipt restore runs/.../receipt.json --to RESTORED_CASE --json
 ofti watch jobs CASE --json
 ofti watch pause CASE --all
 ofti watch resume CASE --all
@@ -139,19 +136,16 @@ ofti watch log CASE --lines 80 --json
 ofti watch log CASE --follow --easy-on-cpu
 ofti run tool --list --case CASE --json
 ofti run solver CASE --dry-run --json
-ofti run solver CASE --write-receipt --json
-ofti run solver CASE --write-receipt --record-inputs-copy --json
 ofti run solver CASE --parallel 8 --clean-processors --json
 ofti run solver CASE --parallel 8 --no-prepare-parallel --json
 ofti run matrix CASE --param application=simpleFoam,pisoFoam --no-launch --json
 ofti run parametric CASE --entry application --values simpleFoam,pisoFoam --json
 ofti run parametric CASE --csv studies/parametric.csv --run-solver --max-parallel 4 --json
 ofti run parametric CASE --grid-axis application=simpleFoam,pisoFoam --grid-axis transport:nu=1e-5,2e-5 --json
-ofti run queue --set CASE_SET --glob 'case_*' --max-parallel 6 --backend foamlib-async --json
 ofti run status --set CASE_SET --fast --easy-on-cpu --json
 ```
 
-### Knife Workflows (New)
+### Knife Workflows
 
 Campaign-wide live status from repo root:
 
@@ -342,6 +336,28 @@ pisoFoam,Newtonian,2e-05
 ```
 
 Use `--run-solver` with `--max-parallel` to immediately queue generated cases.
+
+## RUN QUEUES
+
+`ofti run queue` is the CLI-first queue primitive. By default it runs cases
+sequentially (`--max-parallel 1`), records each solver log, waits for a case to
+finish or crash, classifies the outcome, and immediately advances to the next
+case:
+
+```bash
+ofti run queue case_a case_b --json
+ofti run queue --set CASE_SET --glob 'case_*' --max-parallel 1
+```
+
+Queue result rows include `returncode`, `state`, `outcome`, `stop_reason`,
+`latest_time`, and `end_time`. Outcomes distinguish normal end-time completion,
+criterion completion when detectable, crashes, and unknown stopped cases. Use
+bounded parallel queueing only when the per-case final return code is less
+important than throughput:
+
+```bash
+ofti run queue --set CASE_SET --glob 'case_*' --max-parallel 6 --backend foamlib-async
+```
 
 ## FILES
 
