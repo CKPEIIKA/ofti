@@ -8,6 +8,8 @@ from ofti.app.state import AppState, Screen
 from ofti.app.time_pruner import time_directory_pruner_screen
 from ofti.app.tool_screens.cleaning_ops import clean_time_directories, remove_all_logs
 from ofti.app.tool_screens.reconstruct import reconstruct_latest_once
+from ofti.foamlib import runner as foamlib_runner
+from ofti.foamlib.adapter import FoamlibUnavailableError
 from ofti.ui.status import status_message
 from ofti.ui_curses.help import clean_case_help
 from ofti.ui_curses.prompts import _show_message
@@ -25,6 +27,7 @@ def clean_case_menu(
         "Clean all",
         "Remove all logs",
         "Clean time directories",
+        "Auto clean",
         "Clear parallel",
         "Time directory pruner",
         "Back",
@@ -51,8 +54,10 @@ def clean_case_menu(
         elif choice == 2:
             clean_time_directories(stdscr, case_path)
         elif choice == 3:
-            clear_parallel(stdscr, case_path)
+            foamlib_clean(stdscr, case_path)
         elif choice == 4:
+            clear_parallel(stdscr, case_path)
+        elif choice == 5:
             time_directory_pruner_screen(stdscr, case_path)
 
 
@@ -75,6 +80,19 @@ def clear_parallel(stdscr: Any, case_path: Path) -> None:
     if note:
         summary = f"{summary} {note}"
     _show_message(stdscr, summary)
+
+
+def foamlib_clean(stdscr: Any, case_path: Path) -> None:
+    status_message(stdscr, "Running auto clean...")
+    try:
+        foamlib_runner.clean_case(case_path, check=False)
+    except FoamlibUnavailableError:
+        _show_message(stdscr, "Auto clean is unavailable.")
+        return
+    except Exception as exc:
+        _show_message(stdscr, f"Auto clean failed: {exc}")
+        return
+    _show_message(stdscr, "Auto clean complete.")
 
 
 def _remove_processor_dirs(case_path: Path) -> int:

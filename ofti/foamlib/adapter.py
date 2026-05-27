@@ -13,9 +13,10 @@ class FoamlibUnavailableError(RuntimeError):
 
 
 try:  # pragma: no cover - exercised in tests when installed
-    from foamlib import FoamFieldFile, FoamFile
+    from foamlib import FoamCase, FoamFieldFile, FoamFile
     FOAMLIB_AVAILABLE = True
 except Exception:  # pragma: no cover - optional fallback
+    FoamCase = None  # type: ignore[assignment]
     FoamFile = None  # type: ignore[assignment]
     FoamFieldFile = None  # type: ignore[assignment]
     FOAMLIB_AVAILABLE = False
@@ -79,17 +80,69 @@ def validate_dimensioned_value(payload: float | list[float], dimensions: list[fl
 
 
 def node_type_label(node: object) -> str | None:
+    numeric = _numeric_list_label(node)
+    if numeric is not None:
+        return numeric
     for predicate, label in _node_label_predicates():
         if predicate(node):
             if label == "array":
                 return f"array {getattr(node, 'shape', '')}"
             return label
-    numeric = _numeric_list_label(node)
-    if numeric is not None:
-        return numeric
     if isinstance(node, (list, tuple)):
         return f"list ({len(node)})"
     return type(node).__name__
+
+
+def node_type_details(node: object) -> list[str]:
+    label = node_type_label(node)
+    details: list[str] = []
+    if label:
+        details.append(f"foamlib type: {label}")
+    details.append(f"python type: {type(node).__module__}.{type(node).__name__}")
+    details.extend(_array_node_details(node))
+    details.extend(_dimension_node_details(node))
+    details.extend(_mapping_node_details(node))
+    return details
+
+
+def _array_node_details(node: object) -> list[str]:
+    details: list[str] = []
+    shape = getattr(node, "shape", None)
+    if shape is not None:
+        details.append(f"shape: {shape}")
+    dtype = getattr(node, "dtype", None)
+    if dtype is not None:
+        details.append(f"dtype: {dtype}")
+    return details
+
+
+def _dimension_node_details(node: object) -> list[str]:
+    details: list[str] = []
+    if _is_dimension_set(node):
+        as_dict = getattr(node, "_asdict", None)
+        if callable(as_dict):
+            non_zero = {key: value for key, value in as_dict().items() if value}
+            details.append(f"dimensions: {non_zero or 'dimensionless'}")
+    if _is_dimensioned(node):
+        dimensions = getattr(node, "dimensions", None)
+        value = getattr(node, "value", None)
+        if dimensions is not None:
+            details.append(f"dimensions: {dimensions}")
+        if value is not None:
+            details.append(f"value type: {type(value).__name__}")
+    return details
+
+
+def _mapping_node_details(node: object) -> list[str]:
+    if not hasattr(node, "keys"):
+        return []
+    try:
+        keys = [str(key) for key in cast("Any", node) if isinstance(key, str)]
+    except Exception:
+        keys = []
+    if keys:
+        return [f"subkeys: {', '.join(keys[:8])}"]
+    return []
 
 
 def _node_label_predicates() -> list[tuple[Callable[[object], bool], str]]:
@@ -124,18 +177,24 @@ def _is_foamlib_field(node: object) -> bool:
 
 
 def _numeric_list_label(values: object) -> str | None:
-    if not isinstance(values, (list, tuple)) or not values:
+    raw_values = values
+    shape = getattr(values, "shape", None)
+    if shape is not None and len(shape) == 1 and shape[0] in {2, 3, 7}:
+        tolist = getattr(values, "tolist", None)
+        if callable(tolist):
+            raw_values = tolist()
+    if not isinstance(raw_values, (list, tuple)) or not raw_values:
         return None
     floats: list[float] = []
-    for item in values:
+    for item in raw_values:
         if isinstance(item, bool):
             return None
         if not isinstance(item, (int, float)):
             return None
         floats.append(float(item))
-    if len(values) in (2, 3):
+    if len(raw_values) in (2, 3):
         return "vector"
-    if len(values) == 7 and all(value.is_integer() for value in floats):
+    if len(raw_values) == 7 and all(float(value).is_integer() for value in floats):
         return "dimensions"
     return None
 
@@ -165,7 +224,35 @@ def _split_key(key: str) -> tuple[str, ...]:
 def _foam_file(path: Path) -> Any:
     if not FOAMLIB_AVAILABLE or FoamFile is None:
         raise FoamlibUnavailableError
+    case_file = _case_relative_foam_file(path)
+    if case_file is not None:
+        return case_file
     return FoamFile(path)
+
+
+def _case_relative_foam_file(path: Path) -> Any | None:
+    if FoamCase is None:
+        return None
+    resolved = path.expanduser().resolve()
+    case_path = _case_root_for_file(resolved)
+    if case_path is None:
+        return None
+    try:
+        rel_path = resolved.relative_to(case_path)
+        return FoamCase(case_path).file(rel_path)
+    except Exception:
+        return None
+
+
+def _case_root_for_file(path: Path) -> Path | None:
+    for parent in path.parents:
+        if (parent / "system").is_dir() and (
+            (parent / "constant").is_dir()
+            or (parent / "0").is_dir()
+            or (parent / "0.orig").is_dir()
+        ):
+            return parent
+    return None
 
 
 def _foam_field_file(path: Path) -> Any:
@@ -215,6 +302,41 @@ def read_entry_node(file_path: Path, key: str) -> object:
     if node is None:
         raise KeyError(key)
     return node
+
+
+def read_file_dict(file_path: Path, *, include_header: bool = True) -> dict[str, object]:
+    if not FOAMLIB_AVAILABLE:
+        return {}
+    foam_file = _foam_file(file_path)
+    as_dict = getattr(foam_file, "as_dict", None)
+    if not callable(as_dict):
+        return {}
+    raw = as_dict(include_header=include_header)
+    if not isinstance(raw, dict):
+        return {}
+    return {str(key): _snapshot_value(value) for key, value in raw.items() if key is not None}
+
+
+def _snapshot_value(value: object) -> object:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, dict):
+        return {str(key): _snapshot_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_snapshot_value(item) for item in value]
+    tolist = getattr(value, "tolist", None)
+    if callable(tolist):
+        try:
+            return _snapshot_value(tolist())
+        except Exception:
+            pass
+    as_dict = getattr(value, "_asdict", None)
+    if callable(as_dict):
+        try:
+            return _snapshot_value(as_dict())
+        except Exception:
+            pass
+    return str(value)
 
 
 def read_field_entry(file_path: Path, key: str) -> str:

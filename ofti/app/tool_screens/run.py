@@ -9,6 +9,8 @@ from ofti.core.checkmesh import format_checkmesh_summary
 from ofti.core.templates import write_example_template
 from ofti.core.tool_output import format_log_blob
 from ofti.foam.config import key_hint
+from ofti.foamlib import runner as foamlib_runner
+from ofti.foamlib.adapter import FoamlibUnavailableError
 from ofti.ui_curses.viewer import Viewer
 
 
@@ -26,13 +28,30 @@ def run_checkmesh(stdscr: Any, case_path: Path) -> None:
 
 
 def run_blockmesh(stdscr: Any, case_path: Path) -> None:
-    run_tool_command(
-        stdscr,
-        case_path,
-        "blockMesh",
-        ["blockMesh"],
-        status="Running blockMesh...",
-    )
+    ok, message = blockmesh_once(case_path)
+    if ok:
+        _show_message(stdscr, message)
+        return
+    if message == "foamlib unavailable":
+        run_tool_command(
+            stdscr,
+            case_path,
+            "blockMesh",
+            ["blockMesh"],
+            status="Running blockMesh...",
+        )
+        return
+    _show_message(stdscr, message)
+
+
+def blockmesh_once(case_path: Path) -> tuple[bool, str]:
+    try:
+        foamlib_runner.block_mesh_case(case_path, check=True, log="log.blockMesh")
+    except FoamlibUnavailableError:
+        return False, "foamlib unavailable"
+    except Exception as exc:
+        return False, f"blockMesh failed: {exc}"
+    return True, "blockMesh completed."
 
 
 def run_decomposepar(stdscr: Any, case_path: Path) -> None:
