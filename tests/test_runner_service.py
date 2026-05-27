@@ -48,6 +48,7 @@ def test_runner_service_background_detached_and_files(tmp_path: Path) -> None:
     case.mkdir()
     captured: dict[str, object] = {}
     registered: list[tuple[str, int, Path]] = []
+    register_meta: dict[str, object] = {}
 
     class _PopenResult:
         def __init__(self) -> None:
@@ -70,9 +71,11 @@ def test_runner_service_background_detached_and_files(tmp_path: Path) -> None:
         pid: int,
         _shell_cmd: str,
         log_path: Path | None,
+        **kwargs: object,
     ) -> None:
         assert log_path is not None
         registered.append((name, pid, log_path))
+        register_meta.update(kwargs)
         assert case_path == case
 
     pid_file = case / ".ofti" / "pid.txt"
@@ -94,6 +97,7 @@ def test_runner_service_background_detached_and_files(tmp_path: Path) -> None:
     assert result.log_path is not None
     assert result.log_path.name == "log.toolwithspaces"
     assert registered and registered[0][0] == "tool with spaces!"
+    assert register_meta["detached"] is True
     assert captured["start_new_session"] is True
     env = captured["env"]
     env_map = cast("dict[str, str]", env)

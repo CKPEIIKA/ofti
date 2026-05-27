@@ -10,6 +10,9 @@ class JobActionRow(TypedDict, total=False):
     id: str
     pid: int
     name: str
+    pgid: int
+    pids: list[int]
+    method: str
     error: str
 
 
@@ -99,6 +102,8 @@ def stop_jobs(
     signal_name: str,
     kill_fn: Callable[[int, int], None],
     finish_job_fn: Callable[[Path, str, str, int | None], None],
+    killpg_fn: Callable[[int, int], None] | None = None,
+    getpgid_fn: Callable[[int], int] | None = None,
 ) -> StopJobsPayload:
     signal_code = signal_by_name(signal_name)
     selected = select_jobs(
@@ -114,18 +119,32 @@ def stop_jobs(
     for job in selected:
         job_id_value = str(job.get("id", ""))
         job_name = str(job.get("name", ""))
-        pid = job.get("pid")
-        if not isinstance(pid, int):
+        pids = _job_signal_pids(job)
+        pid = pids[0] if pids else None
+        if pid is None:
             failed.append({"id": job_id_value, "error": "invalid pid"})
             continue
-        try:
-            kill_fn(pid, signal_code)
-        except OSError as exc:
+        result = _signal_job(
+            job,
+            pids,
+            signal_code,
+            kill_fn=kill_fn,
+            killpg_fn=killpg_fn,
+            getpgid_fn=getpgid_fn,
+        )
+        if result.get("error"):
             finish_job_fn(case_path, job_id_value, "missing", None)
-            failed.append({"id": job_id_value, "pid": pid, "error": str(exc)})
+            failed.append(
+                {
+                    "id": job_id_value,
+                    "pid": pid,
+                    "name": job_name,
+                    "error": str(result["error"]),
+                },
+            )
             continue
         finish_job_fn(case_path, job_id_value, "stopped", None)
-        stopped.append({"id": job_id_value, "pid": pid, "name": job_name})
+        stopped.append({"id": job_id_value, "pid": pid, "name": job_name, **result})
 
     return {
         "signal": signal_name,
@@ -133,6 +152,72 @@ def stop_jobs(
         "stopped": stopped,
         "failed": failed,
     }
+
+
+def _job_signal_pids(job: dict[str, Any]) -> list[int]:
+    values = [job.get("pid"), job.get("launcher_pid")]
+    solver_pids = job.get("solver_pids")
+    if isinstance(solver_pids, list):
+        values.extend(solver_pids)
+    pids: list[int] = []
+    seen: set[int] = set()
+    for value in values:
+        if not isinstance(value, int) or value <= 0 or value in seen:
+            continue
+        pids.append(value)
+        seen.add(value)
+    return pids
+
+
+def _signal_job(
+    job: dict[str, Any],
+    pids: list[int],
+    signal_code: int,
+    *,
+    kill_fn: Callable[[int, int], None],
+    killpg_fn: Callable[[int, int], None] | None,
+    getpgid_fn: Callable[[int], int] | None,
+) -> JobActionRow:
+    primary = pids[0]
+    pgid = _safe_process_group(job, primary, getpgid_fn=getpgid_fn)
+    if pgid is not None and killpg_fn is not None:
+        try:
+            killpg_fn(pgid, signal_code)
+        except OSError:
+            pass
+        else:
+            return {"method": "process_group", "pgid": pgid, "pids": pids}
+
+    signaled: list[int] = []
+    errors: list[str] = []
+    for pid in pids:
+        try:
+            kill_fn(pid, signal_code)
+        except OSError as exc:
+            errors.append(f"{pid}: {exc}")
+            continue
+        signaled.append(pid)
+    if signaled:
+        return {"method": "processes", "pids": signaled}
+    return {"error": "; ".join(errors) or "no process signaled"}
+
+
+def _safe_process_group(
+    job: dict[str, Any],
+    pid: int,
+    *,
+    getpgid_fn: Callable[[int], int] | None,
+) -> int | None:
+    if getpgid_fn is None:
+        return None
+    try:
+        pgid = getpgid_fn(pid)
+    except OSError:
+        return None
+    launcher_pid = job.get("launcher_pid")
+    if job.get("detached") is True or (launcher_pid == pid and pgid == pid):
+        return pgid
+    return None
 
 
 def pause_jobs(
