@@ -214,6 +214,90 @@ def test_initials_and_set_entry_screens(
     assert messages[-1] == "set-broken"
 
 
+def test_flight_deck_screen_previews_and_applies_runtime_edit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[str] = []
+    messages: list[str] = []
+    calls: list[dict[str, object]] = []
+    prompts = iter(["deltaT", "0.25", "y"])
+    monkeypatch.setattr(case_tools, "Viewer", lambda stdscr, text: captured.append(text) or _Viewer(stdscr, text))
+    monkeypatch.setattr(case_tools, "show_message", lambda _stdscr, message: messages.append(message))
+    monkeypatch.setattr(case_tools, "prompt_line", lambda _stdscr, _prompt: next(prompts))
+    monkeypatch.setattr(
+        case_tools,
+        "flight_deck_payload",
+        lambda _case: {"case": str(tmp_path), "actions": [], "runtime_queue": []},
+    )
+    monkeypatch.setattr(case_tools, "flight_deck_table_lines", lambda _payload: ["flight-deck"])
+
+    def _edit(
+        case: Path,
+        updates: dict[str, str],
+        *,
+        write_snapshot: bool = False,
+        apply: bool = False,
+    ) -> dict[str, object]:
+        calls.append({"case": case, "updates": updates, "snapshot": write_snapshot, "apply": apply})
+        return {
+            "case": str(case),
+            "path": "system/controlDict",
+            "ok": True,
+            "applied": apply,
+            "blocked": False,
+            "snapshot_path": str(case / ".ofti" / "case_snapshot.json") if write_snapshot else None,
+            "updates": [{"path": "system/controlDict", "key": "deltaT", "old": "1", "new": "0.25"}],
+            "diff": ["--- current", "+++ proposed"],
+            "failures": [],
+            "error": None,
+        }
+
+    monkeypatch.setattr(case_tools, "control_dict_edit_payload", _edit)
+
+    case_tools.show_flight_deck_screen(object(), tmp_path)
+
+    assert captured[0] == "flight-deck"
+    assert "applied=False" in captured[1]
+    assert "applied=True" in captured[2]
+    assert calls == [
+        {"case": tmp_path, "updates": {"deltaT": "0.25"}, "snapshot": False, "apply": False},
+        {"case": tmp_path, "updates": {"deltaT": "0.25"}, "snapshot": True, "apply": True},
+    ]
+    assert messages == []
+
+
+def test_flight_deck_screen_declines_runtime_edit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[str] = []
+    messages: list[str] = []
+    calls = 0
+    prompts = iter(["safe-stop", "n"])
+    monkeypatch.setattr(case_tools, "Viewer", lambda stdscr, text: captured.append(text) or _Viewer(stdscr, text))
+    monkeypatch.setattr(case_tools, "show_message", lambda _stdscr, message: messages.append(message))
+    monkeypatch.setattr(case_tools, "prompt_line", lambda _stdscr, _prompt: next(prompts))
+    monkeypatch.setattr(
+        case_tools,
+        "flight_deck_payload",
+        lambda _case: {"case": str(tmp_path), "actions": [], "runtime_queue": []},
+    )
+    monkeypatch.setattr(case_tools, "flight_deck_table_lines", lambda _payload: ["flight-deck"])
+
+    def _edit(*_args: object, **kwargs: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return {"case": str(tmp_path), "path": "system/controlDict", "ok": True, "applied": False, "blocked": False}
+
+    monkeypatch.setattr(case_tools, "control_dict_edit_payload", _edit)
+
+    case_tools.show_flight_deck_screen(object(), tmp_path)
+
+    assert calls == 1
+    assert messages == ["Runtime edit not applied."]
+
+
 def test_runtime_diagnostic_screens(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

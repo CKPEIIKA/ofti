@@ -6,8 +6,6 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 
 - [MAIN][TUI] Expand Numerics deck v1 from transparent preset previews into apply/snapshot flows for fvSchemes/fvSolution/relaxation edits.
 - [MAIN][TUI] Expand Launch checklist from go/no-go v1 into executable TUI actions: launch, dry-run, edit failing item, and parallel wizard.
-- [TUI] Add executable Flight deck apply prompts over the shared safe `controlDict` edit service;
-  keep live `writeNow`/dictionary-reread acknowledgement and rollback guidance visible.
 - [MAIN] Expand parallel resize/resume beyond CLI/TUI v0 with stronger live `writeNow` acknowledgement, full input snapshots, and rollback guidance.
 - [MAIN][TUI] Expand Change Queue v2 snapshot/action plan into executable apply flows for case edits,
   presets, launch changes, and runtime mutations.
@@ -98,6 +96,9 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
   safe textual fallback, failures, and tests for stopAt/endTime/deltaT-style live edits.
 - TUI Flight deck runtime queue rows are wired to the shared safe `controlDict`
   edit service and expose snapshot-required apply metadata.
+- TUI Flight deck has executable runtime edit prompts over the shared safe `controlDict`
+  edit service for safe stop/writeNow, `deltaT`, and `endTime`, with preview,
+  snapshot-required apply, and resulting diff/status display.
 - Parallel resize/resume v0 exists as `ofti run resize-parallel` and a TUI Flight action: snapshot, writeNow wait, reconstruct latest, clean processors, update subdomains, resume from latest, decompose latest, and restart.
 - Captains Deck has alert cards v0, Case DNA v0 with setup fingerprint, mission scopes v0, Mesh Radar v0, Resource Watch v0, and folded log v0.
 - Captains Deck alert cards v1 show alarm state plus impact, evidence, suggested action, affected files, and source command.
