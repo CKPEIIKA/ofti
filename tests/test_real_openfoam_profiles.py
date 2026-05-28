@@ -15,7 +15,7 @@ from ofti.core.case import read_number_of_subdomains
 from ofti.core.case_copy import copy_case_directory
 from ofti.core.case_snapshot import build_case_snapshot
 from ofti.foamlib import runner as foamlib_runner
-from ofti.tools import knife_service, parallel_resize_service, watch_service
+from ofti.tools import knife_service, parallel_resize_service, process_scan_service, watch_service
 from ofti.tools.case_doctor import build_case_doctor_report
 from ofti.tools.cli_tools import run, watch
 from ofti.tools.runtime_control_service import runtime_control_snapshot
@@ -121,6 +121,69 @@ def test_real_background_solver_start_stop_cleans_processes(
                 os.kill(pid, signal.SIGKILL)
     if not exercised:
         pytest.skip("No real profile stayed alive long enough for background stop.")
+
+
+@pytest.mark.slow
+@pytest.mark.real_openfoam
+def test_real_parallel_watch_stop_cleans_launcher_and_solver_ranks(
+    real_profiles: list[tuple[str, Path]],
+) -> None:
+    if shutil.which("decomposePar") is None:
+        pytest.skip("parallel watch stop requires OpenFOAM decomposePar on PATH.")
+    exercised = False
+    for name, case in real_profiles:
+        solver = _solver(case)
+        if solver is None:
+            continue
+        _prepare_real_case(case)
+        _write_long_run(case, solver)
+        _write_simple_decompose_dict(case, ranks=2)
+        prepared = run.prepare_parallel_case(case, parallel=2, clean_processors=True)
+        if prepared.get("decompose_returncode") != 0:
+            continue
+        try:
+            display, command = run.solver_command(case, solver=solver, parallel=2)
+        except ValueError:
+            continue
+        payload = watch_service.start_payload(
+            case,
+            name=display,
+            command=command,
+            detached=True,
+            log_file=f"log.ofti-stop-{display}",
+        )
+        pid = payload.get("pid")
+        observed_pids: list[int] = [pid] if isinstance(pid, int) else []
+        try:
+            assert isinstance(pid, int), f"{name}: missing started pid"
+            if not _wait_pid_running(pid, timeout=5.0):
+                continue
+            time.sleep(0.5)
+            rows = process_scan_service.scan_proc_solver_processes(
+                case,
+                solver,
+                tracked_pids=set(),
+                include_tracked=True,
+            )
+            observed_pids.extend(
+                int(row["pid"])
+                for row in rows
+                if str(row.get("case") or "") == str(case.resolve())
+                and isinstance(row.get("pid"), int)
+            )
+            stopped = watch_service.stop_payload(case, job_id=str(payload.get("job_id")), signal_name="TERM")
+            assert stopped["selected"] == 1, f"{name}: {stopped}"
+            assert stopped["stopped"], f"{name}: {stopped}"
+            assert _wait_pids_gone(sorted(set(observed_pids)), timeout=8.0), (
+                f"{name}: pids still running after stop: {observed_pids}"
+            )
+            exercised = True
+        finally:
+            for process_id in sorted(set(observed_pids)):
+                if _pid_running(process_id):
+                    os.kill(process_id, signal.SIGKILL)
+    if not exercised:
+        pytest.skip("No real parallel profile stayed alive long enough for watch stop.")
 
 
 @pytest.mark.slow

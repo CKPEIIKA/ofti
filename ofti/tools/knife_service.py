@@ -1250,19 +1250,29 @@ def _stop_untracked_solver_processes(case_path: Path, *, signal_name: str) -> di
     ]
     solver_pids = sorted({int(row["pid"]) for row in solver_rows})
     if launchers:
-        launcher_set = set(launchers)
+        launcher_process_groups = {
+            pid: _process_group_if_leader(pid)
+            for pid in launchers
+        }
+        safe_group_launchers = {
+            pid
+            for pid, pgid in launcher_process_groups.items()
+            if pgid == pid
+        }
         solver_launcher: dict[int, int | None] = {
             int(row["pid"]): (
                 launcher_pid if isinstance((launcher_pid := row.get("launcher_pid")), int) else None
             )
             for row in solver_rows
         }
-        # Avoid double-signaling workers that are descendants of launcher processes.
+        # Avoid double-signaling workers only when a launcher group can stop them.
         solver_pids = [
             pid
             for pid in solver_pids
-            if solver_launcher.get(pid) not in launcher_set
+            if solver_launcher.get(pid) not in safe_group_launchers
         ]
+    else:
+        launcher_process_groups = {}
     signal_code = _signal_number(signal_name)
     stopped: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
@@ -1276,7 +1286,7 @@ def _stop_untracked_solver_processes(case_path: Path, *, signal_name: str) -> di
         method = "process"
         pgid: int | None = None
         try:
-            if role == "launcher" and os.getpgid(pid) == pid:
+            if role == "launcher" and launcher_process_groups.get(pid) == pid:
                 os.killpg(pid, signal_code)
                 method = "process_group"
                 pgid = pid
@@ -1318,6 +1328,13 @@ def _stop_untracked_solver_processes(case_path: Path, *, signal_name: str) -> di
         "launcher_pids": launchers,
         "solver_pids": solver_pids,
     }
+
+
+def _process_group_if_leader(pid: int) -> int | None:
+    try:
+        return os.getpgid(pid)
+    except OSError:
+        return None
 
 
 def _signal_number(name: str) -> int:

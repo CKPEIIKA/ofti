@@ -155,7 +155,7 @@ def stop_jobs(
 
 
 def _job_signal_pids(job: dict[str, Any]) -> list[int]:
-    values = [job.get("pid"), job.get("launcher_pid")]
+    values = [job.get("launcher_pid"), job.get("pid")]
     solver_pids = job.get("solver_pids")
     if isinstance(solver_pids, list):
         values.extend(solver_pids)
