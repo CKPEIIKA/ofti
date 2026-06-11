@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from ofti.app import case_ops
+from ofti.app.tool_screens import reconstruct, shell_tools, yplus
 from ofti.core import tool_dicts_service
-from ofti.tools import reconstruct, shell_tools, yplus
 
 
 class _Screen:
@@ -323,3 +323,8 @@ def test_shell_and_reconstruct_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     monkeypatch.setattr(reconstruct, "run_tool_command", lambda *_a, **_k: rec_calls.append(list(_a[3])))
     reconstruct.reconstruct_manager_screen(screen, case)
     assert rec_calls[-1] == ["reconstructPar", "-latestTime"]
+
+    monkeypatch.setattr(reconstruct, "build_menu", lambda *_a, **_k: _Menu(0))
+    monkeypatch.setattr(reconstruct, "reconstruct_all_once", lambda _case: (True, "reconstructPar completed."))
+    reconstruct.reconstruct_manager_screen(screen, case)
+    assert shown[-1] == "reconstructPar completed."

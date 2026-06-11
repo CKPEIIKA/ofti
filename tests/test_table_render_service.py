@@ -218,6 +218,20 @@ def test_runtime_tables_cover_nested_rows() -> None:
     assert "system/controlDict" in alert_text
     assert tables.alert_cards_table_lines([]) == ["Alarm state: NORMAL", "No alerts."]
 
+    current_runs = tables.current_table_lines(
+        {
+            "case": "case",
+            "solver": "simpleFoam",
+            "jobs_running": 1,
+            "jobs_total": 1,
+            "jobs": [],
+            "runs": [{"id": "r1", "source": "registry", "name": "simpleFoam", "pid": 11}],
+            "untracked_processes": [],
+        },
+    )
+    assert "Runs" in current_runs
+    assert "registry" in "\n".join(current_runs)
+
 
 def test_payload_tables_for_cli_outputs() -> None:
     criteria = tables.criteria_payload_table_lines(

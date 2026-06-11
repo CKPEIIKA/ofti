@@ -240,6 +240,13 @@ def _pid_running(pid: int) -> bool:
     if pid <= 0:
         return False
     try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        pass
+    else:
+        if ") Z " in stat:
+            return False
+    try:
         os.kill(pid, 0)
     except OSError:
         return False

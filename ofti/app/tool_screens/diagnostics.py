@@ -4,15 +4,20 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens import run as run_tools
+from ofti.app.tool_screens.menu_helpers import build_menu
+from ofti.app.tool_screens.runner import (
+    _no_foam_active,
+    _show_message,
+    _with_no_foam_hint,
+    _write_tool_log,
+)
 from ofti.core.case import detect_mesh_stats, detect_parallel_settings, detect_solver
 from ofti.core.dict_compare import compare_case_dicts
 from ofti.core.mesh_info import mesh_counts
 from ofti.core.tool_output import CommandResult, format_command_result
 from ofti.foam.subprocess_utils import run_trusted as _run_trusted
 from ofti.foam.times import latest_time
-from ofti.tools import run as run_tools
-from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import _no_foam_active, _show_message, _with_no_foam_hint, _write_tool_log
 from ofti.ui.status import status_message
 from ofti.ui_curses.help import diagnostics_help
 from ofti.ui_curses.prompts import prompt_line

@@ -3,9 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens.menu_helpers import build_menu
+from ofti.app.tool_screens.runner import _show_message, _write_tool_log, run_tool_command
 from ofti.foam.subprocess_utils import run_trusted
-from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import _show_message, _write_tool_log, run_tool_command
+from ofti.foamlib import runner as foamlib_runner
+from ofti.foamlib.adapter import FoamlibUnavailableError
 
 
 def _decomposed_processors(case_path: Path) -> list[Path]:
@@ -28,13 +30,20 @@ def reconstruct_manager_screen(stdscr: Any, case_path: Path) -> None:
     if choice == -1 or choice == len(options) - 1:
         return
     if choice == 0:
-        run_tool_command(
-            stdscr,
-            case_path,
-            "reconstructPar",
-            ["reconstructPar"],
-            status="Running reconstructPar...",
-        )
+        ok, message = reconstruct_all_once(case_path)
+        if ok:
+            _show_message(stdscr, message)
+            return
+        if message == "foamlib unavailable":
+            run_tool_command(
+                stdscr,
+                case_path,
+                "reconstructPar",
+                ["reconstructPar"],
+                status="Running reconstructPar...",
+            )
+            return
+        _show_message(stdscr, message)
     elif choice == 1:
         run_tool_command(
             stdscr,
@@ -43,6 +52,19 @@ def reconstruct_manager_screen(stdscr: Any, case_path: Path) -> None:
             ["reconstructPar", "-latestTime"],
             status="Running reconstructPar -latestTime...",
         )
+
+
+def reconstruct_all_once(case_path: Path) -> tuple[bool, str]:
+    processors = _decomposed_processors(case_path)
+    if not processors:
+        return False, "No processor directories found (skip reconstruct)."
+    try:
+        foamlib_runner.reconstruct_case(case_path, check=True, log="log.reconstructPar")
+    except FoamlibUnavailableError:
+        return False, "foamlib unavailable"
+    except Exception as exc:
+        return False, f"reconstructPar failed: {exc}"
+    return True, "reconstructPar completed."
 
 
 def reconstruct_latest_once(case_path: Path) -> tuple[bool, str]:

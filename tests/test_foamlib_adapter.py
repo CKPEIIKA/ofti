@@ -52,3 +52,43 @@ def test_foamlib_integration_write_uniform_vector(tmp_path: Path) -> None:
     )
     text = dst.read_text()
     assert "value uniform (1.0 0.0 0.0);" in text
+
+
+def test_foamlib_node_type_details_for_field_vectors() -> None:
+    path = Path("examples/of_example/0/U")
+    node = foamlib_integration.read_field_entry_node(path, "boundaryField.inlet.value")
+
+    assert foamlib_integration.node_type_label(node) == "vector"
+    details = foamlib_integration.node_type_details(node)
+    assert "foamlib type: vector" in details
+    assert any(line.startswith("shape:") for line in details)
+
+
+def test_foamlib_file_dict_uses_case_relative_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    case = tmp_path / "case"
+    control = case / "system" / "controlDict"
+    control.parent.mkdir(parents=True)
+    (case / "constant").mkdir()
+    control.write_text("application simpleFoam;\n")
+    calls: list[tuple[Path, Path]] = []
+
+    class _FakeFoamFile:
+        def as_dict(self, *, include_header: bool = False) -> dict[str, object]:
+            return {"application": "simpleFoam", "header": {"included": include_header}}
+
+    class _FakeCase:
+        def __init__(self, path: Path) -> None:
+            self.path = path
+
+        def file(self, path: Path) -> _FakeFoamFile:
+            calls.append((self.path, path))
+            return _FakeFoamFile()
+
+    monkeypatch.setattr(foamlib_integration, "FOAMLIB_AVAILABLE", True)
+    monkeypatch.setattr(foamlib_integration, "FoamCase", _FakeCase)
+
+    payload = foamlib_integration.read_file_dict(control, include_header=True)
+
+    assert calls == [(case.resolve(), Path("system/controlDict"))]
+    assert payload["application"] == "simpleFoam"
+    assert payload["header"] == {"included": True}

@@ -196,11 +196,10 @@ ofti run matrix CASE --param application=simpleFoam,pisoFoam --no-launch --json
 ofti run parametric CASE --entry application --values simpleFoam,pisoFoam --json
 ofti run parametric CASE --csv studies/parametric.csv --run-solver --max-parallel 4 --json
 ofti run parametric CASE --grid-axis application=simpleFoam,pisoFoam --grid-axis transport:nu=1e-5,2e-5 --json
-ofti run queue --set CASE_SET --glob 'case_*' --max-parallel 6 --backend foamlib-async --json
 ofti run status --set CASE_SET --fast --easy-on-cpu --json
 ```
 
-### Knife Workflows (New)
+### Knife Workflows
 
 Campaign-wide live status from repo root:
 
@@ -211,6 +210,8 @@ ofti knife current --root . --recursive --live --json
 - `jobs_tracked_running`: tracked jobs from OFTI registry only.
 - `jobs_running`: tracked + live untracked solver processes.
 - `jobs_total`: tracked jobs + currently discovered untracked running processes.
+- `runs`: canonical run view that collapses a launcher/wrapper and solver ranks
+  into one row where OFTI can identify the process group.
 
 Bulk-adopt externally launched runs under repo root:
 
@@ -247,10 +248,17 @@ directories, updates `numberOfSubdomains`, sets `startFrom latestTime`, runs
 `decomposePar -force -latestTime`, and restarts the solver with the new rank
 count unless `--no-start` is used.
 
+Adopted runs are normalized into the same run registry used by `watch jobs`,
+`knife current`, and `knife status`. When procfs access is limited, OFTI reports
+that live process discovery may be incomplete instead of silently treating the
+registry as empty.
+
 Runtime criteria now respect explicit runTimeControl gate messages in logs:
 
 - `Conditions not met` prevents premature auto-pass from numeric-only checks.
 - Criteria stay `unknown`/unmet until gate lines report conditions are met.
+- Unknown criteria include a reason such as not enough samples, no matching log
+  samples, startup window, or unavailable trend.
 
 For very large logs, analysis/tail paths use bounded recent log windows to stay
 responsive, and the TUI log viewer falls back to a bounded tail view for very
@@ -352,6 +360,17 @@ processes and mutate a temporary cloned case. They require `pyFoamCloneCase.py`,
 tutorial solver on `PATH`; MPI is optional and only gates the parallel-restart
 scenarios.
 
+Adapter layout:
+
+- `ofti/app/cli.py`: top-level `ofti` entrypoint; delegates non-interactive
+  groups to the CLI tools dispatcher and opens the TUI otherwise.
+- `ofti/app/cli_tools.py`: compatibility dispatcher for legacy imports.
+- `ofti/app/cli_adapters/`: argparse, output formatting, and exit-code mapping
+  by command group (`knife`, `plot`, `watch`, `run`).
+- `ofti/tools/` and `ofti/core/`: shared services and domain logic used by both
+  CLI and TUI.
+- `ofti/foamlib/`: the only direct upstream `foamlib` integration layer.
+
 ## MODES
 
 - **Normal**: OpenFOAM environment detected; tools available.
@@ -420,6 +439,28 @@ pisoFoam,Newtonian,2e-05
 ```
 
 Use `--run-solver` with `--max-parallel` to immediately queue generated cases.
+
+## RUN QUEUES
+
+`ofti run queue` is the CLI-first queue primitive. By default it runs cases
+sequentially (`--max-parallel 1`), records each solver log, waits for a case to
+finish or crash, classifies the outcome, and immediately advances to the next
+case:
+
+```bash
+ofti run queue case_a case_b --json
+ofti run queue --set CASE_SET --glob 'case_*' --max-parallel 1
+```
+
+Queue result rows include `returncode`, `state`, `outcome`, `stop_reason`,
+`latest_time`, and `end_time`. Outcomes distinguish normal end-time completion,
+criterion completion when detectable, crashes, and unknown stopped cases. Use
+bounded parallel queueing only when the per-case final return code is less
+important than throughput:
+
+```bash
+ofti run queue --set CASE_SET --glob 'case_*' --max-parallel 6 --backend foamlib-async
+```
 
 ## FILES
 

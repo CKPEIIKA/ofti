@@ -4,13 +4,13 @@ import types
 from pathlib import Path
 from unittest import mock
 
-from ofti.tools import menus
-from ofti.tools.cleaning_ops import clean_time_directories, remove_all_logs
-from ofti.tools.diagnostics import diagnostics_screen
-from ofti.tools.menus import TOOLS_SPECIAL_HINTS, run_tool_by_name
-from ofti.tools.runner import load_postprocessing_presets
-from ofti.tools.shell_tools import run_shell_script_screen
-from ofti.tools.solver import run_current_solver
+from ofti.app.tool_screens import menus
+from ofti.app.tool_screens.cleaning_ops import clean_time_directories, remove_all_logs
+from ofti.app.tool_screens.diagnostics import diagnostics_screen
+from ofti.app.tool_screens.menus import TOOLS_SPECIAL_HINTS, run_tool_by_name
+from ofti.app.tool_screens.shell_tools import run_shell_script_screen
+from ofti.app.tool_screens.solver import run_current_solver
+from ofti.core.tool_presets import load_postprocessing_presets
 
 
 class FakeScreen:
@@ -81,7 +81,7 @@ def test_run_shell_script_screen_runs_script_and_shows_output(tmp_path: Path) ->
         stdscr.addstr(f"$ {' '.join(cmd)}\nhello-from-script\n")
 
     with mock.patch(
-        "ofti.tools.shell_tools.run_tool_command",
+        "ofti.app.tool_screens.shell_tools.run_tool_command",
         side_effect=_run_script,
     ) as run:
         run_shell_script_screen(screen, case_dir)
@@ -120,7 +120,7 @@ def test_run_shell_script_screen_forwards_to_shared_runner(tmp_path: Path) -> No
         seen["cmd"] = list(cmd)
         seen["status"] = kwargs.get("status")
 
-    with mock.patch("ofti.tools.shell_tools.run_tool_command", side_effect=_run):
+    with mock.patch("ofti.app.tool_screens.shell_tools.run_tool_command", side_effect=_run):
         run_shell_script_screen(screen, case_dir)
 
     assert seen["path"] == case_dir
@@ -145,7 +145,7 @@ def test_diagnostics_screen_runs_selected_tool(tmp_path: Path) -> None:
     completed.stdout = "ok\n"
     completed.stderr = ""
 
-    with mock.patch("ofti.tools.diagnostics.run_trusted", return_value=completed) as run:
+    with mock.patch("ofti.app.tool_screens.diagnostics.run_trusted", return_value=completed) as run:
         diagnostics_screen(screen, case_dir)
 
     # Ensure a diagnostics command was invoked.
@@ -176,7 +176,7 @@ def test_run_current_solver_uses_runfunctions(tmp_path: Path) -> None:
     with (
         mock.patch("ofti.core.solver_checks.read_entry", return_value="simpleFoam;"),
         mock.patch(
-            "ofti.tools.solver.run_ops.execute_case_command",
+            "ofti.app.tool_screens.solver.run_ops.execute_case_command",
             return_value=types.SimpleNamespace(returncode=0, stdout="ok\n", stderr=""),
         ) as run,
     ):
@@ -198,7 +198,7 @@ def test_remove_all_logs_uses_cleanfunctions(tmp_path: Path, monkeypatch) -> Non
     completed.stderr = ""
 
     monkeypatch.setenv("WM_PROJECT_DIR", "/WM")
-    with mock.patch("ofti.tools.runner.run_trusted", return_value=completed) as run:
+    with mock.patch("ofti.app.tool_screens.runner.run_trusted", return_value=completed) as run:
         remove_all_logs(screen, case_dir)
 
     assert run.called
@@ -219,7 +219,7 @@ def test_clean_time_directories(tmp_path: Path, monkeypatch) -> None:
     completed.stderr = ""
 
     monkeypatch.setenv("WM_PROJECT_DIR", "/WM")
-    with mock.patch("ofti.tools.runner.run_trusted", return_value=completed) as run:
+    with mock.patch("ofti.app.tool_screens.runner.run_trusted", return_value=completed) as run:
         clean_time_directories(screen, case_dir)
 
     assert run.called
@@ -250,7 +250,7 @@ def test_run_tool_by_name_cli_tools_alias(tmp_path: Path) -> None:
     case_dir.mkdir()
     screen = FakeScreen(keys=[ord("h")])
 
-    with mock.patch("ofti.tools.menus.case_operations_screen") as case_ops_screen:
+    with mock.patch("ofti.app.tool_screens.menus.case_operations_screen") as case_ops_screen:
         handled = run_tool_by_name(screen, case_dir, "cli-tools")
 
     assert handled is True
@@ -263,10 +263,10 @@ def test_run_tool_by_name_cli_group_aliases(tmp_path: Path) -> None:
     screen = FakeScreen(keys=[ord("h")])
 
     with (
-        mock.patch("ofti.tools.menus.case_operations_screen") as knife_screen,
-        mock.patch("ofti.tools.menus.residual_timeline_screen") as plot_screen,
-        mock.patch("ofti.tools.menus.job_status_poll_screen") as watch_screen,
-        mock.patch("ofti.tools.menus.run_current_solver") as run_screen,
+        mock.patch("ofti.app.tool_screens.menus.case_operations_screen") as knife_screen,
+        mock.patch("ofti.app.tool_screens.menus.residual_timeline_screen") as plot_screen,
+        mock.patch("ofti.app.tool_screens.menus.job_status_poll_screen") as watch_screen,
+        mock.patch("ofti.app.tool_screens.menus.run_current_solver") as run_screen,
     ):
         assert run_tool_by_name(screen, case_dir, "knife") is True
         assert run_tool_by_name(screen, case_dir, "plot") is True

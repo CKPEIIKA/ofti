@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.tools import job_control, job_control_service, watch_service
+from ofti.app.tool_screens import job_control
+from ofti.tools import job_control_service, watch_service
 from ofti.tools.cli_tools import watch
 
 
@@ -32,8 +33,10 @@ def test_cli_and_tui_stop_use_same_job_control_service(
         signal_name,
         kill_fn,
         finish_job_fn,
+        killpg_fn,
+        getpgid_fn,
     ) -> dict[str, object]:
-        del jobs, job_id, name, all_jobs, signal_name, kill_fn, finish_job_fn
+        del jobs, job_id, name, all_jobs, signal_name, kill_fn, finish_job_fn, killpg_fn, getpgid_fn
         calls.append(str(case_path))
         return {"signal": "TERM", "selected": 1, "stopped": [{"id": "1", "pid": 7}], "failed": []}
 

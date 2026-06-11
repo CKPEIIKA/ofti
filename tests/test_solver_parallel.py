@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.tools.solver import run_current_solver_parallel
+from ofti.app.tool_screens.solver import run_current_solver_parallel
 
 
 class FakeScreen:
@@ -56,9 +56,9 @@ def test_run_current_solver_parallel_invokes_mpirun(tmp_path: Path, monkeypatch)
         seen["cmd"] = list(cmd)
 
     monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_a, **_k: "simpleFoam;")
-    monkeypatch.setattr("ofti.tools.solver.read_number_of_subdomains", lambda *_a, **_k: 4)
-    monkeypatch.setattr("ofti.tools.solver.resolve_executable", lambda *_a: "mpirun")
-    monkeypatch.setattr("ofti.tools.solver._run_solver_live_cmd", fake_run)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.read_number_of_subdomains", lambda *_a, **_k: 4)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.resolve_executable", lambda *_a: "mpirun")
+    monkeypatch.setattr("ofti.app.tool_screens.solver._run_solver_live_cmd", fake_run)
 
     run_current_solver_parallel(FakeScreen(), case_dir)
 

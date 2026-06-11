@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ofti.tools import pipeline
+from ofti.app.tool_screens import pipeline
 
 
 class _Screen:

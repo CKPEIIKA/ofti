@@ -31,14 +31,14 @@ from ofti.app.screens import main as main_screen
 from ofti.app.screens import search as search_screen
 from ofti.app.state import AppState, Screen
 from ofti.app.status import mode_status
+from ofti.app.tool_screens.diagnostics import diagnostics_screen
+from ofti.app.tool_screens.solver import run_current_solver_live
 from ofti.core.domain import Case
 from ofti.foam.config import fzf_enabled, get_config
 from ofti.foam.exceptions import QuitAppError
 from ofti.foam.openfoam import OpenFOAMError, discover_case_files
 from ofti.foam.openfoam_env import ensure_environment
 from ofti.foamlib.adapter import available as foamlib_available
-from ofti.tools.diagnostics import diagnostics_screen
-from ofti.tools.solver import run_current_solver_live
 from ofti.ui.adapter import CursesAdapter
 from ofti.ui.router import ScreenRouter
 from ofti.ui_curses.entry_browser import BrowserCallbacks

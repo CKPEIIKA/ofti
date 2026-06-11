@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import cast
 from unittest import mock
 
-from ofti.tools.solver import (
+from ofti.app.tool_screens.solver import (
     _tail_process_log,
     run_current_solver_live,
     run_current_solver_live_custom_log,
@@ -96,10 +96,10 @@ def test_run_current_solver_live_rerun_declines(tmp_path: Path, monkeypatch) -> 
 
     screen = FakeScreen(keys=[ord("n")])
     monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_args, **_kw: "simpleFoam;")
-    monkeypatch.setattr("ofti.tools.solver.require_wm_project_dir", lambda *_args, **_kw: None)
-    monkeypatch.setattr("ofti.tools.solver.resolve_openfoam_bashrc", lambda: None)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.require_wm_project_dir", lambda *_args, **_kw: None)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.resolve_openfoam_bashrc", lambda: None)
     runner = mock.Mock()
-    monkeypatch.setattr("ofti.tools.solver._run_solver_live_cmd", runner)
+    monkeypatch.setattr("ofti.app.tool_screens.solver._run_solver_live_cmd", runner)
 
     run_current_solver_live(screen, case_dir)
 
@@ -117,10 +117,10 @@ def test_run_current_solver_live_rerun_accepts(tmp_path: Path, monkeypatch) -> N
 
     screen = FakeScreen(keys=[ord("y")])
     monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_args, **_kw: "simpleFoam;")
-    monkeypatch.setattr("ofti.tools.solver.require_wm_project_dir", lambda *_args, **_kw: None)
-    monkeypatch.setattr("ofti.tools.solver.resolve_openfoam_bashrc", lambda: None)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.require_wm_project_dir", lambda *_args, **_kw: None)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.resolve_openfoam_bashrc", lambda: None)
     runner = mock.Mock()
-    monkeypatch.setattr("ofti.tools.solver._run_solver_live_cmd", runner)
+    monkeypatch.setattr("ofti.app.tool_screens.solver._run_solver_live_cmd", runner)
 
     run_current_solver_live(screen, case_dir)
 
@@ -138,9 +138,9 @@ def test_run_current_solver_live_skips_runfunctions(tmp_path: Path, monkeypatch)
     screen = FakeScreen(keys=[ord("h")])
     monkeypatch.setenv("WM_PROJECT_DIR", "/WM")
     monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_args, **_kw: "simpleFoam;")
-    monkeypatch.setattr("ofti.tools.solver.resolve_openfoam_bashrc", lambda: None)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.resolve_openfoam_bashrc", lambda: None)
     runner = mock.Mock()
-    monkeypatch.setattr("ofti.tools.solver._run_solver_live_cmd", runner)
+    monkeypatch.setattr("ofti.app.tool_screens.solver._run_solver_live_cmd", runner)
 
     run_current_solver_live(screen, case_dir)
 
@@ -155,11 +155,11 @@ def test_run_current_solver_live_custom_log(tmp_path: Path, monkeypatch) -> None
 
     screen = FakeScreen(keys=[ord("h")])
     monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_args, **_kw: "simpleFoam;")
-    monkeypatch.setattr("ofti.tools.solver.require_wm_project_dir", lambda *_args, **_kw: None)
-    monkeypatch.setattr("ofti.tools.solver.resolve_openfoam_bashrc", lambda: None)
-    monkeypatch.setattr("ofti.tools.solver.prompt_line", lambda *_a, **_k: "logs/custom.log")
+    monkeypatch.setattr("ofti.app.tool_screens.solver.require_wm_project_dir", lambda *_args, **_kw: None)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.resolve_openfoam_bashrc", lambda: None)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.prompt_line", lambda *_a, **_k: "logs/custom.log")
     runner = mock.Mock()
-    monkeypatch.setattr("ofti.tools.solver._run_solver_live_cmd", runner)
+    monkeypatch.setattr("ofti.app.tool_screens.solver._run_solver_live_cmd", runner)
 
     run_current_solver_live_custom_log(screen, case_dir)
 
@@ -176,11 +176,11 @@ def test_run_current_solver_live_custom_log_rejects_path_escape(tmp_path: Path, 
     screen = FakeScreen(keys=[ord("h")])
     messages: list[str] = []
     monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_args, **_kw: "simpleFoam;")
-    monkeypatch.setattr("ofti.tools.solver.require_wm_project_dir", lambda *_args, **_kw: None)
-    monkeypatch.setattr("ofti.tools.solver.prompt_line", lambda *_a, **_k: "../escape.log")
-    monkeypatch.setattr("ofti.tools.solver._show_message", lambda *_a, **_k: messages.append(_a[1]))
+    monkeypatch.setattr("ofti.app.tool_screens.solver.require_wm_project_dir", lambda *_args, **_kw: None)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.prompt_line", lambda *_a, **_k: "../escape.log")
+    monkeypatch.setattr("ofti.app.tool_screens.solver._show_message", lambda *_a, **_k: messages.append(_a[1]))
     runner = mock.Mock()
-    monkeypatch.setattr("ofti.tools.solver._run_solver_live_cmd", runner)
+    monkeypatch.setattr("ofti.app.tool_screens.solver._run_solver_live_cmd", runner)
 
     run_current_solver_live_custom_log(screen, case_dir)
 
@@ -265,7 +265,7 @@ def test_tail_process_log_uses_bounded_reads_and_resets_timeout(
         seen["max_bytes"] = max_bytes
         return ["Time = 0.1"]
 
-    monkeypatch.setattr("ofti.tools.solver.read_log_tail_lines", _tail)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.read_log_tail_lines", _tail)
     screen = _PollingScreen()
     process = FakeProcess()
 

@@ -55,6 +55,7 @@ def get_entry_metadata(
     subkeys = list_subkeys(file_path, full_key)
     comments = get_entry_comments(file_path, full_key)
     info_lines = get_entry_info(file_path, full_key)
+    info_lines.extend(_foamlib_type_info(file_path, full_key))
     info_lines.extend(boundary_condition_info(file_path, full_key))
     # Type is already shown in the entry preview; avoid repeating it in hints.
     if subkeys or looks_like_dict(value):
@@ -105,6 +106,7 @@ def refresh_entry_cache(
     subkeys = list_subkeys(file_path, full_key)
     comments = get_entry_comments(file_path, full_key)
     info_lines = get_entry_info(file_path, full_key)
+    info_lines.extend(_foamlib_type_info(file_path, full_key))
     info_lines.extend(boundary_condition_info(file_path, full_key))
     # Type is already shown in the entry preview; avoid repeating it in hints.
     if subkeys or looks_like_dict(value):
@@ -219,10 +221,17 @@ def _read_optional_entry(file_path: Path, key: str) -> str | None:
         return None
 
 
-def _foamlib_type_info(file_path: Path, _full_key: str) -> list[str]:
+def _foamlib_type_info(file_path: Path, full_key: str) -> list[str]:
     if not (foamlib_integration.available() and foamlib_integration.is_foam_file(file_path)):
         return []
-    return []
+    try:
+        if foamlib_integration.is_field_file(file_path):
+            node = foamlib_integration.read_field_entry_node(file_path, full_key)
+        else:
+            node = foamlib_integration.read_entry_node(file_path, full_key)
+    except Exception:
+        return []
+    return foamlib_integration.node_type_details(node)
 
 
 def detect_type_with_foamlib(

@@ -252,13 +252,16 @@ def execute_solver_case_command(
         mpi=mpi,
         solver=solver,
     ):
+        chosen_log = None
+        if not background and solver is not None:
+            chosen_log = _resolve_solver_log_path(case_path, name=name, log_path=log_path)
         return execute_case_command(
             case_path,
             name,
             cmd,
             background=background,
             detached=detached,
-            log_path=log_path,
+            log_path=chosen_log or log_path,
             pid_path=pid_path,
             extra_env=extra_env,
         )
@@ -483,6 +486,7 @@ def _requires_solver_subprocess(
     return bool(
         background
         or extra_env
+        or bool(os.environ.get("OFTI_BASHRC"))
         or (parallel > 1 and mpi)
         or not solver,
     )
@@ -763,16 +767,27 @@ def queue_payload(
     if dry_run:
         return payload
     if backend == "process":
-        _queue_process_backend(
-            payload,
-            plan=plan,
-            solver=solver,
-            parallel=parallel,
-            mpi=mpi,
-            poll_interval=poll_interval,
-            prepare_parallel=prepare_parallel,
-            clean_processors=clean_processors,
-        )
+        if max_parallel == 1:
+            _queue_sequential_process_backend(
+                payload,
+                plan=plan,
+                solver=solver,
+                parallel=parallel,
+                mpi=mpi,
+                prepare_parallel=prepare_parallel,
+                clean_processors=clean_processors,
+            )
+        else:
+            _queue_process_backend(
+                payload,
+                plan=plan,
+                solver=solver,
+                parallel=parallel,
+                mpi=mpi,
+                poll_interval=poll_interval,
+                prepare_parallel=prepare_parallel,
+                clean_processors=clean_processors,
+            )
     else:
         _queue_foamlib_backend(
             payload,
@@ -784,6 +799,65 @@ def queue_payload(
             clean_processors=clean_processors,
         )
     return payload
+
+
+def _queue_sequential_process_backend(
+    payload: dict[str, Any],
+    *,
+    plan: list[dict[str, Any]],
+    solver: str | None,
+    parallel: int,
+    mpi: str | None,
+    prepare_parallel: bool,
+    clean_processors: bool,
+) -> None:
+    for row in plan:
+        case_path = Path(str(row["case"]))
+        try:
+            name, command = solver_command(
+                case_path,
+                solver=solver,
+                parallel=parallel,
+                mpi=mpi,
+            )
+            if parallel > 1 and "-parallel" in command and prepare_parallel:
+                prepare_parallel_case(
+                    case_path,
+                    parallel=parallel,
+                    clean_processors=clean_processors,
+                    dry_run=False,
+                )
+            result = execute_solver_case_command(
+                case_path,
+                name,
+                command,
+                parallel=parallel,
+                mpi=mpi,
+                background=False,
+                log_path=Path(f"log.{runner_service.safe_name(name)}"),
+            )
+        except ValueError as exc:
+            payload["failed_to_start"].append({"case": str(case_path), "error": str(exc)})
+            payload["ok"] = False
+            continue
+        started = {
+            "case": str(case_path),
+            "pid": None,
+            "name": name,
+            "log_path": str(result.log_path) if result.log_path is not None else "",
+            "started_at": time.time(),
+        }
+        payload["started"].append(started)
+        status_row = status_row_payload(case_path, lightweight=False)
+        finished = _queue_finished_row(
+            status_row,
+            case=str(case_path),
+            pid=None,
+            returncode=result.returncode,
+        )
+        payload["finished"].append(finished)
+        if int(result.returncode) != 0:
+            payload["ok"] = False
 
 
 def _queue_process_backend(
@@ -860,14 +934,7 @@ def _queue_process_backend(
                 continue
             status_row = status_row_payload(Path(str(row["case"])))
             payload["finished"].append(
-                {
-                    "case": row["case"],
-                    "pid": pid,
-                    "state": status_row["state"],
-                    "stop_reason": status_row["stop_reason"],
-                    "latest_time": status_row["latest_time"],
-                    "eta_seconds": status_row["eta_seconds"],
-                },
+                _queue_finished_row(status_row, case=str(row["case"]), pid=pid, returncode=None),
             )
         active = still_active
 
@@ -988,14 +1055,7 @@ def _queue_append_foamlib_finished(
 ) -> None:
     for case_path in case_group:
         status_row = status_row_payload(case_path)
-        row: dict[str, Any] = {
-            "case": str(case_path),
-            "pid": None,
-            "state": status_row["state"],
-            "stop_reason": status_row["stop_reason"],
-            "latest_time": status_row["latest_time"],
-            "eta_seconds": status_row["eta_seconds"],
-        }
+        row = _queue_finished_row(status_row, case=str(case_path), pid=None, returncode=None)
         payload["finished"].append(row)
         if str(case_path.resolve()) in failed_map:
             payload["ok"] = False
@@ -1100,12 +1160,20 @@ def status_row_payload(
     )
     state = _case_state(payload)
     reason = _stop_reason(payload, state=state)
+    rtc = payload.get("run_time_control", {})
+    criteria = rtc.get("criteria", [])
+    criteria_total = len(criteria) if isinstance(criteria, list) else 0
     return {
         "case": str(case_path.resolve()),
         "state": state,
         "latest_time": payload.get("latest_time"),
         "eta_seconds": payload.get("eta_seconds_to_end_time"),
         "stop_reason": reason,
+        "end_time": rtc.get("end_time"),
+        "criteria_total": criteria_total,
+        "criteria_passed": int(rtc.get("passed", 0) or 0),
+        "criteria_failed": int(rtc.get("failed", 0) or 0),
+        "criteria_unknown": int(rtc.get("unknown", 0) or 0),
         "jobs_running": payload.get("jobs_running", 0),
     }
 
@@ -1208,6 +1276,7 @@ def _stop_reason(payload: Mapping[str, Any], *, state: str) -> str:
     if isinstance(solver_error, str) and solver_error:
         return solver_error
     rtc = payload.get("run_time_control", {})
+    reason = ""
     criteria = rtc.get("criteria", [])
     if isinstance(criteria, list):
         for row in criteria:
@@ -1215,17 +1284,75 @@ def _stop_reason(payload: Mapping[str, Any], *, state: str) -> str:
                 continue
             reason = str(row.get("unmet_reason") or "").strip()
             if reason:
-                return reason
+                break
+        if criteria and int(rtc.get("unknown", 0) or 0) == 0:
+            reason = reason or "criteria_met"
     latest_time = payload.get("latest_time")
     end_time = rtc.get("end_time")
+    if (
+        not reason and
+        isinstance(latest_time, (int, float))
+        and isinstance(end_time, (int, float))
+        and latest_time >= end_time
+    ):
+        reason = "end_time_reached"
+    if not reason and state == "failed":
+        reason = "criteria_failed"
+    return reason or "stopped"
+
+
+def _queue_finished_row(
+    status_row: Mapping[str, Any],
+    *,
+    case: str,
+    pid: int | None,
+    returncode: int | None,
+) -> dict[str, Any]:
+    outcome = _queue_outcome(status_row, returncode=returncode)
+    state = "crashed" if outcome == "crashed" else status_row["state"]
+    stop_reason = str(status_row.get("stop_reason") or "")
+    if outcome == "crashed":
+        stop_reason = "crashed"
+    elif outcome == "criteria":
+        stop_reason = "criteria_met"
+    elif outcome == "time":
+        stop_reason = "end_time_reached"
+    return {
+        "case": case,
+        "pid": pid,
+        "returncode": returncode,
+        "state": state,
+        "outcome": outcome,
+        "stop_reason": stop_reason,
+        "latest_time": status_row["latest_time"],
+        "end_time": status_row.get("end_time"),
+        "eta_seconds": status_row["eta_seconds"],
+    }
+
+
+def _queue_outcome(status_row: Mapping[str, Any], *, returncode: int | None) -> str:
+    if returncode is not None and returncode != 0:
+        return "crashed"
+    latest_time = status_row.get("latest_time")
+    end_time = status_row.get("end_time")
     if (
         isinstance(latest_time, (int, float))
         and isinstance(end_time, (int, float))
         and latest_time >= end_time
     ):
-        return "end_time_reached"
-    if state == "failed":
-        return "criteria_failed"
+        return "time"
+    if (
+        int(status_row.get("criteria_total", 0) or 0) > 0
+        and int(status_row.get("criteria_failed", 0) or 0) == 0
+        and int(status_row.get("criteria_unknown", 0) or 0) == 0
+        and int(status_row.get("criteria_passed", 0) or 0) > 0
+    ):
+        return "criteria"
+    state = str(status_row.get("state") or "")
+    if state in {"error", "failed"}:
+        return "crashed" if returncode is None else "failed"
+    if returncode == 0:
+        return "completed"
     return "stopped"
 
 

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.tools import job_control_service, knife_service, runtime_control_service, watch_service
+from ofti.tools import (
+    job_control_service,
+    knife_service,
+    runtime_control_service,
+    watch_service,
+)
 from ofti.tools.cli_tools import knife, watch
 
 
@@ -98,6 +103,8 @@ def test_watch_stop_wrapper_delegates(monkeypatch, tmp_path: Path) -> None:
         signal_name,
         kill_fn,
         finish_job_fn,
+        killpg_fn,
+        getpgid_fn,
     ) -> dict[str, object]:
         seen["case"] = case_path
         seen["jobs"] = jobs
@@ -107,6 +114,8 @@ def test_watch_stop_wrapper_delegates(monkeypatch, tmp_path: Path) -> None:
         seen["signal_name"] = signal_name
         seen["kill_fn"] = kill_fn
         seen["finish_job_fn"] = finish_job_fn
+        seen["killpg_fn"] = killpg_fn
+        seen["getpgid_fn"] = getpgid_fn
         return {"signal": signal_name, "selected": 0, "stopped": [], "failed": []}
 
     monkeypatch.setattr(job_control_service, "stop_jobs", _stop)
@@ -116,3 +125,5 @@ def test_watch_stop_wrapper_delegates(monkeypatch, tmp_path: Path) -> None:
     assert seen["signal_name"] == "TERM"
     assert callable(seen["kill_fn"])
     assert callable(seen["finish_job_fn"])
+    assert callable(seen["killpg_fn"])
+    assert callable(seen["getpgid_fn"])

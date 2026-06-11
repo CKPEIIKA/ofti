@@ -140,7 +140,7 @@ def _summarize_array_field(node: object | None) -> list[str] | None:
 def build_menu(*args: Any, **kwargs: Any) -> Any:
     from importlib import import_module
 
-    return import_module("ofti.tools.menu_helpers").build_menu(*args, **kwargs)
+    return import_module("ofti.app.tool_screens.menu_helpers").build_menu(*args, **kwargs)
 
 
 def _summarize_sequence(values: list[object] | tuple[object, ...]) -> list[str]:

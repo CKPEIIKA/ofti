@@ -4,9 +4,8 @@ import curses
 from pathlib import Path
 from typing import Any
 
-from ofti.core.times import latest_time
-from ofti.tools.menus import run_tool_by_name
-from ofti.tools.runner import (
+from ofti.app.tool_screens.menus import run_tool_by_name
+from ofti.app.tool_screens.runner import (
     _normalize_tool_name,
     _record_last_tool,
     _record_tool_status,
@@ -14,9 +13,10 @@ from ofti.tools.runner import (
     list_tool_commands,
     time,
 )
-from ofti.tools.shell_tools import rerun_last_tool
-from ofti.tools.tool_dicts_foamcalc import foam_calc_prompt
-from ofti.tools.tool_dicts_postprocess import post_process_prompt
+from ofti.app.tool_screens.shell_tools import rerun_last_tool
+from ofti.app.tool_screens.tool_dicts_foamcalc import foam_calc_prompt
+from ofti.app.tool_screens.tool_dicts_postprocess import post_process_prompt
+from ofti.core.times import latest_time
 
 
 class FakeScreen:
@@ -95,7 +95,7 @@ def test_run_tool_by_name_dispatches_simple_tool(tmp_path: Path, monkeypatch) ->
     def fake_run_tool(_stdscr, _case, name: str, cmd: list[str], **_kwargs: object) -> None:
         called.append((name, list(cmd)))
 
-    monkeypatch.setattr("ofti.tools.menus.run_tool_command", fake_run_tool)
+    monkeypatch.setattr("ofti.app.tool_screens.menus.run_tool_command", fake_run_tool)
 
     assert run_tool_by_name(screen, case_dir, "blockMesh") is True
     assert called == [("blockMesh", ["blockMesh"])]
@@ -110,7 +110,7 @@ def test_rerun_last_tool_replays_shell(tmp_path: Path, monkeypatch) -> None:
     def fake_run_shell(_stdscr, _case, _name, shell_cmd):
         recorded.append(shell_cmd)
 
-    monkeypatch.setattr("ofti.tools.shell_tools._run_shell_tool", fake_run_shell)
+    monkeypatch.setattr("ofti.app.tool_screens.shell_tools._run_shell_tool", fake_run_shell)
 
     _record_last_tool("demo", "shell", "echo hi")
     rerun_last_tool(screen, case_dir)
@@ -129,7 +129,7 @@ def test_post_process_prompt_runs_default_args(tmp_path: Path, monkeypatch) -> N
     def fake_run_simple(_stdscr, _case, name, _cmd, **_kwargs: object):
         screen.addstr(name)
 
-    monkeypatch.setattr("ofti.tools.tool_dicts_postprocess.run_tool_command", fake_run_simple)
+    monkeypatch.setattr("ofti.app.tool_screens.tool_dicts_postprocess.run_tool_command", fake_run_simple)
 
     post_process_prompt(screen, case_dir)
 
@@ -148,7 +148,7 @@ def test_foam_calc_prompt_runs_args(tmp_path: Path, monkeypatch) -> None:
     def fake_run_simple(_stdscr, _case, name, _cmd, **_kwargs: object):
         screen.addstr(name)
 
-    monkeypatch.setattr("ofti.tools.tool_dicts_foamcalc.run_tool_command", fake_run_simple)
+    monkeypatch.setattr("ofti.app.tool_screens.tool_dicts_foamcalc.run_tool_command", fake_run_simple)
 
     foam_calc_prompt(screen, case_dir)
 
@@ -193,7 +193,7 @@ def test_run_tool_by_name_background_uses_job_registry(tmp_path: Path, monkeypat
         started.append((name, list(cmd)))
 
     monkeypatch.setattr(
-        "ofti.tools.job_control.start_tool_background",
+        "ofti.app.tool_screens.job_control.start_tool_background",
         fake_background,
     )
 

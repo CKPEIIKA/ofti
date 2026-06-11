@@ -16,6 +16,7 @@ from ofti.core.entry_io import read_boundary_field, read_dimensions, read_intern
 from ofti.core.mesh_info import boundary_summary, mesh_counts
 from ofti.core.times import latest_time
 from ofti.foam.openfoam_env import detect_openfoam_version
+from ofti.foamlib import adapter as foamlib_integration
 
 
 def build_case_snapshot(case_path: Path) -> dict[str, Any]:
@@ -47,6 +48,7 @@ def build_case_snapshot(case_path: Path) -> dict[str, Any]:
             "boundary": summary,
         },
         "fields": _field_snapshot(case_path),
+        "dictionaries": _dictionary_snapshot(case_path),
     }
 
 
@@ -81,3 +83,22 @@ def _field_snapshot(case_path: Path) -> dict[str, dict[str, str]]:
             "boundary_field": boundary_field,
         }
     return fields
+
+
+def _dictionary_snapshot(case_path: Path) -> dict[str, dict[str, object]]:
+    snapshot: dict[str, dict[str, object]] = {}
+    for relative in (
+        Path("system/controlDict"),
+        Path("system/fvSchemes"),
+        Path("system/fvSolution"),
+        Path("system/decomposeParDict"),
+        Path("constant/transportProperties"),
+        Path("constant/turbulenceProperties"),
+    ):
+        file_path = case_path / relative
+        if not file_path.is_file():
+            continue
+        data = foamlib_integration.read_file_dict(file_path, include_header=True)
+        if data:
+            snapshot[relative.as_posix()] = data
+    return snapshot

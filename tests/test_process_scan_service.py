@@ -71,9 +71,7 @@ def test_scan_proc_solver_processes_filters_tracked(tmp_path: Path) -> None:
         proc_root=proc_root,
         include_tracked=False,
     )
-    assert {int(row["pid"]) for row in rows} == {100}
-    assert rows[0]["launcher_pid"] == 100
-    assert rows[0]["solver_pids"] == [101]
+    assert rows == []
 
     rows_all = svc.scan_proc_solver_processes(
         case,
@@ -83,7 +81,12 @@ def test_scan_proc_solver_processes_filters_tracked(tmp_path: Path) -> None:
         include_tracked=True,
     )
     assert {int(row["pid"]) for row in rows_all} == {100, 101}
+    launcher_row = next(row for row in rows_all if int(row["pid"]) == 100)
+    assert launcher_row["tracked"] is True
+    assert launcher_row["launcher_pid"] == 100
+    assert launcher_row["solver_pids"] == [101]
     solver_row = next(row for row in rows_all if int(row["pid"]) == 101)
+    assert solver_row["tracked"] is True
     assert solver_row["launcher_pid"] == 100
 
 

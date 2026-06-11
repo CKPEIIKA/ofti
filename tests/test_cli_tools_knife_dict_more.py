@@ -215,9 +215,18 @@ def test_knife_scan_proc_solver_processes_filters_entries(tmp_path: Path) -> Non
         proc_root=proc_root,
         include_tracked=False,
     )
-    pids = [int(row["pid"]) for row in rows]
-    assert 102 in pids
-    assert 103 not in pids
+    assert rows == []
+
+    rows_all = knife._scan_proc_solver_processes(
+        case,
+        "hy2Foam",
+        tracked_pids={103},
+        proc_root=proc_root,
+        include_tracked=True,
+    )
+    by_pid = {int(row["pid"]): row for row in rows_all}
+    assert by_pid[102]["tracked"] is True
+    assert by_pid[103]["tracked"] is True
 
 
 def test_knife_scan_proc_solver_processes_relaxed_scope(tmp_path: Path) -> None:
@@ -330,6 +339,7 @@ def test_knife_current_live_and_report_payloads(
     criteria = knife.criteria_payload(case, lightweight=True, tail_bytes=2048)
     assert criteria["criteria_count"] == 1
     assert criteria["criteria"][0]["unmet"] == "window"
+    assert criteria["criteria"][0]["reason"] == "window"
     assert seen["lightweight"] is True
     assert seen["tail_bytes"] == 2048
 
@@ -344,6 +354,21 @@ def test_knife_current_live_and_report_payloads(
     md = knife.report_markdown(report)
     assert "## Criteria" in md
     assert "criteria_seconds: 12.0" in md
+
+
+def test_criteria_unknown_reason_explains_missing_samples() -> None:
+    assert (
+        knife_service.criteria_unknown_reason(
+            {"status": "unknown", "unmet_reason": "not_enough_samples", "samples": 2},
+        )
+        == "not enough samples: 2 observed"
+    )
+    assert (
+        knife_service.criteria_unknown_reason(
+            {"status": "unknown", "live_value": None, "live_delta": None},
+        )
+        == "no matching runtime samples in log"
+    )
 
 
 def test_knife_current_scope_payload_tree_aggregates_jobs_and_untracked(
@@ -748,6 +773,7 @@ def test_knife_stop_payload_includes_untracked_solver_rows(
 ) -> None:
     case = _make_case(tmp_path / "case", solver="hy2Foam")
     killed: list[int] = []
+    killed_groups: list[int] = []
 
     monkeypatch.setattr(
         knife_service.watch_service,
@@ -794,11 +820,15 @@ def test_knife_stop_payload_includes_untracked_solver_rows(
         ],
     )
     monkeypatch.setattr(knife_service.os, "kill", lambda pid, _sig: killed.append(pid))
+    monkeypatch.setattr(knife_service.os, "killpg", lambda pgid, _sig: killed_groups.append(pgid))
+    monkeypatch.setattr(knife_service.os, "getpgid", lambda pid: pid)
     payload = knife.stop_payload(case)
     assert payload["selected"] == 2
     assert payload["untracked"]["selected"] == 2
-    assert sorted(killed) == [900, 901]
+    assert killed_groups == [900]
+    assert killed == [901]
     assert payload["untracked"]["launcher_pids"] == [900]
+    assert payload["stopped"][0]["method"] == "process_group"
 
 
 def test_knife_campaign_rank_and_compare_payloads(

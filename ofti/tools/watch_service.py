@@ -14,6 +14,7 @@ from ofti.foam.subprocess_utils import run_trusted
 from ofti.foamlib.logs import read_log_tail_lines
 from ofti.tools import (
     case_source_service,
+    case_status_service,
     job_control_service,
     process_scan_service,
     runner_service,
@@ -51,11 +52,13 @@ def jobs_payload(
     shaped = [_job_with_schema(case_path, job) for job in jobs]
     if selected_kind is not None:
         shaped = [job for job in shaped if str(job.get("kind")) == selected_kind]
+    runs = case_status_service.canonical_run_rows(case_path, shaped, [])
     return {
         "case": str(case_path),
         "count": len(shaped),
         "kind": selected_kind or "any",
         "jobs": shaped,
+        "runs": runs,
     }
 
 
@@ -416,6 +419,8 @@ def stop_payload(
             signal_name=signal_name,
             kill_fn=os.kill,
             finish_job_fn=finish_job,
+            killpg_fn=os.killpg,
+            getpgid_fn=os.getpgid,
         ),
     )
 
@@ -750,6 +755,8 @@ def external_watch_stop_payload(
         signal_name=signal_name,
         kill_fn=os.kill,
         finish_job_fn=finish_job,
+        killpg_fn=os.killpg,
+        getpgid_fn=os.getpgid,
     )
     return {
         "case": str(case_path),
@@ -788,12 +795,23 @@ def adopt_job_payload(
     if entry is None:
         raise ValueError(f"process not found for adopt pid: {pid}")
     solver = process_scan_service.guess_solver_from_args(entry.args)
-    name = solver if solver and solver != "unknown" else "solver"
+    role = process_scan_service.process_role(
+        entry.args,
+        solver.lower() if solver and solver != "unknown" else None,
+    )
+    launcher_pid = process_scan_service.launcher_pid_for_entry(entry, table)
+    if role == "solver" and launcher_pid is not None and launcher_pid in table:
+        pid = launcher_pid
+        entry = table[pid]
+        solver = process_scan_service.guess_solver_from_args(entry.args)
+        role = "launcher"
+    solver_label = solver if solver and solver != "unknown" else "solver"
+    name = solver_label if role == "solver" else f"{solver_label}-launcher"
     log_path = _adopt_log_path(case_path, solver)
     command = " ".join(entry.args) if entry.args else name
     solver_name = solver.lower() if solver and solver != "unknown" else None
     solver_pids: list[int] = []
-    if process_scan_service.process_role(entry.args, solver_name) == "launcher":
+    if role == "launcher":
         solver_pids = process_scan_service.solver_descendant_pids(pid, table, solver_name)
     job_id = register_job(
         case_path,
@@ -804,6 +822,8 @@ def adopt_job_payload(
         kind=_SOLVER_KIND,
         extra={
             "adopted": True,
+            "role": role or "solver",
+            "launcher_pid": pid if role == "launcher" else launcher_pid,
             "solver_pids": solver_pids,
         },
     )
@@ -814,6 +834,9 @@ def adopt_job_payload(
         "pid": pid,
         "name": name,
         "solver": solver,
+        "role": role,
+        "launcher_pid": pid if role == "launcher" else launcher_pid,
+        "solver_pids": solver_pids,
         "log": str(log_path),
     }
 
@@ -853,7 +876,7 @@ def _resolve_adopt_pid(
         raise ValueError(f"no running solver processes found for case: {target_case}")
     rows.sort(
         key=lambda row: (
-            0 if str(row.get("role")) == "solver" else 1,
+            0 if str(row.get("role")) == "launcher" else 1,
             int(row.get("pid") or 0),
         ),
     )
@@ -974,7 +997,7 @@ def _job_with_schema(case_path: Path, job: dict[str, Any]) -> dict[str, Any]:
     row["kind"] = kind
     row["case_dir"] = str(case_path)
     row["running"] = status in {"running", "paused"}
-    row["detached"] = bool(job.get("detached", kind == _SOLVER_KIND))
+    row["detached"] = bool(job.get("detached", False))
     row["log_path"] = _job_log_path(case_path, job)
     return row
 

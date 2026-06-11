@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens.menus import run_tool_by_name
+from ofti.app.tool_screens.runner import list_tool_commands
 from ofti.core.commands import CommandKind, is_blocked_in_no_foam, parse_command
-from ofti.tools.menus import run_tool_by_name
-from ofti.tools.runner import list_tool_commands
 
 
 @dataclass(frozen=True)

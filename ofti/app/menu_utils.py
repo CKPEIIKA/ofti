@@ -6,7 +6,7 @@ from typing import Any
 
 from ofti.app.state import AppState
 from ofti.app.tasks import running_tasks_status
-from ofti.tools.runner import last_tool_status_line
+from ofti.app.tool_screens.runner import last_tool_status_line
 from ofti.ui.help import menu_hint
 from ofti.ui.menu import Menu
 

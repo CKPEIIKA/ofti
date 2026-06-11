@@ -52,6 +52,199 @@ def test_stop_jobs_transitions_and_failures(tmp_path: Path) -> None:
     assert killed == [11, 33]
 
 
+def test_stop_jobs_prefers_detached_process_group(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    jobs = [
+        {
+            "id": "1",
+            "name": "simpleFoam-launcher",
+            "pid": 100,
+            "launcher_pid": 100,
+            "solver_pids": [101, 102],
+            "status": "running",
+            "detached": True,
+        },
+    ]
+    killed: list[int] = []
+    killed_groups: list[int] = []
+    finished: list[tuple[str, str]] = []
+
+    payload = svc.stop_jobs(
+        case,
+        jobs,
+        job_id=None,
+        name=None,
+        all_jobs=True,
+        signal_name="TERM",
+        kill_fn=lambda pid, _sig: killed.append(pid),
+        finish_job_fn=lambda _case, job_id, status, _rc: finished.append((job_id, status)),
+        killpg_fn=lambda pgid, _sig: killed_groups.append(pgid),
+        getpgid_fn=lambda _pid: 100,
+    )
+
+    assert killed == []
+    assert killed_groups == [100]
+    assert payload["stopped"][0]["method"] == "process_group"
+    assert payload["stopped"][0]["pgid"] == 100
+    assert payload["stopped"][0]["pids"] == [100, 101, 102]
+    assert finished == [("1", "stopped")]
+
+
+def test_stop_jobs_prefers_launcher_group_for_recovered_mpi_job(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    jobs = [
+        {
+            "id": "1",
+            "name": "simpleFoam-launcher",
+            "pid": 401,
+            "launcher_pid": 400,
+            "solver_pids": [401, 402],
+            "status": "running",
+            "detached": True,
+        },
+    ]
+    killed: list[int] = []
+    killed_groups: list[int] = []
+    pgid_lookups: list[int] = []
+
+    def _getpgid(pid: int) -> int:
+        pgid_lookups.append(pid)
+        return {400: 400, 401: 12345, 402: 12345}[pid]
+
+    payload = svc.stop_jobs(
+        case,
+        jobs,
+        job_id=None,
+        name=None,
+        all_jobs=True,
+        signal_name="TERM",
+        kill_fn=lambda pid, _sig: killed.append(pid),
+        finish_job_fn=lambda *_a: None,
+        killpg_fn=lambda pgid, _sig: killed_groups.append(pgid),
+        getpgid_fn=_getpgid,
+    )
+
+    assert pgid_lookups == [400]
+    assert killed == []
+    assert killed_groups == [400]
+    assert payload["stopped"][0]["pid"] == 400
+    assert payload["stopped"][0]["method"] == "process_group"
+    assert payload["stopped"][0]["pids"] == [400, 401, 402]
+
+
+def test_stop_jobs_signals_launcher_and_ranks_when_launcher_group_unsafe(
+    tmp_path: Path,
+) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    jobs = [
+        {
+            "id": "1",
+            "name": "simpleFoam-launcher",
+            "pid": 501,
+            "launcher_pid": 500,
+            "solver_pids": [501, 502],
+            "status": "running",
+            "detached": False,
+        },
+    ]
+    killed: list[int] = []
+    killed_groups: list[int] = []
+
+    payload = svc.stop_jobs(
+        case,
+        jobs,
+        job_id=None,
+        name=None,
+        all_jobs=True,
+        signal_name="TERM",
+        kill_fn=lambda pid, _sig: killed.append(pid),
+        finish_job_fn=lambda *_a: None,
+        killpg_fn=lambda pgid, _sig: killed_groups.append(pgid),
+        getpgid_fn=lambda _pid: 12345,
+    )
+
+    assert killed_groups == []
+    assert killed == [500, 501, 502]
+    assert payload["stopped"][0]["pid"] == 500
+    assert payload["stopped"][0]["method"] == "processes"
+    assert payload["stopped"][0]["pids"] == [500, 501, 502]
+
+
+def test_stop_jobs_avoids_foreground_shell_group_for_adopted_mpi(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    jobs = [
+        {
+            "id": "1",
+            "name": "simpleFoam-launcher",
+            "pid": 200,
+            "launcher_pid": 200,
+            "solver_pids": [201, 202],
+            "status": "running",
+            "detached": False,
+        },
+    ]
+    killed: list[int] = []
+    killed_groups: list[int] = []
+
+    payload = svc.stop_jobs(
+        case,
+        jobs,
+        job_id=None,
+        name=None,
+        all_jobs=True,
+        signal_name="TERM",
+        kill_fn=lambda pid, _sig: killed.append(pid),
+        finish_job_fn=lambda *_a: None,
+        killpg_fn=lambda pgid, _sig: killed_groups.append(pgid),
+        getpgid_fn=lambda _pid: 12345,
+    )
+
+    assert killed_groups == []
+    assert killed == [200, 201, 202]
+    assert payload["stopped"][0]["method"] == "processes"
+    assert payload["stopped"][0]["pids"] == [200, 201, 202]
+
+
+def test_stop_jobs_falls_back_when_group_signal_fails(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    jobs = [
+        {
+            "id": "1",
+            "name": "simpleFoam-launcher",
+            "pid": 300,
+            "launcher_pid": 300,
+            "solver_pids": [301],
+            "status": "running",
+            "detached": True,
+        },
+    ]
+    killed: list[int] = []
+
+    def _killpg(_pgid: int, _sig: int) -> None:
+        raise OSError("group gone")
+
+    payload = svc.stop_jobs(
+        case,
+        jobs,
+        job_id=None,
+        name=None,
+        all_jobs=True,
+        signal_name="TERM",
+        kill_fn=lambda pid, _sig: killed.append(pid),
+        finish_job_fn=lambda *_a: None,
+        killpg_fn=_killpg,
+        getpgid_fn=lambda _pid: 300,
+    )
+
+    assert killed == [300, 301]
+    assert payload["stopped"][0]["method"] == "processes"
+
+
 def test_pause_resume_jobs_state_callbacks(tmp_path: Path) -> None:
     case = tmp_path / "case"
     case.mkdir()

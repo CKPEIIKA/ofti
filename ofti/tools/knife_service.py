@@ -62,8 +62,7 @@ def current_payload(case_dir: Path, *, live: bool = False) -> case_status_servic
         live=live,
     )
     warning = process_scan_service.proc_access_warning()
-    if warning is not None:
-        payload["proc_access_warning"] = warning
+    case_status_service.attach_process_visibility(payload, warning)
     return payload
 
 
@@ -112,11 +111,11 @@ def current_scope_payload(
     case_rows = sorted({str(path) for path in case_paths} | set(cases_from_untracked))
     untracked_count = case_status_service.untracked_running_count(untracked)
     running_count = len(active_jobs) + untracked_count
-    return {
+    payload = {
         "case": str(scope_root),
         "scope": "tree",
         "recursive": True,
-        "proc_access_warning": process_scan_service.proc_access_warning(),
+        "proc_access_warning": None,
         "cases_total": len(case_rows),
         "cases": case_rows,
         "solver": None,
@@ -126,8 +125,15 @@ def current_scope_payload(
         "jobs_running": running_count,
         "jobs_tracked_running": len(active_jobs),
         "jobs_registry_running": len(active_jobs),
+        "runs": case_status_service.canonical_run_rows(scope_root, active_jobs, untracked),
+        "process_visibility": None,
         "untracked_processes": untracked,
     }
+    case_status_service.attach_process_visibility(
+        payload,
+        process_scan_service.proc_access_warning(),
+    )
+    return payload
 
 
 def current_live_payload(case_dir: Path) -> case_status_service.CurrentPayload:
@@ -200,6 +206,8 @@ def adopt_payload(
                 "solver": row.get("solver"),
                 "command": str(row.get("command") or ""),
                 "launcher_pid": launcher_pid,
+                "solver_pids": row.get("solver_pids", []),
+                "log_path": row.get("log_path") or row.get("log"),
             }
             selected.append(selected_row)
 
@@ -210,16 +218,23 @@ def adopt_payload(
         role = str(row.get("role") or "solver")
         solver_name = str(row.get("solver") or "solver")
         name = solver_name if role == "solver" else f"{solver_name}-launcher"
+        solver_pids = [item for item in row.get("solver_pids", []) if isinstance(item, int)]
+        log_path = _adopt_log_path(case_path, solver_name)
         try:
             job_id = register_job(
                 case_path,
                 name,
                 pid,
                 command,
-                None,
+                log_path,
                 kind="solver",
                 detached=True,
-                extra={"adopted": True, "role": role},
+                extra={
+                    "adopted": True,
+                    "role": role,
+                    "solver_pids": solver_pids,
+                    "launcher_pid": pid if role == "launcher" else row.get("launcher_pid"),
+                },
             )
         except OSError as exc:
             failed.append(
@@ -237,6 +252,9 @@ def adopt_payload(
                 "pid": pid,
                 "name": name,
                 "role": role,
+                "solver_pids": solver_pids,
+                "launcher_pid": pid if role == "launcher" else row.get("launcher_pid"),
+                "log": str(log_path),
                 "command": command,
             },
         )
@@ -314,6 +332,22 @@ def _adopt_case_path(row: dict[str, Any]) -> Path | None:
         return Path(case_raw).expanduser().resolve()
     except OSError:
         return None
+
+
+def _adopt_log_path(case_path: Path, solver: str | None) -> Path:
+    if solver and solver != "unknown":
+        candidate = (case_path / f"log.{solver}").resolve()
+        if candidate.is_file():
+            return candidate
+    logs = sorted(
+        case_path.glob("log.*"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if logs:
+        return logs[0].resolve()
+    safe = solver if solver and solver != "unknown" else "solver"
+    return (case_path / f"log.{safe}").resolve()
 
 
 def _to_positive_int(value: Any) -> int | None:
@@ -453,8 +487,7 @@ def status_payload(
         tail_bytes=tail_bytes,
     )
     warning = process_scan_service.proc_access_warning()
-    if warning is not None:
-        payload["proc_access_warning"] = warning
+    case_status_service.attach_process_visibility(payload, warning)
     return payload
 
 
@@ -859,6 +892,7 @@ def criteria_rows_from_rtc(rtc: dict[str, Any]) -> list[dict[str, Any]]:
             "status": row.get("status"),
             "met": row.get("status") == "pass",
             "unmet": row.get("unmet_reason"),
+            "reason": criteria_unknown_reason(row),
             "window": {
                 "samples": row.get("samples"),
                 "delta": row.get("live_delta"),
@@ -867,6 +901,22 @@ def criteria_rows_from_rtc(rtc: dict[str, Any]) -> list[dict[str, Any]]:
         }
         for row in rtc.get("criteria", [])
     ]
+
+
+def criteria_unknown_reason(row: dict[str, Any]) -> str | None:
+    status = str(row.get("status") or "unknown")
+    if status == "pass":
+        return None
+    unmet = row.get("unmet_reason")
+    if row.get("unmet_reason") == "not_enough_samples":
+        return f"not enough samples: {row.get('samples') or 0} observed"
+    if unmet == "startup":
+        return "waiting for criteria start time"
+    if unmet == "condition_not_met":
+        return "runTimeControl reports conditions not met"
+    if row.get("live_value") is None and row.get("live_delta") is None:
+        return "no matching runtime samples in log"
+    return "trend unavailable from current samples" if row.get("eta_seconds") is None else unmet
 
 
 def converge_payload(
@@ -1200,19 +1250,29 @@ def _stop_untracked_solver_processes(case_path: Path, *, signal_name: str) -> di
     ]
     solver_pids = sorted({int(row["pid"]) for row in solver_rows})
     if launchers:
-        launcher_set = set(launchers)
+        launcher_process_groups = {
+            pid: _process_group_if_leader(pid)
+            for pid in launchers
+        }
+        safe_group_launchers = {
+            pid
+            for pid, pgid in launcher_process_groups.items()
+            if pgid == pid
+        }
         solver_launcher: dict[int, int | None] = {
             int(row["pid"]): (
                 launcher_pid if isinstance((launcher_pid := row.get("launcher_pid")), int) else None
             )
             for row in solver_rows
         }
-        # Avoid double-signaling workers that are descendants of launcher processes.
+        # Avoid double-signaling workers only when a launcher group can stop them.
         solver_pids = [
             pid
             for pid in solver_pids
-            if solver_launcher.get(pid) not in launcher_set
+            if solver_launcher.get(pid) not in safe_group_launchers
         ]
+    else:
+        launcher_process_groups = {}
     signal_code = _signal_number(signal_name)
     stopped: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
@@ -1223,8 +1283,15 @@ def _stop_untracked_solver_processes(case_path: Path, *, signal_name: str) -> di
         should_stop = pid in launchers or pid in solver_pids
         if not should_stop:
             continue
+        method = "process"
+        pgid: int | None = None
         try:
-            os.kill(pid, signal_code)
+            if role == "launcher" and launcher_process_groups.get(pid) == pid:
+                os.killpg(pid, signal_code)
+                method = "process_group"
+                pgid = pid
+            else:
+                os.kill(pid, signal_code)
         except OSError as exc:
             failed.append(
                 {
@@ -1238,19 +1305,21 @@ def _stop_untracked_solver_processes(case_path: Path, *, signal_name: str) -> di
                 },
             )
             continue
-        stopped.append(
-            {
-                "id": None,
-                "pid": pid,
-                "name": f"untracked-{role}",
-                "kind": "untracked",
-                "role": role,
-                "case": case_str,
-                "launcher_pid": row.get("launcher_pid"),
-                "solver_pids": row.get("solver_pids", []),
-                "command": row.get("command"),
-            },
-        )
+        stopped_row = {
+            "id": None,
+            "pid": pid,
+            "name": f"untracked-{role}",
+            "kind": "untracked",
+            "role": role,
+            "case": case_str,
+            "launcher_pid": row.get("launcher_pid"),
+            "solver_pids": row.get("solver_pids", []),
+            "command": row.get("command"),
+            "method": method,
+        }
+        if pgid is not None:
+            stopped_row["pgid"] = pgid
+        stopped.append(stopped_row)
     return {
         "case": case_str,
         "selected": len(stopped) + len(failed),
@@ -1259,6 +1328,13 @@ def _stop_untracked_solver_processes(case_path: Path, *, signal_name: str) -> di
         "launcher_pids": launchers,
         "solver_pids": solver_pids,
     }
+
+
+def _process_group_if_leader(pid: int) -> int | None:
+    try:
+        return os.getpgid(pid)
+    except OSError:
+        return None
 
 
 def _signal_number(name: str) -> int:

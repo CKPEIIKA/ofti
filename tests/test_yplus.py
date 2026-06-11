@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ofti.tools.yplus import _first_float, _float_after, _parse_yplus_stats
+from ofti.app.tool_screens.yplus import _first_float, _float_after, _parse_yplus_stats
 
 
 def test_parse_yplus_stats() -> None:

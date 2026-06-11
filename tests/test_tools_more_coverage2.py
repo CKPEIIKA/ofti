@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import pytest
 
-from ofti.tools import diagnostics, postprocessing, shell_tools, solver
+from ofti.app.tool_screens import diagnostics, postprocessing, shell_tools, solver
 
 
 class _Screen:
@@ -330,6 +330,11 @@ def test_solver_live_paths_and_zero_dir(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
     # zero-dir helper branches
     monkeypatch.setattr(solver, "_ensure_zero_dir", original_ensure_zero_dir)
+    monkeypatch.setattr(
+        solver.foamlib_runner,
+        "restore_0_dir",
+        lambda *_a, **_k: (_ for _ in ()).throw(solver.FoamlibUnavailableError()),
+    )
     zero_orig = case / "0.orig"
     zero_orig.mkdir(exist_ok=True)
     (zero_orig / "U").write_text("u\n")

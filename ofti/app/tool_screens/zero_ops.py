@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from ofti.tools.runner import _show_message
+from ofti.app.tool_screens.runner import _show_message
 
 
 def copy_zero_to_orig(stdscr: Any, case_path: Path) -> None:

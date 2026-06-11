@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens.cleaning_utils import _require_wm_project_dir
+from ofti.app.tool_screens.runner import _run_shell_tool, _show_message
 from ofti.foam.config import get_config
-from ofti.tools.cleaning_utils import _require_wm_project_dir
-from ofti.tools.runner import _run_shell_tool, _show_message
 
 
 def remove_all_logs(

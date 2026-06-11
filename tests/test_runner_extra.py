@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from ofti.app.tool_screens import runner
 from ofti.foam.exceptions import QuitAppError
-from ofti.tools import runner
 
 
 class _Screen:
