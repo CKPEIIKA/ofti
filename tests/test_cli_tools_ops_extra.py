@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import types
@@ -801,6 +802,49 @@ def test_run_queue_sequential_records_returncode_and_outcome(
     finished = cast("list[dict[str, object]]", payload["finished"])
     assert [row["returncode"] for row in finished] == [0, 9]
     assert [row["outcome"] for row in finished] == ["time", "crashed"]
+
+
+def test_run_queue_writes_durable_queue_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case_a = _make_case(tmp_path / "caseA")
+    case_b = _make_case(tmp_path / "caseB")
+    monkeypatch.setattr(run, "solver_command", lambda _case, **_k: ("simpleFoam", ["simpleFoam"]))
+    results = iter(
+        [
+            run.RunResult(0, "", "", log_path=case_a / "log.simpleFoam"),
+            run.RunResult(0, "", "", log_path=case_b / "log.simpleFoam"),
+        ],
+    )
+    monkeypatch.setattr(run, "execute_solver_case_command", lambda *_a, **_k: next(results))
+    monkeypatch.setattr(
+        run,
+        "status_row_payload",
+        lambda case, **_k: {
+            "case": str(case),
+            "state": "done",
+            "latest_time": 1.0,
+            "end_time": 1.0,
+            "eta_seconds": 0.0,
+            "stop_reason": "end_time_reached",
+            "criteria_total": 0,
+            "criteria_passed": 0,
+            "criteria_failed": 0,
+            "criteria_unknown": 0,
+        },
+    )
+
+    payload = run.queue_payload(cases=[case_a, case_b], max_parallel=1, queue_root=tmp_path)
+
+    queue_path = Path(cast("str", payload["queue_path"]))
+    assert queue_path.is_file()
+    record = json.loads(queue_path.read_text(encoding="utf-8"))
+    assert record["queue_id"] == payload["queue_id"]
+    assert record["summary"]["planned"] == 2
+    assert record["summary"]["finished"] == 2
+    assert record["summary"]["outcomes"]["time"] == 2
+    assert record["completed_at"] is not None
 
 
 def test_run_status_set_payload_and_reason_helpers(

@@ -1296,6 +1296,7 @@ def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monk
             "max_parallel": 1,
             "dry_run": False,
             "backend": kwargs.get("backend", "process"),
+            "queue_path": str(root / ".ofti" / "queues" / "queue.json"),
             "planned": [],
             "started": [],
             "finished": [],
@@ -1328,6 +1329,7 @@ def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monk
     assert seen["backend"] == "foamlib-async"
     assert seen["prepare_parallel"] is False
     assert seen["clean_processors"] is True
+    assert seen["queue_root"] == root
     assert seen["poll_interval"] == pytest.approx(1.0)
     assert payload["backend"] == "foamlib-async"
 
