@@ -7,14 +7,17 @@ case logic.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ofti.core.case_meta import case_metadata_quick
 from ofti.tools import table_render_service
 from ofti.tools.captains_deck_service import CaptainsDeckData, safe_lines
 from ofti.tools.flight_deck_service import flight_deck_payload
 from ofti.tools.launch_checklist_service import launch_checklist_payload
+from ofti.tools.runtime_control_service import control_dict_edit_payload
 
 
 @dataclass(frozen=True)
@@ -120,6 +123,68 @@ def collect_deck_update(case_path: Path, tab_id: str) -> DeckUpdate:
         status=status_strip(case_path),
         panels=collect_tab_lines(case_path, tab_id),
     )
+
+
+# Runtime flight actions shared by curses and Textual flight decks.
+RUNTIME_ACTIONS: tuple[tuple[str, str, bool], ...] = (
+    # (action id, label, needs a value prompt)
+    ("safe-stop", "Safe stop (stopAt writeNow)", False),
+    ("write-now", "Write now (stopAt writeNow)", False),
+    ("deltaT", "Edit deltaT", True),
+    ("endTime", "Edit endTime", True),
+)
+
+
+def flight_updates_for(action: str, value: str | None = None) -> dict[str, str]:
+    """Map a flight action id to safe controlDict updates."""
+    normalized = action.strip().lower().replace("_", "-")
+    if normalized in {"safe-stop", "write-now", "s", "w"}:
+        return {"stopAt": "writeNow"}
+    if normalized in {"deltat", "delta-t", "dt"}:
+        return {"deltaT": value.strip()} if value and value.strip() else {}
+    if normalized in {"endtime", "end-time", "e"}:
+        return {"endTime": value.strip()} if value and value.strip() else {}
+    return {}
+
+
+def runtime_edit_preview(case_path: Path, updates: dict[str, str]) -> list[str]:
+    return control_edit_lines(control_dict_edit_payload(case_path, updates))
+
+
+def runtime_edit_apply(case_path: Path, updates: dict[str, str]) -> list[str]:
+    return control_edit_lines(
+        control_dict_edit_payload(case_path, updates, write_snapshot=True, apply=True),
+    )
+
+
+def control_edit_lines(payload: Mapping[str, Any]) -> list[str]:
+    lines = [
+        "Runtime controlDict edit",
+        f"case={payload.get('case')}",
+        f"path={payload.get('path')}",
+        f"ok={payload.get('ok')}",
+        f"applied={payload.get('applied')}",
+        f"blocked={payload.get('blocked')}",
+    ]
+    if payload.get("snapshot_path"):
+        lines.append(f"snapshot={payload['snapshot_path']}")
+    if payload.get("error"):
+        lines.append(f"error={payload['error']}")
+    updates = list(payload.get("updates") or [])
+    if updates:
+        lines.append("updates:")
+        for row in updates:
+            if isinstance(row, dict):
+                old = row.get("old")
+                new = row.get("new")
+                lines.append(f"- {row.get('path')}:{row.get('key')} {old} -> {new}")
+    diff = list(payload.get("diff") or [])
+    if diff:
+        lines.extend(["", "diff:", *[str(line) for line in diff]])
+    failures = list(payload.get("failures") or [])
+    if failures:
+        lines.append(f"failures={', '.join(str(item) for item in failures)}")
+    return lines
 
 
 _CRIT_TOKENS = ("CRIT", "FAIL", "NO-GO", "error", "Error", "✖")

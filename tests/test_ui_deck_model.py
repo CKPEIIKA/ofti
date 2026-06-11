@@ -55,3 +55,50 @@ def test_line_severity_classification() -> None:
     assert deck.line_severity("log unavailable: missing") == "warn"
     assert deck.line_severity("mesh OK") == "ok"
     assert deck.line_severity("latest_time 0.5") is None
+
+
+def test_flight_updates_for_actions() -> None:
+    assert deck.flight_updates_for("safe-stop") == {"stopAt": "writeNow"}
+    assert deck.flight_updates_for("write-now") == {"stopAt": "writeNow"}
+    assert deck.flight_updates_for("deltaT", "0.0005") == {"deltaT": "0.0005"}
+    assert deck.flight_updates_for("endTime", " 2.0 ") == {"endTime": "2.0"}
+    assert deck.flight_updates_for("deltaT", "") == {}
+    assert deck.flight_updates_for("deltaT", None) == {}
+    assert deck.flight_updates_for("bogus") == {}
+
+
+def _write_control_dict(case: Path) -> Path:
+    system = case / "system"
+    system.mkdir(parents=True, exist_ok=True)
+    control = system / "controlDict"
+    control.write_text(
+        "FoamFile\n{\n    object controlDict;\n}\n"
+        "application simpleFoam;\n"
+        "stopAt endTime;\n"
+        "endTime 1.0;\n"
+        "deltaT 0.001;\n"
+        "writeInterval 0.05;\n",
+    )
+    return control
+
+
+def test_runtime_edit_preview_and_apply(tmp_path: Path) -> None:
+    control = _write_control_dict(tmp_path)
+
+    preview = "\n".join(deck.runtime_edit_preview(tmp_path, {"endTime": "2.0"}))
+    assert "applied=False" in preview
+    assert "endTime" in preview
+    assert "2.0" in preview
+    assert "endTime 1.0;" in control.read_text()
+
+    applied = "\n".join(deck.runtime_edit_apply(tmp_path, {"endTime": "2.0"}))
+    assert "applied=True" in applied
+    assert "snapshot=" in applied
+    assert "2.0" in control.read_text()
+
+
+def test_runtime_edit_preview_rejects_unsafe_keys(tmp_path: Path) -> None:
+    _write_control_dict(tmp_path)
+    lines = "\n".join(deck.runtime_edit_preview(tmp_path, {"application": "rm -rf"}))
+    assert "error=" in lines
+    assert "unsupported" in lines

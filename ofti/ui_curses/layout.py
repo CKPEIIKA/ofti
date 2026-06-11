@@ -89,7 +89,14 @@ def case_banner_lines(meta: dict[str, str]) -> list[str]:
             f"np={meta['parallel']}",
             f"disk={meta.get('disk', 'n/a')}",
         ),
-        _join_status(env_label, f"log={meta.get('log', 'none')}", "?:help", "/:search", "::cmd"),
+        _join_status(
+            env_label,
+            f"log={meta.get('log', 'none')}",
+            "?:help",
+            "/:search",
+            "::cmd",
+            "deck:ofti tui",
+        ),
         f"Path: {meta['case_path']}",
     ]
     if meta.get("running") == "yes":
@@ -107,6 +114,7 @@ def case_banner_lines(meta: dict[str, str]) -> list[str]:
             "?:help",
             "/:search",
             "::cmd",
+            "deck:ofti tui",
         )
     return framed_lines(rows)
 

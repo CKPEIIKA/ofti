@@ -89,6 +89,14 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
   case/solver/run-state status strip on every tab, per-panel "updated hh:mm:ss"
   staleness stamps, `?` help card, number-key tab jumps, visible panel focus, and
   stacked cockpit layout below 100 columns.
+- Deck keyboard parity with the classic TUI: vim `j/k/g/G` panel scrolling, `h/l`
+  tabs, `/` panel line filter, `:` command palette with deck commands, `!` shell
+  escape into the case directory.
+- Deck Flight tab wires the shared safe runtime edit service (safe stop, write
+  now, deltaT, endTime) with diff preview and snapshot-required apply; the curses
+  flight deck and the Textual deck now share `ofti/ui/deck.py` helpers for it.
+- `ofti tui` fallback is no longer silent: it explains the missing extra and waits
+  for Enter before opening the curses TUI; the curses banner points at `ofti tui`.
 - Project depends on `foamlib[preprocessing,postprocessing]` by default.
 - TUI Captains Deck exists and reuses read-only CLI services.
 - TUI starts from a fast adaptive menu after case selection; Captains Deck opens on demand.

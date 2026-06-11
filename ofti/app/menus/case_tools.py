@@ -10,13 +10,13 @@ from ofti.tools.flight_deck_service import flight_deck_payload
 from ofti.tools.launch_checklist_service import launch_checklist_payload
 from ofti.tools.numerics_service import numerics_payload
 from ofti.tools.parallel_resize_service import parallel_resize_payload
-from ofti.tools.runtime_control_service import control_dict_edit_payload
 from ofti.tools.table_render_service import (
     flight_deck_table_lines,
     launch_checklist_table_lines,
     numerics_table_lines,
     parallel_resize_table_lines,
 )
+from ofti.ui.deck import flight_updates_for, runtime_edit_apply, runtime_edit_preview
 from ofti.ui_curses.prompts import prompt_line
 from ofti.ui_curses.viewer import Viewer
 
@@ -58,57 +58,21 @@ def show_flight_deck_screen(stdscr: Any, case_path: Path) -> None:
     if not updates:
         show_message(stdscr, "Unknown flight edit. Use safe-stop, write-now, deltaT, or endTime.")
         return
-    preview = control_dict_edit_payload(case_path, updates)
-    Viewer(stdscr, "\n".join(_control_edit_lines(preview))).display()
+    Viewer(stdscr, "\n".join(runtime_edit_preview(case_path, updates))).display()
     confirm = (prompt_line(stdscr, "Apply with snapshot? [y/N]: ") or "").strip().lower()
     if confirm not in {"y", "yes"}:
         show_message(stdscr, "Runtime edit not applied.")
         return
-    applied = control_dict_edit_payload(case_path, updates, write_snapshot=True, apply=True)
-    Viewer(stdscr, "\n".join(_control_edit_lines(applied))).display()
+    Viewer(stdscr, "\n".join(runtime_edit_apply(case_path, updates))).display()
 
 
 def _flight_control_updates(stdscr: Any, action: str) -> dict[str, str]:
     normalized = action.strip().lower().replace("_", "-")
-    if normalized in {"safe-stop", "write-now", "s", "w"}:
-        return {"stopAt": "writeNow"}
     if normalized in {"deltat", "delta-t", "dt"}:
-        value = (prompt_line(stdscr, "New deltaT: ") or "").strip()
-        return {"deltaT": value} if value else {}
+        return flight_updates_for("deltaT", prompt_line(stdscr, "New deltaT: "))
     if normalized in {"endtime", "end-time", "e"}:
-        value = (prompt_line(stdscr, "New endTime: ") or "").strip()
-        return {"endTime": value} if value else {}
-    return {}
-
-
-def _control_edit_lines(payload: dict[str, Any]) -> list[str]:
-    lines = [
-        "Runtime controlDict edit",
-        f"case={payload.get('case')}",
-        f"path={payload.get('path')}",
-        f"ok={payload.get('ok')}",
-        f"applied={payload.get('applied')}",
-        f"blocked={payload.get('blocked')}",
-    ]
-    if payload.get("snapshot_path"):
-        lines.append(f"snapshot={payload['snapshot_path']}")
-    if payload.get("error"):
-        lines.append(f"error={payload['error']}")
-    updates = list(payload.get("updates") or [])
-    if updates:
-        lines.append("updates:")
-        for row in updates:
-            if isinstance(row, dict):
-                old = row.get("old")
-                new = row.get("new")
-                lines.append(f"- {row.get('path')}:{row.get('key')} {old} -> {new}")
-    diff = list(payload.get("diff") or [])
-    if diff:
-        lines.extend(["", "diff:", *[str(line) for line in diff]])
-    failures = list(payload.get("failures") or [])
-    if failures:
-        lines.append(f"failures={', '.join(str(item) for item in failures)}")
-    return lines
+        return flight_updates_for("endTime", prompt_line(stdscr, "New endTime: "))
+    return flight_updates_for(normalized)
 
 
 def resize_parallel_screen(stdscr: Any, case_path: Path) -> None:
