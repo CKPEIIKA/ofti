@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import time
 from collections.abc import Mapping
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -716,6 +717,7 @@ def queue_payload(
     backend: str = "process",
     prepare_parallel: bool = True,
     clean_processors: bool = False,
+    queue_root: Path | None = None,
 ) -> dict[str, Any]:
     if max_parallel <= 0:
         raise ValueError("max_parallel must be > 0")
@@ -738,20 +740,18 @@ def queue_payload(
                 "solver_cmd": _solver_token_from_command(cmd, parallel=parallel),
             },
         )
-    payload: dict[str, Any] = {
-        "count": len(plan),
-        "max_parallel": max_parallel,
-        "poll_interval": poll_interval,
-        "dry_run": dry_run,
-        "backend": backend,
-        "prepare_parallel": bool(prepare_parallel),
-        "clean_processors": bool(clean_processors),
-        "planned": plan,
-        "started": [],
-        "finished": [],
-        "failed_to_start": [],
-        "ok": True,
-    }
+    payload = _queue_payload_init(
+        plan=plan,
+        normalized_cases=normalized_cases,
+        max_parallel=max_parallel,
+        parallel=parallel,
+        poll_interval=poll_interval,
+        dry_run=dry_run,
+        backend=backend,
+        prepare_parallel=prepare_parallel,
+        clean_processors=clean_processors,
+        queue_root=queue_root,
+    )
     if prepare_parallel and parallel > 1:
         for row in plan:
             row_case = Path(str(row["case"]))
@@ -764,6 +764,7 @@ def queue_payload(
                 )
             except ValueError as exc:
                 row["parallel_setup_error"] = str(exc)
+    _queue_write_record(payload)
     if dry_run:
         return payload
     if backend == "process":
@@ -798,6 +799,49 @@ def queue_payload(
             prepare_parallel=prepare_parallel,
             clean_processors=clean_processors,
         )
+    _queue_mark_complete(payload)
+    return payload
+
+
+def _queue_payload_init(
+    *,
+    plan: list[dict[str, Any]],
+    normalized_cases: list[Path],
+    max_parallel: int,
+    parallel: int,
+    poll_interval: float,
+    dry_run: bool,
+    backend: str,
+    prepare_parallel: bool,
+    clean_processors: bool,
+    queue_root: Path | None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "queue_id": None,
+        "queue_root": None,
+        "queue_path": None,
+        "count": len(plan),
+        "max_parallel": max_parallel,
+        "parallel": parallel,
+        "poll_interval": poll_interval,
+        "dry_run": dry_run,
+        "backend": backend,
+        "prepare_parallel": bool(prepare_parallel),
+        "clean_processors": bool(clean_processors),
+        "planned": plan,
+        "started": [],
+        "finished": [],
+        "failed_to_start": [],
+        "ok": True,
+    }
+    if dry_run:
+        return payload
+    queue_record = _queue_record_path(normalized_cases, queue_root=queue_root)
+    payload["queue_id"] = queue_record.stem
+    payload["queue_root"] = str(queue_record.parent.parent.resolve())
+    payload["queue_path"] = str(queue_record.resolve())
+    payload["created_at"] = time.time()
+    payload["updated_at"] = payload["created_at"]
     return payload
 
 
@@ -839,6 +883,7 @@ def _queue_sequential_process_backend(
         except ValueError as exc:
             payload["failed_to_start"].append({"case": str(case_path), "error": str(exc)})
             payload["ok"] = False
+            _queue_write_record(payload)
             continue
         started = {
             "case": str(case_path),
@@ -848,6 +893,7 @@ def _queue_sequential_process_backend(
             "started_at": time.time(),
         }
         payload["started"].append(started)
+        _queue_write_record(payload)
         status_row = status_row_payload(case_path, lightweight=False)
         finished = _queue_finished_row(
             status_row,
@@ -856,8 +902,10 @@ def _queue_sequential_process_backend(
             returncode=result.returncode,
         )
         payload["finished"].append(finished)
+        _queue_write_record(payload)
         if int(result.returncode) != 0:
             payload["ok"] = False
+            _queue_write_record(payload)
 
 
 def _queue_process_backend(
@@ -895,6 +943,7 @@ def _queue_process_backend(
                 except ValueError as exc:
                     payload["failed_to_start"].append({"case": str(case_path), "error": str(exc)})
                     payload["ok"] = False
+                    _queue_write_record(payload)
                     continue
             try:
                 result = execute_case_command(
@@ -907,12 +956,14 @@ def _queue_process_backend(
             except ValueError as exc:
                 payload["failed_to_start"].append({"case": str(case_path), "error": str(exc)})
                 payload["ok"] = False
+                _queue_write_record(payload)
                 continue
             if result.pid is None:
                 payload["failed_to_start"].append(
                     {"case": str(case_path), "error": "missing background pid"},
                 )
                 payload["ok"] = False
+                _queue_write_record(payload)
                 continue
             started = {
                 "case": str(case_path),
@@ -923,6 +974,7 @@ def _queue_process_backend(
             }
             active.append(started)
             payload["started"].append(started)
+            _queue_write_record(payload)
         if not active:
             break
         time.sleep(max(0.05, poll_interval))
@@ -936,6 +988,7 @@ def _queue_process_backend(
             payload["finished"].append(
                 _queue_finished_row(status_row, case=str(row["case"]), pid=pid, returncode=None),
             )
+            _queue_write_record(payload)
         active = still_active
 
 
@@ -968,6 +1021,7 @@ def _queue_foamlib_backend(
             for case_path in case_group:
                 payload["failed_to_start"].append({"case": str(case_path), "error": str(error)})
             payload["ok"] = False
+            _queue_write_record(payload)
             continue
         failed_map = {str(path.resolve()) for path in failures}
         _queue_append_foamlib_finished(payload, case_group=case_group, failed_map=failed_map)
@@ -995,6 +1049,7 @@ def _queue_collect_foamlib_cases(
                 },
             )
             payload["ok"] = False
+            _queue_write_record(payload)
             continue
         if prepare_parallel and parallel > 1:
             try:
@@ -1007,6 +1062,7 @@ def _queue_collect_foamlib_cases(
             except ValueError as exc:
                 payload["failed_to_start"].append({"case": str(case_path), "error": str(exc)})
                 payload["ok"] = False
+                _queue_write_record(payload)
                 continue
         by_solver.setdefault(solver_cmd, []).append(case_path)
         ready_cases.append(case_path)
@@ -1019,6 +1075,7 @@ def _queue_collect_foamlib_cases(
                 "started_at": time.time(),
             },
         )
+        _queue_write_record(payload)
     return by_solver, ready_cases
 
 
@@ -1059,6 +1116,7 @@ def _queue_append_foamlib_finished(
         payload["finished"].append(row)
         if str(case_path.resolve()) in failed_map:
             payload["ok"] = False
+        _queue_write_record(payload)
 
 
 def _queue_fill_foamlib_missing_finished(
@@ -1076,11 +1134,95 @@ def _queue_fill_foamlib_missing_finished(
                 "case": str(case_path),
                 "pid": None,
                 "state": "unknown",
+                "outcome": "unknown",
+                "returncode": None,
                 "stop_reason": "not finished",
+                "end_time": None,
                 "latest_time": None,
                 "eta_seconds": None,
             },
         )
+        _queue_write_record(payload)
+
+
+def _queue_record_path(cases: list[Path], *, queue_root: Path | None) -> Path:
+    if queue_root is not None:
+        root = queue_root.expanduser().resolve()
+    else:
+        root = _queue_common_root(cases)
+    queue_id = f"queue-{int(time.time())}"
+    return root / ".ofti" / "queues" / f"{queue_id}.json"
+
+
+def _queue_common_root(cases: list[Path]) -> Path:
+    parents = [str(path.expanduser().resolve().parent) for path in cases]
+    if not parents:
+        return Path.cwd().resolve()
+    with suppress(ValueError):
+        common = Path(os.path.commonpath(parents)).resolve()
+        if str(common) != os.path.sep:
+            return common
+    return Path(parents[0]).resolve()
+
+
+def _queue_write_record(payload: dict[str, Any]) -> None:
+    queue_path_raw = payload.get("queue_path")
+    if not isinstance(queue_path_raw, str) or not queue_path_raw.strip():
+        return
+    queue_path = Path(queue_path_raw)
+    queue_path.parent.mkdir(parents=True, exist_ok=True)
+    payload["updated_at"] = time.time()
+    queue_path.write_text(
+        json.dumps(_queue_record_payload(payload), indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def _queue_mark_complete(payload: dict[str, Any]) -> None:
+    payload["completed_at"] = time.time()
+    _queue_write_record(payload)
+
+
+def _queue_record_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    started = list(payload.get("started", []))
+    finished = list(payload.get("finished", []))
+    failed = list(payload.get("failed_to_start", []))
+    return {
+        "queue_id": payload.get("queue_id"),
+        "queue_root": payload.get("queue_root"),
+        "queue_path": payload.get("queue_path"),
+        "created_at": payload.get("created_at"),
+        "updated_at": payload.get("updated_at"),
+        "completed_at": payload.get("completed_at"),
+        "dry_run": bool(payload.get("dry_run")),
+        "backend": payload.get("backend"),
+        "count": int(payload.get("count", 0) or 0),
+        "max_parallel": int(payload.get("max_parallel", 1) or 1),
+        "parallel": int(payload.get("parallel", 0) or 0),
+        "ok": bool(payload.get("ok", False)),
+        "summary": {
+            "planned": int(payload.get("count", 0) or 0),
+            "started": len(started),
+            "finished": len(finished),
+            "failed_to_start": len(failed),
+            "running": max(0, len(started) - len(finished)),
+            "outcomes": _queue_outcome_counts(finished),
+        },
+        "planned": list(payload.get("planned", [])),
+        "started": started,
+        "finished": finished,
+        "failed_to_start": failed,
+    }
+
+
+def _queue_outcome_counts(rows: list[object]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        outcome = str(row.get("outcome") or "unknown")
+        counts[outcome] = counts.get(outcome, 0) + 1
+    return counts
 
 
 def status_set_payload(
