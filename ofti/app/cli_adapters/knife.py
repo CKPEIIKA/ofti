@@ -17,6 +17,7 @@ from ofti.app.cli_help import (
     _help_handler,
 )
 from ofti.core import run_receipt as receipt_ops
+from ofti.core.field_diagnostics import split_field_list
 from ofti.tools import status_render_service, table_render_service
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import run as run_ops
@@ -65,6 +66,46 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     _add_table_flag(compare)
     compare.add_argument("--json", action="store_true")
     compare.set_defaults(func=_knife_compare)
+
+    physical = knife_sub.add_parser(
+        "physical",
+        help="Scan field values for finite and physically plausible values",
+    )
+    physical.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    physical.add_argument(
+        "--time",
+        default="latest",
+        help="Time directory to scan (default: latest)",
+    )
+    physical.add_argument(
+        "--fields",
+        action="append",
+        default=[],
+        help="Comma-separated field names to scan; repeatable",
+    )
+    physical.add_argument("--json", action="store_true")
+    physical.set_defaults(func=_knife_physical)
+
+    compare_fields = knife_sub.add_parser(
+        "compare-fields",
+        help="Compare numeric internal field values between two cases",
+    )
+    compare_fields.add_argument("left_case", type=Path)
+    compare_fields.add_argument("right_case", type=Path)
+    compare_fields.add_argument(
+        "--time",
+        default="latest",
+        help="Time directory to compare (default: latest)",
+    )
+    compare_fields.add_argument(
+        "--fields",
+        action="append",
+        default=[],
+        help="Comma-separated field names to compare; repeatable",
+    )
+    compare_fields.add_argument("--preset", choices=["air5", "air11", "flow"], default=None)
+    compare_fields.add_argument("--json", action="store_true")
+    compare_fields.set_defaults(func=_knife_compare_fields)
 
     copy = knife_sub.add_parser(
         "copy",
@@ -697,6 +738,71 @@ def _knife_compare(args: argparse.Namespace) -> int:
     for diff in payload["diffs"]:
         _print_compare_diff(diff, flat=bool(payload.get("flat")))
     return 0
+
+
+def _knife_physical(args: argparse.Namespace) -> int:
+    payload = knife_ops.physical_payload(
+        args.case_dir,
+        time_name=str(getattr(args, "time", "latest")),
+        fields=split_field_list(list(getattr(args, "fields", []))),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if bool(payload.get("ok", False)) else 1
+    print(f"case={payload['case']}")
+    print(f"time={payload['time']} fields={payload['field_count']}")
+    print(f"ok={payload['ok']} physical_ok={payload['physical_ok']}")
+    for row in cast("list[dict[str, object]]", payload["fields"]):
+        if not row.get("ok"):
+            print(f"- {row['field']}: error={row.get('error')}")
+            continue
+        print(
+            f"- {row['field']}: kind={row.get('kind')} count={row.get('count')} "
+            f"min={row.get('min')} max={row.get('max')} "
+            f"neg={row.get('negative_count')} nonfinite={row.get('nonfinite_count')}",
+        )
+    if payload.get("species_sum"):
+        species = cast("dict[str, object]", payload["species_sum"])
+        print(
+            "sumY: "
+            f"fields={','.join(cast('list[str]', species.get('fields', [])))} "
+            f"min={species.get('min')} max={species.get('max')} "
+            f"max_abs_deviation={species.get('max_abs_deviation')}",
+        )
+    for item in cast("list[dict[str, object]]", payload.get("violations", [])):
+        print(f"violation: {item}")
+    for item in cast("list[str]", payload.get("hard_errors", [])):
+        print(f"hard_error: {item}")
+    return 0 if bool(payload.get("ok", False)) else 1
+
+
+def _knife_compare_fields(args: argparse.Namespace) -> int:
+    payload = knife_ops.compare_fields_payload(
+        args.left_case,
+        args.right_case,
+        time_name=str(getattr(args, "time", "latest")),
+        fields=split_field_list(list(getattr(args, "fields", []))),
+        preset=getattr(args, "preset", None),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if bool(payload.get("ok", False)) else 1
+    print(f"left_case={payload['left_case']}")
+    print(f"right_case={payload['right_case']}")
+    print(f"time={payload['time']} fields={payload['field_count']} same={payload['same']}")
+    for row in cast("list[dict[str, object]]", payload["fields"]):
+        if not row.get("ok"):
+            print(f"- {row['field']}: error={row.get('error')}")
+            continue
+        print(
+            f"- {row['field']}: kind={row.get('kind')} count={row.get('count')} "
+            f"maxAbs={row.get('max_abs')} maxRel={row.get('max_rel')} "
+            f"nonfinite={row.get('nonfinite_pairs')}",
+        )
+    for item in cast("list[str]", payload.get("errors", [])):
+        print(f"error: {item}")
+    return 0 if bool(payload.get("ok", False)) else 1
+
 
 def _print_compare_diff(diff: dict[str, object], *, flat: bool) -> None:
     print(f"\n{diff['rel_path']}")
