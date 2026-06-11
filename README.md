@@ -67,12 +67,20 @@ captains-deck`, `dna`, `mesh-radar`, `resource`, and the curses Captains
 Deck: workflow tabs (Cockpit, Checklist, Flight, Analyze, Mesh, Resources,
 Doctor, Fleet), an always-visible case/solver/run-state strip, severity-
 colored panels with per-panel update stamps, and a bounded log radar.
-Keys: `1-8` or `←/→` switch tabs, `Tab`/`Shift+Tab` move panel focus,
-`r` refresh, `?` help, `q` quit, `Ctrl+P` command palette. Narrow
-terminals (<100 columns) stack the cockpit panels vertically. The deck is
-read-only: edits stay in the curses TUI and `ofti knife`. Without the
-extra installed, `ofti tui` prints the install hint and opens the classic
-curses TUI instead.
+
+Keys follow the classic TUI conventions: `1-8`, `h/l`, or `←/→` switch
+tabs, `Tab`/`Shift+Tab` move panel focus, `j/k`/`g/G` scroll, `/` filters
+the focused panel, `:` opens the command palette, `!` opens a shell in
+the case directory, `r` refresh, `?` help, `q` quit.
+
+The Flight tab exposes the same safe runtime edits as the curses flight
+deck (`s` safe stop, `w` write now, `d` deltaT, `e` endTime): each shows
+the exact controlDict diff first and requires a case snapshot before
+applying, through the shared runtime edit service. Narrow terminals
+(<100 columns) stack the cockpit panels vertically. Full case editing
+still lives in the curses TUI and `ofti knife`. Without the extra
+installed, `ofti tui` explains the fallback and waits for confirmation
+before opening the classic curses TUI.
 
 ## DESCRIPTION
 

@@ -253,7 +253,7 @@ def test_flight_deck_screen_previews_and_applies_runtime_edit(
             "error": None,
         }
 
-    monkeypatch.setattr(case_tools, "control_dict_edit_payload", _edit)
+    monkeypatch.setattr("ofti.ui.deck.control_dict_edit_payload", _edit)
 
     case_tools.show_flight_deck_screen(object(), tmp_path)
 
@@ -290,7 +290,7 @@ def test_flight_deck_screen_declines_runtime_edit(
         calls += 1
         return {"case": str(tmp_path), "path": "system/controlDict", "ok": True, "applied": False, "blocked": False}
 
-    monkeypatch.setattr(case_tools, "control_dict_edit_payload", _edit)
+    monkeypatch.setattr("ofti.ui.deck.control_dict_edit_payload", _edit)
 
     case_tools.show_flight_deck_screen(object(), tmp_path)
 

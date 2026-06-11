@@ -109,7 +109,15 @@ def _run_deck(args_in: list[str]) -> int:
     case_path = Path(args.case_dir)
     if not ui_textual.textual_available():
         print(f"ofti: {ui_textual.TUI_EXTRA_HINT}", file=sys.stderr)
-        print("ofti: opening the classic curses TUI instead.", file=sys.stderr)
+        print("ofti: falling back to the classic curses TUI.", file=sys.stderr)
+        # The curses TUI clears the screen immediately; without this pause the
+        # hint above would never be seen on an interactive terminal.
+        if sys.stdin.isatty() and sys.stderr.isatty():
+            try:
+                input("Press Enter to open the classic TUI (Ctrl+C to cancel) ")
+            except (KeyboardInterrupt, EOFError):
+                print("\nofti: cancelled", file=sys.stderr)
+                return 1
         try:
             run_tui(str(case_path), debug=args.debug)
         except (OpenFOAMError, OSError, RuntimeError, ValueError) as exc:

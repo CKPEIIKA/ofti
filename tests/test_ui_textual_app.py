@@ -6,7 +6,12 @@ import pytest
 textual = pytest.importorskip("textual")
 
 from ofti.ui import deck as deck_model  # noqa: E402
-from ofti.ui_textual.app import HelpScreen, MissionControlApp, styled_lines  # noqa: E402
+from ofti.ui_textual.app import (  # noqa: E402
+    HelpScreen,
+    MissionControlApp,
+    RuntimeEditScreen,
+    styled_lines,
+)
 
 
 def _fake_update(_case_path: Path, tab_id: str) -> deck_model.DeckUpdate:
@@ -72,6 +77,100 @@ def test_mission_control_panels_tabs_help_and_quit(monkeypatch, tmp_path: Path) 
             assert "dna content" in await _panel_text(app, pilot, "dna")
             await pilot.press("q")
         assert app.return_value == 0
+
+    asyncio.run(scenario())
+
+
+def test_flight_actions_gated_and_runtime_edit_flow(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("ofti.ui.deck.collect_deck_update", _fake_update)
+    calls: dict[str, object] = {}
+
+    def fake_preview(case_path: Path, updates: dict[str, str]) -> list[str]:
+        calls["preview"] = updates
+        return ["Runtime controlDict edit", "applied=False", "- stopAt endTime -> writeNow"]
+
+    def fake_apply(case_path: Path, updates: dict[str, str]) -> list[str]:
+        calls["apply"] = updates
+        return ["Runtime controlDict edit", "applied=True", "snapshot=.ofti/case_snapshot.json"]
+
+    monkeypatch.setattr("ofti.ui.deck.runtime_edit_preview", fake_preview)
+    monkeypatch.setattr("ofti.ui.deck.runtime_edit_apply", fake_apply)
+
+    async def scenario() -> None:
+        app = MissionControlApp(tmp_path, interval=0)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await _panel_text(app, pilot, "dna")
+            # flight runtime actions are hidden off the flight tab
+            assert app.check_action("safe_stop", ()) is None
+            await pilot.press("3")
+            assert app.active_tab_id() == "flight"
+            assert app.check_action("safe_stop", ()) is True
+
+            await pilot.press("s")
+            await pilot.pause()
+            assert isinstance(app.screen, RuntimeEditScreen)
+            for _ in range(100):
+                if "preview" in calls:
+                    break
+                await pilot.pause(0.05)
+            assert calls["preview"] == {"stopAt": "writeNow"}
+
+            await pilot.press("enter")
+            for _ in range(100):
+                if "apply" in calls:
+                    break
+                await pilot.pause(0.05)
+            assert calls["apply"] == {"stopAt": "writeNow"}
+            await pilot.press("escape")
+            await pilot.pause()
+            assert not isinstance(app.screen, RuntimeEditScreen)
+            await pilot.press("q")
+
+    asyncio.run(scenario())
+
+
+def test_panel_filter_via_slash(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("ofti.ui.deck.collect_deck_update", _fake_update)
+
+    async def scenario() -> None:
+        app = MissionControlApp(tmp_path, interval=0)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await _panel_text(app, pilot, "dna")
+            app.query_one("#panel-dna").focus()
+            await pilot.press("slash")
+            await pilot.pause()
+            await pilot.press(*"NO-GO")
+            await pilot.press("enter")
+            await pilot.pause()
+            body = str(app.query_one("#body-dna").render())
+            assert "gate NO-GO" in body
+            assert "dna content" not in body
+            subtitle = str(app.query_one("#panel-dna").border_subtitle)
+            assert "filter:'NO-GO'" in subtitle
+            # vim scrolling keys do not crash on a focused panel
+            await pilot.press("j", "k", "g", "G")
+            await pilot.press("q")
+
+    asyncio.run(scenario())
+
+
+def test_vim_tab_keys_and_palette(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("ofti.ui.deck.collect_deck_update", _fake_update)
+
+    async def scenario() -> None:
+        app = MissionControlApp(tmp_path, interval=0)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await _panel_text(app, pilot, "dna")
+            await pilot.press("l")
+            assert app.active_tab_id() == "checklist"
+            await pilot.press("h")
+            assert app.active_tab_id() == "cockpit"
+            await pilot.press("colon")
+            await pilot.pause()
+            assert type(app.screen).__name__ == "CommandPalette"
+            await pilot.press("escape")
+            await pilot.pause()
+            await pilot.press("q")
 
     asyncio.run(scenario())
 

@@ -20,6 +20,49 @@ def test_deck_falls_back_to_curses_without_textual(monkeypatch, capsys, tmp_path
     assert "curses" in err
 
 
+def test_deck_fallback_pauses_on_interactive_terminal(monkeypatch, tmp_path: Path) -> None:
+    import sys as _sys
+
+    seen: dict[str, object] = {}
+    monkeypatch.setattr("ofti.ui_textual.textual_available", lambda: False)
+
+    def fake_run_tui(case: str, debug: bool = False) -> None:
+        seen.update(case=case, debug=debug)
+
+    def fake_input(_prompt: str = "") -> str:
+        seen.update(paused=True)
+        return ""
+
+    monkeypatch.setattr(cli, "run_tui", fake_run_tui)
+    monkeypatch.setattr(_sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(_sys.stderr, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    assert cli.main(["tui", str(tmp_path)]) == 0
+    assert seen.get("paused") is True
+    assert seen["case"] == str(tmp_path)
+
+
+def test_deck_fallback_cancel_on_ctrl_c(monkeypatch, capsys, tmp_path: Path) -> None:
+    import sys as _sys
+
+    monkeypatch.setattr("ofti.ui_textual.textual_available", lambda: False)
+    def fake_run_tui(_case: str, debug: bool = False) -> None:
+        del debug
+
+    monkeypatch.setattr(cli, "run_tui", fake_run_tui)
+    monkeypatch.setattr(_sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(_sys.stderr, "isatty", lambda: True)
+
+    def raise_interrupt(prompt: str = "") -> str:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("builtins.input", raise_interrupt)
+
+    assert cli.main(["tui", str(tmp_path)]) == 1
+    assert "cancelled" in capsys.readouterr().err
+
+
 def test_deck_launches_mission_control_with_textual(monkeypatch, tmp_path: Path) -> None:
     pytest.importorskip("textual")
     seen: dict[str, object] = {}
