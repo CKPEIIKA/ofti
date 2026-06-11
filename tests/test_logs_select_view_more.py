@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ofti.tools import logs_select, logs_view
+from ofti.app.tool_screens import logs_select, logs_view
 from tests.testscreen import TestScreen as _Screen
 
 

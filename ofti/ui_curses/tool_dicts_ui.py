@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens.runner import _show_message
 from ofti.foamlib import adapter as foamlib_integration
-from ofti.tools.runner import _show_message
 from ofti.tools.tool_dicts_service import ensure_dict
 from ofti.ui_curses.viewer import Viewer
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ofti"
-version = "0.2.1"
+version = "0.3.0"
 description = "Curses-based OpenFOAM case editor"
 readme = "README.md"
 authors = [{name = "OpenFOAM TUI maintainers"}]
@@ -46,6 +46,6 @@ include = ["ofti*"]
 dev = [
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
-    "ruff>=0.15.13",
-    "ty>=0.0.35",
+    "ruff>=0.15.14",
+    "ty>=0.0.40",
 ]

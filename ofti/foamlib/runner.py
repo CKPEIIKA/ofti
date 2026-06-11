@@ -42,6 +42,37 @@ def decompose_case(
     case.decompose_par(check=check, log=log)
 
 
+def block_mesh_case(
+    case_path: Path,
+    *,
+    check: bool = True,
+    log: bool | str = True,
+) -> None:
+    if not available() or FoamCase is None:
+        raise FoamlibUnavailableError()
+    case = FoamCase(case_path)
+    case.block_mesh(check=check, log=log)
+
+
+def reconstruct_case(
+    case_path: Path,
+    *,
+    check: bool = True,
+    log: bool | str = True,
+) -> None:
+    if not available() or FoamCase is None:
+        raise FoamlibUnavailableError()
+    case = FoamCase(case_path)
+    case.reconstruct_par(check=check, log=log)
+
+
+def restore_0_dir(case_path: Path) -> None:
+    if not available() or FoamCase is None:
+        raise FoamlibUnavailableError()
+    case = FoamCase(case_path)
+    case.restore_0_dir()
+
+
 def clean_case(
     case_path: Path,
     *,

@@ -3,15 +3,19 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
+import signal
 import time
 from pathlib import Path
 
 import pytest
 
+from ofti.app.tool_screens.run import blockmesh_once
 from ofti.core import entry_io
+from ofti.core.case import read_number_of_subdomains
 from ofti.core.case_copy import copy_case_directory
 from ofti.core.case_snapshot import build_case_snapshot
-from ofti.tools import knife_service, parallel_resize_service
+from ofti.foamlib import runner as foamlib_runner
+from ofti.tools import knife_service, parallel_resize_service, process_scan_service, watch_service
 from ofti.tools.case_doctor import build_case_doctor_report
 from ofti.tools.cli_tools import run, watch
 from ofti.tools.runtime_control_service import runtime_control_snapshot
@@ -84,6 +88,183 @@ def test_real_profiles_runtime_reread_cleanup_and_replay_artifacts(real_profiles
 
 @pytest.mark.slow
 @pytest.mark.real_openfoam
+def test_real_background_solver_start_stop_cleans_processes(
+    real_profiles: list[tuple[str, Path]],
+) -> None:
+    exercised = False
+    for name, case in real_profiles:
+        solver = _solver(case)
+        if solver is None:
+            continue
+        _prepare_real_case(case)
+        _write_long_run(case, solver)
+        payload = watch_service.start_payload(
+            case,
+            name=solver,
+            command=[solver],
+            detached=True,
+            log_file=f"log.ofti-stop-{solver}",
+        )
+        pid = payload.get("pid")
+        try:
+            assert isinstance(pid, int), f"{name}: missing started pid"
+            if not _wait_pid_running(pid, timeout=5.0):
+                continue
+            stopped = watch.stop_payload(case, job_id=str(payload.get("job_id")), signal_name="TERM")
+            assert stopped["selected"] == 1, f"{name}: {stopped}"
+            assert stopped["stopped"], f"{name}: {stopped}"
+            assert stopped["stopped"][0].get("method") in {"process_group", "processes"}
+            assert _wait_pids_gone([pid], timeout=5.0), f"{name}: pid still running after stop"
+            exercised = True
+        finally:
+            if isinstance(pid, int) and _pid_running(pid):
+                os.kill(pid, signal.SIGKILL)
+    if not exercised:
+        pytest.skip("No real profile stayed alive long enough for background stop.")
+
+
+@pytest.mark.slow
+@pytest.mark.real_openfoam
+def test_real_parallel_watch_stop_cleans_launcher_and_solver_ranks(
+    real_profiles: list[tuple[str, Path]],
+) -> None:
+    if shutil.which("decomposePar") is None:
+        pytest.skip("parallel watch stop requires OpenFOAM decomposePar on PATH.")
+    exercised = False
+    for name, case in real_profiles:
+        solver = _solver(case)
+        if solver is None:
+            continue
+        _prepare_real_case(case)
+        _write_long_run(case, solver)
+        _write_simple_decompose_dict(case, ranks=2)
+        prepared = run.prepare_parallel_case(case, parallel=2, clean_processors=True)
+        if prepared.get("decompose_returncode") != 0:
+            continue
+        try:
+            display, command = run.solver_command(case, solver=solver, parallel=2)
+        except ValueError:
+            continue
+        payload = watch_service.start_payload(
+            case,
+            name=display,
+            command=command,
+            detached=True,
+            log_file=f"log.ofti-stop-{display}",
+        )
+        pid = payload.get("pid")
+        observed_pids: list[int] = [pid] if isinstance(pid, int) else []
+        try:
+            assert isinstance(pid, int), f"{name}: missing started pid"
+            if not _wait_pid_running(pid, timeout=5.0):
+                continue
+            time.sleep(0.5)
+            rows = process_scan_service.scan_proc_solver_processes(
+                case,
+                solver,
+                tracked_pids=set(),
+                include_tracked=True,
+            )
+            observed_pids.extend(
+                int(row["pid"])
+                for row in rows
+                if str(row.get("case") or "") == str(case.resolve())
+                and isinstance(row.get("pid"), int)
+            )
+            stopped = watch_service.stop_payload(case, job_id=str(payload.get("job_id")), signal_name="TERM")
+            assert stopped["selected"] == 1, f"{name}: {stopped}"
+            assert stopped["stopped"], f"{name}: {stopped}"
+            assert _wait_pids_gone(sorted(set(observed_pids)), timeout=8.0), (
+                f"{name}: pids still running after stop: {observed_pids}"
+            )
+            exercised = True
+        finally:
+            for process_id in sorted(set(observed_pids)):
+                if _pid_running(process_id):
+                    os.kill(process_id, signal.SIGKILL)
+    if not exercised:
+        pytest.skip("No real parallel profile stayed alive long enough for watch stop.")
+
+
+@pytest.mark.slow
+@pytest.mark.real_openfoam
+def test_real_sequential_queue_runs_cases_and_summarizes_outcomes(
+    real_profiles: list[tuple[str, Path]],
+    tmp_path: Path,
+) -> None:
+    for name, source_case in real_profiles:
+        solver = _solver(source_case)
+        if solver is None:
+            continue
+        case_a = copy_case_directory(source_case, tmp_path / f"{name}-queue-a")
+        case_b = copy_case_directory(source_case, tmp_path / f"{name}-queue-b")
+        for case in (case_a, case_b):
+            _prepare_real_case(case)
+            _write_short_run(case, solver)
+
+        payload = run.queue_payload(
+            cases=[case_a, case_b],
+            solver=solver,
+            max_parallel=1,
+            backend="process",
+        )
+
+        assert payload["ok"] is True, payload
+        assert len(payload["started"]) == 2
+        assert len(payload["finished"]) == 2
+        for row in payload["finished"]:
+            assert row["returncode"] == 0, row
+            assert row["outcome"] in {"time", "criteria", "completed"}, row
+            assert row["outcome"] != "crashed", row
+        return
+    pytest.skip("No real profile with a resolvable serial solver was available.")
+
+
+@pytest.mark.slow
+@pytest.mark.real_openfoam
+def test_real_foamlib_case_ops_blockmesh_restore_and_reconstruct(
+    real_profiles: list[tuple[str, Path]],
+    tmp_path: Path,
+) -> None:
+    if shutil.which("blockMesh") is None:
+        pytest.skip("foamlib case-op execution requires OpenFOAM tools on PATH.")
+    for name, source_case in real_profiles:
+        case = copy_case_directory(source_case, tmp_path / f"{name}-foamlib-ops")
+        solver = _solver(case)
+        if solver is None:
+            continue
+        _ensure_zero_orig(case)
+
+        shutil.rmtree(case / "0", ignore_errors=True)
+        foamlib_runner.restore_0_dir(case)
+        assert (case / "0").is_dir()
+
+        ok, message = blockmesh_once(case)
+        assert ok, message
+        assert (case / "constant" / "polyMesh").is_dir()
+
+        _write_short_run(case, solver)
+        _write_simple_decompose_dict(case, ranks=2)
+        prepared = run.prepare_parallel_case(case, parallel=2, clean_processors=True)
+        assert prepared["decompose_returncode"] == 0, prepared
+        assert (case / "processor0").is_dir()
+        display, command = run.solver_command(case, solver=solver, parallel=2)
+        result = run.execute_solver_case_command(
+            case,
+            display,
+            command,
+            parallel=2,
+            background=False,
+        )
+        assert result.returncode == 0, result.stderr
+        foamlib_runner.reconstruct_case(case, check=True, log="log.reconstructPar")
+        assert (case / "log.reconstructPar").is_file()
+        return
+    pytest.skip("No real profile was available for foamlib case-op coverage.")
+
+
+@pytest.mark.slow
+@pytest.mark.real_openfoam
 def test_real_profiles_core_services_are_fixture_free(
     real_profiles: list[tuple[str, Path]],
     tmp_path: Path,
@@ -121,6 +302,48 @@ def test_real_parallel_resize_dry_run_profiles(real_profiles: list[tuple[str, Pa
 
 @pytest.mark.slow
 @pytest.mark.real_openfoam
+def test_real_parallel_resize_executes_on_stopped_decomposed_profile(
+    real_profiles: list[tuple[str, Path]],
+) -> None:
+    exercised = False
+    for name, case in real_profiles:
+        decompose_dict = case / "system" / "decomposeParDict"
+        if not decompose_dict.is_file():
+            continue
+        from_ranks = read_number_of_subdomains(decompose_dict)
+        if from_ranks is None or from_ranks <= 1:
+            continue
+        result = run.execute_case_command(
+            case,
+            "decomposePar",
+            ["decomposePar", "-force"],
+            background=False,
+        )
+        assert result.returncode == 0, f"{name}: {result.stderr or result.stdout}"
+        payload = parallel_resize_service.parallel_resize_payload(
+            case,
+            from_ranks=from_ranks,
+            to_ranks=from_ranks,
+            start=False,
+            write_now=False,
+        )
+        assert payload["ok"] is True, f"{name}: {payload.get('error')}"
+        assert payload["decomposed"] is True
+        assert any(
+            row["step"] == "reconstruct" and row["status"] == "done"
+            for row in payload["steps"]
+        )
+        assert any(
+            row["step"] == "decompose" and row["status"] == "done"
+            for row in payload["steps"]
+        )
+        exercised = True
+    if not exercised:
+        pytest.skip("No real profile with numberOfSubdomains > 1 was available.")
+
+
+@pytest.mark.slow
+@pytest.mark.real_openfoam
 def test_real_hpc_profile_smoke_when_available() -> None:
     command = os.environ.get("OFTI_REAL_HPC_COMMAND", "").strip()
     if not command:
@@ -149,3 +372,97 @@ def _write_short_run(case: Path, solver: str) -> None:
     entry_io.write_entry(control, "endTime", os.environ.get("OFTI_REAL_END_TIME", "1"))
     entry_io.write_entry(control, "writeInterval", os.environ.get("OFTI_REAL_WRITE_INTERVAL", "1"))
     time.sleep(0.01)
+
+
+def _write_long_run(case: Path, solver: str) -> None:
+    control = case / "system" / "controlDict"
+    if not control.is_file():
+        return
+    entry_io.write_entry(control, "application", solver)
+    entry_io.write_entry(control, "startFrom", "startTime")
+    entry_io.write_entry(control, "startTime", "0")
+    entry_io.write_entry(control, "stopAt", "endTime")
+    entry_io.write_entry(control, "endTime", os.environ.get("OFTI_REAL_STOP_TEST_END_TIME", "100000"))
+    entry_io.write_entry(control, "writeInterval", os.environ.get("OFTI_REAL_STOP_TEST_WRITE_INTERVAL", "100000"))
+    time.sleep(0.01)
+
+
+def _prepare_real_case(case: Path) -> None:
+    zero_orig = case / "0.orig"
+    zero_dir = case / "0"
+    if zero_orig.is_dir() and not zero_dir.exists():
+        shutil.copytree(zero_orig, zero_dir)
+    poly_mesh = case / "constant" / "polyMesh"
+    block_mesh_dict = case / "system" / "blockMeshDict"
+    if poly_mesh.is_dir() or not block_mesh_dict.is_file():
+        return
+    ok, message = blockmesh_once(case)
+    assert ok, message
+
+
+def _ensure_zero_orig(case: Path) -> None:
+    zero = case / "0"
+    zero_orig = case / "0.orig"
+    if zero_orig.is_dir():
+        return
+    if zero.is_dir():
+        shutil.copytree(zero, zero_orig)
+
+
+def _write_simple_decompose_dict(case: Path, *, ranks: int) -> None:
+    system = case / "system"
+    system.mkdir(exist_ok=True)
+    (system / "decomposeParDict").write_text(
+        "\n".join(
+            [
+                "FoamFile",
+                "{",
+                "    version 2.0;",
+                "    format ascii;",
+                "    class dictionary;",
+                "    object decomposeParDict;",
+                "}",
+                f"numberOfSubdomains {ranks};",
+                "method simple;",
+                "simpleCoeffs",
+                "{",
+                f"    n ({ranks} 1 1);",
+                "    delta 0.001;",
+                "}",
+                "",
+            ],
+        ),
+    )
+
+
+def _pid_running(pid: int) -> bool:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        pass
+    else:
+        if ") Z " in stat:
+            return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _wait_pid_running(pid: int, *, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _pid_running(pid):
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def _wait_pids_gone(pids: list[int], *, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if all(not _pid_running(pid) for pid in pids):
+            return True
+        time.sleep(0.05)
+    return all(not _pid_running(pid) for pid in pids)

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ofti.app.tool_screens.cleaning_ops import clean_time_directories, remove_all_logs
 from ofti.foam import config
-from ofti.tools.cleaning_ops import clean_time_directories, remove_all_logs
 
 
 class FakeScreen:
@@ -89,14 +89,14 @@ def test_run_current_solver_fallback(tmp_path: Path, monkeypatch) -> None:
         called.append((name, cmd))
         return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
-    monkeypatch.setattr("ofti.tools.solver.run_ops.execute_case_command", fake_run_solver)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.run_ops.execute_case_command", fake_run_solver)
     monkeypatch.delenv("WM_PROJECT_DIR", raising=False)
     monkeypatch.setenv("OFTI_USE_RUNFUNCTIONS", "0")
     _reset_config()
     monkeypatch.setattr("ofti.core.solver_checks.read_entry", lambda *_args, **_kwargs: "simpleFoam;")
-    monkeypatch.setattr("ofti.tools.solver.Viewer.display", lambda *_a, **_k: None)
+    monkeypatch.setattr("ofti.app.tool_screens.solver.Viewer.display", lambda *_a, **_k: None)
 
-    from ofti.tools.solver import run_current_solver
+    from ofti.app.tool_screens.solver import run_current_solver
 
     run_current_solver(screen, case_dir)
 

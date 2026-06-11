@@ -130,7 +130,7 @@ def _append_residual_summary(lines: list[str], residuals: dict[str, list[float]]
 def _select_solver_log_file(case_path: Path, stdscr: Any, *, title: str) -> Path | None:
     from importlib import import_module
 
-    selector = import_module("ofti.tools.logs_select")._select_solver_log_file
+    selector = import_module("ofti.app.tool_screens.logs_select")._select_solver_log_file
     return selector(case_path, stdscr, title=title)
 
 

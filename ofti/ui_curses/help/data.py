@@ -178,6 +178,7 @@ MENU_HINTS: dict[str, dict[str, str]] = {
         "Clean all": "Logs + time dirs + processor dirs.",
         "Remove all logs": "Delete log.* files.",
         "Clean time directories": "Remove numeric time dirs.",
+        "Auto clean": "Run foamlib's broad case clean helper.",
         "Clear parallel": "Remove processor dirs and reconstruct latest time.",
         "Time directory pruner": "Keep every Nth time directory.",
         "Back": "Return to main menu.",

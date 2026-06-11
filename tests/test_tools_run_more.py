@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ofti.tools import run
+from ofti.app.tool_screens import run
 from tests.testscreen import TestScreen as _Screen
 
 
@@ -42,7 +42,14 @@ def test_run_checkmesh_and_blockmesh(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     run.run_checkmesh(screen, case)
     assert seen == [("summary", None)]
 
+    messages: list[str] = []
+    monkeypatch.setattr(run, "blockmesh_once", lambda _case: (True, "blockMesh completed."))
+    monkeypatch.setattr(run, "_show_message", lambda _s, text: messages.append(text))
+    run.run_blockmesh(screen, case)
+    assert messages[-1] == "blockMesh completed."
+
     commands: list[list[str]] = []
+    monkeypatch.setattr(run, "blockmesh_once", lambda _case: (False, "foamlib unavailable"))
     monkeypatch.setattr(run, "run_tool_command", lambda *_a, **_k: commands.append(list(_a[3])))
     run.run_blockmesh(screen, case)
     assert commands == [["blockMesh"]]

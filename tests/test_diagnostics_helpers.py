@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ofti.tools import diagnostics
+from ofti.app.tool_screens import diagnostics
 
 
 def test_directory_size_and_human_size(tmp_path: Path) -> None:

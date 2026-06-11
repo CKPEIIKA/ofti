@@ -73,6 +73,7 @@ def test_case_snapshot_includes_mesh_and_fields(tmp_path: Path) -> None:
     assert snapshot["mesh"]["boundary"]["patches"] == 1
     assert "T" in snapshot["fields"]
     assert "dimensions" in snapshot["fields"]["T"]
+    assert snapshot["dictionaries"]["system/controlDict"]["application"] == "simpleFoam"
 
 
 def test_write_case_snapshot(tmp_path: Path) -> None:

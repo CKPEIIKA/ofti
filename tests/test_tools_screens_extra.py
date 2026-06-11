@@ -2,8 +2,8 @@ import curses
 from pathlib import Path
 from unittest import mock
 
-from ofti.tools.diagnostics import dictionary_compare_screen
-from ofti.tools.pipeline import PIPELINE_HEADER, pipeline_runner_screen
+from ofti.app.tool_screens.diagnostics import dictionary_compare_screen
+from ofti.app.tool_screens.pipeline import PIPELINE_HEADER, pipeline_runner_screen
 
 
 class FakeScreen:
@@ -74,7 +74,7 @@ def test_pipeline_runner_screen_runs_commands(tmp_path: Path, monkeypatch) -> No
         seen.update(kwargs)
         return completed
 
-    monkeypatch.setattr("ofti.tools.pipeline.run_trusted", fake_run)
+    monkeypatch.setattr("ofti.app.tool_screens.pipeline.run_trusted", fake_run)
     pipeline_runner_screen(screen, case_dir)
     assert seen.get("stdin") == ""
 
@@ -88,6 +88,6 @@ def test_dictionary_compare_screen(monkeypatch, tmp_path: Path) -> None:
     screen = FakeScreen(keys=[ord("h")], inputs=[str(other)])
     monkeypatch.setattr(curses, "echo", lambda *_: None)
     monkeypatch.setattr(curses, "noecho", lambda *_: None)
-    monkeypatch.setattr("ofti.tools.diagnostics.compare_case_dicts", lambda *_: [])
+    monkeypatch.setattr("ofti.app.tool_screens.diagnostics.compare_case_dicts", lambda *_: [])
 
     dictionary_compare_screen(screen, case_dir)

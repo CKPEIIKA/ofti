@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -62,6 +63,13 @@ def test_refresh_jobs_marks_dead_paused_pid(tmp_path: Path, monkeypatch: pytest.
     refreshed = refresh_jobs(case_path)
     job = next(j for j in refreshed if j["id"] == job_id)
     assert job["status"] == "finished"
+
+
+def test_pid_running_treats_zombies_as_dead(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Path, "read_text", lambda *_a, **_k: "123 (solver) Z 1 2 3")
+    monkeypatch.setattr(os, "kill", lambda *_a, **_k: None)
+
+    assert job_registry._pid_running(123) is False
 
 
 def test_refresh_jobs_recovers_active_run_identity(

@@ -55,8 +55,17 @@ def test_runner_case_lifecycle_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path
         def clean(self, *, check: bool = False) -> None:
             calls.append(("clean", check))
 
+        def block_mesh(self, *, check: bool = True, log: bool | str = True) -> None:
+            calls.append(("block_mesh", (check, log)))
+
         def decompose_par(self, *, check: bool = True, log: bool | str = True) -> None:
             calls.append(("decompose", (check, log)))
+
+        def reconstruct_par(self, *, check: bool = True, log: bool | str = True) -> None:
+            calls.append(("reconstruct", (check, log)))
+
+        def restore_0_dir(self) -> None:
+            calls.append(("restore_0_dir", None))
 
     monkeypatch.setattr(runner, "FoamCase", _FakeCase)
     monkeypatch.setattr(runner, "available", lambda: True)
@@ -64,14 +73,20 @@ def test_runner_case_lifecycle_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path
     dst_copy = runner.copy_case(tmp_path / "case", tmp_path / "copy")
     dst_clone = runner.clone_case(tmp_path / "case", tmp_path / "clone")
     runner.clean_case(tmp_path / "case", check=True)
+    runner.block_mesh_case(tmp_path / "case", check=False, log="log.blockMesh")
     runner.decompose_case(tmp_path / "case", check=False, log="log.decompose")
+    runner.reconstruct_case(tmp_path / "case", check=False, log="log.reconstruct")
+    runner.restore_0_dir(tmp_path / "case")
 
     assert dst_copy == (tmp_path / "copy").resolve()
     assert dst_clone == (tmp_path / "clone").resolve()
     assert ("copy", tmp_path / "copy") in calls
     assert ("clone", tmp_path / "clone") in calls
     assert ("clean", True) in calls
+    assert ("block_mesh", (False, "log.blockMesh")) in calls
     assert ("decompose", (False, "log.decompose")) in calls
+    assert ("reconstruct", (False, "log.reconstruct")) in calls
+    assert ("restore_0_dir", None) in calls
 
 
 def test_run_cases_async_uses_backend_flags(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

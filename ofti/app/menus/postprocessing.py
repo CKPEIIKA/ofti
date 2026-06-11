@@ -8,18 +8,18 @@ from ofti.app.logs_analysis import residual_timeline_screen
 from ofti.app.logs_fields import field_summary_screen
 from ofti.app.menu_utils import has_processor_dirs, menu_choice
 from ofti.app.state import AppState, Screen
-from ofti.foamlib.postprocessing import available as postprocessing_tables_available
-from ofti.tools.logs_probes import probes_viewer_screen
-from ofti.tools.logs_view import logs_screen
-from ofti.tools.postprocessing import (
+from ofti.app.tool_screens.logs_probes import probes_viewer_screen
+from ofti.app.tool_screens.logs_view import logs_screen
+from ofti.app.tool_screens.postprocessing import (
     postprocessing_browser_screen,
     postprocessing_tables_screen,
     sampling_sets_screen,
 )
-from ofti.tools.reconstruct import reconstruct_manager_screen
-from ofti.tools.shell_tools import run_shell_script_screen
-from ofti.tools.tool_dicts_foamcalc import foam_calc_prompt
-from ofti.tools.yplus import yplus_screen
+from ofti.app.tool_screens.reconstruct import reconstruct_manager_screen
+from ofti.app.tool_screens.shell_tools import run_shell_script_screen
+from ofti.app.tool_screens.tool_dicts_foamcalc import foam_calc_prompt
+from ofti.app.tool_screens.yplus import yplus_screen
+from ofti.foamlib.postprocessing import available as postprocessing_tables_available
 from ofti.ui_curses.help import postprocessing_help
 
 

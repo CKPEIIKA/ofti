@@ -19,6 +19,8 @@ class CurrentPayload(TypedDict):
     jobs_running: int
     jobs_tracked_running: int
     jobs_registry_running: int
+    runs: list[dict[str, Any]]
+    process_visibility: dict[str, Any] | None
     untracked_processes: list[SolverProcessRow]
 
 
@@ -43,6 +45,8 @@ class CaseStatusPayload(TypedDict):
     jobs_tracked_running: int
     jobs_registry_running: int
     jobs: list[dict[str, Any]]
+    runs: list[dict[str, Any]]
+    process_visibility: dict[str, Any] | None
     tracked_solver_processes: list[SolverProcessRow]
     untracked_solver_processes: list[SolverProcessRow]
 
@@ -69,6 +73,7 @@ def current_payload(
     )
     untracked_count = untracked_running_count(untracked)
     running_count = len(active_jobs) + untracked_count
+    runs = canonical_run_rows(case_path, active_jobs, untracked)
     return {
         "case": str(case_path),
         "solver": solver,
@@ -79,6 +84,8 @@ def current_payload(
         "jobs_running": running_count,
         "jobs_tracked_running": len(active_jobs),
         "jobs_registry_running": len(active_jobs),
+        "runs": runs,
+        "process_visibility": None,
         "untracked_processes": untracked,
     }
 
@@ -136,6 +143,7 @@ def status_payload(
     running_heuristic = has_live_pids or (solver is not None and bool(runtime["log_fresh"]))
     untracked_count = untracked_running_count(untracked_live)
     running_count = len(active_jobs) + untracked_count
+    runs = canonical_run_rows(case_path, active_jobs, untracked_live)
     return {
         "case": str(case_path),
         "solver": solver,
@@ -159,9 +167,133 @@ def status_payload(
         "jobs_tracked_running": len(active_jobs),
         "jobs_registry_running": len(active_jobs),
         "jobs": jobs,
+        "runs": runs,
+        "process_visibility": None,
         "tracked_solver_processes": tracked_live,
         "untracked_solver_processes": untracked_live,
     }
+
+
+def attach_process_visibility(
+    payload: dict[str, Any],
+    warning: str | None,
+) -> None:
+    if warning is None:
+        return
+    payload["proc_access_warning"] = warning
+    registry_running = int(payload.get("jobs_registry_running") or 0)
+    live_rows = list(payload.get("untracked_processes", [])) + list(
+        payload.get("tracked_solver_processes", []),
+    )
+    payload["process_visibility"] = {
+        "limited": True,
+        "warning": warning,
+        "registry_running": registry_running,
+        "live_process_rows": len(live_rows),
+        "message": (
+            f"process visibility limited: registry shows {registry_running} tracked run(s), "
+            "live process scan may be incomplete"
+        ),
+    }
+
+
+def canonical_run_rows(
+    case_path: Path,
+    active_jobs: list[dict[str, Any]],
+    untracked_rows: list[SolverProcessRow],
+) -> list[dict[str, Any]]:
+    runs = [_tracked_run_row(case_path, job) for job in active_jobs]
+    tracked_pids = {
+        pid
+        for run in runs
+        for pid in _int_list(run.get("process_group_pids"))
+    }
+    launcher_pids = {
+        int(row["pid"])
+        for row in untracked_rows
+        if str(row.get("role")) == "launcher" and int(row.get("pid", 0)) > 0
+    }
+    for row in untracked_rows:
+        pid = int(row.get("pid", 0) or 0)
+        if pid <= 0 or pid in tracked_pids:
+            continue
+        role = str(row.get("role") or "solver")
+        launcher_pid = row.get("launcher_pid")
+        if (
+            role == "solver"
+            and isinstance(launcher_pid, int)
+            and launcher_pid in launcher_pids | tracked_pids
+        ):
+            continue
+        runs.append(_untracked_run_row(row))
+    runs.sort(key=lambda item: (str(item.get("case_dir") or ""), int(item.get("pid") or 0)))
+    return runs
+
+
+def _tracked_run_row(case_path: Path, job: dict[str, Any]) -> dict[str, Any]:
+    solver_pids = _int_list(job.get("solver_pids"))
+    launcher_pid = _int_or_none(job.get("launcher_pid")) or _int_or_none(job.get("pid"))
+    pids = _unique_ints([launcher_pid, *solver_pids])
+    return {
+        "id": job.get("id"),
+        "source": "registry",
+        "tracked": True,
+        "kind": job.get("kind", "solver"),
+        "name": job.get("name", "solver"),
+        "case_dir": str(job.get("case_dir") or case_path),
+        "pid": _int_or_none(job.get("pid")) or launcher_pid,
+        "launcher_pid": launcher_pid,
+        "solver_pids": solver_pids,
+        "process_group_pids": pids,
+        "status": job.get("status", "unknown"),
+        "log_path": job.get("log") or job.get("log_path"),
+        "command": job.get("command", ""),
+    }
+
+
+def _untracked_run_row(row: SolverProcessRow) -> dict[str, Any]:
+    pid = int(row.get("pid", 0) or 0)
+    solver_pids = _int_list(row.get("solver_pids"))
+    launcher_pid = row.get("launcher_pid") if isinstance(row.get("launcher_pid"), int) else None
+    if str(row.get("role")) == "launcher":
+        launcher_pid = pid
+    pids = _unique_ints([launcher_pid, pid, *solver_pids])
+    return {
+        "id": None,
+        "source": "procfs",
+        "tracked": False,
+        "kind": "solver",
+        "name": row.get("solver") or "solver",
+        "case_dir": row.get("case", ""),
+        "pid": pid,
+        "launcher_pid": launcher_pid,
+        "solver_pids": solver_pids,
+        "process_group_pids": pids,
+        "status": "running",
+        "role": row.get("role"),
+        "log_path": None,
+        "command": row.get("command", ""),
+    }
+
+
+def _int_or_none(value: Any) -> int | None:
+    if isinstance(value, int) and value > 0:
+        return value
+    return None
+
+
+def _int_list(value: Any) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, int) and item > 0]
+
+
+def _unique_ints(values: list[int | None]) -> list[int]:
+    result: list[int] = []
+    for value in values:
+        if isinstance(value, int) and value > 0 and value not in result:
+            result.append(value)
+    return result
 
 
 def _runtime_snapshot(

@@ -88,6 +88,66 @@ def test_entry_io_field_helpers(tmp_path: Path) -> None:
     assert entry_io.read_field_entry(field, "internalField").startswith("uniform 300")
     assert entry_io.read_dimensions(field).startswith("[0 0 0 0 0 0 0]")
     assert "inlet" in entry_io.read_boundary_field(field)
+
+
+@pytest.mark.skipif(
+    not foamlib_integration.available(),
+    reason="foamlib required for entry_io tests",
+)
+def test_foamfieldfile_nonuniform_time_dir_round_trip(tmp_path: Path) -> None:
+    case_dir = tmp_path / "case"
+    field = case_dir / "1" / "T"
+    field.parent.mkdir(parents=True)
+    field.write_text(
+        "\n".join(
+            [
+                "FoamFile",
+                "{",
+                "    version 2.0;",
+                "    format ascii;",
+                "    class volScalarField;",
+                '    location "1";',
+                "    object T;",
+                "}",
+                "dimensions [0 0 0 1 0 0 0];",
+                "internalField nonuniform List<scalar>",
+                "3",
+                "(",
+                "300",
+                "301",
+                "302",
+                ")",
+                ";",
+                "boundaryField",
+                "{",
+                "    inlet",
+                "    {",
+                "        type fixedValue;",
+                "        value uniform 310;",
+                "    }",
+                "    outlet",
+                "    {",
+                "        type zeroGradient;",
+                "    }",
+                "}",
+            ],
+        ),
+    )
+
+    internal = foamlib_integration.read_field_entry_node(field, "internalField")
+    assert getattr(internal, "tolist", list)() == [300.0, 301.0, 302.0]
+    assert foamlib_integration.read_field_entry(field, "boundaryField.inlet.value") == "310.0;"
+
+    assert entry_io.write_field_entry(
+        field,
+        "internalField",
+        "nonuniform List<scalar>\n3\n(\n400\n401\n402\n)\n;",
+    )
+    assert entry_io.write_field_entry(field, "boundaryField.inlet.value", "uniform 315")
+
+    updated = foamlib_integration.read_field_entry_node(field, "internalField")
+    assert getattr(updated, "tolist", list)() == [400.0, 401.0, 402.0]
+    assert foamlib_integration.read_field_entry(field, "boundaryField.inlet.value") == "315.0;"
     assert entry_io.write_field_entry(field, "internalField", "uniform 350")
     assert entry_io.read_field_entry(field, "internalField").startswith("uniform 350")
 

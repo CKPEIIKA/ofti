@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from ofti.app.logs_analysis import log_analysis_screen
+from ofti.app.tool_screens.logs_select import _select_log_file
+from ofti.app.tool_screens.menu_helpers import build_menu
+from ofti.app.tool_screens.runner import _show_message
 from ofti.core.checkmesh import extract_last_courant
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foamlib.logs import read_log_tail_lines, read_log_text
-from ofti.tools.logs_select import _select_log_file
-from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import _show_message
 from ofti.ui_curses.viewer import Viewer
 
 _LOG_TAIL_POLL_MS = 500

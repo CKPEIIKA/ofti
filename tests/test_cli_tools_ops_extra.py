@@ -757,12 +757,50 @@ def test_run_queue_payload_dry_run_and_active_flow(
 
     queue = run.queue_payload(
         cases=[case_a, case_b],
-        max_parallel=1,
+        max_parallel=2,
         dry_run=False,
     )
     assert queue["ok"] is True
     assert len(queue["started"]) == 2
     assert len(queue["finished"]) == 2
+
+
+def test_run_queue_sequential_records_returncode_and_outcome(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case_a = _make_case(tmp_path / "caseA")
+    case_b = _make_case(tmp_path / "caseB")
+    monkeypatch.setattr(run, "solver_command", lambda _case, **_k: ("simpleFoam", ["simpleFoam"]))
+    results = iter(
+        [
+            run.RunResult(0, "", "", log_path=case_a / "log.simpleFoam"),
+            run.RunResult(9, "", "boom", log_path=case_b / "log.simpleFoam"),
+        ],
+    )
+    monkeypatch.setattr(run, "execute_solver_case_command", lambda *_a, **_k: next(results))
+
+    def _status(case: Path, **_k: object) -> dict[str, object]:
+        return {
+            "case": str(case),
+            "state": "done",
+            "latest_time": 1.0,
+            "end_time": 1.0,
+            "eta_seconds": 0.0,
+            "stop_reason": "end_time_reached",
+            "criteria_total": 0,
+            "criteria_passed": 0,
+            "criteria_failed": 0,
+            "criteria_unknown": 0,
+        }
+
+    monkeypatch.setattr(run, "status_row_payload", _status)
+    payload = run.queue_payload(cases=[case_a, case_b], max_parallel=1)
+
+    assert payload["ok"] is False
+    finished = cast("list[dict[str, object]]", payload["finished"])
+    assert [row["returncode"] for row in finished] == [0, 9]
+    assert [row["outcome"] for row in finished] == ["time", "crashed"]
 
 
 def test_run_status_set_payload_and_reason_helpers(
@@ -862,7 +900,7 @@ def test_run_queue_and_case_set_error_branches(
         lambda *_a, **_k: (_ for _ in ()).throw(ValueError("start failed")),
     )
     monkeypatch.setattr(run.time, "sleep", lambda _sec: None)
-    failed = run.queue_payload(cases=[case], max_parallel=1, dry_run=False)
+    failed = run.queue_payload(cases=[case], max_parallel=2, dry_run=False)
     assert failed["ok"] is False
     assert failed["failed_to_start"][0]["error"] == "start failed"
 
@@ -871,7 +909,7 @@ def test_run_queue_and_case_set_error_branches(
         "execute_case_command",
         lambda *_a, **_k: run.RunResult(0, "", "", pid=None, log_path=None),
     )
-    missing_pid = run.queue_payload(cases=[case], max_parallel=1, dry_run=False)
+    missing_pid = run.queue_payload(cases=[case], max_parallel=2, dry_run=False)
     assert missing_pid["ok"] is False
     assert "missing background pid" in missing_pid["failed_to_start"][0]["error"]
 

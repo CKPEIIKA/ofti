@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ofti.tools import job_control, logs_select, mesh_utils, pipeline
+from ofti.app.tool_screens import job_control, logs_select, mesh_utils, pipeline
 from ofti.ui_curses import prompts as input_prompts
 
 

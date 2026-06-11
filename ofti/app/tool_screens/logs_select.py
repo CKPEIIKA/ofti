@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens.menu_helpers import build_menu
+from ofti.app.tool_screens.runner import _show_message
 from ofti.core.case import detect_solver
-from ofti.tools.menu_helpers import build_menu
-from ofti.tools.runner import _show_message
 
 
 def _tail_text(text: str, max_lines: int = 20) -> str:

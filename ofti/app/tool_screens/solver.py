@@ -7,6 +7,12 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens.cleaning_utils import _require_wm_project_dir
+from ofti.app.tool_screens.runner import (
+    _expand_shell_command,
+    _show_message,
+    _with_no_foam_hint,
+)
 from ofti.core.case import read_number_of_subdomains
 from ofti.core.solver_checks import (
     remove_empty_log,
@@ -25,16 +31,12 @@ from ofti.core.solver_status import (
 from ofti.core.tool_output import CommandResult, format_command_result
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.subprocess_utils import resolve_executable
+from ofti.foamlib import runner as foamlib_runner
+from ofti.foamlib.adapter import FoamlibUnavailableError
 from ofti.foamlib.logs import read_log_tail_lines
 from ofti.tools import watch_service
-from ofti.tools.cleaning_utils import _require_wm_project_dir
 from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.helpers import resolve_openfoam_bashrc
-from ofti.tools.runner import (
-    _expand_shell_command,
-    _show_message,
-    _with_no_foam_hint,
-)
 from ofti.ui_curses.prompts import prompt_line
 from ofti.ui_curses.viewer import Viewer
 
@@ -247,12 +249,30 @@ def _ensure_zero_dir(stdscr: Any, case_path: Path) -> bool:
     ch = stdscr.getch()
     if ch not in (ord("y"), ord("Y")):
         return False
+    ok, message = _restore_zero_dir(case_path, zero_orig, zero_dir)
+    if not ok:
+        _show_message(stdscr, message)
+    return ok
+
+
+def _restore_zero_dir(case_path: Path, zero_orig: Path, zero_dir: Path) -> tuple[bool, str]:
+    try:
+        foamlib_runner.restore_0_dir(case_path)
+    except FoamlibUnavailableError:
+        return _copy_zero_dir(zero_orig, zero_dir)
+    except OSError as exc:
+        return False, f"Failed to copy 0.orig -> 0: {exc}"
+    except Exception as exc:
+        return False, f"Failed to restore 0.orig -> 0: {exc}"
+    return True, ""
+
+
+def _copy_zero_dir(zero_orig: Path, zero_dir: Path) -> tuple[bool, str]:
     try:
         shutil.copytree(zero_orig, zero_dir, symlinks=True)
     except OSError as exc:
-        _show_message(stdscr, f"Failed to copy 0.orig -> 0: {exc}")
-        return False
-    return True
+        return False, f"Failed to copy 0.orig -> 0: {exc}"
+    return True, ""
 
 
 def _tail_process_log(

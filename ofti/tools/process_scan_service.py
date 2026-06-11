@@ -176,9 +176,6 @@ def _entry_tracked(
         return True
     if role != "launcher":
         return False
-    base = Path(entry.args[0]).name.lower() if entry.args else ""
-    if base not in _SHELL_LAUNCHERS:
-        return False
     return any(has_ancestor(pid, {entry.pid}, table) for pid in tracked_pids)
 
 

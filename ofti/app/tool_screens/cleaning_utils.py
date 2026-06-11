@@ -4,9 +4,9 @@ import os
 from pathlib import Path
 from typing import Any
 
+from ofti.app.tool_screens.runner import _expand_shell_command, _show_message
 from ofti.foam.subprocess_utils import run_trusted
 from ofti.tools.helpers import with_bashrc
-from ofti.tools.runner import _expand_shell_command, _show_message
 
 
 def _run_shell_capture(case_path: Path, shell_cmd: str) -> tuple[str, str]:

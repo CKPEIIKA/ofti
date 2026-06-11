@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-from ofti.tools import case_status_service, process_scan_service
+from ofti.tools import case_status_service, knife_service, process_scan_service
 from ofti.tools.cli_tools import knife
 
 
@@ -95,6 +95,80 @@ def test_knife_status_payload_delegates_to_case_status_service(
     assert callable(kwargs["latest_solver_job_fn"])
     assert callable(kwargs["solver_status_text_fn"])
     assert callable(kwargs["latest_time_fn"])
+
+
+def test_knife_stop_untracked_uses_launcher_group_when_safe(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    case = tmp_path / "case"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "controlDict").write_text("application simpleFoam;\n")
+    rows = [
+        {
+            "pid": 700,
+            "role": "launcher",
+            "case": str(case.resolve()),
+            "solver": "simpleFoam",
+            "solver_pids": [701, 702],
+        },
+        {"pid": 701, "role": "solver", "case": str(case.resolve()), "launcher_pid": 700},
+        {"pid": 702, "role": "solver", "case": str(case.resolve()), "launcher_pid": 700},
+    ]
+    killed: list[int] = []
+    killed_groups: list[int] = []
+
+    monkeypatch.setattr("ofti.tools.knife_service.refresh_jobs", lambda _case: [])
+    monkeypatch.setattr(
+        process_scan_service,
+        "scan_proc_solver_processes",
+        lambda *_args, **_kwargs: rows,
+    )
+    monkeypatch.setattr(knife_service.os, "getpgid", lambda _pid: 700)
+    monkeypatch.setattr(knife_service.os, "kill", lambda pid, _sig: killed.append(pid))
+    monkeypatch.setattr(knife_service.os, "killpg", lambda pgid, _sig: killed_groups.append(pgid))
+
+    payload = knife_service._stop_untracked_solver_processes(case, signal_name="TERM")
+
+    assert killed_groups == [700]
+    assert killed == []
+    assert payload["selected"] == 1
+    assert payload["stopped"][0]["method"] == "process_group"
+    assert payload["solver_pids"] == []
+
+
+def test_knife_stop_untracked_signals_ranks_when_launcher_group_unsafe(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    case = tmp_path / "case"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "controlDict").write_text("application simpleFoam;\n")
+    rows = [
+        {"pid": 800, "role": "launcher", "case": str(case.resolve()), "solver": "simpleFoam"},
+        {"pid": 801, "role": "solver", "case": str(case.resolve()), "launcher_pid": 800},
+        {"pid": 802, "role": "solver", "case": str(case.resolve()), "launcher_pid": 800},
+    ]
+    killed: list[int] = []
+    killed_groups: list[int] = []
+
+    monkeypatch.setattr("ofti.tools.knife_service.refresh_jobs", lambda _case: [])
+    monkeypatch.setattr(
+        process_scan_service,
+        "scan_proc_solver_processes",
+        lambda *_args, **_kwargs: rows,
+    )
+    monkeypatch.setattr(knife_service.os, "getpgid", lambda _pid: 12345)
+    monkeypatch.setattr(knife_service.os, "kill", lambda pid, _sig: killed.append(pid))
+    monkeypatch.setattr(knife_service.os, "killpg", lambda pgid, _sig: killed_groups.append(pgid))
+
+    payload = knife_service._stop_untracked_solver_processes(case, signal_name="TERM")
+
+    assert killed_groups == []
+    assert killed == [800, 801, 802]
+    assert payload["selected"] == 3
+    assert [row["pid"] for row in payload["stopped"]] == [800, 801, 802]
+    assert payload["solver_pids"] == [801, 802]
 
 
 def test_knife_current_scope_payload_tree_scan_uses_proc_scope(

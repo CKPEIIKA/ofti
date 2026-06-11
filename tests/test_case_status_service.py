@@ -201,3 +201,85 @@ def test_untracked_running_count_counts_solver_when_launcher_row_missing() -> No
         },
     ]
     assert svc.untracked_running_count(rows) == 1
+
+
+def test_canonical_run_rows_collapses_launcher_and_solver_ranks(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    active_jobs = [
+        {
+            "id": "job-1",
+            "name": "mpirun-simpleFoam",
+            "pid": 100,
+            "launcher_pid": 100,
+            "solver_pids": [101, 102],
+            "status": "running",
+            "case_dir": str(case),
+        },
+    ]
+    untracked: list[svc.SolverProcessRow] = [
+        {
+            "pid": 101,
+            "ppid": 100,
+            "solver": "simpleFoam",
+            "role": "solver",
+            "tracked": False,
+            "launcher_pid": 100,
+            "case": str(case),
+            "command": "simpleFoam -parallel",
+        },
+    ]
+
+    rows = svc.canonical_run_rows(case, active_jobs, untracked)
+
+    assert len(rows) == 1
+    assert rows[0]["source"] == "registry"
+    assert rows[0]["process_group_pids"] == [100, 101, 102]
+
+
+def test_canonical_run_rows_hides_untracked_launcher_for_tracked_rank(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    active_jobs = [
+        {
+            "id": "job-1",
+            "name": "simpleFoam",
+            "pid": 101,
+            "launcher_pid": 100,
+            "solver_pids": [101],
+            "status": "running",
+            "case_dir": str(case),
+        },
+    ]
+    untracked: list[svc.SolverProcessRow] = [
+        {
+            "pid": 100,
+            "ppid": 1,
+            "solver": "simpleFoam",
+            "role": "launcher",
+            "tracked": False,
+            "launcher_pid": 100,
+            "solver_pids": [101],
+            "case": str(case),
+            "command": "mpirun -np 1 simpleFoam -parallel",
+        },
+    ]
+
+    rows = svc.canonical_run_rows(case, active_jobs, untracked)
+
+    assert len(rows) == 1
+    assert rows[0]["source"] == "registry"
+    assert rows[0]["process_group_pids"] == [100, 101]
+
+
+def test_attach_process_visibility_explains_limited_live_scan() -> None:
+    payload: dict[str, object] = {
+        "jobs_registry_running": 1,
+        "untracked_processes": [],
+        "tracked_solver_processes": [],
+    }
+
+    svc.attach_process_visibility(payload, "procfs pid 1 is unreadable")
+
+    visibility = payload["process_visibility"]
+    assert isinstance(visibility, dict)
+    assert visibility["limited"] is True
+    assert "registry shows 1 tracked run" in str(visibility["message"])
