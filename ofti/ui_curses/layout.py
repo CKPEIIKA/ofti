@@ -76,33 +76,39 @@ def case_banner_lines(meta: dict[str, str]) -> list[str]:
         )
 
     rows = [
-        (f"Case: {meta['case_name']}", f"Solver: {meta['solver']}"),
-        (status_text, latest_text),
-        (
-            f"Mesh: {meta['mesh']} Cells: {meta.get('cells', 'n/a')}",
-            f"Parallel: {meta['parallel']}",
+        _join_status(
+            "OFTI",
+            f"Case: {meta['case_name']}",
+            f"Solver: {meta['solver']}",
+            status_text,
+            latest_text,
         ),
-        (f"Faces: {meta.get('faces', 'n/a')} Points: {meta.get('points', 'n/a')}",
-         f"Disk: {meta.get('disk', 'n/a')}"),
-        (env_label, "Keys: ? help / search : cmd"),
-        (f"Path: {meta['case_path']}", f"Log: {meta.get('log', 'none')}"),
+        _join_status(
+            f"Mesh: {meta['mesh']}",
+            f"cells={meta.get('cells', 'n/a')}",
+            f"np={meta['parallel']}",
+            f"disk={meta.get('disk', 'n/a')}",
+        ),
+        _join_status(env_label, f"log={meta.get('log', 'none')}", "?:help", "/:search", "::cmd"),
+        f"Path: {meta['case_path']}",
     ]
     if meta.get("running") == "yes":
         rows.insert(
-            4,
-            (
-                (
-                    f"dt={meta.get('latest_delta_t', 'n/a')} "
-                    f"sec/iter={meta.get('sec_per_iter', 'n/a')}"
-                ),
+            2,
+            _join_status(
+                f"dt={meta.get('latest_delta_t', 'n/a')}",
+                f"sec/iter={meta.get('sec_per_iter', 'n/a')}",
                 f"ETA end={meta.get('eta_end', 'n/a')} criteria={meta.get('eta_criteria', 'n/a')}",
             ),
         )
-        rows[-1] = (
-            f"Path: {meta['case_path']}",
-            f"Log: {meta.get('log', 'none')} {meta.get('log_fresh', '')}".rstrip(),
+        rows[-2] = _join_status(
+            env_label,
+            f"log={meta.get('log', 'none')} {meta.get('log_fresh', '')}".rstrip(),
+            "?:help",
+            "/:search",
+            "::cmd",
         )
-    return foam_style_banner("ofti", rows)
+    return framed_lines(rows)
 
 
 def compact_case_banner_lines(meta: dict[str, str], width: int = 80) -> list[str]:
@@ -119,6 +125,13 @@ def compact_case_banner_lines(meta: dict[str, str], width: int = 80) -> list[str
         _clip_join(pieces, width),
         _clip_join([f"mesh={meta.get('mesh', 'unknown')}", f"path={path}"], width),
     ]
+
+
+def framed_lines(rows: list[str]) -> list[str]:
+    width = min(100, max((len(row) for row in rows), default=0) + 4)
+    top = "+" + "-" * (width - 2) + "+"
+    body = [f"| {row[: width - 4].ljust(width - 4)} |" for row in rows]
+    return [top, *body, top]
 
 
 def status_chip(value: object) -> str:
@@ -141,6 +154,10 @@ def ascii_meter(value: float | int | None, *, width: int = 12) -> str:
     bounded = min(1.0, max(0.0, float(value)))
     filled = round(bounded * width)
     return "[" + "#" * filled + "." * (width - filled) + "]"
+
+
+def _join_status(*parts: str) -> str:
+    return " | ".join(part for part in parts if part)
 
 
 def foam_style_banner(label: str, rows: list[tuple[str, str]]) -> list[str]:

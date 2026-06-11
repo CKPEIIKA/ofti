@@ -45,6 +45,10 @@ def test_case_meta_quick_avoids_heavy_mesh_and_time_scans(tmp_path: Path, monkey
         "ofti.core.case_meta.mesh_counts",
         lambda _case: (_ for _ in ()).throw(AssertionError("no full mesh scan")),
     )
+    monkeypatch.setattr(
+        "ofti.core.case_meta.detect_openfoam_version",
+        lambda: (_ for _ in ()).throw(AssertionError("no foamVersion subprocess")),
+    )
 
     meta = case_metadata_quick(case_dir)
 

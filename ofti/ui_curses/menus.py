@@ -187,6 +187,7 @@ class Menu:
             self.stdscr.clear()
         height, width = self.stdscr.getmaxyx()
         row = 0
+        compact = height < 22 or width < 88
         show_status = self.hint_provider is not None or self.status_line is not None
 
         if self.banner_provider is not None:
@@ -199,12 +200,14 @@ class Menu:
                     break
                 self.stdscr.addstr(row, 0, line[: max(1, width - 1)])
                 row += 1
-            if row < height:
+            if row < height and not compact:
                 row += 1
             if row < height:
+                self.stdscr.attron(curses.A_BOLD)
                 self.stdscr.addstr(row, 0, self.title[: max(1, width - 1)])
+                self.stdscr.attroff(curses.A_BOLD)
                 row += 1
-            if row < height:
+            if row < height and not compact:
                 row += 1
             for line in self.extra_lines:
                 if row >= height:
@@ -235,7 +238,7 @@ class Menu:
             self._scroll = min(self._scroll, max_scroll)
 
             for idx in range(self._scroll, min(len(self.options), self._scroll + available)):
-                prefix = "  >> " if idx == self.current_option else "     "
+                prefix = "> " if idx == self.current_option else "  "
                 max_label_len = max(1, option_width - len(prefix))
                 label = self.options[idx][:max_label_len]
                 line = f"{prefix}{label}"

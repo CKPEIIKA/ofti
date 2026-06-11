@@ -18,7 +18,7 @@ from ofti.tools.log_fold_service import fold_log_lines
 from ofti.tools.mesh_radar_service import mesh_radar_payload
 from ofti.tools.resource_watch_service import resource_watch_payload
 
-OVERVIEW_TAIL_BYTES = 256 * 1024
+OVERVIEW_TAIL_BYTES = 64 * 1024
 _DEFAULT_TAIL_BYTES = OVERVIEW_TAIL_BYTES
 
 

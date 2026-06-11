@@ -48,7 +48,14 @@ def case_metadata_quick(case_path: Path) -> dict[str, str]:
     latest = latest_time_scan(case_path)
     status = "ran" if latest not in ("0", "0.0", "") else "clean"
     header_version = detect_case_header_version(case_path)
-    foam_version = detect_openfoam_version()
+    # Quick metadata is used on every TUI menu entry. Avoid spawning
+    # foamVersion here; use environment/header data and leave subprocess
+    # detection to full refresh paths.
+    foam_version = (
+        os.environ.get("WM_PROJECT_VERSION")
+        or os.environ.get("FOAM_VERSION")
+        or "unknown"
+    )
     if foam_version == "unknown" and header_version != "unknown":
         foam_version = header_version
     return {
