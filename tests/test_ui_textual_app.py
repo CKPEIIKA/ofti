@@ -6,14 +6,17 @@ import pytest
 textual = pytest.importorskip("textual")
 
 from ofti.ui import deck as deck_model  # noqa: E402
-from ofti.ui_textual.app import MissionControlApp, styled_lines  # noqa: E402
+from ofti.ui_textual.app import HelpScreen, MissionControlApp, styled_lines  # noqa: E402
 
 
-def _fake_collect(_case_path: Path, tab_id: str) -> dict[str, list[str]]:
-    return {
-        panel.panel_id: [f"{panel.panel_id} content", "gate NO-GO", "mesh OK"]
-        for panel in deck_model.tab_panels(tab_id)
-    }
+def _fake_update(_case_path: Path, tab_id: str) -> deck_model.DeckUpdate:
+    return deck_model.DeckUpdate(
+        status="case:fake  simpleFoam  ran  t=0.5",
+        panels={
+            panel.panel_id: [f"{panel.panel_id} content", "gate NO-GO", "mesh OK"]
+            for panel in deck_model.tab_panels(tab_id)
+        },
+    )
 
 
 async def _panel_text(app: MissionControlApp, pilot, panel_id: str) -> str:
@@ -35,22 +38,53 @@ def test_styled_lines_severity_markup() -> None:
     assert "green" in styles
 
 
-def test_mission_control_panels_tabs_and_quit(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("ofti.ui.deck.collect_tab_lines", _fake_collect)
+def test_mission_control_panels_tabs_help_and_quit(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("ofti.ui.deck.collect_deck_update", _fake_update)
 
     async def scenario() -> None:
         app = MissionControlApp(tmp_path, interval=0)
         async with app.run_test(size=(120, 40)) as pilot:
             assert "dna content" in await _panel_text(app, pilot, "dna")
+            status = str(app.query_one("#status-bar").render())
+            assert "case:fake" in status
+            panel = app.query_one("#panel-dna")
+            assert "updated" in str(panel.border_subtitle)
+
             await pilot.press("right")
             assert app.active_tab_id() == "checklist"
             assert "checklist content" in await _panel_text(app, pilot, "checklist")
             await pilot.press("left")
             assert app.active_tab_id() == "cockpit"
+
+            await pilot.press("3")
+            assert app.active_tab_id() == "flight"
+            await pilot.press("1")
+            assert app.active_tab_id() == "cockpit"
+
+            await pilot.press("question_mark")
+            await pilot.pause()
+            assert isinstance(app.screen, HelpScreen)
+            await pilot.press("escape")
+            await pilot.pause()
+            assert not isinstance(app.screen, HelpScreen)
+
             await pilot.press("r")
             assert "dna content" in await _panel_text(app, pilot, "dna")
             await pilot.press("q")
         assert app.return_value == 0
+
+    asyncio.run(scenario())
+
+
+def test_cockpit_grid_narrow_mode(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("ofti.ui.deck.collect_deck_update", _fake_update)
+
+    async def scenario() -> None:
+        app = MissionControlApp(tmp_path, interval=0)
+        async with app.run_test(size=(84, 30)) as pilot:
+            await pilot.pause()
+            assert app.query_one("#cockpit-grid").has_class("narrow")
+            await pilot.press("q")
 
     asyncio.run(scenario())
 
