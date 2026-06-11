@@ -65,10 +65,14 @@ ofti tui /path/to/case --interval 1
 The deck renders the same shared service payloads as `ofti knife
 captains-deck`, `dna`, `mesh-radar`, `resource`, and the curses Captains
 Deck: workflow tabs (Cockpit, Checklist, Flight, Analyze, Mesh, Resources,
-Doctor, Fleet), severity-colored panels, bounded log radar, and keyboard
-navigation (`←/→` tabs, `r` refresh, `q` quit). Without the extra
-installed, `ofti tui` prints the install hint and opens the classic curses
-TUI instead.
+Doctor, Fleet), an always-visible case/solver/run-state strip, severity-
+colored panels with per-panel update stamps, and a bounded log radar.
+Keys: `1-8` or `←/→` switch tabs, `Tab`/`Shift+Tab` move panel focus,
+`r` refresh, `?` help, `q` quit, `Ctrl+P` command palette. Narrow
+terminals (<100 columns) stack the cockpit panels vertically. The deck is
+read-only: edits stay in the curses TUI and `ofti knife`. Without the
+extra installed, `ofti tui` prints the install hint and opens the classic
+curses TUI instead.
 
 ## DESCRIPTION
 

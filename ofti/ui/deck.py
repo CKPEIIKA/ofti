@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from ofti.core.case_meta import case_metadata_quick
 from ofti.tools import table_render_service
 from ofti.tools.captains_deck_service import CaptainsDeckData, safe_lines
 from ofti.tools.flight_deck_service import flight_deck_payload
@@ -21,6 +22,12 @@ class DeckPanel:
     panel_id: str
     title: str
     tab_id: str
+
+
+@dataclass(frozen=True)
+class DeckUpdate:
+    status: str
+    panels: dict[str, list[str]]
 
 
 DECK_TABS: tuple[tuple[str, str], ...] = (
@@ -85,6 +92,34 @@ def collect_tab_lines(case_path: Path, tab_id: str) -> dict[str, list[str]]:
     """Build all panel lines for one tab with a shared payload cache."""
     deck = CaptainsDeckData(case_path)
     return {panel.panel_id: panel_lines(deck, panel.panel_id) for panel in tab_panels(tab_id)}
+
+
+def status_strip(case_path: Path) -> str:
+    """One-line always-visible status: case, solver, run state, latest time.
+
+    Uses quick metadata only so every refresh stays cheap.
+    """
+    try:
+        meta = case_metadata_quick(case_path)
+    except (OSError, RuntimeError, ValueError) as exc:
+        return f"case:{case_path.name}  status unavailable: {exc}"
+    parts = [
+        f"case:{meta.get('case_name') or case_path.name}",
+        meta.get("solver") or "solver:?",
+        meta.get("status") or "?",
+        f"t={meta.get('latest_time') or '-'}",
+        f"np={meta.get('parallel') or '-'}",
+        f"env:{meta.get('foam_version') or '?'}",
+        f"log:{meta.get('log') or 'none'}",
+    ]
+    return "  ".join(parts)
+
+
+def collect_deck_update(case_path: Path, tab_id: str) -> DeckUpdate:
+    return DeckUpdate(
+        status=status_strip(case_path),
+        panels=collect_tab_lines(case_path, tab_id),
+    )
 
 
 _CRIT_TOKENS = ("CRIT", "FAIL", "NO-GO", "error", "Error", "✖")
