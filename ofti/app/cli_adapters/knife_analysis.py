@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 
-from ofti.app.cli_handlers import knife_deck as knife_deck_cli
+from ofti.app.cli_adapters import knife_deck as knife_deck_cli
 from ofti.tools import table_render_service
 from ofti.tools.cli_tools import knife as knife_ops
 

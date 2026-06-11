@@ -9,345 +9,39 @@ from contextlib import suppress
 from pathlib import Path
 from typing import cast
 
-from ofti.app.cli_adapters.common import interval_with_cpu_mode, parse_env_assignments
-from ofti.app.cli_adapters.run import _run_solver_with_mode
-from ofti.app.cli_help import (
-    _add_easy_on_cpu_flag,
-    _add_table_flag,
-    _help_handler,
+from ofti.app.cli_adapters import run as run_cli
+from ofti.app.cli_adapters.watch_cases import (  # noqa: F401
+    _none_last,
+    _watch_case_sort_key,
+    _watch_cases,
+    _watch_cases_payload,
 )
+from ofti.app.cli_adapters.watch_parser import WatchHandlers, add_parser  # noqa: F401
 from ofti.tools import table_render_service
 from ofti.tools.cli_tools import watch as watch_ops
 
+_EASY_ON_CPU_TAIL_BYTES = 256 * 1024
+_EASY_ON_CPU_MIN_POLL_INTERVAL = 1.0
 
-def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    watch = groups.add_parser(
-        "watch",
-        help="Logs and tracked job control",
-        description=(
-            "Logs and tracked job control.\n"
-            "For external watchers (for example scripts/oftools/ofwatch),\n"
-            "run them via presets with `ofti run tool ...`."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    watch.set_defaults(func=_help_handler(watch))
-    watch_sub = watch.add_subparsers(dest="command", required=False)
 
-    jobs = watch_sub.add_parser("jobs", help="Show tracked jobs in .ofti/jobs.json")
-    jobs.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    jobs.add_argument("--all", action="store_true", help="Include finished/stopped jobs")
-    jobs.add_argument("--kind", choices=["solver", "watcher", "any"], default="any")
-    jobs.add_argument("--output", choices=["brief", "detailed"], default=None)
-    _add_table_flag(jobs)
-    jobs.add_argument("--json", action="store_true")
-    jobs.set_defaults(func=_watch_jobs)
+def _watch_use_easy_on_cpu_mode(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "easy_on_cpu", False))
 
-    status = watch_sub.add_parser("status", help="Alias of watch jobs")
-    status.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    status.add_argument("--all", action="store_true", help="Include finished/stopped jobs")
-    status.add_argument("--kind", choices=["solver", "watcher", "any"], default="any")
-    status.add_argument("--output", choices=["brief", "detailed"], default=None)
-    _add_table_flag(status)
-    status.add_argument("--json", action="store_true")
-    status.set_defaults(func=_watch_jobs)
 
-    log = watch_sub.add_parser("log", help="Tail a log file (or case solver log)")
-    log.add_argument("source", nargs="?", default=Path.cwd(), type=Path)
-    log.add_argument("--lines", type=int, default=40)
-    log.add_argument("--follow", action="store_true")
-    log.add_argument("--job-id", default=None, help="Tracked job id from .ofti/jobs.json")
-    log.add_argument("--case", dest="case_dir", default=Path.cwd(), type=Path)
-    _add_easy_on_cpu_flag(log)
-    log.add_argument("--output", choices=["brief", "detailed"], default=None)
-    log.add_argument("--json", action="store_true", help="Print result as JSON")
-    log.set_defaults(func=_watch_log)
+def _tail_bytes_with_cpu_mode(args: argparse.Namespace) -> int | None:
+    explicit = getattr(args, "tail_bytes", None)
+    if explicit is not None:
+        return int(explicit)
+    if _watch_use_easy_on_cpu_mode(args):
+        return _EASY_ON_CPU_TAIL_BYTES
+    return None
 
-    attach = watch_sub.add_parser(
-        "attach",
-        help="Follow logs, or launch watcher process with --watcher",
-    )
-    attach.add_argument("source", nargs="?", default=None, type=Path)
-    attach.add_argument("--lines", type=int, default=40)
-    attach.add_argument("--job-id", default=None, help="Tracked job id from .ofti/jobs.json")
-    attach.add_argument(
-        "--watcher",
-        nargs="*",
-        default=None,
-        help="Start/attach watcher process command; empty uses ofti.watcher preset",
-    )
-    attach.add_argument(
-        "--background",
-        action="store_true",
-        help="With --watcher, start detached and keep tracking in jobs.json",
-    )
-    attach.add_argument(
-        "--watcher-name",
-        default="watcher",
-        help="Tracked watcher job name",
-    )
-    attach.add_argument(
-        "--log-file",
-        default=None,
-        help="Watcher log path (relative to case or absolute)",
-    )
-    attach.add_argument(
-        "--env",
-        action="append",
-        default=[],
-        metavar="KEY=VALUE",
-        help="Extra environment variable for watcher process (repeatable)",
-    )
-    attach.add_argument("--dry-run", action="store_true", help="Show watcher launch payload only")
-    attach.add_argument(
-        "--adopt",
-        default=None,
-        help="Adopt running process by pid or case path before attach",
-    )
-    attach.add_argument("--case", dest="case_dir", default=Path.cwd(), type=Path)
-    _add_easy_on_cpu_flag(attach)
-    attach.add_argument("--output", choices=["brief", "detailed"], default=None)
-    attach.add_argument("--json", action="store_true", help="Print result as JSON")
-    attach.set_defaults(func=_watch_attach)
 
-    start = watch_sub.add_parser(
-        "start",
-        help="Start solver or watcher in background",
-    )
-    start.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    start.add_argument("--case", dest="case_dir", type=Path)
-    start.add_argument("--solver", default=None)
-    start.add_argument("--parallel", type=int, default=0)
-    start.add_argument("--mpi", default=None)
-    start.add_argument(
-        "--sync-subdomains",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="For parallel runs, sync decomposeParDict numberOfSubdomains to --parallel",
-    )
-    start.add_argument(
-        "--clean-processors",
-        action="store_true",
-        help="Remove stale processor* directories before parallel decompose",
-    )
-    start.add_argument(
-        "--prepare-parallel",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Run parallel prelaunch step (optional clean + decomposePar -force)",
-    )
-    start.add_argument(
-        "--watcher",
-        nargs="*",
-        default=None,
-        help="Start watcher command; empty uses ofti.watcher preset",
-    )
-    start.add_argument(
-        "--watcher-name",
-        default="watcher",
-        help="Tracked watcher job name",
-    )
-    start.add_argument(
-        "--no-detach",
-        action="store_true",
-        help="Run without session detach (default is detached background run)",
-    )
-    start.add_argument(
-        "--log-file",
-        default=None,
-        help="Custom log path (relative to case or absolute)",
-    )
-    start.add_argument(
-        "--pid-file",
-        default=None,
-        help="Write started PID to this file (relative to case or absolute)",
-    )
-    start.add_argument(
-        "--env",
-        action="append",
-        default=[],
-        metavar="KEY=VALUE",
-        help="Extra environment variable for started process (repeatable)",
-    )
-    start.add_argument(
-        "--write-receipt",
-        action="store_true",
-        help="Write immutable launch receipt under ./runs/",
-    )
-    start.add_argument(
-        "--record-inputs-copy",
-        action="store_true",
-        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
-    )
-    start.add_argument(
-        "--receipt-file",
-        default=None,
-        type=Path,
-        help="Receipt JSON path (relative paths resolve from current working directory)",
-    )
-    start.add_argument("--dry-run", action="store_true", help="Show launch payload only")
-    start.add_argument("--json", action="store_true", help="Print result as JSON")
-    start.set_defaults(func=_watch_start)
+def _interval_with_cpu_mode(args: argparse.Namespace, interval: float) -> float:
+    if not _watch_use_easy_on_cpu_mode(args):
+        return interval
+    return max(float(interval), _EASY_ON_CPU_MIN_POLL_INTERVAL)
 
-    pause = watch_sub.add_parser("pause", help="Pause tracked running jobs (SIGSTOP)")
-    pause.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    pause.add_argument("--job-id", default=None)
-    pause.add_argument("--name", default=None)
-    pause.add_argument("--all", action="store_true")
-    pause.add_argument("--kind", choices=["solver", "watcher", "any"], default="any")
-    pause.add_argument("--json", action="store_true")
-    pause.set_defaults(func=_watch_pause)
-
-    resume = watch_sub.add_parser("resume", help="Resume paused tracked jobs (SIGCONT)")
-    resume.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    resume.add_argument("--job-id", default=None)
-    resume.add_argument("--name", default=None)
-    resume.add_argument("--all", action="store_true")
-    resume.add_argument("--kind", choices=["solver", "watcher", "any"], default="any")
-    resume.add_argument("--json", action="store_true")
-    resume.set_defaults(func=_watch_resume)
-
-    interval = watch_sub.add_parser(
-        "interval",
-        help="Get/set persisted watch polling interval",
-    )
-    interval.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    interval.add_argument("seconds", nargs="?", type=float, default=None)
-    interval.add_argument("--json", action="store_true")
-    interval.set_defaults(func=_watch_interval)
-
-    output = watch_sub.add_parser(
-        "output",
-        help="Get/set persisted watch output profile",
-    )
-    output.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    output.add_argument("--brief", action="store_true")
-    output.add_argument("--detailed", action="store_true")
-    output.add_argument("--json", action="store_true")
-    output.set_defaults(func=_watch_output)
-
-    run = watch_sub.add_parser("run", help="Run solver in foreground")
-    run.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    run.add_argument("--solver", default=None)
-    run.add_argument("--parallel", type=int, default=0)
-    run.add_argument("--mpi", default=None)
-    run.add_argument(
-        "--sync-subdomains",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="For parallel runs, sync decomposeParDict numberOfSubdomains to --parallel",
-    )
-    run.add_argument(
-        "--clean-processors",
-        action="store_true",
-        help="Remove stale processor* directories before parallel decompose",
-    )
-    run.add_argument(
-        "--prepare-parallel",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Run parallel prelaunch step (optional clean + decomposePar -force)",
-    )
-    run.add_argument(
-        "--write-receipt",
-        action="store_true",
-        help="Write immutable launch receipt under ./runs/",
-    )
-    run.add_argument(
-        "--record-inputs-copy",
-        action="store_true",
-        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
-    )
-    run.add_argument(
-        "--receipt-file",
-        default=None,
-        type=Path,
-        help="Receipt JSON path (relative paths resolve from current working directory)",
-    )
-    run.add_argument("--json", action="store_true", help="Print result as JSON")
-    run.set_defaults(func=_watch_run)
-
-    stop = watch_sub.add_parser("stop", help="Stop tracked running jobs")
-    stop.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    stop.add_argument("--job-id", default=None)
-    stop.add_argument("--name", default=None)
-    stop.add_argument("--all", action="store_true")
-    stop.add_argument("--kind", choices=["solver", "watcher", "any"], default="any")
-    stop.add_argument(
-        "--signal",
-        default="TERM",
-        choices=["TERM", "INT", "QUIT", "KILL"],
-        help="Signal used to stop job(s); TERM is gentle and default",
-    )
-    stop.add_argument("--json", action="store_true")
-    stop.set_defaults(func=_watch_stop)
-
-    external = watch_sub.add_parser(
-        "external",
-        help="External watcher lifecycle: run/start/status/attach/stop",
-    )
-    external.add_argument("--case", dest="case_dir", default=Path.cwd(), type=Path)
-    external.add_argument("--start", action="store_true", help="Start watcher in background")
-    external.add_argument(
-        "--status",
-        action="store_true",
-        help="Show tracked external watcher jobs",
-    )
-    external.add_argument(
-        "--attach",
-        action="store_true",
-        help="Tail tracked external watcher log",
-    )
-    external.add_argument(
-        "--stop",
-        action="store_true",
-        help="Stop tracked external watcher job(s)",
-    )
-    external.add_argument("--job-id", default=None, help="Tracked external watcher job id")
-    external.add_argument(
-        "--name",
-        default="watch.external",
-        help="External watcher job name/prefix",
-    )
-    external.add_argument(
-        "--all",
-        action="store_true",
-        help="Apply to all matching external watcher jobs",
-    )
-    external.add_argument("--lines", type=int, default=40, help="Tail lines for --attach")
-    external.add_argument("--follow", action="store_true", help="Follow mode for --attach")
-    external.add_argument(
-        "--interval",
-        type=float,
-        default=0.25,
-        help="Polling interval for --follow",
-    )
-    external.add_argument(
-        "--log-file",
-        default=None,
-        help="Log file for --start (relative to case or absolute)",
-    )
-    external.add_argument(
-        "--no-detach",
-        action="store_true",
-        help="Do not detach session for --start",
-    )
-    external.add_argument(
-        "--signal",
-        default="TERM",
-        choices=["TERM", "INT", "QUIT", "KILL"],
-        help="Signal used by --stop (TERM is default)",
-    )
-    external.add_argument("--dry-run", action="store_true")
-    _add_easy_on_cpu_flag(external)
-    external.add_argument("--output", choices=["brief", "detailed"], default=None)
-    external.add_argument("--json", action="store_true")
-    external.add_argument(
-        "command",
-        nargs=argparse.REMAINDER,
-        help="External watcher command and arguments (use '--' before command)",
-    )
-    external.set_defaults(func=_watch_external)
 
 def _watch_jobs(args: argparse.Namespace) -> int:
     payload = watch_ops.jobs_payload(
@@ -389,6 +83,9 @@ def _watch_jobs(args: argparse.Namespace) -> int:
         )
     return 0
 
+
+
+
 def _watch_log(args: argparse.Namespace) -> int:
     if args.follow and args.json:
         print("ofti: --json cannot be used with --follow", file=sys.stderr)
@@ -426,8 +123,9 @@ def _watch_log(args: argparse.Namespace) -> int:
     base_interval = 0.25
     with suppress(Exception):
         base_interval = watch_ops.effective_interval(args.case_dir)
-    interval = interval_with_cpu_mode(args, base_interval)
+    interval = _interval_with_cpu_mode(args, base_interval)
     return _follow_log_path(Path(payload["log"]), interval=interval)
+
 
 def _watch_attach(args: argparse.Namespace) -> int:
     watcher_raw = getattr(args, "watcher", None)
@@ -436,8 +134,13 @@ def _watch_attach(args: argparse.Namespace) -> int:
 
     job_id = args.job_id
     if getattr(args, "adopt", None):
-        adopted = _watch_adopt_payload(args)
-        if adopted is None:
+        try:
+            adopted = watch_ops.adopt_job_payload(
+                args.case_dir,
+                adopt=str(args.adopt),
+            )
+        except ValueError as exc:
+            print(f"ofti: {exc}", file=sys.stderr)
             return 1
         job_id = adopted.get("job_id")
         if args.json:
@@ -461,18 +164,19 @@ def _watch_attach(args: argparse.Namespace) -> int:
     )
     return _watch_log(attached_args)
 
-def _watch_attach_watcher(args: argparse.Namespace, watcher_raw: list[str]) -> int:
+
+def _watch_attach_watcher(args: argparse.Namespace, watcher_raw: list[object]) -> int:
     if getattr(args, "adopt", None):
         print("ofti: --adopt cannot be used with --watcher", file=sys.stderr)
         return 2
     try:
-        extra_env = parse_env_assignments(getattr(args, "env", []))
+        extra_env = run_cli._parse_env_assignments(getattr(args, "env", []))
     except ValueError as exc:
         print(f"ofti: {exc}", file=sys.stderr)
         return 2
     payload = watch_ops.watcher_attach_payload(
         args.case_dir,
-        command=watcher_raw,
+        command=list(watcher_raw),
         background=bool(getattr(args, "background", False)),
         log_file=getattr(args, "log_file", None),
         env=extra_env,
@@ -488,19 +192,32 @@ def _watch_attach_watcher(args: argparse.Namespace, watcher_raw: list[str]) -> i
             ),
         )
         return 0 if bool(payload.get("ok", True)) else 1
-    return _print_watch_external_attach(args, payload)
+    print(f"case={payload['case']}")
+    print(f"kind={payload.get('kind', 'watcher')}")
+    print(f"name={payload.get('name')}")
+    print(f"command={payload.get('command')}")
+    if payload.get("dry_run"):
+        print("dry_run=True")
+        return 0
+    if payload.get("log_path"):
+        print(f"log_path={payload.get('log_path')}")
+    if payload.get("pid") is not None:
+        print(f"pid={payload.get('pid')}")
+    if payload.get("job_id") is not None:
+        print(f"job_id={payload.get('job_id')}")
+    if payload.get("returncode") is not None:
+        print(f"returncode={payload.get('returncode')}")
+    return 0 if bool(payload.get("ok", True)) else 1
 
-def _watch_adopt_payload(args: argparse.Namespace) -> dict[str, object] | None:
-    try:
-        return watch_ops.adopt_job_payload(
-            args.case_dir,
-            adopt=str(args.adopt),
-        )
-    except ValueError as exc:
-        print(f"ofti: {exc}", file=sys.stderr)
-        return None
 
 def _watch_start(args: argparse.Namespace) -> int:
+    watcher_raw = _default_watcher_command(args)
+    if watcher_raw is not None:
+        return _watch_start_watcher(args, list(watcher_raw))
+    return run_cli._run_solver_with_mode(args, background=True)
+
+
+def _default_watcher_command(args: argparse.Namespace) -> object:
     watcher_raw = getattr(args, "watcher", None)
     if (
         watcher_raw is None
@@ -513,40 +230,45 @@ def _watch_start(args: argparse.Namespace) -> int:
         except Exception:
             preset = {"found": False}
         if bool(preset.get("found")):
-            watcher_raw = []
-    if watcher_raw is not None:
-        try:
-            extra_env = parse_env_assignments(getattr(args, "env", []))
-        except ValueError as exc:
-            print(f"ofti: {exc}", file=sys.stderr)
-            return 2
-        payload = watch_ops.watcher_start_payload(
-            args.case_dir,
-            command=list(watcher_raw),
-            detached=not bool(getattr(args, "no_detach", False)),
-            log_file=getattr(args, "log_file", None),
-            env=extra_env,
-            dry_run=bool(getattr(args, "dry_run", False)),
-            name=str(getattr(args, "watcher_name", "watcher")),
-        )
-        if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True))
-            return 0 if bool(payload.get("ok", True)) else 1
-        print(f"case={payload['case']}")
-        print(f"kind={payload.get('kind', 'watcher')}")
-        print(f"name={payload['name']}")
-        print(f"command={payload['command']}")
-        print(f"log_path={payload.get('log_path')}")
-        if payload.get("dry_run"):
-            print("dry_run=True")
-            return 0
-        print(f"pid={payload.get('pid')}")
-        print(f"job_id={payload.get('job_id')}")
+            return []
+    return watcher_raw
+
+
+def _watch_start_watcher(args: argparse.Namespace, watcher_raw: list[object]) -> int:
+    try:
+        extra_env = run_cli._parse_env_assignments(getattr(args, "env", []))
+    except ValueError as exc:
+        print(f"ofti: {exc}", file=sys.stderr)
+        return 2
+    payload = watch_ops.watcher_start_payload(
+        args.case_dir,
+        command=list(watcher_raw),
+        detached=not bool(getattr(args, "no_detach", False)),
+        log_file=getattr(args, "log_file", None),
+        env=extra_env,
+        dry_run=bool(getattr(args, "dry_run", False)),
+        name=str(getattr(args, "watcher_name", "watcher")),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if bool(payload.get("ok", True)) else 1
-    return _run_solver_with_mode(args, background=True)
+    print(f"case={payload['case']}")
+    print(f"kind={payload.get('kind', 'watcher')}")
+    print(f"name={payload['name']}")
+    print(f"command={payload['command']}")
+    print(f"log_path={payload.get('log_path')}")
+    if payload.get("dry_run"):
+        print("dry_run=True")
+        return 0
+    print(f"pid={payload.get('pid')}")
+    print(f"job_id={payload.get('job_id')}")
+    return 0 if bool(payload.get("ok", True)) else 1
+
 
 def _watch_run(args: argparse.Namespace) -> int:
-    return _run_solver_with_mode(args, background=False)
+    return run_cli._run_solver_with_mode(args, background=False)
+
+
 
 def _watch_stop(args: argparse.Namespace) -> int:
     signal_name = str(getattr(args, "signal", "TERM")).upper()
@@ -576,6 +298,7 @@ def _watch_stop(args: argparse.Namespace) -> int:
             print(f"- id={row.get('id')} pid={row.get('pid')} error={row['error']}")
     return 0 if not payload["failed"] else 1
 
+
 def _watch_pause(args: argparse.Namespace) -> int:
     payload = watch_ops.pause_payload(
         args.case_dir,
@@ -598,6 +321,7 @@ def _watch_pause(args: argparse.Namespace) -> int:
         for row in payload["failed"]:
             print(f"- id={row.get('id')} pid={row.get('pid')} error={row['error']}")
     return 0 if not payload["failed"] else 1
+
 
 def _watch_resume(args: argparse.Namespace) -> int:
     payload = watch_ops.resume_payload(
@@ -622,6 +346,7 @@ def _watch_resume(args: argparse.Namespace) -> int:
             print(f"- id={row.get('id')} pid={row.get('pid')} error={row['error']}")
     return 0 if not payload["failed"] else 1
 
+
 def _watch_interval(args: argparse.Namespace) -> int:
     payload = watch_ops.interval_payload(args.case_dir, seconds=args.seconds)
     if args.json:
@@ -634,6 +359,7 @@ def _watch_interval(args: argparse.Namespace) -> int:
         print(f"requested={payload['requested']}")
     print(f"settings={payload['settings_path']}")
     return 0
+
 
 def _watch_output(args: argparse.Namespace) -> int:
     brief = bool(getattr(args, "brief", False))
@@ -653,6 +379,7 @@ def _watch_output(args: argparse.Namespace) -> int:
         print(f"requested={payload['requested']}")
     print(f"settings={payload['settings_path']}")
     return 0
+
 
 def _watch_external(args: argparse.Namespace) -> int:
     mode = watch_ops.external_watch_mode(
@@ -684,6 +411,7 @@ def _watch_external(args: argparse.Namespace) -> int:
     )
     return _watch_external_render(args, mode, payload)
 
+
 def _watch_external_render(
     args: argparse.Namespace,
     mode: str,
@@ -708,6 +436,7 @@ def _watch_external_render(
     handler = handlers.get(mode, _print_watch_external_run)
     return handler(payload)
 
+
 def _watch_external_json_exit(mode: str, payload: dict[str, object]) -> int:
     if mode == "stop":
         failed = payload.get("failed")
@@ -715,6 +444,7 @@ def _watch_external_json_exit(mode: str, payload: dict[str, object]) -> int:
     if mode in {"status", "attach"}:
         return 0
     return 0 if bool(payload.get("ok", True)) else 1
+
 
 def _print_watch_external_status(payload: dict[str, object]) -> int:
     print(f"case={payload['case']}")
@@ -727,6 +457,7 @@ def _print_watch_external_status(payload: dict[str, object]) -> int:
             f"status={job.get('status')}",
         )
     return 0
+
 
 def _print_watch_external_attach(args: argparse.Namespace, payload: dict[str, object]) -> int:
     profile = _watch_profile(args.case_dir, getattr(args, "output", None))
@@ -741,8 +472,9 @@ def _print_watch_external_attach(args: argparse.Namespace, payload: dict[str, ob
     interval = float(args.interval)
     if interval <= 0:
         interval = watch_ops.effective_interval(args.case_dir)
-    interval = interval_with_cpu_mode(args, interval)
+    interval = _interval_with_cpu_mode(args, interval)
     return _follow_log_path(Path(str(payload["log"])), interval=interval)
+
 
 def _print_watch_external_stop(payload: dict[str, object]) -> int:
     print(f"case={payload['case']}")
@@ -761,6 +493,7 @@ def _print_watch_external_stop(payload: dict[str, object]) -> int:
             print(f"- id={row.get('id')} pid={row.get('pid')} error={row.get('error')}")
     return 0 if not failed else 1
 
+
 def _print_watch_external_start(payload: dict[str, object]) -> int:
     print(f"case={payload['case']}")
     print(f"name={payload['name']}")
@@ -773,6 +506,7 @@ def _print_watch_external_start(payload: dict[str, object]) -> int:
     print(f"job_id={payload.get('job_id')}")
     return 0 if bool(payload.get("ok", True)) else 1
 
+
 def _print_watch_external_run(payload: dict[str, object]) -> int:
     print(f"case={payload['case']}")
     print(f"command={payload['command']}")
@@ -783,6 +517,7 @@ def _print_watch_external_run(payload: dict[str, object]) -> int:
     print(f"returncode={payload.get('returncode')}")
     return 0 if bool(payload.get("ok", True)) else 1
 
+
 def _watch_profile(case_dir: Path, explicit: str | None) -> str:
     if explicit in {"brief", "detailed"}:
         return explicit
@@ -790,6 +525,7 @@ def _watch_profile(case_dir: Path, explicit: str | None) -> str:
         return str(watch_ops.effective_output_profile(case_dir))
     except Exception:
         return "detailed"
+
 
 def _watch_json_payload(
     command: str,
@@ -806,20 +542,31 @@ def _watch_json_payload(
         "case": payload.get("case"),
         "ok": payload.get("ok", True),
     }
-    _add_watch_json_jobs(base, payload)
-    _add_watch_json_log(base, payload)
-    _copy_watch_json_scalars(
+    _copy_present_keys(
         base,
         payload,
         ("count", "selected", "signal", "pid", "job_id", "kind", "detached", "running", "log_path"),
     )
+    _add_brief_jobs(base, payload)
+    _add_brief_log(base, payload)
     return base
 
-def _add_watch_json_jobs(base: dict[str, object], payload: dict[str, object]) -> None:
+
+def _copy_present_keys(
+    target: dict[str, object],
+    source: dict[str, object],
+    keys: tuple[str, ...],
+) -> None:
+    for key in keys:
+        if key in source:
+            target[key] = source.get(key)
+
+
+def _add_brief_jobs(target: dict[str, object], payload: dict[str, object]) -> None:
     if "jobs" not in payload:
         return
     jobs = cast("list[dict[str, object]]", payload.get("jobs", []))
-    base["items"] = [
+    target["items"] = [
         {
             "id": job.get("id"),
             "name": job.get("name"),
@@ -834,22 +581,15 @@ def _add_watch_json_jobs(base: dict[str, object], payload: dict[str, object]) ->
         for job in jobs
     ]
 
-def _add_watch_json_log(base: dict[str, object], payload: dict[str, object]) -> None:
+
+def _add_brief_log(target: dict[str, object], payload: dict[str, object]) -> None:
     if "log" not in payload:
         return
     lines = cast("list[str]", payload.get("lines", []))
-    base["log"] = payload.get("log")
-    base["line_count"] = len(lines)
-    base["lines"] = lines
+    target["log"] = payload.get("log")
+    target["line_count"] = len(lines)
+    target["lines"] = lines
 
-def _copy_watch_json_scalars(
-    base: dict[str, object],
-    payload: dict[str, object],
-    keys: tuple[str, ...],
-) -> None:
-    for key in keys:
-        if key in payload:
-            base[key] = payload.get(key)
 
 def _follow_log_path(log_path: Path, *, interval: float) -> int:
     sleep_interval = max(0.05, float(interval))

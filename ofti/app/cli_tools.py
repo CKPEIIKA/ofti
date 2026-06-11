@@ -7,15 +7,15 @@ from importlib.metadata import version as package_version
 from textwrap import dedent
 from typing import Any, cast
 
-from ofti.app.cli_handlers import knife_analysis as knife_analysis_cli
-from ofti.app.cli_handlers import knife_basic as knife_basic_cli
-from ofti.app.cli_handlers import knife_deck as knife_deck_cli
-from ofti.app.cli_handlers import knife_live as knife_live_cli
-from ofti.app.cli_handlers import knife_parser as knife_cli
-from ofti.app.cli_handlers import manifest as manifest_cli
-from ofti.app.cli_handlers import plot as plot_cli
-from ofti.app.cli_handlers import run as run_cli
-from ofti.app.cli_handlers import watch as watch_cli
+from ofti.app.cli_adapters import knife_analysis as knife_analysis_cli
+from ofti.app.cli_adapters import knife_basic as knife_basic_cli
+from ofti.app.cli_adapters import knife_deck as knife_deck_cli
+from ofti.app.cli_adapters import knife_live as knife_live_cli
+from ofti.app.cli_adapters import knife_parser as knife_cli
+from ofti.app.cli_adapters import manifest as manifest_cli
+from ofti.app.cli_adapters import plot as plot_cli
+from ofti.app.cli_adapters import run as run_cli
+from ofti.app.cli_adapters import watch as watch_cli
 from ofti.app.cli_help import (
     Handler,
     _fill_missing_help,
