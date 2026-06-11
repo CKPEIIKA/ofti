@@ -20,6 +20,12 @@ dependencies = [
     "foamlib[preprocessing,postprocessing]==1.5.7",
 ]
 
+[project.optional-dependencies]
+tui = [
+    "textual>=1.0",
+    "rich>=13.0",
+]
+
 [project.scripts]
 ofti = "ofti.app.cli:main"
 
@@ -36,6 +42,7 @@ source = ["ofti"]
 omit = [
     "ofti/app/screens/*",
     "ofti/ui_curses/*",
+    "ofti/ui_textual/*",
 ]
 
 [tool.setuptools.packages.find]
@@ -47,5 +54,6 @@ dev = [
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.14",
+    "textual>=1.0",
     "ty>=0.0.40",
 ]

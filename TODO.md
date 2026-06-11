@@ -65,7 +65,7 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 - [TUI] Keep UI modules as adapters: prompt, dispatch, display, keybinding, and error presentation only.
 - [MAIN] Keep shell/OpenFOAM subprocess calls outside `ofti/core`; route them through `ofti/foam` or tool services.
 - [MAIN][TUI] Review remaining direct file parsing in curses screens and route it through `core/entry_io.py` or foamlib-backed services.
-- [TUI] Evaluate Textual only after services are separated; do not block current curses improvements on a UI toolkit migration.
+- [TUI] Grow the optional Textual deck (`ofti tui`) beyond read-only v0: command palette actions, runtime edit prompts over the shared safe edit service, and Braille scope widgets; keep curses/CLI fully functional without the `tui` extra.
 
 ## P3 - Unix CLI polish
 
@@ -81,6 +81,10 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 - Follow-up debt: `ty check` reports TypedDict-vs-`dict[str, Any]` signature
   mismatches across service/table-render call sites on both branches; fixing them
   means moving shared service signatures to `Mapping[...]`.
+- Optional Textual mission-control deck v0 exists: `ofti tui CASE` renders the shared
+  deck model (`ofti/ui/deck.py`) with workflow tabs, severity-colored panels, and
+  auto-refresh via `ofti/ui_textual/`; textual+rich live behind the `tui` extra and
+  `ofti tui` falls back to the curses TUI with an install hint when missing.
 - Project depends on `foamlib[preprocessing,postprocessing]` by default.
 - TUI Captains Deck exists and reuses read-only CLI services.
 - TUI starts from a fast adaptive menu after case selection; Captains Deck opens on demand.

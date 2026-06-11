@@ -22,6 +22,7 @@ ofti – OpenFOAM Terminal Interface (TUI)
 ```
 python -m ofti.app.cli /path/to/case
 ofti /path/to/case
+ofti tui /path/to/case   # mission control deck (optional Textual UI)
 ```
 
 Install from the repo root:
@@ -44,6 +45,30 @@ pipx install .
 
 `ofti` now depends on `foamlib[preprocessing,postprocessing]` by default.
 If your environment is missing these extras, related features stay disabled in TUI with hints.
+
+### Optional mission control deck (Textual)
+
+The classic curses TUI and the CLI work with no extra dependencies. The
+`tui` extra adds a Textual/Rich "mission control" deck:
+
+```bash
+uv tool install '.[tui]'
+# or
+python -m pip install '.[tui]'
+```
+
+```bash
+ofti tui /path/to/case             # live deck, auto-refresh every 3 s
+ofti tui /path/to/case --interval 1
+```
+
+The deck renders the same shared service payloads as `ofti knife
+captains-deck`, `dna`, `mesh-radar`, `resource`, and the curses Captains
+Deck: workflow tabs (Cockpit, Checklist, Flight, Analyze, Mesh, Resources,
+Doctor, Fleet), severity-colored panels, bounded log radar, and keyboard
+navigation (`←/→` tabs, `r` refresh, `q` quit). Without the extra
+installed, `ofti tui` prints the install hint and opens the classic curses
+TUI instead.
 
 ## DESCRIPTION
 
