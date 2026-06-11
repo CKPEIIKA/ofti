@@ -290,7 +290,12 @@ def add_parser(
         default="process",
         help="Queue backend for case launches",
     )
-    queue.add_argument("--max-parallel", type=int, required=True)
+    queue.add_argument(
+        "--max-parallel",
+        type=int,
+        default=1,
+        help="Maximum cases running at once (default: 1, sequential queue)",
+    )
     queue.add_argument("--poll-interval", type=float, default=0.25)
     _add_easy_on_cpu_flag(queue)
     queue.add_argument(

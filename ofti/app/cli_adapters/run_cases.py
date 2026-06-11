@@ -174,7 +174,11 @@ def _run_queue(args: argparse.Namespace) -> int:
         f"failed_to_start={len(payload['failed_to_start'])}",
     )
     for row in payload["finished"]:
-        print(f"- {row['case']}: state={row['state']} latest_time={row['latest_time']}")
+        print(
+            f"- {row['case']}: outcome={row.get('outcome', '-')} "
+            f"state={row['state']} reason={row.get('stop_reason', '-')} "
+            f"latest_time={row['latest_time']}",
+        )
     if payload["failed_to_start"]:
         for row in payload["failed_to_start"]:
             print(f"failed {row['case']}: {row['error']}")

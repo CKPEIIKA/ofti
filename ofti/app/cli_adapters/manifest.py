@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from ofti.app.cli_handlers import run as run_cli
+from ofti.app.cli_adapters import run as run_cli
 from ofti.tools import run_manifest_service as manifest_ops
 from ofti.tools import table_render_service
 from ofti.tools.cli_tools import run as run_ops

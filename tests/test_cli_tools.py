@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from ofti.app import cli_tools
-from ofti.app.cli_handlers import run as run_cli
+from ofti.app.cli_adapters import run as run_cli
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import watch as watch_ops
 from ofti.tools.cli_tools.run import RunResult
@@ -85,15 +85,15 @@ def test_knife_manifest_write_uses_receipt_handler_alias(tmp_path, monkeypatch, 
     case = _make_case(tmp_path / "case")
     manifest_path = tmp_path / "manifest.json"
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.manifest.manifest_ops.write_case_run_manifest",
+        "ofti.app.cli_adapters.manifest.manifest_ops.write_case_run_manifest",
         lambda *_a, **_k: manifest_path,
     )
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.solver_command",
+        "ofti.app.cli_adapters.run.run_ops.solver_command",
         lambda *_a, **_k: ("simpleFoam", ["simpleFoam"]),
     )
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.dry_run_command",
+        "ofti.app.cli_adapters.run.run_ops.dry_run_command",
         lambda _cmd: "simpleFoam",
     )
 
@@ -723,11 +723,11 @@ def test_watch_stop_stops_selected_job(tmp_path, capsys, monkeypatch) -> None:
 def test_watch_start_runs_solver_in_background(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.solver_command",
+        "ofti.app.cli_adapters.run.run_ops.solver_command",
         lambda _case, **_kwargs: ("simpleFoam", ["simpleFoam"]),
     )
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.execute_case_command",
+        "ofti.app.cli_adapters.run.run_ops.execute_case_command",
         lambda _case, _name, _cmd, **_kwargs: RunResult(
             0,
             "",
@@ -907,7 +907,7 @@ def test_knife_set_uses_shared_logic(tmp_path, capsys, monkeypatch) -> None:
 def test_run_solver_dry_run_uses_control_dict_solver(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case", solver="rhoSimpleFoam")
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.solver_command",
+        "ofti.app.cli_adapters.run.run_ops.solver_command",
         lambda _case, **_kwargs: ("rhoSimpleFoam", ["rhoSimpleFoam"]),
     )
 
@@ -921,7 +921,7 @@ def test_run_solver_dry_run_uses_control_dict_solver(tmp_path, capsys, monkeypat
 def test_run_solver_dry_run_json(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case", solver="rhoSimpleFoam")
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.solver_command",
+        "ofti.app.cli_adapters.run.run_ops.solver_command",
         lambda _case, **_kwargs: ("rhoSimpleFoam", ["rhoSimpleFoam"]),
     )
 
@@ -937,7 +937,7 @@ def test_run_solver_accepts_manifest_aliases(tmp_path, capsys, monkeypatch) -> N
     case = _make_case(tmp_path / "case", solver="rhoSimpleFoam")
     manifest_path = tmp_path / "launch-manifest.json"
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.solver_command",
+        "ofti.app.cli_adapters.run.run_ops.solver_command",
         lambda _case, **_kwargs: ("rhoSimpleFoam", ["rhoSimpleFoam"]),
     )
 
@@ -970,7 +970,7 @@ def test_run_solver_dry_run_json_no_sync_subdomains(tmp_path, capsys, monkeypatc
         seen["sync_subdomains"] = kwargs.get("sync_subdomains")
         return ("rhoSimpleFoam", ["rhoSimpleFoam"])
 
-    monkeypatch.setattr("ofti.app.cli_handlers.run.run_ops.solver_command", _solver_command)
+    monkeypatch.setattr("ofti.app.cli_adapters.run.run_ops.solver_command", _solver_command)
     code = cli_tools.main(
         ["run", "solver", str(case), "--dry-run", "--json", "--no-sync-subdomains"],
     )
@@ -990,7 +990,7 @@ def test_watch_attach_forwards_job_id_to_log_handler(tmp_path, monkeypatch) -> N
         captured["follow"] = args.follow
         return 0
 
-    monkeypatch.setattr("ofti.app.cli_handlers.watch._watch_log", fake_watch_log)
+    monkeypatch.setattr("ofti.app.cli_adapters.watch._watch_log", fake_watch_log)
 
     code = cli_tools.main(["watch", "attach", "--job-id", "job-1", "--case", str(case)])
 
@@ -1258,11 +1258,11 @@ def test_run_solver_parallel_clean_processors_calls_prepare(tmp_path, capsys, mo
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.solver_command",
+        "ofti.app.cli_adapters.run.run_ops.solver_command",
         lambda _case, **_kwargs: ("rhoSimpleFoam-parallel", ["mpirun", "-np", "2", "rhoSimpleFoam", "-parallel"]),
     )
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.prepare_parallel_case",
+        "ofti.app.cli_adapters.run.run_ops.prepare_parallel_case",
         lambda _case, **kwargs: seen.setdefault("prepare", kwargs) or {
             "parallel": kwargs["parallel"],
             "clean_processors": kwargs["clean_processors"],
@@ -1274,7 +1274,7 @@ def test_run_solver_parallel_clean_processors_calls_prepare(tmp_path, capsys, mo
         },
     )
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.execute_solver_case_command",
+        "ofti.app.cli_adapters.run.run_ops.execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(0, "", "", pid=None, log_path=Path(_args[0]) / "log.rhoSimpleFoam"),
     )
     code = cli_tools.main(
@@ -1291,15 +1291,15 @@ def test_run_solver_parallel_clean_processors_calls_prepare(tmp_path, capsys, mo
 def test_run_solver_parallel_no_prepare_skips_prepare(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case", solver="rhoSimpleFoam")
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.solver_command",
+        "ofti.app.cli_adapters.run.run_ops.solver_command",
         lambda _case, **_kwargs: ("rhoSimpleFoam-parallel", ["mpirun", "-np", "2", "rhoSimpleFoam", "-parallel"]),
     )
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.prepare_parallel_case",
+        "ofti.app.cli_adapters.run.run_ops.prepare_parallel_case",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("prepare should be skipped")),
     )
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.execute_solver_case_command",
+        "ofti.app.cli_adapters.run.run_ops.execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(0, "", "", pid=None, log_path=Path(_args[0]) / "log.rhoSimpleFoam"),
     )
     code = cli_tools.main(
@@ -1342,7 +1342,7 @@ def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monk
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(
-        "ofti.app.cli_handlers.run.run_ops.resolve_case_set",
+        "ofti.app.cli_adapters.run.run_ops.resolve_case_set",
         lambda **_kwargs: [case],
     )
 
@@ -1360,7 +1360,7 @@ def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monk
             "ok": True,
         }
 
-    monkeypatch.setattr("ofti.app.cli_handlers.run.run_ops.queue_payload", _queue_payload)
+    monkeypatch.setattr("ofti.app.cli_adapters.run.run_ops.queue_payload", _queue_payload)
 
     code = cli_tools.main(
         [

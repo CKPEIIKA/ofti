@@ -5,15 +5,13 @@ import json
 import sys
 from pathlib import Path
 
-from ofti.app.cli_help import (
-    _add_table_flag,
-    _help_handler,
-)
 from ofti.tools import table_render_service
 from ofti.tools.cli_tools import plot as plot_ops
 
 
-def _build_plot_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def add_parser(
+    groups: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     plot = groups.add_parser(
         "plot",
         help="Log metrics and residual summaries",
@@ -26,13 +24,13 @@ def _build_plot_parser(groups: argparse._SubParsersAction[argparse.ArgumentParse
     metrics.add_argument("source", nargs="?", default=Path.cwd(), type=Path)
     _add_table_flag(metrics)
     metrics.add_argument("--json", action="store_true")
-    metrics.set_defaults(func=_plot_metrics)
+    metrics.set_defaults(func=metrics_command)
 
     criteria = plot_sub.add_parser("criteria", help="Alias of plot metrics")
     criteria.add_argument("source", nargs="?", default=Path.cwd(), type=Path)
     _add_table_flag(criteria)
     criteria.add_argument("--json", action="store_true")
-    criteria.set_defaults(func=_plot_metrics)
+    criteria.set_defaults(func=metrics_command)
 
     residuals = plot_sub.add_parser(
         "residuals",
@@ -43,9 +41,13 @@ def _build_plot_parser(groups: argparse._SubParsersAction[argparse.ArgumentParse
     residuals.add_argument("--limit", type=int, default=0)
     _add_table_flag(residuals)
     residuals.add_argument("--json", action="store_true")
-    residuals.set_defaults(func=_plot_residuals)
+    residuals.set_defaults(func=residuals_command)
 
-def _plot_metrics(args: argparse.Namespace) -> int:
+
+def metrics_command(args: argparse.Namespace) -> int:
+    if _output_mode_conflict(args):
+        print("ofti: choose only one of --json/--table", file=sys.stderr)
+        return 2
     try:
         payload = plot_ops.metrics_payload(args.source)
     except ValueError as exc:
@@ -54,7 +56,7 @@ def _plot_metrics(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
-    if bool(getattr(args, "table", False)):
+    if getattr(args, "table", False):
         print("\n".join(table_render_service.metrics_table_lines(payload)))
         return 0
     print(f"log={payload['log']}")
@@ -71,7 +73,11 @@ def _plot_metrics(args: argparse.Namespace) -> int:
     print(f"residual_fields={','.join(payload['residual_fields'])}")
     return 0
 
-def _plot_residuals(args: argparse.Namespace) -> int:
+
+def residuals_command(args: argparse.Namespace) -> int:
+    if _output_mode_conflict(args):
+        print("ofti: choose only one of --json/--table", file=sys.stderr)
+        return 2
     try:
         payload = plot_ops.residuals_payload(
             args.source,
@@ -87,7 +93,7 @@ def _plot_residuals(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
-    if bool(getattr(args, "table", False)):
+    if getattr(args, "table", False):
         print("\n".join(table_render_service.residual_payload_table_lines(payload)))
         return 0
     print(f"log={payload['log']}")
@@ -98,3 +104,22 @@ def _plot_residuals(args: argparse.Namespace) -> int:
         )
     return 0
 
+
+def _help_handler(parser: argparse.ArgumentParser):
+    def _show_help(_args: argparse.Namespace) -> int:
+        parser.print_help()
+        return 0
+
+    return _show_help
+
+
+def _add_table_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--table",
+        action="store_true",
+        help="Print aligned human-readable tables",
+    )
+
+
+def _output_mode_conflict(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "json", False) and getattr(args, "table", False))

@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from ofti.app import cli_tools
-from ofti.app.cli_handlers import manifest as manifest_cli
-from ofti.app.cli_handlers import run as run_cli
-from ofti.app.cli_handlers import watch as watch_cli
+from ofti.app.cli_adapters import manifest as manifest_cli
+from ofti.app.cli_adapters import run as run_cli
+from ofti.app.cli_adapters import watch as watch_cli
 from ofti.tools.cli_tools.run import RunResult
 
 
