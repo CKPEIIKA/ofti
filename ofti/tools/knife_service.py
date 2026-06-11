@@ -12,6 +12,12 @@ from ofti.core.boundary import list_field_files, read_optional, zero_dir
 from ofti.core.case_copy import copy_case_directory
 from ofti.core.dict_compare import compare_case_dicts
 from ofti.core.entry_io import list_subkeys, write_entry
+from ofti.core.field_diagnostics import (
+    compare_fields_payload as compare_fields_core_payload,
+)
+from ofti.core.field_diagnostics import (
+    field_sanity_payload,
+)
 from ofti.core.solver_checks import resolve_solver_name
 from ofti.core.solver_status import latest_solver_job, solver_status_text
 from ofti.core.times import latest_time
@@ -404,6 +410,35 @@ def compare_payload(
             for diff in diffs
         ],
     }
+
+
+def physical_payload(
+    case_dir: Path,
+    *,
+    time_name: str = "latest",
+    fields: list[str] | None = None,
+) -> dict[str, Any]:
+    case_path = case_source_service.require_case_dir(case_dir)
+    return field_sanity_payload(case_path, time_name=time_name, fields=fields)
+
+
+def compare_fields_payload(
+    left_case: Path,
+    right_case: Path,
+    *,
+    time_name: str = "latest",
+    fields: list[str] | None = None,
+    preset: str | None = None,
+) -> dict[str, Any]:
+    left = case_source_service.require_case_dir(left_case)
+    right = case_source_service.require_case_dir(right_case)
+    return compare_fields_core_payload(
+        left,
+        right,
+        time_name=time_name,
+        fields=fields,
+        preset=preset,
+    )
 
 
 def copy_payload(
