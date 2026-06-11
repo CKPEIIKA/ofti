@@ -78,6 +78,9 @@ Current actionable backlog, rebuilt from `docs/foamlib_survey.md`, `docs/foamlib
 - Project depends on `foamlib[preprocessing,postprocessing]` by default.
 - TUI Captains Deck exists and reuses read-only CLI services.
 - TUI starts from a fast adaptive menu after case selection; Captains Deck opens on demand.
+- TUI first-screen style/speed pass: quick metadata no longer spawns `foamVersion`,
+  root banner is shorter/cleaner, small terminals use tighter spacing, and Captains
+  Deck log reads default to a smaller bounded tail window.
 - Wide TUI menus show a cheap right-side inspector; small/SSH terminals keep a compact header and list-first layout.
 - Captains Deck v0 panels are focusable and Enter opens selected panel details.
 - Captains Deck v1 has manual refresh, cached periodic refresh while open, and a selected-panel compact layout for small/SSH terminals.
