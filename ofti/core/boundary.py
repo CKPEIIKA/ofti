@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ofti.core.entry_io import list_subkeys, read_entry
-from ofti.foam.openfoam import OpenFOAMError
+from ofti.foam.exceptions import OpenFOAMError
 from ofti.foamlib import adapter as foamlib_integration
 
 

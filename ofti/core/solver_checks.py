@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ofti.core.boundary import list_field_files
 from ofti.core.entry_io import read_entry
-from ofti.foam.openfoam import OpenFOAMError
+from ofti.foam.exceptions import OpenFOAMError
 
 
 def resolve_solver_name(case_path: Path) -> tuple[str | None, str | None]:

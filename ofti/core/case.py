@@ -6,7 +6,7 @@ from pathlib import Path
 from ofti.core.entry_io import read_entry
 from ofti.core.mesh_info import mesh_counts
 from ofti.core.tool_dicts_service import apply_assignment_or_write
-from ofti.foam.openfoam import OpenFOAMError
+from ofti.foam.exceptions import OpenFOAMError
 
 
 def detect_mesh_stats(case_path: Path) -> str:
