@@ -73,6 +73,8 @@ def test_knife_group_help_lists_new_commands(capsys) -> None:
     code = cli_tools.main(["knife"])
     out = capsys.readouterr().out
     assert code == 0
+    assert "physical" in out
+    assert "compare-fields" in out
     assert "criteria" in out
     assert "eta" in out
     assert "report" in out
@@ -1336,6 +1338,64 @@ def test_knife_converge_cli_json(tmp_path, capsys, monkeypatch) -> None:
     assert payload["strict_ok"] is False
 
 
+def test_knife_physical_cli_json(tmp_path, capsys, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case")
+    seen: dict[str, object] = {}
+
+    def _payload(case_dir: Path, **kwargs: object) -> dict[str, object]:
+        seen["case"] = case_dir
+        seen["kwargs"] = kwargs
+        return {
+            "case": str(case),
+            "time": "0",
+            "field_count": 1,
+            "ok": True,
+            "physical_ok": False,
+            "hard_errors": [],
+            "violations": [{"field": "rho", "kind": "negative", "count": 1}],
+            "fields": [{"field": "rho", "ok": True, "kind": "scalar", "count": 2}],
+            "species_sum": None,
+        }
+
+    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.physical_payload", _payload)
+
+    code = cli_tools.main(["knife", "physical", str(case), "--time", "0", "--fields", "rho,p", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["physical_ok"] is False
+    assert seen["case"] == case
+    assert seen["kwargs"] == {"time_name": "0", "fields": ["rho", "p"]}
+
+
+def test_knife_compare_fields_cli_text_nonzero_on_error(tmp_path, capsys, monkeypatch) -> None:
+    left = _make_case(tmp_path / "left")
+    right = _make_case(tmp_path / "right")
+
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.knife_ops.compare_fields_payload",
+        lambda *_args, **_kwargs: {
+            "left_case": str(left),
+            "right_case": str(right),
+            "time": "0",
+            "right_time": "0",
+            "preset": "air5",
+            "fields_requested": ["p"],
+            "field_count": 1,
+            "ok": False,
+            "same": False,
+            "errors": ["p: field count mismatch"],
+            "fields": [{"field": "p", "ok": False, "error": "field count mismatch"}],
+        },
+    )
+
+    code = cli_tools.main(["knife", "compare-fields", str(left), str(right), "--preset", "air5", "--time", "0"])
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "field count mismatch" in out
+
+
 def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monkeypatch) -> None:
     root = tmp_path / "set"
     case = _make_case(root / "caseA")
@@ -1353,6 +1413,7 @@ def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monk
             "max_parallel": 1,
             "dry_run": False,
             "backend": kwargs.get("backend", "process"),
+            "queue_path": str(root / ".ofti" / "queues" / "queue.json"),
             "planned": [],
             "started": [],
             "finished": [],
@@ -1385,6 +1446,7 @@ def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monk
     assert seen["backend"] == "foamlib-async"
     assert seen["prepare_parallel"] is False
     assert seen["clean_processors"] is True
+    assert seen["queue_root"] == root
     assert seen["poll_interval"] == pytest.approx(1.0)
     assert payload["backend"] == "foamlib-async"
 

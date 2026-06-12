@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from typing import cast
 
 from ofti.app.cli_adapters import knife_deck as knife_deck_cli
+from ofti.core.field_diagnostics import split_field_list
 from ofti.tools import table_render_service
 from ofti.tools.cli_tools import knife as knife_ops
 
@@ -285,3 +287,67 @@ def _knife_campaign_compare(args: argparse.Namespace) -> int:
         print(f"- {key}: {len(values)} case(s)")
     print(f"comparisons={len(payload['comparisons'])}")
     return 0
+
+
+def _knife_physical(args: argparse.Namespace) -> int:
+    payload = knife_ops.physical_payload(
+        args.case_dir,
+        time_name=str(getattr(args, "time", "latest")),
+        fields=split_field_list(list(getattr(args, "fields", []))),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if bool(payload.get("ok", False)) else 1
+    print(f"case={payload['case']}")
+    print(f"time={payload['time']} fields={payload['field_count']}")
+    print(f"ok={payload['ok']} physical_ok={payload['physical_ok']}")
+    for row in cast("list[dict[str, object]]", payload["fields"]):
+        if not row.get("ok"):
+            print(f"- {row['field']}: error={row.get('error')}")
+            continue
+        print(
+            f"- {row['field']}: kind={row.get('kind')} count={row.get('count')} "
+            f"min={row.get('min')} max={row.get('max')} "
+            f"neg={row.get('negative_count')} nonfinite={row.get('nonfinite_count')}",
+        )
+    if payload.get("species_sum"):
+        species = cast("dict[str, object]", payload["species_sum"])
+        print(
+            "sumY: "
+            f"fields={','.join(cast('list[str]', species.get('fields', [])))} "
+            f"min={species.get('min')} max={species.get('max')} "
+            f"max_abs_deviation={species.get('max_abs_deviation')}",
+        )
+    for item in cast("list[dict[str, object]]", payload.get("violations", [])):
+        print(f"violation: {item}")
+    for item in cast("list[str]", payload.get("hard_errors", [])):
+        print(f"hard_error: {item}")
+    return 0 if bool(payload.get("ok", False)) else 1
+
+
+def _knife_compare_fields(args: argparse.Namespace) -> int:
+    payload = knife_ops.compare_fields_payload(
+        args.left_case,
+        args.right_case,
+        time_name=str(getattr(args, "time", "latest")),
+        fields=split_field_list(list(getattr(args, "fields", []))),
+        preset=getattr(args, "preset", None),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if bool(payload.get("ok", False)) else 1
+    print(f"left_case={payload['left_case']}")
+    print(f"right_case={payload['right_case']}")
+    print(f"time={payload['time']} fields={payload['field_count']} same={payload['same']}")
+    for row in cast("list[dict[str, object]]", payload["fields"]):
+        if not row.get("ok"):
+            print(f"- {row['field']}: error={row.get('error')}")
+            continue
+        print(
+            f"- {row['field']}: kind={row.get('kind')} count={row.get('count')} "
+            f"maxAbs={row.get('max_abs')} maxRel={row.get('max_rel')} "
+            f"nonfinite={row.get('nonfinite_pairs')}",
+        )
+    for item in cast("list[str]", payload.get("errors", [])):
+        print(f"error: {item}")
+    return 0 if bool(payload.get("ok", False)) else 1
