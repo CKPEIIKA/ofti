@@ -70,8 +70,13 @@ colored panels with per-panel update stamps, and a bounded log radar.
 
 Keys follow the classic TUI conventions: `1-8`, `h/l`, or `←/→` switch
 tabs, `Tab`/`Shift+Tab` move panel focus, `j/k`/`g/G` scroll, `/` filters
-the focused panel, `:` opens the command palette, `!` opens a shell in
-the case directory, `r` refresh, `?` help, `q` quit.
+the focused panel, `:` opens the command palette, `c` opens the case
+chooser (live solver cases, nearby case directories, or a typed path —
+shown automatically when the deck starts outside a case), `o` selects an
+OpenFOAM bashrc for the session, `!` opens a shell in the case directory,
+`r` refresh, `?` help (including what every panel shows), `q` quit. The
+status strip always shows case, solver, run state, and whether an
+OpenFOAM environment is loaded.
 
 The Flight tab exposes the same safe runtime edits as the curses flight
 deck (`s` safe stop, `w` write now, `d` deltaT, `e` endTime): each shows

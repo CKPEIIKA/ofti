@@ -7,16 +7,26 @@ textual = pytest.importorskip("textual")
 
 from ofti.ui import deck as deck_model  # noqa: E402
 from ofti.ui_textual.app import (  # noqa: E402
+    CaseChooserScreen,
+    EnvChooserScreen,
     HelpScreen,
     MissionControlApp,
     RuntimeEditScreen,
+    help_text,
     styled_lines,
+    styled_status,
 )
+
+
+def _make_case(root: Path) -> Path:
+    (root / "system").mkdir(parents=True, exist_ok=True)
+    (root / "system" / "controlDict").write_text("application simpleFoam;\n")
+    return root
 
 
 def _fake_update(_case_path: Path, tab_id: str) -> deck_model.DeckUpdate:
     return deck_model.DeckUpdate(
-        status="case:fake  simpleFoam  ran  t=0.5",
+        status="case:fake  simpleFoam  ran  t=0.5  env not loaded ▲",
         panels={
             panel.panel_id: [f"{panel.panel_id} content", "gate NO-GO", "mesh OK"]
             for panel in deck_model.tab_panels(tab_id)
@@ -33,21 +43,38 @@ async def _panel_text(app: MissionControlApp, pilot, panel_id: str) -> str:
     raise AssertionError(f"panel {panel_id} never loaded")
 
 
-def test_styled_lines_severity_markup() -> None:
-    text = styled_lines(["gate NO-GO", "WARN x", "mesh OK", "plain"])
+def test_styled_lines_severity_and_table_chrome() -> None:
+    text = styled_lines(["Key  Value", "----  -----", "gate NO-GO", "WARN x", "mesh OK", "plain"])
     rendered = text.plain.splitlines()
-    assert rendered == ["gate NO-GO", "WARN x", "mesh OK", "plain"]
-    styles = {span.style for span in text.spans}
+    assert rendered[0] == "Key  Value"
+    styles = [span.style for span in text.spans]
+    assert "bold" in styles  # header row above the rule line
+    assert "dim" in styles  # the rule line itself
     assert "bold red" in styles
     assert "yellow" in styles
     assert "green" in styles
 
 
+def test_styled_status_segments() -> None:
+    text = styled_status("case:x  ran  env not loaded ▲")
+    assert "case:x" in text.plain
+    assert "│" in text.plain
+    assert "yellow" in {span.style for span in text.spans}
+
+
+def test_help_text_documents_every_panel() -> None:
+    blob = help_text()
+    for panel in deck_model.DECK_PANELS:
+        assert panel.title in blob
+        assert panel.description in blob
+
+
 def test_mission_control_panels_tabs_help_and_quit(monkeypatch, tmp_path: Path) -> None:
+    case = _make_case(tmp_path)
     monkeypatch.setattr("ofti.ui.deck.collect_deck_update", _fake_update)
 
     async def scenario() -> None:
-        app = MissionControlApp(tmp_path, interval=0)
+        app = MissionControlApp(case, interval=0)
         async with app.run_test(size=(120, 40)) as pilot:
             assert "dna content" in await _panel_text(app, pilot, "dna")
             status = str(app.query_one("#status-bar").render())
@@ -81,7 +108,64 @@ def test_mission_control_panels_tabs_help_and_quit(monkeypatch, tmp_path: Path) 
     asyncio.run(scenario())
 
 
+def test_chooser_opens_for_non_case_dir_and_switches(monkeypatch, tmp_path: Path) -> None:
+    target = _make_case(tmp_path / "cavity")
+    start = tmp_path / "not-a-case"
+    start.mkdir()
+    monkeypatch.setattr("ofti.ui.deck.collect_deck_update", _fake_update)
+    monkeypatch.setattr(
+        "ofti.ui.deck.case_candidates",
+        lambda _start, **_kw: [deck_model.CaseCandidate("cavity/", target, "nearby")],
+    )
+
+    async def scenario() -> None:
+        app = MissionControlApp(start, interval=0)
+        async with app.run_test(size=(120, 40)) as pilot:
+            for _ in range(100):
+                if isinstance(app.screen, CaseChooserScreen):
+                    break
+                await pilot.pause(0.05)
+            assert isinstance(app.screen, CaseChooserScreen)
+            chooser = app.screen
+            for _ in range(100):
+                if chooser._candidates:
+                    break
+                await pilot.pause(0.05)
+            await pilot.press("down", "enter")
+            await pilot.pause()
+            assert app.case_path == target
+            await pilot.press("q")
+
+    asyncio.run(scenario())
+
+
+def test_case_chooser_binding_and_env_screen(monkeypatch, tmp_path: Path) -> None:
+    case = _make_case(tmp_path)
+    monkeypatch.setattr("ofti.ui.deck.collect_deck_update", _fake_update)
+    monkeypatch.setattr("ofti.ui.deck.case_candidates", lambda _start, **_kw: [])
+    monkeypatch.setattr("ofti.ui_textual.app.auto_detect_bashrc_paths", list)
+
+    async def scenario() -> None:
+        app = MissionControlApp(case, interval=0)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await _panel_text(app, pilot, "dna")
+            await pilot.press("c")
+            await pilot.pause()
+            assert isinstance(app.screen, CaseChooserScreen)
+            await pilot.press("escape")
+            await pilot.pause()
+            await pilot.press("o")
+            await pilot.pause()
+            assert isinstance(app.screen, EnvChooserScreen)
+            await pilot.press("escape")
+            await pilot.pause()
+            await pilot.press("q")
+
+    asyncio.run(scenario())
+
+
 def test_flight_actions_gated_and_runtime_edit_flow(monkeypatch, tmp_path: Path) -> None:
+    case = _make_case(tmp_path)
     monkeypatch.setattr("ofti.ui.deck.collect_deck_update", _fake_update)
     calls: dict[str, object] = {}
 
@@ -97,10 +181,9 @@ def test_flight_actions_gated_and_runtime_edit_flow(monkeypatch, tmp_path: Path)
     monkeypatch.setattr("ofti.ui.deck.runtime_edit_apply", fake_apply)
 
     async def scenario() -> None:
-        app = MissionControlApp(tmp_path, interval=0)
+        app = MissionControlApp(case, interval=0)
         async with app.run_test(size=(120, 40)) as pilot:
             await _panel_text(app, pilot, "dna")
-            # flight runtime actions are hidden off the flight tab
             assert app.check_action("safe_stop", ()) is None
             await pilot.press("3")
             assert app.active_tab_id() == "flight"
@@ -130,10 +213,11 @@ def test_flight_actions_gated_and_runtime_edit_flow(monkeypatch, tmp_path: Path)
 
 
 def test_panel_filter_via_slash(monkeypatch, tmp_path: Path) -> None:
+    case = _make_case(tmp_path)
     monkeypatch.setattr("ofti.ui.deck.collect_deck_update", _fake_update)
 
     async def scenario() -> None:
-        app = MissionControlApp(tmp_path, interval=0)
+        app = MissionControlApp(case, interval=0)
         async with app.run_test(size=(120, 40)) as pilot:
             await _panel_text(app, pilot, "dna")
             app.query_one("#panel-dna").focus()
@@ -147,7 +231,6 @@ def test_panel_filter_via_slash(monkeypatch, tmp_path: Path) -> None:
             assert "dna content" not in body
             subtitle = str(app.query_one("#panel-dna").border_subtitle)
             assert "filter:'NO-GO'" in subtitle
-            # vim scrolling keys do not crash on a focused panel
             await pilot.press("j", "k", "g", "G")
             await pilot.press("q")
 
@@ -155,10 +238,11 @@ def test_panel_filter_via_slash(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_vim_tab_keys_and_palette(monkeypatch, tmp_path: Path) -> None:
+    case = _make_case(tmp_path)
     monkeypatch.setattr("ofti.ui.deck.collect_deck_update", _fake_update)
 
     async def scenario() -> None:
-        app = MissionControlApp(tmp_path, interval=0)
+        app = MissionControlApp(case, interval=0)
         async with app.run_test(size=(120, 40)) as pilot:
             await _panel_text(app, pilot, "dna")
             await pilot.press("l")
@@ -176,10 +260,11 @@ def test_vim_tab_keys_and_palette(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_cockpit_grid_narrow_mode(monkeypatch, tmp_path: Path) -> None:
+    case = _make_case(tmp_path)
     monkeypatch.setattr("ofti.ui.deck.collect_deck_update", _fake_update)
 
     async def scenario() -> None:
-        app = MissionControlApp(tmp_path, interval=0)
+        app = MissionControlApp(case, interval=0)
         async with app.run_test(size=(84, 30)) as pilot:
             await pilot.pause()
             assert app.query_one("#cockpit-grid").has_class("narrow")

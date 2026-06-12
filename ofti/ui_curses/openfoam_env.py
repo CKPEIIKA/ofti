@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import curses
-import os
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +9,7 @@ from ofti.foam.exceptions import QuitAppError
 from ofti.foam.openfoam_env import (
     auto_detect_bashrc_paths,
     resolve_openfoam_bashrc,
-    wm_project_dir_from_bashrc,
+    set_openfoam_bashrc,
 )
 from ofti.ui_curses.help import menu_hint
 from ofti.ui_curses.menus import Menu
@@ -72,16 +71,7 @@ def _prompt_text(stdscr: Any, prompt: str) -> str:
 
 
 def _set_openfoam_bashrc(path: Path | None) -> None:
-    cfg = get_config()
-    if path is None:
-        cfg.openfoam_bashrc = None
-        os.environ.pop("OFTI_BASHRC", None)
-        return
-    cfg.openfoam_bashrc = str(path)
-    os.environ["OFTI_BASHRC"] = str(path)
-    wm_dir = wm_project_dir_from_bashrc(path)
-    if wm_dir:
-        os.environ["WM_PROJECT_DIR"] = wm_dir
+    set_openfoam_bashrc(path)
 
 
 def openfoam_env_screen(stdscr: Any) -> None:

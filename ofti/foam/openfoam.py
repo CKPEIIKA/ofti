@@ -7,24 +7,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ofti.foam.exceptions import OpenFOAMError
 from ofti.foamlib import adapter as foamlib_integration
 
-
-class OpenFOAMError(RuntimeError):
-    @classmethod
-    def missing_openfoam_tools(cls) -> OpenFOAMError:
-        return cls(
-            "OpenFOAM tools not found on PATH. "
-            "Please source your OpenFOAM bashrc before running ofti.",
-        )
-
-    @classmethod
-    def foamlib_keywords_failed(cls, exc: Exception) -> OpenFOAMError:
-        return cls(f"foamlib failed to parse keywords: {exc}")
-
-    @classmethod
-    def foamlib_entry_failed(cls, exc: Exception) -> OpenFOAMError:
-        return cls(f"foamlib failed to parse entry: {exc}")
+__all__ = ["OpenFOAMError"]
 
 def _foamlib_candidate(file_path: Path) -> bool:
     try:

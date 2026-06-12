@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 from ofti.foam.config import get_config
-from ofti.foam.openfoam import OpenFOAMError
+from ofti.foam.exceptions import OpenFOAMError
 from ofti.foam.subprocess_utils import run_trusted
 
 
@@ -23,6 +23,29 @@ def ensure_environment() -> None:
     if shutil.which("foamVersion") is not None:
         return
     raise OpenFOAMError.missing_openfoam_tools()
+
+
+def environment_loaded() -> bool:
+    """Non-raising version of ensure_environment for status displays."""
+    try:
+        ensure_environment()
+    except OpenFOAMError:
+        return False
+    return True
+
+
+def set_openfoam_bashrc(path: Path | None) -> None:
+    """Select (or clear) the OpenFOAM bashrc for the current session."""
+    cfg = get_config()
+    if path is None:
+        cfg.openfoam_bashrc = None
+        os.environ.pop("OFTI_BASHRC", None)
+        return
+    cfg.openfoam_bashrc = str(path)
+    os.environ["OFTI_BASHRC"] = str(path)
+    wm_dir = wm_project_dir_from_bashrc(path)
+    if wm_dir:
+        os.environ["WM_PROJECT_DIR"] = wm_dir
 
 
 def resolve_openfoam_bashrc() -> Path | None:

@@ -1,29 +1,41 @@
 """Textual mission-control app.
 
-Pure renderer: panel content and runtime-edit flows come from
-``ofti.ui.deck``, which reuses the same services as the CLI and the
-curses TUI.
+Pure renderer: panel content, runtime-edit flows, case candidates, and
+environment state come from ``ofti.ui.deck`` and ``ofti.foam``, which
+reuse the same services as the CLI and the curses TUI.
+
+Background work runs on daemon threads (not textual's executor workers)
+so quitting never waits for a slow filesystem or process scan.
 """
 
 from __future__ import annotations
 
 import os
+import threading
 from collections.abc import Callable
+from contextlib import suppress
 from datetime import datetime
 from functools import partial
 from pathlib import Path
 from typing import ClassVar, cast
 
 from rich.text import Text
-from textual import events, work
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.command import DiscoveryHit, Hit, Hits, Provider
-from textual.containers import Grid, VerticalScroll
+from textual.containers import Grid, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Header, Input, Static, TabbedContent, TabPane
+from textual.widgets import Footer, Header, Input, OptionList, Static, TabbedContent, TabPane
+from textual.widgets.option_list import Option
 
+from ofti.foam.openfoam_env import (
+    auto_detect_bashrc_paths,
+    resolve_openfoam_bashrc,
+    set_openfoam_bashrc,
+)
 from ofti.foam.subprocess_utils import run_trusted
+from ofti.tools.process_scan_service import is_case_dir
 from ofti.ui import deck as deck_model
 
 _SEVERITY_STYLES = {
@@ -35,23 +47,12 @@ _SEVERITY_STYLES = {
 _NARROW_WIDTH = 100
 _FLIGHT_ACTIONS = {"safe_stop", "write_now", "edit_delta_t", "edit_end_time"}
 
-HELP_TEXT = """\
-OFTI mission control — live deck over the shared case services.
-
-Tabs
-  Cockpit    case DNA, flight status, scopes, alerts, log radar
-  Checklist  launch go/no-go gate
-  Flight     live run state, criteria, runtime edits
-  Analyze    log metrics + residual split
-  Mesh       checkMesh radar
-  Resources  disk growth / write-risk watch
-  Doctor     case doctor + lint findings
-  Fleet      live sibling cases
-
+_KEYS_HELP = """\
 Keys
   1-8, h/l or ←/→   switch tab       Tab / Shift+Tab   move panel focus
   j/k g/G           scroll panel     r                 refresh now
   /                 filter panel…    :                 command palette
+  c                 choose case…     o                 OpenFOAM env…
   !                 shell in case    ?                 this help
   q                 quit             Esc               close dialog
 
@@ -64,13 +65,50 @@ Full case editing lives in the curses TUI (`ofti CASE`) and `ofti knife`.
 """
 
 
+def help_text() -> str:
+    sections = [_KEYS_HELP, "What each tab shows"]
+    for tab_id, label in deck_model.DECK_TABS:
+        sections.append(f"\n[{label}]")
+        for panel in deck_model.tab_panels(tab_id):
+            sections.append(f"  {panel.title}: {panel.description}")
+    return "\n".join(sections)
+
+
+def _is_rule_line(line: str) -> bool:
+    stripped = line.strip()
+    return len(stripped) >= 3 and set(stripped) <= {"-", "=", " ", "+"}
+
+
 def styled_lines(lines: list[str]) -> Text:
+    """Render service lines with severity colors and softened table chrome."""
+    header_rows = {index - 1 for index, line in enumerate(lines) if index and _is_rule_line(line)}
     text = Text()
-    for line in lines:
-        severity = deck_model.line_severity(line)
-        text.append(line, style=_SEVERITY_STYLES.get(severity or "", ""))
+    for index, line in enumerate(lines):
+        if _is_rule_line(line):
+            text.append(line, style="dim")
+        elif index in header_rows:
+            text.append(line, style="bold")
+        else:
+            severity = deck_model.line_severity(line)
+            text.append(line, style=_SEVERITY_STYLES.get(severity or "", ""))
         text.append("\n")
     return text
+
+
+def styled_status(status: str) -> Text:
+    """Status strip: independent severity per double-space separated segment."""
+    text = Text()
+    for index, segment in enumerate(part for part in status.split("  ") if part.strip()):
+        if index:
+            text.append("  │  ", style="dim")
+        severity = deck_model.line_severity(segment)
+        style = _SEVERITY_STYLES.get(severity or "", "bold" if index == 0 else "")
+        text.append(segment.strip(), style=style)
+    return text
+
+
+def _spawn(name: str, target: Callable[[], None]) -> None:
+    threading.Thread(target=target, name=name, daemon=True).start()
 
 
 class HelpScreen(ModalScreen[None]):
@@ -87,14 +125,14 @@ class HelpScreen(ModalScreen[None]):
         border-title-align: center;
         background: $surface;
         padding: 1 2;
-        width: 76;
+        width: 80;
         height: auto;
         max-height: 90%;
     }
     """
 
     def compose(self) -> ComposeResult:
-        card = Static(HELP_TEXT, id="help-card")
+        card = VerticalScroll(Static(help_text()), id="help-card")
         card.border_title = "Help"
         yield card
 
@@ -126,7 +164,7 @@ class PromptScreen(ModalScreen[str | None]):
         self._placeholder = placeholder
 
     def compose(self) -> ComposeResult:
-        box = VerticalScroll(
+        box = Vertical(
             Input(placeholder=self._placeholder, id="prompt-input"),
             id="prompt-box",
         )
@@ -141,6 +179,198 @@ class PromptScreen(ModalScreen[str | None]):
 
     def action_cancel_prompt(self) -> None:
         self.dismiss(None)
+
+
+class CaseChooserScreen(ModalScreen[Path | None]):
+    """Startup-style case chooser: running cases, current case, nearby cases."""
+
+    BINDINGS: ClassVar = [Binding("escape", "cancel_chooser", "Cancel")]
+
+    CSS = """
+    CaseChooserScreen {
+        align: center middle;
+    }
+    #chooser-box {
+        border: round $accent;
+        border-title-align: center;
+        background: $surface;
+        padding: 1 2;
+        width: 80;
+        height: auto;
+        max-height: 80%;
+    }
+    #chooser-hint {
+        color: $text-muted;
+        margin-bottom: 1;
+    }
+    #case-options {
+        height: auto;
+        max-height: 16;
+        margin-bottom: 1;
+    }
+    """
+
+    def __init__(self, start_path: Path) -> None:
+        super().__init__()
+        self.start_path = start_path
+        self._candidates: list[deck_model.CaseCandidate] = []
+
+    def compose(self) -> ComposeResult:
+        box = Vertical(
+            Static(
+                "Live solver cases and case directories near "
+                f"{self.start_path} — scanning…",
+                id="chooser-hint",
+            ),
+            OptionList(id="case-options"),
+            Input(placeholder="…or type a case path and press Enter", id="case-path"),
+            id="chooser-box",
+        )
+        box.border_title = "Choose case"
+        yield box
+
+    def on_mount(self) -> None:
+        self.query_one("#case-options", OptionList).focus()
+        _spawn("ofti-deck-chooser", self._scan)
+
+    def _scan(self) -> None:
+        candidates = deck_model.case_candidates(self.start_path)
+        with suppress(RuntimeError):
+            self.app.call_from_thread(self._show_candidates, candidates)
+
+    def _show_candidates(self, candidates: list[deck_model.CaseCandidate]) -> None:
+        self._candidates = candidates
+        options = self.query_one("#case-options", OptionList)
+        options.clear_options()
+        for index, candidate in enumerate(candidates):
+            options.add_option(Option(candidate.label, id=str(index)))
+        hint = self.query_one("#chooser-hint", Static)
+        if candidates:
+            running = sum(1 for candidate in candidates if candidate.kind == "running")
+            hint.update(
+                f"{len(candidates)} case(s) found near {self.start_path}"
+                + (f", {running} with a live solver" if running else ""),
+            )
+        else:
+            hint.update(
+                f"No case directories found near {self.start_path}. "
+                "Type a case path below.",
+            )
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        index = int(event.option.id or 0)
+        if 0 <= index < len(self._candidates):
+            self.dismiss(self._candidates[index].path)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        raw = event.value.strip()
+        if not raw:
+            return
+        path = Path(raw).expanduser()
+        if is_case_dir(path):
+            self.dismiss(path.resolve())
+            return
+        self.notify(f"Not an OpenFOAM case: {path}", severity="warning")
+
+    def action_cancel_chooser(self) -> None:
+        self.dismiss(None)
+
+
+class EnvChooserScreen(ModalScreen[bool]):
+    """Select an OpenFOAM bashrc for this session, like the classic TUI."""
+
+    BINDINGS: ClassVar = [Binding("escape", "cancel_env", "Cancel")]
+
+    CSS = """
+    EnvChooserScreen {
+        align: center middle;
+    }
+    #env-box {
+        border: round $accent;
+        border-title-align: center;
+        background: $surface;
+        padding: 1 2;
+        width: 80;
+        height: auto;
+        max-height: 80%;
+    }
+    #env-hint {
+        color: $text-muted;
+        margin-bottom: 1;
+    }
+    #env-options {
+        height: auto;
+        max-height: 12;
+        margin-bottom: 1;
+    }
+    """
+
+    _CLEAR = "__clear__"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._paths: list[Path] = []
+
+    def compose(self) -> ComposeResult:
+        loaded, label = deck_model.env_status()
+        state = label if loaded else "OpenFOAM environment not detected ▲"
+        box = Vertical(
+            Static(f"{state} — pick a bashrc to source for this session.", id="env-hint"),
+            OptionList(id="env-options"),
+            Input(placeholder="…or type a bashrc path and press Enter", id="env-path"),
+            id="env-box",
+        )
+        box.border_title = "OpenFOAM environment"
+        yield box
+
+    def on_mount(self) -> None:
+        self.query_one("#env-options", OptionList).focus()
+        _spawn("ofti-deck-env", self._scan)
+
+    def _scan(self) -> None:
+        current = resolve_openfoam_bashrc()
+        candidates = auto_detect_bashrc_paths()
+        if current is not None and current not in candidates:
+            candidates.insert(0, current)
+        with suppress(RuntimeError):
+            self.app.call_from_thread(self._show_candidates, candidates, current)
+
+    def _show_candidates(self, candidates: list[Path], current: Path | None) -> None:
+        self._paths = candidates
+        options = self.query_one("#env-options", OptionList)
+        options.clear_options()
+        for index, path in enumerate(candidates):
+            marker = "  ✓ current" if current is not None and path == current else ""
+            options.add_option(Option(f"{path}{marker}", id=str(index)))
+        options.add_option(Option("Clear selection (use ambient environment)", id=self._CLEAR))
+        if not candidates:
+            self.query_one("#env-hint", Static).update(
+                "No OpenFOAM installations auto-detected. Type a bashrc path below.",
+            )
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option.id == self._CLEAR:
+            set_openfoam_bashrc(None)
+            self.dismiss(True)
+            return
+        index = int(event.option.id or 0)
+        if 0 <= index < len(self._paths):
+            set_openfoam_bashrc(self._paths[index])
+            self.dismiss(True)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        raw = event.value.strip()
+        if not raw:
+            return
+        path = Path(raw).expanduser()
+        if path.is_file():
+            set_openfoam_bashrc(path)
+            self.dismiss(True)
+            return
+        self.notify(f"Path not found: {path}", severity="warning")
+
+    def action_cancel_env(self) -> None:
+        self.dismiss(False)
 
 
 class RuntimeEditScreen(ModalScreen[bool]):
@@ -179,17 +409,15 @@ class RuntimeEditScreen(ModalScreen[bool]):
         yield card
 
     def on_mount(self) -> None:
-        self._load_preview()
+        _spawn("ofti-deck-runtime", partial(self._compute, apply_edit=False))
 
-    @work(thread=True, exclusive=True, group="runtime-edit")
-    def _load_preview(self) -> None:
-        lines = deck_model.runtime_edit_preview(self.case_path, self.updates)
-        self.app.call_from_thread(self._show, lines, applied=False)
-
-    @work(thread=True, exclusive=True, group="runtime-edit")
-    def _apply_edit(self) -> None:
-        lines = deck_model.runtime_edit_apply(self.case_path, self.updates)
-        self.app.call_from_thread(self._show, lines, applied=True)
+    def _compute(self, *, apply_edit: bool) -> None:
+        if apply_edit:
+            lines = deck_model.runtime_edit_apply(self.case_path, self.updates)
+        else:
+            lines = deck_model.runtime_edit_preview(self.case_path, self.updates)
+        with suppress(RuntimeError):
+            self.app.call_from_thread(self._show, lines, applied=apply_edit)
 
     def _show(self, lines: list[str], *, applied: bool) -> None:
         self.applied = applied
@@ -203,14 +431,14 @@ class RuntimeEditScreen(ModalScreen[bool]):
         if self.applied:
             self.dismiss(True)
             return
-        self._apply_edit()
+        _spawn("ofti-deck-runtime", partial(self._compute, apply_edit=True))
 
     def action_cancel_edit(self) -> None:
         self.dismiss(self.applied)
 
 
 class DeckPanelView(VerticalScroll):
-    """One bordered, scrollable deck panel with an optional line filter."""
+    """One bordered, scrollable deck panel with description and line filter."""
 
     BINDINGS: ClassVar = [
         Binding("j", "scroll_down", "Down", show=False),
@@ -222,12 +450,14 @@ class DeckPanelView(VerticalScroll):
     def __init__(self, panel: deck_model.DeckPanel) -> None:
         super().__init__(id=f"panel-{panel.panel_id}", classes="deck-panel")
         self.border_title = panel.title
+        self._description = Static(panel.description, classes="panel-desc")
         self._body = Static("loading ...", id=f"body-{panel.panel_id}")
         self._lines: list[str] = []
         self._filter = ""
         self._updated = ""
 
     def compose(self) -> ComposeResult:
+        yield self._description
         yield self._body
 
     def show_lines(self, lines: list[str], *, updated: str) -> None:
@@ -265,6 +495,8 @@ class DeckCommands(Provider):
             for index, (_tab_id, label) in enumerate(deck_model.DECK_TABS)
         ]
         rows += [
+            ("Choose case…", "Pick a live or nearby case directory", app.action_choose_case),
+            ("OpenFOAM environment…", "Pick a bashrc to source", app.action_openfoam_env),
             ("Refresh deck", "Reload the active tab now", app.action_refresh_deck),
             ("Safe stop…", "stopAt writeNow with diff + snapshot", app.action_safe_stop),
             ("Write now…", "stopAt writeNow with diff + snapshot", app.action_write_now),
@@ -278,15 +510,15 @@ class DeckCommands(Provider):
         return rows
 
     async def discover(self) -> Hits:
-        for name, help_text, callback in self._commands():
-            yield DiscoveryHit(name, callback, help=help_text)
+        for name, help_line, callback in self._commands():
+            yield DiscoveryHit(name, callback, help=help_line)
 
     async def search(self, query: str) -> Hits:
         matcher = self.matcher(query)
-        for name, help_text, callback in self._commands():
+        for name, help_line, callback in self._commands():
             score = matcher.match(name)
             if score > 0:
-                yield Hit(score, matcher.highlight(name), callback, help=help_text)
+                yield Hit(score, matcher.highlight(name), callback, help=help_line)
 
 
 class MissionControlApp(App[int]):
@@ -300,23 +532,33 @@ class MissionControlApp(App[int]):
     #status-bar {
         height: 1;
         padding: 0 1;
-        background: $surface;
-        color: $text;
-        text-style: bold;
+        background: $panel;
     }
     .deck-panel {
         border: round $primary;
+        border-title-color: $accent;
+        border-title-style: bold;
+        border-subtitle-color: $text-muted;
+        background: $surface;
         padding: 0 1;
         height: 1fr;
+        scrollbar-size: 1 1;
     }
     .deck-panel:focus {
         border: round $accent;
+    }
+    .panel-desc {
+        color: $text-muted;
+        text-style: italic;
+        margin-bottom: 1;
     }
     #cockpit-grid {
         layout: grid;
         grid-size: 3;
         grid-rows: auto 1fr 12;
         grid-columns: 1fr 1fr 1fr;
+        grid-gutter: 0 1;
+        padding: 0 1;
     }
     #cockpit-grid.narrow {
         grid-size: 1;
@@ -325,7 +567,7 @@ class MissionControlApp(App[int]):
     #panel-dna {
         column-span: 3;
         height: auto;
-        max-height: 14;
+        max-height: 16;
     }
     #panel-log {
         column-span: 3;
@@ -339,7 +581,7 @@ class MissionControlApp(App[int]):
         max-height: 16;
     }
     TabPane {
-        padding: 0;
+        padding: 0 1;
     }
     """
 
@@ -348,6 +590,8 @@ class MissionControlApp(App[int]):
         Binding("r", "refresh_deck", "Refresh"),
         Binding("question_mark", "show_help", "Help"),
         Binding("slash", "search", "Filter"),
+        Binding("c", "choose_case", "Case…"),
+        Binding("o", "openfoam_env", "Env…"),
         Binding("colon", "command_palette", "Palette", show=False),
         Binding("exclamation_mark", "shell", "Shell", show=False),
         Binding("left,h", "previous_tab", "Prev tab", show=False),
@@ -367,6 +611,9 @@ class MissionControlApp(App[int]):
         self.case_path = case_path
         self.interval = interval
         self.sub_title = str(case_path)
+        self.theme = "tokyo-night"
+        self._refresh_token = 0
+        self._refresh_inflight = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -387,7 +634,9 @@ class MissionControlApp(App[int]):
     def on_mount(self) -> None:
         self.refresh_active_tab()
         if self.interval > 0:
-            self.set_interval(self.interval, self.refresh_active_tab)
+            self.set_interval(self.interval, self._interval_refresh)
+        if not is_case_dir(self.case_path):
+            self.action_choose_case()
 
     def on_resize(self, event: events.Resize) -> None:
         self.query_one("#cockpit-grid", Grid).set_class(
@@ -411,16 +660,31 @@ class MissionControlApp(App[int]):
         except Exception:
             return "cockpit"
 
+    # --- refresh machinery (daemon threads; quit never blocks on them) --
+
+    def _interval_refresh(self) -> None:
+        if not self._refresh_inflight:
+            self.refresh_active_tab()
+
     def refresh_active_tab(self) -> None:
-        self._collect_update(self.active_tab_id())
+        self._refresh_token += 1
+        token = self._refresh_token
+        tab_id = self.active_tab_id()
+        case_path = self.case_path
+        self._refresh_inflight = True
 
-    @work(thread=True, exclusive=True, group="deck-refresh")
-    def _collect_update(self, tab_id: str) -> None:
-        update = deck_model.collect_deck_update(self.case_path, tab_id)
-        self.call_from_thread(self._apply_update, update)
+        def collect() -> None:
+            update = deck_model.collect_deck_update(case_path, tab_id)
+            with suppress(RuntimeError):
+                self.call_from_thread(self._apply_update, update, token)
 
-    def _apply_update(self, update: deck_model.DeckUpdate) -> None:
-        self.query_one("#status-bar", Static).update(update.status)
+        _spawn("ofti-deck-refresh", collect)
+
+    def _apply_update(self, update: deck_model.DeckUpdate, token: int) -> None:
+        if token != self._refresh_token:
+            return
+        self._refresh_inflight = False
+        self.query_one("#status-bar", Static).update(styled_status(update.status))
         stamp = datetime.now().astimezone().strftime("%H:%M:%S")
         for panel_id, lines in update.panels.items():
             try:
@@ -435,9 +699,8 @@ class MissionControlApp(App[int]):
             if isinstance(focused, DeckPanelView):
                 return focused
             focused = focused.parent if hasattr(focused, "parent") else None
-        panels = self.query(DeckPanelView)
-        for view in panels:
-            if view.id and self._panel_on_active_tab(view):
+        for view in self.query(DeckPanelView):
+            if self._panel_on_active_tab(view):
                 return view
         return None
 
@@ -457,6 +720,32 @@ class MissionControlApp(App[int]):
     def action_quit_deck(self) -> None:
         self.exit(0)
 
+    def action_choose_case(self) -> None:
+        def chosen(path: Path | None) -> None:
+            if path is None:
+                return
+            self.switch_case(path)
+
+        self.push_screen(CaseChooserScreen(self.case_path), chosen)
+
+    def switch_case(self, path: Path) -> None:
+        self.case_path = path
+        self.sub_title = str(path)
+        for view in self.query(DeckPanelView):
+            view.set_filter("")
+            view.show_lines(["loading ..."], updated="")
+        self.notify(f"Case: {path}")
+        self.refresh_active_tab()
+
+    def action_openfoam_env(self) -> None:
+        def changed(applied: bool | None) -> None:
+            if applied:
+                _loaded, label = deck_model.env_status()
+                self.notify(f"OpenFOAM environment updated — {label}")
+                self.refresh_active_tab()
+
+        self.push_screen(EnvChooserScreen(), changed)
+
     def action_search(self) -> None:
         panel = self._focused_panel()
         if panel is None:
@@ -473,9 +762,10 @@ class MissionControlApp(App[int]):
 
     def action_shell(self) -> None:
         shell = os.environ.get("SHELL") or "/bin/sh"
+        cwd = self.case_path if self.case_path.is_dir() else Path.cwd()
         try:
             with self.suspend():
-                run_trusted([shell], cwd=self.case_path, capture_output=False)
+                run_trusted([shell], cwd=cwd, capture_output=False)
         except Exception as exc:
             self.notify(f"Shell escape unavailable: {exc}", severity="warning")
 

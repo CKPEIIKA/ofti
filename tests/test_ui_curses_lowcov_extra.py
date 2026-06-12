@@ -324,7 +324,7 @@ def test_openfoam_env_helpers_and_screen(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
     bashrc = tmp_path / "bashrc"
     bashrc.write_text("ok\n")
-    monkeypatch.setattr(ofenv, "wm_project_dir_from_bashrc", lambda _p: "/wm")
+    monkeypatch.setattr("ofti.foam.openfoam_env.wm_project_dir_from_bashrc", lambda _p: "/wm")
     ofenv._set_openfoam_bashrc(bashrc)
     assert ofenv.get_config().openfoam_bashrc == str(bashrc)
 

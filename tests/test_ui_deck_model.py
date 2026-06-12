@@ -10,6 +10,54 @@ def test_deck_registry_is_consistent() -> None:
     assert len(panel_ids) == len(set(panel_ids))
     for tab_id, _label in deck.DECK_TABS:
         assert deck.tab_panels(tab_id), f"tab {tab_id} has no panels"
+    for panel in deck.DECK_PANELS:
+        assert panel.description, f"panel {panel.panel_id} has no description"
+
+
+def test_env_status_states(monkeypatch) -> None:
+    monkeypatch.setattr("ofti.ui.deck.environment_loaded", lambda: False)
+    loaded, label = deck.env_status()
+    assert loaded is False
+    assert "not loaded" in label
+    assert "▲" in label
+
+    monkeypatch.setattr("ofti.ui.deck.environment_loaded", lambda: True)
+    monkeypatch.setenv("WM_PROJECT_VERSION", "v2412")
+    loaded, label = deck.env_status()
+    assert loaded is True
+    assert "v2412" in label
+    assert "✓" in label
+
+
+def test_case_candidates_lists_current_and_nearby(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("ofti.ui.deck.scan_proc_solver_processes", lambda *_a, **_k: [])
+    current = tmp_path / "cavity"
+    (current / "system").mkdir(parents=True)
+    (current / "system" / "controlDict").write_text("application icoFoam;\n")
+    sibling = tmp_path / "cavity-fine"
+    (sibling / "system").mkdir(parents=True)
+    (sibling / "system" / "controlDict").write_text("application icoFoam;\n")
+    (tmp_path / "not-a-case").mkdir()
+
+    from_root = deck.case_candidates(tmp_path)
+    assert [c.kind for c in from_root] == ["nearby", "nearby"]
+    assert {c.path for c in from_root} == {current.resolve(), sibling.resolve()}
+
+    from_case = deck.case_candidates(current)
+    assert from_case[0].kind == "current"
+    assert from_case[0].path == current.resolve()
+
+
+def test_status_strip_flags_non_case_dir(tmp_path: Path) -> None:
+    strip = deck.status_strip(tmp_path)
+    assert "not an OpenFOAM case" in strip
+    assert "▲" in strip
+
+
+def test_collect_deck_update_placeholder_for_non_case(tmp_path: Path) -> None:
+    update = deck.collect_deck_update(tmp_path, "cockpit")
+    for lines in update.panels.values():
+        assert any("Not an OpenFOAM case" in line for line in lines)
 
 
 def test_collect_tab_lines_is_safe_on_empty_case(tmp_path: Path) -> None:
@@ -37,9 +85,11 @@ def test_panel_lines_unknown_panel(tmp_path: Path) -> None:
 
 
 def test_status_strip_uses_quick_metadata(tmp_path: Path) -> None:
+    _write_control_dict(tmp_path)
     strip = deck.status_strip(tmp_path)
     assert strip.startswith(f"case:{tmp_path.name}")
     assert "t=" in strip
+    assert "env" in strip
 
 
 def test_collect_deck_update_bundles_status_and_panels(tmp_path: Path) -> None:
