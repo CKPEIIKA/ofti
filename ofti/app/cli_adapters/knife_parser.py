@@ -188,6 +188,46 @@ def add_parser(
     compare.add_argument("--json", action="store_true")
     compare.set_defaults(func=handlers["knife_compare"])
 
+    physical = knife_sub.add_parser(
+        "physical",
+        help="Scan field values for finite and physically plausible values",
+    )
+    physical.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    physical.add_argument(
+        "--time",
+        default="latest",
+        help="Time directory to scan (default: latest)",
+    )
+    physical.add_argument(
+        "--fields",
+        action="append",
+        default=[],
+        help="Comma-separated field names to scan; repeatable",
+    )
+    physical.add_argument("--json", action="store_true")
+    physical.set_defaults(func=handlers["knife_physical"])
+
+    compare_fields = knife_sub.add_parser(
+        "compare-fields",
+        help="Compare numeric internal field values between two cases",
+    )
+    compare_fields.add_argument("left_case", type=Path)
+    compare_fields.add_argument("right_case", type=Path)
+    compare_fields.add_argument(
+        "--time",
+        default="latest",
+        help="Time directory to compare (default: latest)",
+    )
+    compare_fields.add_argument(
+        "--fields",
+        action="append",
+        default=[],
+        help="Comma-separated field names to compare; repeatable",
+    )
+    compare_fields.add_argument("--preset", choices=["air5", "air11", "flow"], default=None)
+    compare_fields.add_argument("--json", action="store_true")
+    compare_fields.set_defaults(func=handlers["knife_compare_fields"])
+
     copy = knife_sub.add_parser(
         "copy",
         help="Copy case to destination (skip runtime artifacts by default)",

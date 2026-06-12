@@ -214,6 +214,8 @@ ofti watch jobs CASE --table
 ofti watch cases --set STUDY --glob 'case_*' --table
 ofti watch cases --set STUDY --glob 'case_*' --group-state --sort eta --table
 ofti knife initials CASE --json
+ofti knife physical CASE --time latest --fields p,Tt,Tv,N2,O2 --json
+ofti knife compare-fields SERIAL_CASE PARALLEL_CASE --preset flow --time latest --json
 ofti knife copy CASE_COPY --case CASE
 ofti knife current --root REPO --recursive --live --json
 ofti knife adopt --root REPO --all-untracked --json

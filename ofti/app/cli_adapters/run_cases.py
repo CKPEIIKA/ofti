@@ -161,6 +161,7 @@ def _run_queue(args: argparse.Namespace) -> int:
         backend=str(getattr(args, "backend", "process")),
         prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
         clean_processors=bool(getattr(args, "clean_processors", False)),
+        queue_root=args.set_dir,
     )
     if bool(getattr(args, "json", False)):
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -173,6 +174,8 @@ def _run_queue(args: argparse.Namespace) -> int:
         f"started={len(payload['started'])} finished={len(payload['finished'])} "
         f"failed_to_start={len(payload['failed_to_start'])}",
     )
+    if payload.get("queue_path"):
+        print(f"queue_path={payload['queue_path']}")
     for row in payload["finished"]:
         print(
             f"- {row['case']}: outcome={row.get('outcome', '-')} "
