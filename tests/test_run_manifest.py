@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ofti.core import run_manifest
+from ofti.core import run_manifest, run_receipt
 from ofti.core.run_manifest import (
     build_run_manifest,
     restore_run_manifest,
@@ -249,6 +249,27 @@ def test_build_manifest_marks_recorded_inputs_copy_flag(tmp_path: Path) -> None:
 
     assert manifest["launch"]["background"] is True
     assert manifest["inputs"]["recorded_inputs_copy"] is True
+
+
+def test_run_receipt_compat_aliases_point_to_manifest_api(tmp_path: Path) -> None:
+    case = _make_case(tmp_path / "case")
+
+    manifest = run_receipt.build_run_receipt(
+        case,
+        name="simpleFoam",
+        command="simpleFoam",
+        background=False,
+        detached=False,
+        parallel=0,
+        mpi=None,
+        sync_subdomains=True,
+        prepare_parallel=True,
+        clean_processors=False,
+    )
+
+    assert run_receipt.MANIFEST_KIND == run_manifest.MANIFEST_KIND
+    assert run_receipt.DEFAULT_INPUT_ROOTS == run_manifest.DEFAULT_INPUT_ROOTS
+    assert manifest["manifest_kind"] == run_manifest.MANIFEST_KIND
 
 
 def test_build_manifest_records_solver_binary_libs_and_env(

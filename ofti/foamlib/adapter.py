@@ -178,12 +178,22 @@ def _is_foamlib_field(node: object) -> bool:
 
 def _numeric_list_label(values: object) -> str | None:
     raw_values = values
+    if isinstance(values, str):
+        parsed = _numeric_string_values(values)
+        if parsed is not None:
+            raw_values = parsed
     shape = getattr(values, "shape", None)
     if shape is not None and len(shape) == 1 and shape[0] in {2, 3, 7}:
         tolist = getattr(values, "tolist", None)
         if callable(tolist):
             raw_values = tolist()
-    if not isinstance(raw_values, (list, tuple)) or not raw_values:
+    if not isinstance(raw_values, (list, tuple)):
+        return None
+    return _numeric_sequence_label(raw_values)
+
+
+def _numeric_sequence_label(raw_values: list[object] | tuple[object, ...]) -> str | None:
+    if not raw_values:
         return None
     floats: list[float] = []
     for item in raw_values:
@@ -197,6 +207,21 @@ def _numeric_list_label(values: object) -> str | None:
     if len(raw_values) == 7 and all(float(value).is_integer() for value in floats):
         return "dimensions"
     return None
+
+
+def _numeric_string_values(value: str) -> list[float] | None:
+    text = value.strip().rstrip(";").strip()
+    if text.startswith("uniform"):
+        text = text[len("uniform") :].strip()
+    if not (text.startswith("(") and text.endswith(")")):
+        return None
+    parts = text[1:-1].split()
+    if not parts:
+        return None
+    try:
+        return [float(part) for part in parts]
+    except ValueError:
+        return None
 
 
 def is_foam_file(path: Path) -> bool:
@@ -222,11 +247,13 @@ def _split_key(key: str) -> tuple[str, ...]:
 
 
 def _foam_file(path: Path) -> Any:
-    if not FOAMLIB_AVAILABLE or FoamFile is None:
+    if not FOAMLIB_AVAILABLE:
         raise FoamlibUnavailableError
     case_file = _case_relative_foam_file(path)
     if case_file is not None:
         return case_file
+    if FoamFile is None:
+        raise FoamlibUnavailableError
     return FoamFile(path)
 
 
@@ -306,14 +333,17 @@ def read_entry_node(file_path: Path, key: str) -> object:
 
 def read_file_dict(file_path: Path, *, include_header: bool = True) -> dict[str, object]:
     if not FOAMLIB_AVAILABLE:
-        return {}
-    foam_file = _foam_file(file_path)
+        return fallback.parse_mapping(file_path)
+    try:
+        foam_file = _foam_file(file_path)
+    except FoamlibUnavailableError:
+        return fallback.parse_mapping(file_path)
     as_dict = getattr(foam_file, "as_dict", None)
     if not callable(as_dict):
-        return {}
+        return fallback.parse_mapping(file_path)
     raw = as_dict(include_header=include_header)
     if not isinstance(raw, dict):
-        return {}
+        return fallback.parse_mapping(file_path)
     return {str(key): _snapshot_value(value) for key, value in raw.items() if key is not None}
 
 
@@ -342,11 +372,16 @@ def _snapshot_value(value: object) -> object:
 def read_field_entry(file_path: Path, key: str) -> str:
     if not FOAMLIB_AVAILABLE:
         return fallback.read_field_entry(file_path, key)
-    field_file = _foam_field_file(file_path)
     key_parts = _split_key(key)
-    node = field_file.getone(key_parts or None)
+    try:
+        field_file = _foam_field_file(file_path)
+        node = field_file.getone(key_parts or None)
+    except FoamlibUnavailableError:
+        return fallback.read_field_entry(file_path, key)
     if node is None:
         raise KeyError(key)
+    if _empty_foamlib_field_node(node):
+        return fallback.read_field_entry(file_path, key)
     key_name = key_parts[-1] if key_parts else ""
     return _dump_entry_value(key_name, node)
 
@@ -354,12 +389,26 @@ def read_field_entry(file_path: Path, key: str) -> str:
 def read_field_entry_node(file_path: Path, key: str) -> object:
     if not FOAMLIB_AVAILABLE:
         return fallback.read_field_entry_node(file_path, key)
-    field_file = _foam_field_file(file_path)
     key_parts = _split_key(key)
-    node = field_file.getone(key_parts or None)
+    try:
+        field_file = _foam_field_file(file_path)
+        node = field_file.getone(key_parts or None)
+    except FoamlibUnavailableError:
+        return fallback.read_field_entry_node(file_path, key)
     if node is None:
         raise KeyError(key)
+    if _empty_foamlib_field_node(node):
+        return fallback.read_field_entry_node(file_path, key)
     return node
+
+
+def _empty_foamlib_field_node(node: object) -> bool:
+    shape = getattr(node, "shape", None)
+    if shape is not None:
+        return tuple(shape) == (0,)
+    if isinstance(node, (list, tuple)):
+        return len(node) == 0
+    return False
 
 
 def _foamlib_can_write(value: str) -> bool:

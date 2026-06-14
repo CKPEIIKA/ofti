@@ -5,6 +5,11 @@ from pathlib import Path
 from typing import cast
 
 
+class ListNode(list[object]):
+    def tolist(self) -> list[object]:
+        return list(self)
+
+
 def available() -> bool:
     return True
 
@@ -61,11 +66,21 @@ def read_entry_node(file_path: Path, key: str) -> object:
 
 
 def read_field_entry(file_path: Path, key: str) -> str:
-    return read_entry(file_path, key)
+    value = read_entry(file_path, key)
+    if key.endswith(".value"):
+        scalar = _uniform_scalar(value)
+        if scalar is not None:
+            return f"{scalar};"
+    return value
 
 
 def read_field_entry_node(file_path: Path, key: str) -> object:
-    return read_entry_node(file_path, key)
+    node = read_entry_node(file_path, key)
+    if key == "internalField" and isinstance(node, str):
+        nonuniform = _nonuniform_values(node)
+        if nonuniform is not None:
+            return ListNode(nonuniform)
+    return node
 
 
 def write_entry(file_path: Path, key: str, value: str) -> bool:
@@ -386,6 +401,9 @@ def _collect_paren(tokens: list[str], index: int) -> tuple[str, int]:
 
 def _convert_scalar(value: str) -> object:
     stripped = value.strip()
+    nonuniform = _nonuniform_values(stripped)
+    if nonuniform is not None:
+        return ListNode(nonuniform)
     if stripped.startswith("[") and stripped.endswith("]"):
         body = stripped[1:-1].strip()
         if not body:
@@ -399,6 +417,35 @@ def _convert_scalar(value: str) -> object:
             items.append(int(number) if number.is_integer() else number)
         return items
     return stripped
+
+
+def _nonuniform_values(value: str) -> list[float] | None:
+    text = value.strip()
+    if not text.startswith("nonuniform"):
+        return None
+    match = re.search(r"\((?P<body>.*)\)", text, re.DOTALL)
+    if not match:
+        return None
+    values: list[float] = []
+    for token in match.group("body").split():
+        try:
+            values.append(float(token))
+        except ValueError:
+            return None
+    return values
+
+
+def _uniform_scalar(value: str) -> str | None:
+    text = value.strip().rstrip(";").strip()
+    if not text.startswith("uniform"):
+        return None
+    payload = text[len("uniform") :].strip()
+    if payload.startswith("("):
+        return None
+    try:
+        return f"{float(payload):.1f}"
+    except ValueError:
+        return None
 
 
 def _strip_quotes(token: str) -> str:
