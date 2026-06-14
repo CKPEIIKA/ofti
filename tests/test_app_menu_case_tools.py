@@ -52,9 +52,9 @@ def test_show_current_jobs_screen_typeerror_fallback_and_truncate(
         {
             "pid": idx,
             "role": "solver",
-            "solver": "hy2Foam",
+            "solver": "simpleFoam",
             "launcher_pid": None,
-            "command": "hy2Foam -parallel",
+            "command": "simpleFoam -parallel",
         }
         for idx in range(100, 141)
     ]
@@ -62,10 +62,10 @@ def test_show_current_jobs_screen_typeerror_fallback_and_truncate(
     def _current(_case: Path) -> dict[str, object]:
         return {
             "case": str(tmp_path),
-            "solver": "hy2Foam",
+            "solver": "simpleFoam",
             "solver_error": None,
             "jobs_running": 2,
-            "jobs": [{"id": "job-1", "pid": 10, "name": "hy2Foam", "status": "running"}],
+            "jobs": [{"id": "job-1", "pid": 10, "name": "simpleFoam", "status": "running"}],
             "untracked_processes": rows,
         }
 
@@ -93,7 +93,7 @@ def test_adopt_untracked_screen_and_error_paths(
             "case": str(tmp_path),
             "scope": "case",
             "selected": 1,
-            "adopted": [{"id": "x", "pid": 10, "case": str(tmp_path), "name": "hy2Foam", "role": "solver"}],
+            "adopted": [{"id": "x", "pid": 10, "case": str(tmp_path), "name": "simpleFoam", "role": "solver"}],
             "failed": [{"pid": 11, "case": str(tmp_path), "error": "bad"}],
             "jobs_running_before": 0,
             "jobs_running_after": 1,
@@ -187,7 +187,7 @@ def test_initials_and_set_entry_screens(
     assert "fields=1 patches=1" in captured[-1]
     assert "- inlet: type=fixedValue value=uniform (1 0 0)" in captured[-1]
 
-    prompts = iter(["system/controlDict", "application", "hy2Foam"])
+    prompts = iter(["system/controlDict", "application", "simpleFoam"])
     monkeypatch.setattr(case_tools, "prompt_line", lambda _stdscr, _prompt: next(prompts))
     monkeypatch.setattr(
         case_tools.knife_ops,
@@ -228,7 +228,7 @@ def test_runtime_diagnostic_screens(
         "criteria_payload",
         lambda _case: {
             "case": str(tmp_path),
-            "solver": "hy2Foam",
+            "solver": "simpleFoam",
             "criteria_count": 1,
             "passed": 1,
             "failed": 0,
@@ -273,7 +273,7 @@ def test_runtime_diagnostic_screens(
         case_tools.knife_ops,
         "converge_payload",
         lambda *_a, **_k: {
-            "log": "log.hy2Foam",
+            "log": "log.simpleFoam",
             "shock": {"drift": 0.0, "limit": 0.02, "ok": True},
             "drag": {"band": 0.0, "limit": 0.02, "ok": True},
             "mass": {"last_abs_global": 0.0, "limit": 1e-4, "ok": True},
@@ -293,7 +293,7 @@ def test_runtime_diagnostic_screens(
         case_tools.knife_ops,
         "stability_payload",
         lambda *_a, **_k: {
-            "log": "log.hy2Foam",
+            "log": "log.simpleFoam",
             "pattern": "Courant Number mean",
             "count": 100,
             "window": 50,

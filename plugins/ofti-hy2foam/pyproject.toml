@@ -1,0 +1,9 @@
+[project]
+name = "ofti-hy2foam"
+version = "0.1.0"
+description = "hy2Foam plugin for OFTI"
+requires-python = ">=3.10"
+dependencies = ["ofti"]
+
+[project.entry-points."ofti.plugins"]
+hy2foam = "ofti_hy2foam.plugin:register"

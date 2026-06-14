@@ -7,7 +7,7 @@ from ofti.tools import process_scan_service as svc
 
 def _make_case(path: Path) -> Path:
     (path / "system").mkdir(parents=True)
-    (path / "system" / "controlDict").write_text("application hy2Foam;\n")
+    (path / "system" / "controlDict").write_text("application simpleFoam;\n")
     return path
 
 
@@ -53,20 +53,20 @@ def test_scan_proc_solver_processes_filters_tracked(tmp_path: Path) -> None:
         proc_root,
         pid=100,
         ppid=1,
-        cmdline=b"mpirun\x00-case\x00.\x00hy2Foam\x00",
+        cmdline=b"mpirun\x00-case\x00.\x00simpleFoam\x00",
         cwd=case,
     )
     _write_proc_entry(
         proc_root,
         pid=101,
         ppid=100,
-        cmdline=b"hy2Foam\x00-parallel\x00-case\x00.\x00",
+        cmdline=b"simpleFoam\x00-parallel\x00-case\x00.\x00",
         cwd=case,
     )
 
     rows = svc.scan_proc_solver_processes(
         case,
-        "hy2Foam",
+        "simpleFoam",
         tracked_pids={101},
         proc_root=proc_root,
         include_tracked=False,
@@ -75,7 +75,7 @@ def test_scan_proc_solver_processes_filters_tracked(tmp_path: Path) -> None:
 
     rows_all = svc.scan_proc_solver_processes(
         case,
-        "hy2Foam",
+        "simpleFoam",
         tracked_pids={101},
         proc_root=proc_root,
         include_tracked=True,
@@ -100,20 +100,20 @@ def test_scan_proc_solver_processes_hides_solver_descendants_of_tracked_launcher
         proc_root,
         pid=100,
         ppid=1,
-        cmdline=b"mpirun\x00-case\x00.\x00hy2Foam\x00",
+        cmdline=b"mpirun\x00-case\x00.\x00simpleFoam\x00",
         cwd=case,
     )
     _write_proc_entry(
         proc_root,
         pid=101,
         ppid=100,
-        cmdline=b"hy2Foam\x00-parallel\x00-case\x00.\x00",
+        cmdline=b"simpleFoam\x00-parallel\x00-case\x00.\x00",
         cwd=case,
     )
 
     rows = svc.scan_proc_solver_processes(
         case,
-        "hy2Foam",
+        "simpleFoam",
         tracked_pids={100},
         proc_root=proc_root,
         include_tracked=False,
@@ -122,7 +122,7 @@ def test_scan_proc_solver_processes_hides_solver_descendants_of_tracked_launcher
 
     rows_all = svc.scan_proc_solver_processes(
         case,
-        "hy2Foam",
+        "simpleFoam",
         tracked_pids={100},
         proc_root=proc_root,
         include_tracked=True,
@@ -142,27 +142,27 @@ def test_scan_proc_solver_processes_marks_detached_shell_wrapper_tracked(
         proc_root,
         pid=99,
         ppid=1,
-        cmdline=f"bash\x00-lc\x00cd {case} && mpirun -np 2 hy2Foam -parallel\x00".encode(),
+        cmdline=f"bash\x00-lc\x00cd {case} && mpirun -np 2 simpleFoam -parallel\x00".encode(),
         cwd=None,
     )
     _write_proc_entry(
         proc_root,
         pid=100,
         ppid=99,
-        cmdline=b"mpirun\x00-np\x002\x00hy2Foam\x00-parallel\x00",
+        cmdline=b"mpirun\x00-np\x002\x00simpleFoam\x00-parallel\x00",
         cwd=case,
     )
     _write_proc_entry(
         proc_root,
         pid=101,
         ppid=100,
-        cmdline=b"hy2Foam\x00-parallel\x00",
+        cmdline=b"simpleFoam\x00-parallel\x00",
         cwd=case,
     )
 
     rows = svc.scan_proc_solver_processes(
         case,
-        "hy2Foam",
+        "simpleFoam",
         tracked_pids={100},
         proc_root=proc_root,
         include_tracked=False,
@@ -171,7 +171,7 @@ def test_scan_proc_solver_processes_marks_detached_shell_wrapper_tracked(
 
     rows_all = svc.scan_proc_solver_processes(
         case,
-        "hy2Foam",
+        "simpleFoam",
         tracked_pids={100},
         proc_root=proc_root,
         include_tracked=True,
@@ -188,12 +188,12 @@ def test_launcher_graph_helpers_scope_case(tmp_path: Path) -> None:
     other = _make_case(tmp_path / "other")
     table = {
         10: svc.ProcEntry(pid=10, ppid=1, args=["mpirun", "-case", "."], cwd=case),
-        11: svc.ProcEntry(pid=11, ppid=10, args=["hy2Foam", "-parallel"], cwd=case),
+        11: svc.ProcEntry(pid=11, ppid=10, args=["simpleFoam", "-parallel"], cwd=case),
         20: svc.ProcEntry(pid=20, ppid=1, args=["mpirun", "-case", "."], cwd=other),
     }
-    launchers = svc.launcher_pids_for_case(table, "hy2foam", case)
+    launchers = svc.launcher_pids_for_case(table, "simplefoam", case)
     assert launchers == {10}
-    assert svc.launcher_has_solver_descendant(10, table, "hy2foam") is True
+    assert svc.launcher_has_solver_descendant(10, table, "simplefoam") is True
     assert svc.has_ancestor(11, {10}, table) is True
 
 
@@ -207,7 +207,7 @@ def test_scan_proc_solver_processes_infers_case_from_processor_cwd(tmp_path: Pat
         proc_root,
         pid=220,
         ppid=1,
-        cmdline=b"hy2Foam\x00-parallel\x00",
+        cmdline=b"simpleFoam\x00-parallel\x00",
         cwd=processor0,
     )
 
@@ -233,9 +233,9 @@ def test_read_proc_args_falls_back_to_comm(tmp_path: Path) -> None:
         ppid=1,
         cmdline=b"",
         cwd=None,
-        comm="hy2Foam",
+        comm="simpleFoam",
     )
-    assert svc.read_proc_args(proc_dir) == ["hy2Foam"]
+    assert svc.read_proc_args(proc_dir) == ["simpleFoam"]
 
 
 def test_scan_processes_reports_unknown_case_with_explicit_error(tmp_path: Path) -> None:
@@ -247,7 +247,7 @@ def test_scan_processes_reports_unknown_case_with_explicit_error(tmp_path: Path)
         proc_root,
         pid=400,
         ppid=1,
-        cmdline=b"hy2Foam\x00-parallel\x00",
+        cmdline=b"simpleFoam\x00-parallel\x00",
         cwd=None,
     )
     rows = svc.scan_proc_solver_processes(
@@ -275,7 +275,7 @@ def test_scan_processes_permission_denied_cwd_maps_to_case_not_found(
         proc_root,
         pid=401,
         ppid=1,
-        cmdline=b"hy2Foam\x00-parallel\x00",
+        cmdline=b"simpleFoam\x00-parallel\x00",
         cwd=None,
     )
     original = svc.proc_cwd_with_error
@@ -306,14 +306,14 @@ def test_scan_processes_infers_case_from_shell_cd_parent(tmp_path: Path) -> None
         proc_root,
         pid=500,
         ppid=1,
-        cmdline=f"bash\x00-lc\x00cd {case} && mpirun -np 6 hy2Foam -parallel\x00".encode(),
+        cmdline=f"bash\x00-lc\x00cd {case} && mpirun -np 6 simpleFoam -parallel\x00".encode(),
         cwd=None,
     )
     _write_proc_entry(
         proc_root,
         pid=501,
         ppid=500,
-        cmdline=b"hy2Foam\x00-parallel\x00",
+        cmdline=b"simpleFoam\x00-parallel\x00",
         cwd=None,
     )
     rows = svc.scan_proc_solver_processes(
@@ -331,7 +331,7 @@ def test_scan_processes_infers_case_from_shell_cd_parent(tmp_path: Path) -> None
 
 def test_shell_cd_candidate_uses_last_cd_and_handles_quoted_abs_path() -> None:
     candidate = svc._shell_cd_candidate(
-        "cd '/abs/first' && cd '/abs/second' && mpirun -np 4 hy2Foam -parallel",
+        "cd '/abs/first' && cd '/abs/second' && mpirun -np 4 simpleFoam -parallel",
         None,
     )
     assert candidate == Path("/abs/second")
@@ -347,7 +347,7 @@ def test_scan_processes_infers_case_from_shell_with_multiple_cd_segments(tmp_pat
         pid=520,
         ppid=1,
         cmdline=(
-            f"bash\x00-lc\x00cd '/tmp' && cd '{case}' && mpirun -np 2 hy2Foam -parallel\x00"
+            f"bash\x00-lc\x00cd '/tmp' && cd '{case}' && mpirun -np 2 simpleFoam -parallel\x00"
         ).encode(),
         cwd=None,
     )
@@ -355,7 +355,7 @@ def test_scan_processes_infers_case_from_shell_with_multiple_cd_segments(tmp_pat
         proc_root,
         pid=521,
         ppid=520,
-        cmdline=b"hy2Foam\x00-parallel\x00",
+        cmdline=b"simpleFoam\x00-parallel\x00",
         cwd=None,
     )
     rows = svc.scan_proc_solver_processes(
@@ -379,19 +379,19 @@ def test_scan_processes_marks_shell_wrapper_as_launcher_when_solver_known(tmp_pa
         proc_root,
         pid=610,
         ppid=1,
-        cmdline=f"bash\x00-lc\x00cd {case} && hy2Foam -parallel\x00".encode(),
+        cmdline=f"bash\x00-lc\x00cd {case} && simpleFoam -parallel\x00".encode(),
         cwd=None,
     )
     _write_proc_entry(
         proc_root,
         pid=611,
         ppid=610,
-        cmdline=b"hy2Foam\x00-parallel\x00",
+        cmdline=b"simpleFoam\x00-parallel\x00",
         cwd=case,
     )
     rows = svc.scan_proc_solver_processes(
         case,
-        "hy2Foam",
+        "simpleFoam",
         tracked_pids=set(),
         proc_root=proc_root,
         require_case_target=True,
@@ -412,7 +412,7 @@ def test_scan_processes_uses_registry_cache_for_same_pid(tmp_path: Path) -> None
         proc_root,
         pid=700,
         ppid=1,
-        cmdline=b"hy2Foam\x00-parallel\x00",
+        cmdline=b"simpleFoam\x00-parallel\x00",
         cwd=case,
     )
     rows = svc.scan_proc_solver_processes(
@@ -451,7 +451,7 @@ def test_proc_access_warning_detects_sandbox_marker(tmp_path: Path) -> None:
         proc_root,
         pid=2,
         ppid=1,
-        cmdline=b"hy2Foam\x00-parallel\x00",
+        cmdline=b"simpleFoam\x00-parallel\x00",
         cwd=None,
     )
     warning = svc.proc_access_warning(proc_root)

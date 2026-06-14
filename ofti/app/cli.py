@@ -17,7 +17,7 @@ _CLI_VERSION_FLAGS = {"-V", "--version"}
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ofti",
-        description="OpenFOAM TUI config editor",
+        description="OpenFOAM CLI utilities with an interactive curses TUI",
         epilog="Non-interactive tools: ofti knife|plot|watch|run ...",
     )
     parser.add_argument(
@@ -41,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Entry point for the OpenFOAM TUI.
+    """Entry point for OFTI CLI groups or the interactive TUI.
 
     Usage:
         ofti [--debug] [CASE_DIR]

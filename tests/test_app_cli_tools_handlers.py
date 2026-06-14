@@ -877,7 +877,7 @@ def test_knife_converge_plain_and_json(
         cli_tools.knife_ops,
         "converge_payload",
         lambda *_args, **_kwargs: {
-            "log": "log.hy2Foam",
+            "log": "log.simpleFoam",
             "shock": {"drift": 0.01, "limit": 0.02, "ok": True},
             "drag": {"band": 0.01, "limit": 0.02, "ok": True},
             "mass": {"last_abs_global": 1e-5, "limit": 1e-4, "ok": True},
@@ -889,7 +889,7 @@ def test_knife_converge_plain_and_json(
         },
     )
     args = _ns(
-        source=Path("log.hy2Foam"),
+        source=Path("log.simpleFoam"),
         strict=True,
         shock_drift_limit=0.02,
         drag_band_limit=0.02,

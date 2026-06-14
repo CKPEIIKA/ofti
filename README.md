@@ -15,13 +15,15 @@ THIS IS VIBE-CODED SOFTWARE. EXPECT ROUGH EDGES.
 
 ## NAME
 
-ofti – OpenFOAM Terminal Interface (TUI)
+ofti – OpenFOAM Terminal Interface
 
 ## SYNOPSIS
 
 ```
 python -m ofti.app.cli /path/to/case
 ofti /path/to/case
+ofti knife status /path/to/case --table
+ofti run solver /path/to/case --dry-run --json
 ```
 
 Install from the repo root:
@@ -42,13 +44,22 @@ python -m pip install -e .
 pipx install .
 ```
 
-`ofti` now depends on `foamlib[preprocessing,postprocessing]` by default.
-If your environment is missing these extras, related features stay disabled in TUI with hints.
+`ofti` depends on `foamlib[preprocessing,postprocessing]` by default.
+If your environment is missing optional OpenFOAM commands, CLI checks report the
+missing capability and the TUI disables related actions with hints.
+
+Optional domain plugins can add solver-family diagnostics without putting
+case-specific assumptions into OFTI core. This repository includes an
+`ofti-hy2foam` plugin under `plugins/ofti-hy2foam` with hy2Foam-oriented field
+presets, physical checks, charge observability, preflight checks, and same-mesh
+patch comparison helpers.
 
 ## DESCRIPTION
 
-`ofti` is a small curses-based interface for OpenFOAM cases. It focuses on
-fast browsing/editing of dictionaries, a boundary/initial-conditions view,
+`ofti` is a CLI-first OpenFOAM helper with a curses interface on top. The CLI
+provides scriptable diagnostics, run management, queueing, manifests, physical
+field checks, and case operations. The TUI reuses the same core services for
+interactive dictionary browsing/editing, boundary and initial-condition views,
 and common tools (mesh, run, post-process, diagnostics).
 
 If the provided path is not an OpenFOAM case, `ofti` opens a folder picker
@@ -64,12 +75,12 @@ Main menu/interface sketch (example):
 
 ```text
 *------------------------------*- ofti -*-------------------------------*
-| Case: reactiveShockTube             | Solver: hy2Foam                 |
+| Case: motorBike                     | Solver: simpleFoam              |
 | Status: ran                         | Latest time: 0.0002             |
 | Mesh: 7200 cells, faces=30006, ...  | Parallel: 10; (scotch;)         |
 | Faces: 30006 Points: 16814          | Disk: 34.0MB                    |
 | Env: v1706                          | Keys: ? help / search : cmd     |
-| Path: /path/to/openfoam/case        | Log: log.hy2Foam                |
+| Path: /path/to/openfoam/case        | Log: log.simpleFoam             |
 *------------------------------------------------------------------------*
 
 Main menu
@@ -125,8 +136,9 @@ ofti knife current --root REPO --recursive --live --table
 ofti plot metrics CASE --table
 ofti watch jobs CASE --table
 ofti knife initials CASE --json
-ofti knife physical CASE --time latest --fields p,Tt,Tv,N2,O2 --json
-ofti knife compare-fields SERIAL_CASE PARALLEL_CASE --preset flow --time latest --json
+ofti knife physical CASE --time latest --fields p,U,rho,T --json
+ofti knife physical CASE --field rho:min=0 --field T:min=0 --out checks
+ofti knife compare-fields --reference SERIAL_CASE --candidate PARALLEL_CASE --preset flow --out compare
 ofti knife copy CASE_COPY --case CASE
 ofti knife current --root REPO --recursive --live --json
 ofti knife adopt --root REPO --all-untracked --json
@@ -138,6 +150,7 @@ ofti watch log CASE --lines 80 --json
 ofti watch log CASE --follow --easy-on-cpu
 ofti run tool --list --case CASE --json
 ofti run solver CASE --dry-run --json
+ofti run smoke CASE --iterations 20 --timeout 5m --out smoke --json
 ofti run solver CASE --parallel 8 --clean-processors --json
 ofti run solver CASE --parallel 8 --no-prepare-parallel --json
 ofti run matrix CASE --param application=simpleFoam,pisoFoam --no-launch --json
@@ -199,32 +212,32 @@ For very large logs, analysis/tail paths use bounded recent log windows to stay
 responsive, and the TUI log viewer falls back to a bounded tail view for very
 large files.
 
-Run receipts for reproducible runs:
+Run manifests for reproducible runs:
 
 ```bash
-ofti run solver CASE --write-receipt --json
-ofti run solver CASE --write-receipt --record-inputs-copy --json
-ofti knife receipt write CASE --record-inputs-copy --json
-ofti knife receipt verify runs/.../receipt.json --json
-ofti knife receipt restore runs/.../receipt.json --to RESTORED_CASE --json
-ofti knife receipt restore runs/.../receipt.json --to CASE_COPY --only system,constant --json
+ofti run solver CASE --write-manifest --json
+ofti run solver CASE --write-manifest --record-inputs-copy --json
+ofti knife manifest write CASE --record-inputs-copy --json
+ofti knife manifest verify runs/.../manifest.json --json
+ofti knife manifest restore runs/.../manifest.json --to RESTORED_CASE --json
+ofti knife manifest restore runs/.../manifest.json --to CASE_COPY --only system,constant --json
 ```
 
-- `--write-receipt` writes an immutable receipt JSON under `./runs/` in the
+- `--write-manifest` writes an immutable manifest JSON under `./runs/` in the
   directory where you launch the command.
-- Hash-only receipts are verification-grade: they let you detect drift.
-- `--record-inputs-copy` upgrades the receipt to restore-grade by copying
-  `system/`, `constant/`, and `0/` next to the receipt.
-- Receipts now also record build/runtime provenance:
+- Hash-only manifests are verification-grade: they let you detect drift.
+- `--record-inputs-copy` upgrades the manifest to restore-grade by copying
+  `system/`, `constant/`, and `0/` next to the manifest.
+- Manifests now also record build/runtime provenance:
   solver binary hash, linked-library hash set, compiler flags, and selected
   OpenFOAM environment variables.
-- `--receipt-file` overrides the destination explicitly; relative paths resolve
+- `--manifest-file` overrides the destination explicitly; relative paths resolve
   from the current working directory.
-- `knife receipt verify` checks the current case against recorded hashes.
-- `knife receipt verify` also checks solver binary and linked-library drift.
-- `knife receipt restore` recreates inputs only when the receipt includes the
+- `knife manifest verify` checks the current case against recorded hashes.
+- `knife manifest verify` also checks solver binary and linked-library drift.
+- `knife manifest restore` recreates inputs only when the manifest includes the
   recorded input copy.
-- `knife receipt restore --only/--skip` lets you restore only selected roots
+- `knife manifest restore --only/--skip` lets you restore only selected roots
   from `system`, `constant`, and `0`.
 
 External watcher integration (for example `scripts/oftools/ofwatch`) is
@@ -260,6 +273,34 @@ Current repo checks:
 - `ruff check`
 - `ty check`
 - `pytest` with coverage gate `--cov-fail-under=85`
+
+Slow real-case tests are opt-in and exercise services against copied OpenFOAM
+cases instead of fixtures:
+
+```bash
+OFTI_REAL_PROFILES='cavity=/path/to/case;solver=simpleFoam;tags=serial' \
+  uv run pytest --runslow -m real_openfoam tests/test_real_openfoam_profiles.py
+OFTI_REAL_SCENARIOS='smoke,queue,diagnostics' \
+  OFTI_REAL_PROFILES='case=/path/to/case' \
+  uv run pytest --runslow -m real_openfoam tests/test_real_openfoam_profiles.py
+```
+
+`OFTI_REAL_SCENARIOS` limits expensive checks by name. Current scenario names
+include `runtime`, `smoke`, `diagnostics`, `start-stop`, `parallel-stop`,
+`queue`, `queue-failure`, `foamlib-ops`, `core-services`, `parallel-resize`,
+`parallel-resize-exec`, and `hpc`.
+
+Canonical tutorial smoke coverage is also opt-in. It clones an OpenFOAM tutorial
+case, runs `blockMesh`/`checkMesh`, then exercises OFTI services against the real
+case copy:
+
+```bash
+OFTI_ENABLE_REAL_CASE_TESTS=1 OFTI_REAL_CASES=icoFoam-cavity \
+  uv run pytest --runslow -m real_openfoam tests/test_real_openfoam_toy_case.py
+```
+
+Set `OFTI_REAL_CASE_ROOT`, `FOAM_TUTORIALS`, or `OFTI_TOY_CASE_TEMPLATE` when the
+OpenFOAM tutorial tree is not discoverable from `WM_PROJECT_DIR`.
 
 Adapter layout:
 
@@ -361,10 +402,15 @@ important than throughput:
 ofti run queue --set CASE_SET --glob 'case_*' --max-parallel 6 --backend foamlib-async
 ```
 
+## TOML, PRESET, AND JSON FILES
+
+User config TOML, case-local preset files, and runtime JSON records are
+described in `docs/runtime-files.md`.
+
 ## FILES
 
 - Case root with `system/controlDict`
-- Optional presets: `ofti.parametric`
+- Optional presets: `ofti.tools`, `ofti.postprocessing`, `ofti.parametric`
 - Logs: `log.*`
 - Config: `~/.config/ofti/config.toml` (or `$OFTI_CONFIG`)
 

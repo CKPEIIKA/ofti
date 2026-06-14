@@ -9,7 +9,7 @@ from ofti.app.cli_adapters import plot as _plot_adapter
 from ofti.app.cli_adapters import run as _run_adapter
 from ofti.app.cli_adapters import watch as _watch_adapter
 from ofti.app.cli_help import _output_mode_conflict
-from ofti.core import run_receipt as receipt_ops
+from ofti.core import run_manifest as manifest_ops
 from ofti.tools import parallel_resize_service, status_render_service, table_render_service
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import plot as plot_ops
@@ -86,10 +86,10 @@ __all__ = [
     "build_parser",
     "knife_ops",
     "main",
+    "manifest_ops",
     "ofti_version",
     "parallel_resize_service",
     "plot_ops",
-    "receipt_ops",
     "run_ops",
     "status_render_service",
     "table_render_service",

@@ -6,7 +6,7 @@ from ofti.tools import convergence_service as svc
 
 
 def test_convergence_payload_strict_and_non_strict() -> None:
-    log_path = Path("log.hy2Foam")
+    log_path = Path("log.simpleFoam")
     text = "\n".join(
         [
             "shockPosition = 0.1",

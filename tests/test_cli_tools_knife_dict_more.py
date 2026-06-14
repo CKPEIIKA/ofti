@@ -153,25 +153,25 @@ def test_knife_proc_parsing_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert knife._proc_cwd(proc_root / "999") is None
     assert knife._process_role([], "simplefoam") is None
     assert knife._process_role(["bash"], "simplefoam") is None
-    assert knife._process_role(["bash", "-lc", "hy2Foam -parallel"], "hy2foam") == "launcher"
+    assert knife._process_role(["bash", "-lc", "simpleFoam -parallel"], "simplefoam") == "launcher"
     assert knife._process_role(["mpirun"], "simplefoam") == "launcher"
     assert knife._token_matches_solver("a && /opt/simpleFoam;", "simplefoam") is True
 
 
 def test_knife_proc_graph_helpers(tmp_path: Path) -> None:
-    case = _make_case(tmp_path / "case", solver="hy2Foam")
-    other = _make_case(tmp_path / "other", solver="hy2Foam")
+    case = _make_case(tmp_path / "case", solver="simpleFoam")
+    other = _make_case(tmp_path / "other", solver="simpleFoam")
     table = {
         10: knife.ProcEntry(pid=10, ppid=1, args=["mpirun", "-case", "."], cwd=case),
-        11: knife.ProcEntry(pid=11, ppid=10, args=["hy2Foam", "-parallel"], cwd=case),
+        11: knife.ProcEntry(pid=11, ppid=10, args=["simpleFoam", "-parallel"], cwd=case),
         12: knife.ProcEntry(pid=12, ppid=10, args=["bash"], cwd=case),
         20: knife.ProcEntry(pid=20, ppid=1, args=["mpirun", "-case", "."], cwd=other),
     }
-    launchers = knife._launcher_pids_for_case(table, "hy2foam", case)
+    launchers = knife._launcher_pids_for_case(table, "simplefoam", case)
     assert 10 in launchers
     assert 20 not in launchers
-    assert knife._launcher_has_solver_descendant(10, table, "hy2foam") is True
-    assert knife._launcher_has_solver_descendant(20, table, "hy2foam") is False
+    assert knife._launcher_has_solver_descendant(10, table, "simplefoam") is True
+    assert knife._launcher_has_solver_descendant(20, table, "simplefoam") is False
 
     assert knife._has_ancestor(11, {10}, table) is True
     assert knife._has_ancestor(50, {10}, table) is False
@@ -179,16 +179,16 @@ def test_knife_proc_graph_helpers(tmp_path: Path) -> None:
     assert knife._has_ancestor(1, {9}, cyc) is False
 
     assert knife._entry_targets_case(table[10], case) is True
-    rel_case = knife.ProcEntry(pid=30, ppid=1, args=["hy2Foam", "-case", "."], cwd=case)
+    rel_case = knife.ProcEntry(pid=30, ppid=1, args=["simpleFoam", "-case", "."], cwd=case)
     assert knife._entry_targets_case(rel_case, case) is True
-    wrong = knife.ProcEntry(pid=31, ppid=1, args=["hy2Foam", "-case", "."], cwd=other)
+    wrong = knife.ProcEntry(pid=31, ppid=1, args=["simpleFoam", "-case", "."], cwd=other)
     assert knife._entry_targets_case(wrong, case) is False
-    missing_arg = knife.ProcEntry(pid=32, ppid=1, args=["hy2Foam", "-case"], cwd=other)
+    missing_arg = knife.ProcEntry(pid=32, ppid=1, args=["simpleFoam", "-case"], cwd=other)
     assert knife._entry_targets_case(missing_arg, case) is False
 
 
 def test_knife_scan_proc_solver_processes_filters_entries(tmp_path: Path) -> None:
-    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    case = _make_case(tmp_path / "case", solver="simpleFoam")
     proc_root = tmp_path / "proc"
     proc_root.mkdir()
     _write_proc_entry(proc_root, pid=100, ppid=1, cmdline=b"", cwd=case)
@@ -197,20 +197,20 @@ def test_knife_scan_proc_solver_processes_filters_entries(tmp_path: Path) -> Non
         proc_root,
         pid=102,
         ppid=1,
-        cmdline=b"mpirun\x00-case\x00.\x00hy2Foam\x00",
+        cmdline=b"mpirun\x00-case\x00.\x00simpleFoam\x00",
         cwd=case,
     )
     _write_proc_entry(
         proc_root,
         pid=103,
         ppid=102,
-        cmdline=b"hy2Foam\x00-parallel\x00-case\x00.\x00",
+        cmdline=b"simpleFoam\x00-parallel\x00-case\x00.\x00",
         cwd=case,
     )
 
     rows = knife._scan_proc_solver_processes(
         case,
-        "hy2Foam",
+        "simpleFoam",
         tracked_pids={103},
         proc_root=proc_root,
         include_tracked=False,
@@ -219,7 +219,7 @@ def test_knife_scan_proc_solver_processes_filters_entries(tmp_path: Path) -> Non
 
     rows_all = knife._scan_proc_solver_processes(
         case,
-        "hy2Foam",
+        "simpleFoam",
         tracked_pids={103},
         proc_root=proc_root,
         include_tracked=True,
@@ -230,21 +230,21 @@ def test_knife_scan_proc_solver_processes_filters_entries(tmp_path: Path) -> Non
 
 
 def test_knife_scan_proc_solver_processes_relaxed_scope(tmp_path: Path) -> None:
-    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    case = _make_case(tmp_path / "case", solver="simpleFoam")
     proc_root = tmp_path / "proc"
     proc_root.mkdir()
     _write_proc_entry(
         proc_root,
         pid=201,
         ppid=1,
-        cmdline=b"mpirun\x00-np\x006\x00hy2Foam\x00-parallel\x00",
+        cmdline=b"mpirun\x00-np\x006\x00simpleFoam\x00-parallel\x00",
         cwd=None,
     )
     _write_proc_entry(
         proc_root,
         pid=202,
         ppid=201,
-        cmdline=b"hy2Foam\x00-parallel\x00",
+        cmdline=b"simpleFoam\x00-parallel\x00",
         cwd=None,
     )
     rows = knife._scan_proc_solver_processes(
@@ -261,7 +261,7 @@ def test_knife_current_payload_uses_live_scan_to_relax_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    case = _make_case(tmp_path / "repo", solver="hy2Foam")
+    case = _make_case(tmp_path / "repo", solver="simpleFoam")
     (case / "system" / "controlDict").unlink()
     monkeypatch.setattr(knife_service, "resolve_solver_name", lambda _case: (None, "no controlDict"))
     monkeypatch.setattr(knife_service, "refresh_jobs", lambda _case: [])
@@ -279,7 +279,7 @@ def test_knife_current_payload_uses_live_scan_to_relax_scope(
         seen.append(require_case_target)
         if require_case_target:
             return []
-        return [{"pid": 404, "solver": "hy2Foam", "role": "solver", "tracked": False, "command": "hy2Foam -parallel"}]
+        return [{"pid": 404, "solver": "simpleFoam", "role": "solver", "tracked": False, "command": "simpleFoam -parallel"}]
 
     monkeypatch.setattr(knife_service, "_scan_proc_solver_processes", _scan)
     payload = knife.current_payload(case)
@@ -376,15 +376,15 @@ def test_knife_current_scope_payload_tree_aggregates_jobs_and_untracked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "repo"
-    case_a = _make_case(root / "a", solver="hy2Foam")
-    case_b = _make_case(root / "b", solver="hy2Foam")
-    outside = _make_case(tmp_path / "outside", solver="hy2Foam")
+    case_a = _make_case(root / "a", solver="simpleFoam")
+    case_b = _make_case(root / "b", solver="simpleFoam")
+    outside = _make_case(tmp_path / "outside", solver="simpleFoam")
 
     def _refresh(case_path: Path) -> list[dict[str, object]]:
         if case_path == case_a.resolve():
-            return [{"id": "a-1", "pid": 111, "status": "running", "name": "hy2Foam"}]
+            return [{"id": "a-1", "pid": 111, "status": "running", "name": "simpleFoam"}]
         if case_path == case_b.resolve():
-            return [{"id": "b-1", "pid": 222, "status": "finished", "name": "hy2Foam"}]
+            return [{"id": "b-1", "pid": 222, "status": "finished", "name": "simpleFoam"}]
         return []
 
     monkeypatch.setattr(knife_service, "refresh_jobs", _refresh)
@@ -394,19 +394,19 @@ def test_knife_current_scope_payload_tree_aggregates_jobs_and_untracked(
         lambda _case, _solver, **_k: [
             {
                 "pid": 333,
-                "solver": "hy2Foam",
+                "solver": "simpleFoam",
                 "role": "solver",
                 "tracked": False,
                 "case": str(case_b.resolve()),
-                "command": "hy2Foam -parallel",
+                "command": "simpleFoam -parallel",
             },
             {
                 "pid": 444,
-                "solver": "hy2Foam",
+                "solver": "simpleFoam",
                 "role": "solver",
                 "tracked": False,
                 "case": str(outside.resolve()),
-                "command": "hy2Foam -parallel",
+                "command": "simpleFoam -parallel",
             },
         ],
     )
@@ -428,14 +428,14 @@ def test_knife_adopt_payload_registers_untracked_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    case = _make_case(tmp_path / "case", solver="simpleFoam")
     case_str = str(case.resolve())
     monkeypatch.setattr(
         knife_service,
         "current_payload",
         lambda _case, **_kwargs: {
             "case": case_str,
-            "solver": "hy2Foam",
+            "solver": "simpleFoam",
             "solver_error": None,
             "jobs": [],
             "jobs_total": 0,
@@ -446,21 +446,21 @@ def test_knife_adopt_payload_registers_untracked_rows(
                 {
                     "pid": 900,
                     "ppid": 1,
-                    "solver": "hy2Foam",
+                    "solver": "simpleFoam",
                     "role": "launcher",
                     "tracked": False,
                     "case": case_str,
-                    "command": "bash -lc hy2Foam -parallel",
+                    "command": "bash -lc simpleFoam -parallel",
                 },
                 {
                     "pid": 901,
                     "ppid": 900,
-                    "solver": "hy2Foam",
+                    "solver": "simpleFoam",
                     "role": "solver",
                     "tracked": False,
                     "launcher_pid": 900,
                     "case": case_str,
-                    "command": "hy2Foam -parallel",
+                    "command": "simpleFoam -parallel",
                 },
             ],
         },
@@ -478,7 +478,7 @@ def test_knife_adopt_payload_registers_untracked_rows(
     assert payload["selected"] == 1
     assert payload["failed"] == []
     assert payload["adopted"][0]["pid"] == 900
-    assert captured == [("hy2Foam-launcher", 900)]
+    assert captured == [("simpleFoam-launcher", 900)]
 
 
 def test_knife_adopt_payload_bulk_adopts_child_cases(
@@ -487,8 +487,8 @@ def test_knife_adopt_payload_bulk_adopts_child_cases(
 ) -> None:
     root = tmp_path / "repo"
     root.mkdir()
-    case_a = _make_case(root / "caseA", solver="hy2Foam")
-    case_b = _make_case(root / "nested" / "caseB", solver="hy2Foam")
+    case_a = _make_case(root / "caseA", solver="simpleFoam")
+    case_b = _make_case(root / "nested" / "caseB", solver="simpleFoam")
     case_a_str = str(case_a.resolve())
     case_b_str = str(case_b.resolve())
 
@@ -508,30 +508,30 @@ def test_knife_adopt_payload_bulk_adopts_child_cases(
                 {
                     "pid": 700,
                     "ppid": 1,
-                    "solver": "hy2Foam",
+                    "solver": "simpleFoam",
                     "role": "launcher",
                     "tracked": False,
                     "case": case_a_str,
-                    "command": "bash -lc hy2Foam -parallel",
+                    "command": "bash -lc simpleFoam -parallel",
                 },
                 {
                     "pid": 701,
                     "ppid": 700,
-                    "solver": "hy2Foam",
+                    "solver": "simpleFoam",
                     "role": "solver",
                     "tracked": False,
                     "launcher_pid": 700,
                     "case": case_a_str,
-                    "command": "hy2Foam -parallel",
+                    "command": "simpleFoam -parallel",
                 },
                 {
                     "pid": 800,
                     "ppid": 1,
-                    "solver": "hy2Foam",
+                    "solver": "simpleFoam",
                     "role": "launcher",
                     "tracked": False,
                     "case": case_b_str,
-                    "command": "bash -lc hy2Foam -parallel",
+                    "command": "bash -lc simpleFoam -parallel",
                 },
             ],
         },
@@ -697,7 +697,7 @@ def test_knife_status_and_converge_edge_cases(tmp_path: Path, monkeypatch: pytes
     assert payload["solver_error"] == "missing solver"
     assert payload["running"] is False
 
-    log = tmp_path / "log.hy2Foam"
+    log = tmp_path / "log.simpleFoam"
     log.write_text("temperature out of range\n")
     converge = knife.converge_payload(log, strict=False)
     assert converge["ok"] is False
@@ -741,8 +741,8 @@ def test_dict_compare_private_helpers(tmp_path: Path) -> None:
 def test_dict_compare_dictionary_error_and_raw_key_scan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     left = tmp_path / "left.foam"
     right = tmp_path / "right.foam"
-    left.write_text("alpha 1;\ntransportModels {\n  precompiledModel on;\n}\n")
-    right.write_text("beta 2;\ntransportModels {\n  precompiledModel off;\n}\n")
+    left.write_text("alpha 1;\ntransportModels {\n  customModel on;\n}\n")
+    right.write_text("beta 2;\ntransportModels {\n  customModel off;\n}\n")
     monkeypatch.setattr(
         dict_compare,
         "_load_dict",
@@ -752,7 +752,7 @@ def test_dict_compare_dictionary_error_and_raw_key_scan(tmp_path: Path, monkeypa
     assert diff is not None
     assert diff.error is not None
     assert "beta" in diff.missing_in_right or "beta" in diff.missing_in_left
-    assert any(item.key == "transportModels.precompiledModel" for item in diff.value_diffs)
+    assert any(item.key == "transportModels.customModel" for item in diff.value_diffs)
 
     keys = dict_compare._raw_key_scan(left)
     assert "alpha" in keys
@@ -771,7 +771,7 @@ def test_knife_stop_payload_includes_untracked_solver_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    case = _make_case(tmp_path / "case", solver="simpleFoam")
     killed: list[int] = []
     killed_groups: list[int] = []
 
@@ -795,11 +795,11 @@ def test_knife_stop_payload_includes_untracked_solver_rows(
             {
                 "pid": 900,
                 "ppid": 1,
-                "solver": "hy2Foam",
+                "solver": "simpleFoam",
                 "role": "launcher",
                 "tracked": False,
                 "case": str(case.resolve()),
-                "command": "mpirun -np 6 hy2Foam -parallel",
+                "command": "mpirun -np 6 simpleFoam -parallel",
                 "launcher_pid": 900,
                 "solver_pids": [901],
                 "discovery_source": "launcher",
@@ -808,11 +808,11 @@ def test_knife_stop_payload_includes_untracked_solver_rows(
             {
                 "pid": 901,
                 "ppid": 900,
-                "solver": "hy2Foam",
+                "solver": "simpleFoam",
                 "role": "solver",
                 "tracked": False,
                 "case": str(case.resolve()),
-                "command": "hy2Foam -parallel",
+                "command": "simpleFoam -parallel",
                 "launcher_pid": None,
                 "discovery_source": "launcher",
                 "discovery_error": "",
@@ -1022,7 +1022,7 @@ def test_knife_stop_untracked_non_case_and_error_branch(
     payload = knife_service._stop_untracked_solver_processes(non_case, signal_name="TERM")
     assert payload["reason"] == "case_dir_is_not_openfoam_case"
 
-    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    case = _make_case(tmp_path / "case", solver="simpleFoam")
     monkeypatch.setattr(knife_service, "refresh_jobs", lambda _case: [])
     monkeypatch.setattr(
         knife_service.process_scan_service,
@@ -1033,7 +1033,7 @@ def test_knife_stop_untracked_non_case_and_error_branch(
                 "role": "solver",
                 "case": str(case.resolve()),
                 "launcher_pid": None,
-                "command": "hy2Foam -parallel",
+                "command": "simpleFoam -parallel",
             },
         ],
     )

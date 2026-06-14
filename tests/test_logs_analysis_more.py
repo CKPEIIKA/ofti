@@ -56,7 +56,7 @@ def test_residual_timeline_screen_no_residuals_and_render(
     logs_analysis.residual_timeline_screen(screen, tmp_path)
     assert messages[-1] == "No residuals found in log.empty."
 
-    solver_log = tmp_path / "log.hy2Foam"
+    solver_log = tmp_path / "log.simpleFoam"
     solver_log.write_text(
         "\n".join(
             [

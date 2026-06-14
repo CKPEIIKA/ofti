@@ -58,7 +58,7 @@ def test_read_log_tail_lines(tmp_path: Path) -> None:
 
 
 def test_read_log_text_is_capped_and_line_aligned(tmp_path: Path) -> None:
-    path = tmp_path / "log.hy2Foam"
+    path = tmp_path / "log.simpleFoam"
     path.write_text("\n".join([f"keep-{idx}" for idx in range(1, 6)] + [f"tail-{idx}" for idx in range(6, 11)]) + "\n")
     full = read_log_text(path, max_bytes=None)
     assert "keep-1" in full
@@ -85,7 +85,7 @@ def test_read_log_text_filtered_falls_back_when_rg_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    path = tmp_path / "log.hy2Foam"
+    path = tmp_path / "log.simpleFoam"
     path.write_text("keep\nresidualTolerance value=1e-3\nother\n")
 
     def _missing(*_args, **_kwargs):

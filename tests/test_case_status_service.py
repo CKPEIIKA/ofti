@@ -25,10 +25,10 @@ def test_current_payload_uses_single_scan_path_for_unknown_solver(tmp_path: Path
             {
                 "pid": 404,
                 "ppid": 1,
-                "solver": "hy2Foam",
+                "solver": "simpleFoam",
                 "role": "solver",
                 "tracked": False,
-                "command": "hy2Foam -parallel",
+                "command": "simpleFoam -parallel",
             },
         ]
 
@@ -61,29 +61,29 @@ def test_current_payload_uses_single_scan_path_for_unknown_solver(tmp_path: Path
 def test_status_payload_uses_runtime_and_live_process_data(tmp_path: Path) -> None:
     case = tmp_path / "case"
     case.mkdir()
-    jobs = [{"id": "1", "name": "hy2Foam", "pid": 42, "status": "running"}]
+    jobs = [{"id": "1", "name": "simpleFoam", "pid": 42, "status": "running"}]
 
     payload = svc.status_payload(
         case,
-        resolve_solver_name_fn=lambda _case: ("hy2Foam", None),
+        resolve_solver_name_fn=lambda _case: ("simpleFoam", None),
         refresh_jobs_fn=lambda _case: jobs,
         running_job_pids_fn=lambda _jobs: [42],
         scan_proc_solver_processes_fn=lambda *_a, **_k: [
             {
                 "pid": 42,
                 "ppid": 1,
-                "solver": "hy2Foam",
+                "solver": "simpleFoam",
                 "role": "solver",
                 "tracked": True,
-                "command": "hy2Foam -parallel",
+                "command": "simpleFoam -parallel",
             },
             {
                 "pid": 43,
                 "ppid": 1,
-                "solver": "hy2Foam",
+                "solver": "simpleFoam",
                 "role": "solver",
                 "tracked": False,
-                "command": "hy2Foam -parallel",
+                "command": "simpleFoam -parallel",
             },
         ],
         runtime_control_snapshot_fn=lambda _case, _solver: {
@@ -101,7 +101,7 @@ def test_status_payload_uses_runtime_and_live_process_data(tmp_path: Path) -> No
             },
             "eta_to_criteria_start": 1.0,
             "eta_to_end_time": 4.0,
-            "log_path": str(case / "log.hy2Foam"),
+            "log_path": str(case / "log.simpleFoam"),
             "log_fresh": True,
             "residual_fields": [],
         },
@@ -142,14 +142,14 @@ def test_status_payload_forwards_lightweight_runtime_options(tmp_path: Path) -> 
             },
             "eta_to_criteria_start": None,
             "eta_to_end_time": None,
-            "log_path": str(case / "log.hy2Foam"),
+            "log_path": str(case / "log.simpleFoam"),
             "log_fresh": False,
             "residual_fields": [],
         }
 
     payload = svc.status_payload(
         case,
-        resolve_solver_name_fn=lambda _case: ("hy2Foam", None),
+        resolve_solver_name_fn=lambda _case: ("simpleFoam", None),
         refresh_jobs_fn=lambda _case: [],
         running_job_pids_fn=lambda _jobs: [],
         scan_proc_solver_processes_fn=lambda *_a, **_k: [],
@@ -170,19 +170,19 @@ def test_untracked_running_count_dedupes_solver_under_launcher() -> None:
         {
             "pid": 100,
             "ppid": 1,
-            "solver": "hy2Foam",
+            "solver": "simpleFoam",
             "role": "launcher",
             "tracked": False,
-            "command": "bash -lc hy2Foam -parallel",
+            "command": "bash -lc simpleFoam -parallel",
         },
         {
             "pid": 101,
             "ppid": 100,
-            "solver": "hy2Foam",
+            "solver": "simpleFoam",
             "role": "solver",
             "tracked": False,
             "launcher_pid": 100,
-            "command": "hy2Foam -parallel",
+            "command": "simpleFoam -parallel",
         },
     ]
     assert svc.untracked_running_count(rows) == 1
@@ -193,11 +193,11 @@ def test_untracked_running_count_counts_solver_when_launcher_row_missing() -> No
         {
             "pid": 301,
             "ppid": 1,
-            "solver": "hy2Foam",
+            "solver": "simpleFoam",
             "role": "solver",
             "tracked": False,
             "launcher_pid": 300,
-            "command": "hy2Foam -parallel",
+            "command": "simpleFoam -parallel",
         },
     ]
     assert svc.untracked_running_count(rows) == 1

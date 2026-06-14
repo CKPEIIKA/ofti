@@ -26,10 +26,10 @@ def test_knife_runtime_snapshot_wrapper_delegates(monkeypatch) -> None:
         return {"ok": True}
 
     monkeypatch.setattr(runtime_control_service, "runtime_control_snapshot", _snapshot)
-    payload = knife._runtime_control_snapshot(Path("case"), "hy2Foam")
+    payload = knife._runtime_control_snapshot(Path("case"), "simpleFoam")
     assert payload == {"ok": True}
     assert seen["case"] == Path("case")
-    assert seen["solver"] == "hy2Foam"
+    assert seen["solver"] == "simpleFoam"
     assert callable(seen["resolver"])
 
 
@@ -56,7 +56,7 @@ def test_knife_runtime_snapshot_wrapper_forwards_log_hint(monkeypatch, tmp_path:
         return {"ok": True}
 
     monkeypatch.setattr(runtime_control_service, "runtime_control_snapshot", _snapshot)
-    payload = knife._runtime_control_snapshot(Path("case"), "hy2Foam")
+    payload = knife._runtime_control_snapshot(Path("case"), "simpleFoam")
     assert payload == {"ok": True}
     assert seen["hint"] == hint
 
@@ -80,7 +80,7 @@ def test_knife_runtime_snapshot_wrapper_forwards_lightweight(monkeypatch) -> Non
         return {"ok": True}
 
     monkeypatch.setattr(runtime_control_service, "runtime_control_snapshot", _snapshot)
-    payload = knife._runtime_control_snapshot(Path("case"), "hy2Foam", lightweight=True, max_log_bytes=2048)
+    payload = knife._runtime_control_snapshot(Path("case"), "simpleFoam", lightweight=True, max_log_bytes=2048)
     assert payload == {"ok": True}
     assert seen["lightweight"] is True
     assert seen["max_log_bytes"] == 2048

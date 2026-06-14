@@ -170,20 +170,24 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Extra environment variable for started process (repeatable)",
     )
     start.add_argument(
+        "--write-manifest",
         "--write-receipt",
+        dest="write_manifest",
         action="store_true",
-        help="Write immutable launch receipt under ./runs/",
+        help="Write immutable launch manifest under ./runs/",
     )
     start.add_argument(
         "--record-inputs-copy",
         action="store_true",
-        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
+        help="Copy system/, constant/, and 0/ alongside the manifest for restore",
     )
     start.add_argument(
+        "--manifest-file",
         "--receipt-file",
+        dest="manifest_file",
         default=None,
         type=Path,
-        help="Receipt JSON path (relative paths resolve from current working directory)",
+        help="Manifest JSON path (relative paths resolve from current working directory)",
     )
     start.add_argument("--dry-run", action="store_true", help="Show launch payload only")
     start.add_argument("--json", action="store_true", help="Print result as JSON")
@@ -249,20 +253,24 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Run parallel prelaunch step (optional clean + decomposePar -force)",
     )
     run.add_argument(
+        "--write-manifest",
         "--write-receipt",
+        dest="write_manifest",
         action="store_true",
-        help="Write immutable launch receipt under ./runs/",
+        help="Write immutable launch manifest under ./runs/",
     )
     run.add_argument(
         "--record-inputs-copy",
         action="store_true",
-        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
+        help="Copy system/, constant/, and 0/ alongside the manifest for restore",
     )
     run.add_argument(
+        "--manifest-file",
         "--receipt-file",
+        dest="manifest_file",
         default=None,
         type=Path,
-        help="Receipt JSON path (relative paths resolve from current working directory)",
+        help="Manifest JSON path (relative paths resolve from current working directory)",
     )
     run.add_argument("--json", action="store_true", help="Print result as JSON")
     run.set_defaults(func=_watch_run)

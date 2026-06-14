@@ -30,14 +30,14 @@ def test_knife_scan_wrapper_delegates_to_service(monkeypatch) -> None:
     monkeypatch.setattr(process_scan_service, "scan_proc_solver_processes", _scan)
     rows = knife._scan_proc_solver_processes(
         Path("case"),
-        "hy2Foam",
+        "simpleFoam",
         tracked_pids={7},
         proc_root=Path("proc"),
         include_tracked=True,
         require_case_target=False,
     )
     assert rows == [{"pid": 123}]
-    assert seen["solver"] == "hy2Foam"
+    assert seen["solver"] == "simpleFoam"
     assert seen["tracked"] == {7}
     assert seen["proc_root"] == Path("proc")
     assert seen["include_tracked"] is True
@@ -178,12 +178,12 @@ def test_knife_current_scope_payload_tree_scan_uses_proc_scope(
     root = tmp_path / "repo"
     case = root / "caseA"
     (case / "system").mkdir(parents=True)
-    (case / "system" / "controlDict").write_text("application hy2Foam;\n")
+    (case / "system" / "controlDict").write_text("application simpleFoam;\n")
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(
         "ofti.tools.knife_service.refresh_jobs",
-        lambda _case: [{"pid": 10, "status": "running", "name": "hy2Foam"}],
+        lambda _case: [{"pid": 10, "status": "running", "name": "simpleFoam"}],
     )
 
     def _scan(

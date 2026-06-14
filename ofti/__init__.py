@@ -1,6 +1,5 @@
-"""OpenFOAM TUI package.
+"""OpenFOAM Terminal Interface package.
 
-This package provides a simple curses-based UI for browsing
-and editing OpenFOAM case dictionaries.
+OFTI provides CLI-first OpenFOAM case utilities plus a curses TUI that reuses
+the same shared services.
 """
-

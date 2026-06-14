@@ -135,7 +135,7 @@ def test_knife_plain_and_json_branches(
         lambda _case: {
             "case": "case",
             "selected": 1,
-            "adopted": [{"id": "1-777", "pid": 777, "name": "hy2Foam", "role": "solver"}],
+            "adopted": [{"id": "1-777", "pid": 777, "name": "simpleFoam", "role": "solver"}],
             "failed": [],
             "skipped": [],
             "jobs_running_before": 0,
@@ -150,18 +150,18 @@ def test_knife_plain_and_json_branches(
     assert "adopted_rows:" in out
 
 
-def test_receipt_handlers_and_run_solver_recording(
+def test_manifest_handlers_and_run_solver_recording(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
-    receipt_path = tmp_path / "receipt.json"
+    manifest_path = tmp_path / "manifest.json"
     restored_dir = tmp_path / "restored"
-    restored_receipt = restored_dir / ".ofti" / "restored_from_receipt.json"
+    restored_manifest = restored_dir / ".ofti" / "restored_from_manifest.json"
     monkeypatch.setattr(
-        cli_tools.receipt_ops,
-        "write_case_run_receipt",
-        lambda *_a, **_k: receipt_path,
+        cli_tools.manifest_ops,
+        "write_case_run_manifest",
+        lambda *_a, **_k: manifest_path,
     )
     monkeypatch.setattr(
         cli_tools.run_ops,
@@ -178,20 +178,20 @@ def test_receipt_handlers_and_run_solver_recording(
         sync_subdomains=True,
         prepare_parallel=True,
         clean_processors=False,
-        receipt_file=None,
+        manifest_file=None,
         record_inputs_copy=True,
         json=True,
     )
-    assert cli_tools._knife_receipt_write(args) == 0
+    assert cli_tools._knife_manifest_write(args) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["receipt"] == str(receipt_path)
+    assert payload["manifest"] == str(manifest_path)
     assert payload["recorded_inputs_copy"] is True
 
     monkeypatch.setattr(
-        cli_tools.receipt_ops,
-        "verify_run_receipt",
+        cli_tools.manifest_ops,
+        "verify_run_manifest",
         lambda *_a, **_k: {
-            "receipt": str(receipt_path),
+            "manifest": str(manifest_path),
             "case": "/case",
             "ok": False,
             "expected_tree_hash": "a",
@@ -206,25 +206,25 @@ def test_receipt_handlers_and_run_solver_recording(
             "extra_files": ["system/newDict"],
         },
     )
-    assert cli_tools._knife_receipt_verify(_ns(receipt=receipt_path, case_dir=None, json=False)) == 1
+    assert cli_tools._knife_manifest_verify(_ns(manifest=manifest_path, case_dir=None, json=False)) == 1
     out = capsys.readouterr().out
     assert "changed_files:" in out
     assert "extra_files:" in out
 
     monkeypatch.setattr(
-        cli_tools.receipt_ops,
-        "restore_run_receipt",
+        cli_tools.manifest_ops,
+        "restore_run_manifest",
         lambda *_a, **_k: {
-            "receipt": str(receipt_path),
+            "manifest": str(manifest_path),
             "destination": str(restored_dir),
             "selected_roots": ["system", "constant"],
-            "restored_receipt": str(restored_receipt),
+            "restored_manifest": str(restored_manifest),
             "restored": ["system", "constant", "0"],
             "ok": True,
         },
     )
-    assert cli_tools._knife_receipt_restore(
-        _ns(receipt=receipt_path, destination=restored_dir, only=["system"], skip=["0"], json=True),
+    assert cli_tools._knife_manifest_restore(
+        _ns(manifest=manifest_path, destination=restored_dir, only=["system"], skip=["0"], json=True),
     ) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["destination"] == str(restored_dir)
@@ -251,9 +251,9 @@ def test_receipt_handlers_and_run_solver_recording(
             pid_file=None,
             env=[],
             json=True,
-            write_receipt=True,
+            write_manifest=True,
             record_inputs_copy=False,
-            receipt_file=None,
+            manifest_file=None,
         ),
         background=True,
         display="simpleFoam",
@@ -264,8 +264,8 @@ def test_receipt_handlers_and_run_solver_recording(
         prepare_parallel=True,
     ) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["receipt_path"] == str(receipt_path)
-    assert payload["write_receipt"] is True
+    assert payload["manifest_path"] == str(manifest_path)
+    assert payload["write_manifest"] is True
 
 
 def test_converge_plot_residuals_and_watch_external(

@@ -30,7 +30,7 @@ def test_plot_residuals_payload_filters_and_limits(monkeypatch: pytest.MonkeyPat
 
 
 def test_plot_metrics_payload_without_deltas(monkeypatch: pytest.MonkeyPatch) -> None:
-    log_path = Path("log.hy2Foam")
+    log_path = Path("log.simpleFoam")
     monkeypatch.setattr(plot_service, "case_source_service", types.SimpleNamespace(resolve_log_source=lambda _source: log_path))
     monkeypatch.setattr(plot_service, "read_log_text", lambda _path: "log")
     monkeypatch.setattr(

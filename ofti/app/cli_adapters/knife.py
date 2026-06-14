@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from ofti.app.cli_adapters.common import solver_name_for_receipt
+from ofti.app.cli_adapters.common import solver_name_for_manifest
 from ofti.app.cli_adapters.plot import _plot_metrics
 from ofti.app.cli_adapters.watch import _watch_pause, _watch_resume, _watch_start
 from ofti.app.cli_help import (
@@ -16,8 +16,9 @@ from ofti.app.cli_help import (
     _add_table_flag,
     _help_handler,
 )
-from ofti.core import run_receipt as receipt_ops
+from ofti.core import run_manifest as manifest_ops
 from ofti.core.field_diagnostics import split_field_list
+from ofti.plugins import discover_plugins
 from ofti.tools import status_render_service, table_render_service
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import run as run_ops
@@ -83,6 +84,30 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         default=[],
         help="Comma-separated field names to scan; repeatable",
     )
+    physical.add_argument(
+        "--field",
+        dest="field_rules",
+        action="append",
+        default=[],
+        help="Custom check rule like rho:min=0 or U:finite; repeatable",
+    )
+    physical.add_argument("--patch", default=None, help="Check a boundary patch value")
+    physical.add_argument(
+        "--out",
+        default=None,
+        type=Path,
+        help="Write physical.csv and physical.md",
+    )
+    physical.add_argument(
+        "--profile",
+        default=None,
+        help="Physical rule profile from installed plugins, e.g. simplefoam",
+    )
+    physical.add_argument(
+        "--fail-on-bad",
+        action="store_true",
+        help="Exit nonzero on physical violations",
+    )
     physical.add_argument("--json", action="store_true")
     physical.set_defaults(func=_knife_physical)
 
@@ -90,20 +115,37 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         "compare-fields",
         help="Compare numeric internal field values between two cases",
     )
-    compare_fields.add_argument("left_case", type=Path)
-    compare_fields.add_argument("right_case", type=Path)
+    compare_fields.add_argument("left_case", nargs="?", type=Path)
+    compare_fields.add_argument("right_case", nargs="?", type=Path)
+    compare_fields.add_argument("--reference", default=None, type=Path)
+    compare_fields.add_argument("--candidate", default=None, type=Path)
     compare_fields.add_argument(
         "--time",
         default="latest",
         help="Time directory to compare (default: latest)",
     )
+    compare_fields.add_argument("--reference-time", default=None)
+    compare_fields.add_argument("--candidate-time", default=None)
     compare_fields.add_argument(
         "--fields",
         action="append",
         default=[],
         help="Comma-separated field names to compare; repeatable",
     )
-    compare_fields.add_argument("--preset", choices=["air5", "air11", "flow"], default=None)
+    compare_fields.add_argument(
+        "--preset",
+        default=None,
+        help="Field preset name (built-in: flow; plugins may add more)",
+    )
+    compare_fields.add_argument("--patch", default=None, help="Compare boundary patch value")
+    compare_fields.add_argument(
+        "--out",
+        default=None,
+        type=Path,
+        help="Write latest.csv and latest.md",
+    )
+    compare_fields.add_argument("--abs-tol", type=float, default=1e-300)
+    compare_fields.add_argument("--rel-tol", type=float, default=1e-12)
     compare_fields.add_argument("--json", action="store_true")
     compare_fields.set_defaults(func=_knife_compare_fields)
 
@@ -126,78 +168,80 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     copy.add_argument("--json", action="store_true")
     copy.set_defaults(func=_knife_copy)
 
-    receipt = knife_sub.add_parser(
-        "receipt",
-        help="Write, verify, and restore immutable run receipts",
+    manifest = knife_sub.add_parser(
+        "manifest",
+        help="Write, verify, and restore immutable run manifests",
     )
-    receipt.set_defaults(func=_help_handler(receipt))
-    receipt_sub = receipt.add_subparsers(dest="receipt_command", required=False)
+    manifest.set_defaults(func=_help_handler(manifest))
+    manifest_sub = manifest.add_subparsers(dest="manifest_command", required=False)
 
-    receipt_write = receipt_sub.add_parser("write", help="Write a run receipt for a case")
-    receipt_write.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
-    receipt_write.add_argument("--solver", default=None)
-    receipt_write.add_argument("--parallel", type=int, default=0)
-    receipt_write.add_argument("--mpi", default=None)
-    receipt_write.add_argument(
+    manifest_write = manifest_sub.add_parser("write", help="Write a run manifest for a case")
+    manifest_write.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    manifest_write.add_argument("--solver", default=None)
+    manifest_write.add_argument("--parallel", type=int, default=0)
+    manifest_write.add_argument("--mpi", default=None)
+    manifest_write.add_argument(
         "--sync-subdomains",
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Recorded launch setting for parallel runs",
     )
-    receipt_write.add_argument(
+    manifest_write.add_argument(
         "--prepare-parallel",
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Recorded launch setting for parallel runs",
     )
-    receipt_write.add_argument(
+    manifest_write.add_argument(
         "--clean-processors",
         action="store_true",
         help="Recorded launch setting for parallel runs",
     )
-    receipt_write.add_argument(
+    manifest_write.add_argument(
+        "--manifest-file",
         "--receipt-file",
+        dest="manifest_file",
         default=None,
         type=Path,
-        help="Receipt JSON path (relative paths resolve from current working directory)",
+        help="Manifest JSON path (relative paths resolve from current working directory)",
     )
-    receipt_write.add_argument(
+    manifest_write.add_argument(
         "--record-inputs-copy",
         action="store_true",
-        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
+        help="Copy system/, constant/, and 0/ alongside the manifest for restore",
     )
-    receipt_write.add_argument("--json", action="store_true")
-    receipt_write.set_defaults(func=_knife_receipt_write)
+    manifest_write.add_argument("--json", action="store_true")
+    manifest_write.set_defaults(func=_knife_manifest_write)
 
-    receipt_verify = receipt_sub.add_parser(
+    manifest_verify = manifest_sub.add_parser(
         "verify",
-        help="Verify current case inputs against a recorded receipt",
+        help="Verify current case inputs against a recorded manifest",
     )
-    receipt_verify.add_argument("receipt", type=Path)
-    receipt_verify.add_argument("--case", dest="case_dir", default=None, type=Path)
-    receipt_verify.add_argument("--json", action="store_true")
-    receipt_verify.set_defaults(func=_knife_receipt_verify)
+    manifest_verify.add_argument("manifest", type=Path)
+    manifest_verify.add_argument("--case", dest="case_dir", default=None, type=Path)
+    manifest_verify.add_argument("--json", action="store_true")
+    manifest_verify.set_defaults(func=_knife_manifest_verify)
 
-    receipt_restore = receipt_sub.add_parser(
+    manifest_restore = manifest_sub.add_parser(
         "restore",
-        help="Restore case inputs from a receipt with recorded input copies",
+        help="Restore case inputs from a manifest with recorded input copies",
     )
-    receipt_restore.add_argument("receipt", type=Path)
-    receipt_restore.add_argument("--to", dest="destination", required=True, type=Path)
-    receipt_restore.add_argument(
+    manifest_restore.add_argument("manifest", type=Path)
+    manifest_restore.add_argument("--to", dest="destination", required=True, type=Path)
+    manifest_restore.add_argument(
         "--only",
         action="append",
         default=[],
         help="Restore only selected roots: system, constant, 0 (repeatable or comma-separated)",
     )
-    receipt_restore.add_argument(
+    manifest_restore.add_argument(
         "--skip",
         action="append",
         default=[],
         help="Skip selected roots: system, constant, 0 (repeatable or comma-separated)",
     )
-    receipt_restore.add_argument("--json", action="store_true")
-    receipt_restore.set_defaults(func=_knife_receipt_restore)
+    manifest_restore.add_argument("--json", action="store_true")
+    manifest_restore.set_defaults(func=_knife_manifest_restore)
 
     initials = knife_sub.add_parser(
         "initials",
@@ -333,20 +377,24 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Run parallel prelaunch step (optional clean + decomposePar -force)",
     )
     launch.add_argument(
+        "--write-manifest",
         "--write-receipt",
+        dest="write_manifest",
         action="store_true",
-        help="Write immutable launch receipt under ./runs/",
+        help="Write immutable launch manifest under ./runs/",
     )
     launch.add_argument(
         "--record-inputs-copy",
         action="store_true",
-        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
+        help="Copy system/, constant/, and 0/ alongside the manifest for restore",
     )
     launch.add_argument(
+        "--manifest-file",
         "--receipt-file",
+        dest="manifest_file",
         default=None,
         type=Path,
-        help="Receipt JSON path (relative paths resolve from current working directory)",
+        help="Manifest JSON path (relative paths resolve from current working directory)",
     )
     launch.add_argument("--json", action="store_true", help="Print result as JSON")
     launch.set_defaults(func=_watch_start)
@@ -374,20 +422,24 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="Run parallel prelaunch step (optional clean + decomposePar -force)",
     )
     run.add_argument(
+        "--write-manifest",
         "--write-receipt",
+        dest="write_manifest",
         action="store_true",
-        help="Write immutable launch receipt under ./runs/",
+        help="Write immutable launch manifest under ./runs/",
     )
     run.add_argument(
         "--record-inputs-copy",
         action="store_true",
-        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
+        help="Copy system/, constant/, and 0/ alongside the manifest for restore",
     )
     run.add_argument(
+        "--manifest-file",
         "--receipt-file",
+        dest="manifest_file",
         default=None,
         type=Path,
-        help="Receipt JSON path (relative paths resolve from current working directory)",
+        help="Manifest JSON path (relative paths resolve from current working directory)",
     )
     run.add_argument("--json", action="store_true", help="Print result as JSON")
     run.set_defaults(func=_watch_start)
@@ -674,6 +726,19 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     plot_criteria.add_argument("--json", action="store_true")
     plot_criteria.set_defaults(func=_plot_metrics)
 
+    _add_plugin_knife_commands(knife_sub)
+
+
+def _add_plugin_knife_commands(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    registry = discover_plugins()
+    for name, command in sorted(registry.knife_commands.items()):
+        try:
+            command.add_parser(subparsers)
+        except argparse.ArgumentError as exc:
+            registry.errors.append(f"{name}: {exc}")
+
 def _knife_doctor(args: argparse.Namespace) -> int:
     payload = knife_ops.doctor_payload(args.case_dir)
     if args.json:
@@ -741,17 +806,56 @@ def _knife_compare(args: argparse.Namespace) -> int:
 
 
 def _knife_physical(args: argparse.Namespace) -> int:
+    fields = split_field_list(list(getattr(args, "fields", []))) or []
+    rules = list(getattr(args, "field_rules", []))
+    profile_name = getattr(args, "profile", None)
+    if profile_name:
+        registry = discover_plugins()
+        profile = registry.physical_profiles.get(str(profile_name))
+        if profile is None:
+            available = ", ".join(sorted(registry.physical_profiles)) or "none"
+            print(
+                f"ofti: physical profile '{profile_name}' is not available; "
+                f"install a plugin that provides it (available: {available})",
+                file=sys.stderr,
+            )
+            return 2
+        profile_fields = [str(item) for item in profile.fields(args.case_dir)]
+        fields = _unique_cli_items([*fields, *profile_fields])
+        rules.extend(str(item) for item in profile.rules(args.case_dir))
     payload = knife_ops.physical_payload(
         args.case_dir,
         time_name=str(getattr(args, "time", "latest")),
-        fields=split_field_list(list(getattr(args, "fields", []))),
+        fields=fields or None,
+        rules=rules,
+        patch=getattr(args, "patch", None),
+        out_dir=getattr(args, "out", None),
+        report_stem="physical",
     )
+    if profile_name:
+        payload["profile"] = str(profile_name)
+    return _print_physical_payload(payload, args)
+
+
+def _unique_cli_items(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value and value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
+
+
+def _print_physical_payload(payload: dict[str, object], args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
-        return 0 if bool(payload.get("ok", False)) else 1
+        return _physical_exit_code(payload, fail_on_bad=bool(getattr(args, "fail_on_bad", False)))
     print(f"case={payload['case']}")
     print(f"time={payload['time']} fields={payload['field_count']}")
     print(f"ok={payload['ok']} physical_ok={payload['physical_ok']}")
+    if payload.get("outputs"):
+        print(f"outputs={payload['outputs']}")
     for row in cast("list[dict[str, object]]", payload["fields"]):
         if not row.get("ok"):
             print(f"- {row['field']}: error={row.get('error')}")
@@ -761,28 +865,42 @@ def _knife_physical(args: argparse.Namespace) -> int:
             f"min={row.get('min')} max={row.get('max')} "
             f"neg={row.get('negative_count')} nonfinite={row.get('nonfinite_count')}",
         )
-    if payload.get("species_sum"):
-        species = cast("dict[str, object]", payload["species_sum"])
-        print(
-            "sumY: "
-            f"fields={','.join(cast('list[str]', species.get('fields', [])))} "
-            f"min={species.get('min')} max={species.get('max')} "
-            f"max_abs_deviation={species.get('max_abs_deviation')}",
-        )
     for item in cast("list[dict[str, object]]", payload.get("violations", [])):
         print(f"violation: {item}")
     for item in cast("list[str]", payload.get("hard_errors", [])):
         print(f"hard_error: {item}")
-    return 0 if bool(payload.get("ok", False)) else 1
+    return _physical_exit_code(payload, fail_on_bad=bool(getattr(args, "fail_on_bad", False)))
+
+
+def _physical_exit_code(payload: dict[str, object], *, fail_on_bad: bool) -> int:
+    if not bool(payload.get("ok", False)):
+        return 1
+    if fail_on_bad and not bool(payload.get("physical_ok", False)):
+        return 1
+    return 0
 
 
 def _knife_compare_fields(args: argparse.Namespace) -> int:
+    left_case = getattr(args, "reference", None) or getattr(args, "left_case", None)
+    right_case = getattr(args, "candidate", None) or getattr(args, "right_case", None)
+    if left_case is None or right_case is None:
+        print(
+            "compare-fields requires left/right cases or --reference/--candidate",
+            file=sys.stderr,
+        )
+        return 2
     payload = knife_ops.compare_fields_payload(
-        args.left_case,
-        args.right_case,
+        left_case,
+        right_case,
         time_name=str(getattr(args, "time", "latest")),
+        reference_time=getattr(args, "reference_time", None),
+        candidate_time=getattr(args, "candidate_time", None),
         fields=split_field_list(list(getattr(args, "fields", []))),
         preset=getattr(args, "preset", None),
+        patch=getattr(args, "patch", None),
+        out_dir=getattr(args, "out", None),
+        abs_tol=float(getattr(args, "abs_tol", 1e-300)),
+        rel_tol=float(getattr(args, "rel_tol", 1e-12)),
     )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -790,13 +908,16 @@ def _knife_compare_fields(args: argparse.Namespace) -> int:
     print(f"left_case={payload['left_case']}")
     print(f"right_case={payload['right_case']}")
     print(f"time={payload['time']} fields={payload['field_count']} same={payload['same']}")
+    if payload.get("outputs"):
+        print(f"outputs={payload['outputs']}")
     for row in cast("list[dict[str, object]]", payload["fields"]):
         if not row.get("ok"):
             print(f"- {row['field']}: error={row.get('error')}")
             continue
         print(
             f"- {row['field']}: kind={row.get('kind')} count={row.get('count')} "
-            f"maxAbs={row.get('max_abs')} maxRel={row.get('max_rel')} "
+            f"maxAbs={row.get('abs_linf')} relL2={row.get('rel_l2')} "
+            f"relLinfSig={row.get('rel_linf_significant')} "
             f"nonfinite={row.get('nonfinite_pairs')}",
         )
     for item in cast("list[str]", payload.get("errors", [])):
@@ -858,7 +979,7 @@ def _knife_copy(args: argparse.Namespace) -> int:
     print(f"ok={payload['ok']}")
     return 0
 
-def _knife_receipt_write(args: argparse.Namespace) -> int:
+def _knife_manifest_write(args: argparse.Namespace) -> int:
     sync_subdomains = bool(getattr(args, "sync_subdomains", True))
     clean_processors = bool(getattr(args, "clean_processors", False))
     prepare_parallel = bool(getattr(args, "prepare_parallel", True))
@@ -871,7 +992,7 @@ def _knife_receipt_write(args: argparse.Namespace) -> int:
         sync_subdomains=sync_subdomains,
     )
     command = run_ops.dry_run_command(cmd)
-    receipt_path = receipt_ops.write_case_run_receipt(
+    manifest_path = manifest_ops.write_case_run_manifest(
         Path(args.case_dir),
         name=display,
         command=command,
@@ -882,14 +1003,14 @@ def _knife_receipt_write(args: argparse.Namespace) -> int:
         sync_subdomains=sync_subdomains,
         prepare_parallel=prepare_parallel,
         clean_processors=clean_processors,
-        output=getattr(args, "receipt_file", None),
+        output=getattr(args, "manifest_file", None),
         record_inputs_copy=bool(getattr(args, "record_inputs_copy", False)),
-        solver_name=solver_name_for_receipt(cmd, parallel=parallel),
+        solver_name=solver_name_for_manifest(cmd, parallel=parallel),
     )
     payload = {
         "case": str(Path(args.case_dir).resolve()),
         "command": command,
-        "receipt": str(receipt_path),
+        "manifest": str(manifest_path),
         "recorded_inputs_copy": bool(getattr(args, "record_inputs_copy", False)),
         "ok": True,
     }
@@ -901,19 +1022,19 @@ def _knife_receipt_write(args: argparse.Namespace) -> int:
         return 0
     print(f"case={payload['case']}")
     print(f"command={payload['command']}")
-    print(f"receipt={payload['receipt']}")
+    print(f"manifest={payload['manifest']}")
     print(f"recorded_inputs_copy={payload['recorded_inputs_copy']}")
     return 0
 
-def _knife_receipt_verify(args: argparse.Namespace) -> int:
-    payload = receipt_ops.verify_run_receipt(
-        Path(args.receipt),
+def _knife_manifest_verify(args: argparse.Namespace) -> int:
+    payload = manifest_ops.verify_run_manifest(
+        Path(args.manifest),
         case_path=getattr(args, "case_dir", None),
     )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if bool(payload.get("ok")) else 1
-    print(f"receipt={payload['receipt']}")
+    print(f"manifest={payload['manifest']}")
     print(f"case={payload['case']}")
     print(f"ok={payload['ok']}")
     print(f"expected_tree_hash={payload['expected_tree_hash']}")
@@ -935,9 +1056,9 @@ def _knife_receipt_verify(args: argparse.Namespace) -> int:
             print(f"- {path}")
     return 0 if bool(payload.get("ok")) else 1
 
-def _knife_receipt_restore(args: argparse.Namespace) -> int:
-    payload = receipt_ops.restore_run_receipt(
-        Path(args.receipt),
+def _knife_manifest_restore(args: argparse.Namespace) -> int:
+    payload = manifest_ops.restore_run_manifest(
+        Path(args.manifest),
         Path(args.destination),
         only=getattr(args, "only", []),
         skip=getattr(args, "skip", []),
@@ -945,10 +1066,10 @@ def _knife_receipt_restore(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if bool(payload.get("ok")) else 1
-    print(f"receipt={payload['receipt']}")
+    print(f"manifest={payload['manifest']}")
     print(f"destination={payload['destination']}")
     print(f"selected_roots={','.join(payload['selected_roots'])}")
-    print(f"restored_receipt={payload['restored_receipt']}")
+    print(f"restored_manifest={payload['restored_manifest']}")
     if payload["restored"]:
         print("restored:")
         for item in payload["restored"]:

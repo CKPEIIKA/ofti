@@ -77,7 +77,7 @@ _HELP_BY_DEST = {
     "parallel": "Number of MPI ranks / subdomains (0 means serial)",
     "pid_file": "Write background process pid to this file",
     "poll_interval": "Seconds between queue status polls",
-    "receipt": "Run receipt JSON file",
+    "manifest": "Run manifest JSON file",
     "right_case": "Right case directory",
     "seconds": "Polling interval in seconds",
     "set_dir": "Case-set root used when explicit cases are omitted",

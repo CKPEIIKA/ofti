@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from ofti.app import cli_tools
+from ofti.plugins import PluginRegistry, ProfileMatch
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import watch as watch_ops
 from ofti.tools.cli_tools.run import RunResult
@@ -34,7 +35,7 @@ def test_run_group_help_lists_new_subcommands(capsys) -> None:
     code = cli_tools.main(["run"])
     out = capsys.readouterr().out
     assert code == 0
-    assert "{tool,solver,resize-parallel,matrix,parametric,queue,status}" in out
+    assert "{tool,solver,smoke,resize-parallel,matrix,parametric,queue,status}" in out
 
 
 def test_cli_tools_without_args_prints_short_help(capsys) -> None:
@@ -77,7 +78,7 @@ def test_knife_group_help_lists_new_commands(capsys) -> None:
     assert "eta" in out
     assert "report" in out
     assert "campaign" in out
-    assert "receipt" in out
+    assert "manifest" in out
 
 
 def test_run_tool_list_outputs_catalog_json(tmp_path, capsys) -> None:
@@ -998,19 +999,19 @@ def test_watch_log_json_rejects_follow(tmp_path, capsys) -> None:
 
 
 def test_knife_current_includes_untracked_solver_processes(tmp_path, monkeypatch) -> None:
-    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    case = _make_case(tmp_path / "case", solver="simpleFoam")
     monkeypatch.setattr(
         "ofti.tools.knife_service.resolve_solver_name",
-        lambda _case: ("hy2Foam", None),
+        lambda _case: ("simpleFoam", None),
     )
     monkeypatch.setattr(
         "ofti.tools.knife_service.refresh_jobs",
-        lambda _case: [{"id": "job-1", "name": "hy2Foam", "pid": 123, "status": "running"}],
+        lambda _case: [{"id": "job-1", "name": "simpleFoam", "pid": 123, "status": "running"}],
     )
     monkeypatch.setattr(
         "ofti.tools.knife_service._scan_proc_solver_processes",
         lambda _case, _solver, **_kwargs: [
-            {"pid": 777, "solver": "hy2Foam", "command": "hy2Foam -case /tmp/case"},
+            {"pid": 777, "solver": "simpleFoam", "command": "simpleFoam -case /tmp/case"},
         ],
     )
 
@@ -1021,13 +1022,13 @@ def test_knife_current_includes_untracked_solver_processes(tmp_path, monkeypatch
 
 
 def test_knife_adopt_cli_json(tmp_path, capsys, monkeypatch) -> None:
-    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    case = _make_case(tmp_path / "case", solver="simpleFoam")
     monkeypatch.setattr(
         "ofti.app.cli_tools.knife_ops.adopt_payload",
         lambda _case: {
             "case": str(case),
             "selected": 1,
-            "adopted": [{"id": "1-777", "pid": 777, "name": "hy2Foam", "role": "solver"}],
+            "adopted": [{"id": "1-777", "pid": 777, "name": "simpleFoam", "role": "solver"}],
             "failed": [],
             "skipped": [],
             "jobs_running_before": 0,
@@ -1042,7 +1043,7 @@ def test_knife_adopt_cli_json(tmp_path, capsys, monkeypatch) -> None:
 
 
 def test_knife_adopt_cli_recursive_passes_flag(tmp_path, capsys, monkeypatch) -> None:
-    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    case = _make_case(tmp_path / "case", solver="simpleFoam")
     seen: dict[str, object] = {}
 
     def _adopt(_case: Path, *, recursive: bool = False) -> dict[str, object]:
@@ -1257,7 +1258,7 @@ def test_run_solver_parallel_no_prepare_skips_prepare(tmp_path, capsys, monkeypa
 
 
 def test_knife_converge_cli_json(tmp_path, capsys, monkeypatch) -> None:
-    log_path = tmp_path / "log.hy2Foam"
+    log_path = tmp_path / "log.simpleFoam"
     log_path.write_text("Time = 1\n")
     monkeypatch.setattr(
         "ofti.app.cli_tools.knife_ops.converge_payload",
@@ -1308,7 +1309,134 @@ def test_knife_physical_cli_json(tmp_path, capsys, monkeypatch) -> None:
     assert code == 0
     assert payload["physical_ok"] is False
     assert seen["case"] == case
-    assert seen["kwargs"] == {"time_name": "0", "fields": ["rho", "p"]}
+    assert seen["kwargs"] == {
+        "time_name": "0",
+        "fields": ["rho", "p"],
+        "rules": [],
+        "patch": None,
+        "out_dir": None,
+        "report_stem": "physical",
+    }
+
+
+def test_knife_physical_fail_on_bad_returns_one(tmp_path, capsys, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case")
+
+    monkeypatch.setattr(
+        "ofti.app.cli_tools.knife_ops.physical_payload",
+        lambda *_args, **_kwargs: {
+            "case": str(case),
+            "time": "0",
+            "field_count": 1,
+            "ok": True,
+            "physical_ok": False,
+            "hard_errors": [],
+            "violations": [{"field": "rho", "kind": "min"}],
+            "fields": [{"field": "rho", "ok": True}],
+            "species_sum": None,
+        },
+    )
+
+    code = cli_tools.main(["knife", "physical", str(case), "--fail-on-bad", "--json"])
+
+    assert code == 1
+    assert json.loads(capsys.readouterr().out)["physical_ok"] is False
+
+
+def test_knife_physical_missing_profile_returns_usage_error(tmp_path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+
+    code = cli_tools.main(["knife", "physical", str(case), "--profile", "simplefoam"])
+
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "physical profile 'simplefoam' is not available" in err
+
+
+def test_knife_physical_profile_forwards_plugin_fields_and_rules(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    seen: dict[str, object] = {}
+
+    class FakeProfile:
+        name = "fake"
+
+        def detect(self, case_dir: Path) -> ProfileMatch:
+            return ProfileMatch(confidence=1.0, reasons=(str(case_dir),))
+
+        def fields(self, _case_dir: Path) -> list[str]:
+            return ["rho", "T"]
+
+        def rules(self, _case_dir: Path) -> list[str]:
+            return ["rho:min=0", "T:min=0"]
+
+    registry = PluginRegistry(physical_profiles={"fake": FakeProfile()})
+    monkeypatch.setattr("ofti.app.cli_adapters.knife.discover_plugins", lambda: registry)
+
+    def _payload(case_dir: Path, **kwargs: object) -> dict[str, object]:
+        seen["case"] = case_dir
+        seen["kwargs"] = kwargs
+        return {
+            "case": str(case),
+            "time": "0",
+            "field_count": 2,
+            "ok": True,
+            "physical_ok": True,
+            "hard_errors": [],
+            "violations": [],
+            "fields": [],
+        }
+
+    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.physical_payload", _payload)
+
+    code = cli_tools.main(["knife", "physical", str(case), "--profile", "fake", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["profile"] == "fake"
+    assert seen["kwargs"] == {
+        "time_name": "latest",
+        "fields": ["rho", "T"],
+        "rules": ["rho:min=0", "T:min=0"],
+        "patch": None,
+        "out_dir": None,
+        "report_stem": "physical",
+    }
+
+
+def test_knife_plugin_command_is_dispatched(capsys, monkeypatch) -> None:
+    class FakeCommand:
+        name = "fake-plugin"
+
+        def add_parser(self, subparsers) -> None:
+            parser = subparsers.add_parser("fake-plugin", help="Fake plugin command")
+            parser.set_defaults(func=self.run)
+
+        def run(self, _args) -> int:
+            print("plugin-ok")
+            return 0
+
+    registry = PluginRegistry(knife_commands={"fake-plugin": FakeCommand()})
+    monkeypatch.setattr("ofti.app.cli_adapters.knife.discover_plugins", lambda: registry)
+
+    code = cli_tools.main(["knife", "fake-plugin"])
+
+    assert code == 0
+    assert capsys.readouterr().out.strip() == "plugin-ok"
+
+
+def test_knife_compare_fields_unknown_plugin_preset_returns_usage_error(tmp_path, capsys) -> None:
+    left = _make_case(tmp_path / "left")
+    right = _make_case(tmp_path / "right")
+
+    code = cli_tools.main(["knife", "compare-fields", str(left), str(right), "--preset", "plugin-preset"])
+
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "unknown field preset: plugin-preset" in err
 
 
 def test_knife_compare_fields_cli_text_nonzero_on_error(tmp_path, capsys, monkeypatch) -> None:
@@ -1322,7 +1450,7 @@ def test_knife_compare_fields_cli_text_nonzero_on_error(tmp_path, capsys, monkey
             "right_case": str(right),
             "time": "0",
             "right_time": "0",
-            "preset": "air5",
+            "preset": "plugin-preset",
             "fields_requested": ["p"],
             "field_count": 1,
             "ok": False,
@@ -1332,7 +1460,7 @@ def test_knife_compare_fields_cli_text_nonzero_on_error(tmp_path, capsys, monkey
         },
     )
 
-    code = cli_tools.main(["knife", "compare-fields", str(left), str(right), "--preset", "air5", "--time", "0"])
+    code = cli_tools.main(["knife", "compare-fields", str(left), str(right), "--preset", "plugin-preset", "--time", "0"])
 
     out = capsys.readouterr().out
     assert code == 1

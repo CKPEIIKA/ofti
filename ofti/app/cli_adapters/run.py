@@ -9,8 +9,8 @@ from typing import cast
 from ofti.app.cli_adapters.common import (
     interval_with_cpu_mode,
     parse_env_assignments,
-    planned_receipt_path,
-    solver_name_for_receipt,
+    planned_manifest_path,
+    solver_name_for_manifest,
     tail_bytes_with_cpu_mode,
 )
 from ofti.app.cli_help import (
@@ -18,7 +18,8 @@ from ofti.app.cli_help import (
     _add_table_flag,
     _help_handler,
 )
-from ofti.core import run_receipt as receipt_ops
+from ofti.core import run_manifest as manifest_ops
+from ofti.core.field_diagnostics import split_field_list
 from ofti.tools import parallel_resize_service, table_render_service
 from ofti.tools.cli_tools import run as run_ops
 
@@ -72,24 +73,81 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     solver.add_argument("--pid-file", default=None)
     solver.add_argument("--env", action="append", default=[], metavar="KEY=VALUE")
     solver.add_argument(
+        "--write-manifest",
         "--write-receipt",
+        dest="write_manifest",
         action="store_true",
-        help="Write immutable launch receipt under ./runs/",
+        help="Write immutable launch manifest under ./runs/",
     )
     solver.add_argument(
         "--record-inputs-copy",
         action="store_true",
-        help="Copy system/, constant/, and 0/ alongside the receipt for restore",
+        help="Copy system/, constant/, and 0/ alongside the manifest for restore",
     )
     solver.add_argument(
+        "--manifest-file",
         "--receipt-file",
+        dest="manifest_file",
         default=None,
         type=Path,
-        help="Receipt JSON path (relative paths resolve from current working directory)",
+        help="Manifest JSON path (relative paths resolve from current working directory)",
     )
     solver.add_argument("--dry-run", action="store_true")
     solver.add_argument("--json", action="store_true", help="Print result as JSON")
     solver.set_defaults(func=_run_solver)
+
+    smoke = run_sub.add_parser(
+        "smoke",
+        help="Run a bounded solver smoke test on a copied case",
+        description=(
+            "Run a short solver smoke test. By default OFTI copies the case into "
+            "an output directory, normalizes controlDict for a bounded run, writes "
+            "log/summary artifacts, and leaves the source case untouched."
+        ),
+    )
+    smoke.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    smoke.add_argument("--solver", default=None)
+    smoke.add_argument("--iterations", type=int, default=20)
+    smoke.add_argument(
+        "--timeout",
+        default="300s",
+        help="Wall timeout, e.g. 30s, 5m, 1h (default: 300s)",
+    )
+    smoke.add_argument("--parallel", type=int, default=0)
+    smoke.add_argument("--mpi", default=None)
+    smoke.add_argument("--out", dest="output_root", type=Path, default=None)
+    smoke.add_argument("--in-place", action="store_true", help="Run in the source case")
+    smoke.add_argument("--deltaT", dest="delta_t", type=float, default=None)
+    smoke.add_argument(
+        "--preserve-deltaT",
+        action="store_true",
+        help="Preserve existing deltaT instead of writing --deltaT/default",
+    )
+    smoke.add_argument(
+        "--core-only",
+        action="store_true",
+        help="Disable functionObjects by writing an empty functions dictionary",
+    )
+    smoke.add_argument(
+        "--prepare-parallel",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run parallel prelaunch step for --parallel > 1",
+    )
+    smoke.add_argument("--clean-processors", action="store_true")
+    smoke.add_argument(
+        "--physical",
+        action="store_true",
+        help="Run ofti knife physical on the smoke case after the solver exits",
+    )
+    smoke.add_argument(
+        "--fields",
+        action="append",
+        default=None,
+        help="Fields for --physical (comma-separated, repeatable)",
+    )
+    smoke.add_argument("--json", action="store_true", help="Print result as JSON")
+    smoke.set_defaults(func=_run_smoke)
 
     resize = run_sub.add_parser(
         "resize-parallel",
@@ -505,6 +563,44 @@ def _run_queue(args: argparse.Namespace) -> int:
             print(f"failed {row['case']}: {row['error']}")
     return 0 if bool(payload.get("ok", True)) else 1
 
+
+def _run_smoke(args: argparse.Namespace) -> int:
+    try:
+        timeout = run_ops.parse_duration_seconds(getattr(args, "timeout", "300s"))
+        payload = run_ops.smoke_payload(
+            args.case_dir,
+            solver=getattr(args, "solver", None),
+            iterations=int(getattr(args, "iterations", 20)),
+            timeout=timeout,
+            parallel=int(getattr(args, "parallel", 0)),
+            mpi=getattr(args, "mpi", None),
+            output_root=getattr(args, "output_root", None),
+            in_place=bool(getattr(args, "in_place", False)),
+            delta_t=getattr(args, "delta_t", None),
+            preserve_delta_t=bool(getattr(args, "preserve_deltaT", False)),
+            core_only=bool(getattr(args, "core_only", False)),
+            prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
+            clean_processors=bool(getattr(args, "clean_processors", False)),
+            run_physical=bool(getattr(args, "physical", False)),
+            physical_fields=split_field_list(getattr(args, "fields", None)),
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    if bool(getattr(args, "json", False)):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if bool(payload.get("ok")) else 1
+    print(f"case={payload['case']}")
+    print(f"solver={payload['solver']} ok={payload['ok']} returncode={payload['returncode']}")
+    print(
+        f"times_seen={len(cast('list[object]', payload['times_seen']))} "
+        f"end_seen={payload['end_seen']}",
+    )
+    print(f"log={payload['log_path']}")
+    print(f"summary={Path(str(payload['output_root'])) / 'summary.json'}")
+    return 0 if bool(payload.get("ok")) else 1
+
+
 def _run_status(args: argparse.Namespace) -> int:
     payload = run_ops.status_set_payload(
         set_dir=args.set_dir,
@@ -723,10 +819,10 @@ def _run_solver_dry_run(
         extra_env=None,
     )
     cmd_text = run_ops.dry_run_command(cmd)
-    write_receipt = _write_receipt_enabled(args)
-    receipt_path = (
-        planned_receipt_path(args.case_dir, getattr(args, "receipt_file", None))
-        if write_receipt
+    write_manifest = _write_manifest_enabled(args)
+    manifest_path = (
+        planned_manifest_path(args.case_dir, getattr(args, "manifest_file", None))
+        if write_manifest
         else None
     )
     if getattr(args, "json", False):
@@ -740,9 +836,9 @@ def _run_solver_dry_run(
                     "sync_subdomains": sync_subdomains,
                     "clean_processors": clean_processors,
                     "prepare_parallel": prepare_parallel,
-                    "write_receipt": write_receipt,
+                    "write_manifest": write_manifest,
                     "record_inputs_copy": bool(getattr(args, "record_inputs_copy", False)),
-                    "receipt_path": str(receipt_path) if receipt_path is not None else None,
+                    "manifest_path": str(manifest_path) if manifest_path is not None else None,
                     "parallel_setup": parallel_setup,
                 },
                 indent=2,
@@ -758,8 +854,8 @@ def _run_solver_dry_run(
         )
     elif parallel > 1 and "-parallel" in cmd:
         print("# pre: skipped (--no-prepare-parallel)")
-    if receipt_path is not None:
-        print(f"# receipt: {receipt_path}")
+    if manifest_path is not None:
+        print(f"# manifest: {manifest_path}")
     return 0
 
 def _run_solver_execute(
@@ -779,10 +875,10 @@ def _run_solver_execute(
     log_path = Path(log_path_raw) if isinstance(log_path_raw, str) and log_path_raw else None
     pid_path = Path(pid_path_raw) if isinstance(pid_path_raw, str) and pid_path_raw else None
     extra_env = parse_env_assignments(getattr(args, "env", []))
-    write_receipt = _write_receipt_enabled(args)
-    receipt_output = (
-        planned_receipt_path(args.case_dir, getattr(args, "receipt_file", None))
-        if write_receipt
+    write_manifest = _write_manifest_enabled(args)
+    manifest_output = (
+        planned_manifest_path(args.case_dir, getattr(args, "manifest_file", None))
+        if write_manifest
         else None
     )
     parallel_setup = _parallel_setup_payload(
@@ -806,9 +902,9 @@ def _run_solver_execute(
         pid_path=pid_path,
         extra_env=extra_env,
     )
-    written_receipt: Path | None = None
-    if write_receipt:
-        written_receipt = receipt_ops.write_case_run_receipt(
+    written_manifest: Path | None = None
+    if write_manifest:
+        written_manifest = manifest_ops.write_case_run_manifest(
             Path(args.case_dir),
             name=display,
             command=run_ops.dry_run_command(cmd),
@@ -823,9 +919,9 @@ def _run_solver_execute(
             log_path=result.log_path,
             pid=result.pid,
             returncode=result.returncode,
-            output=receipt_output,
+            output=manifest_output,
             record_inputs_copy=bool(getattr(args, "record_inputs_copy", False)),
-            solver_name=solver_name_for_receipt(cmd, parallel=parallel),
+            solver_name=solver_name_for_manifest(cmd, parallel=parallel),
         )
     if getattr(args, "json", False):
         payload: dict[str, object] = {
@@ -840,9 +936,9 @@ def _run_solver_execute(
             "sync_subdomains": sync_subdomains,
             "clean_processors": clean_processors,
             "prepare_parallel": prepare_parallel,
-            "write_receipt": write_receipt,
+            "write_manifest": write_manifest,
             "record_inputs_copy": bool(getattr(args, "record_inputs_copy", False)),
-            "receipt_path": str(written_receipt) if written_receipt is not None else None,
+            "manifest_path": str(written_manifest) if written_manifest is not None else None,
             "parallel_setup": parallel_setup,
             "returncode": result.returncode,
             "pid": result.pid,
@@ -855,15 +951,15 @@ def _run_solver_execute(
         return result.returncode
     if result.pid is not None:
         print(f"Started {display} in background: pid={result.pid} log={result.log_path}")
-        if written_receipt is not None:
-            print(f"Receipt: {written_receipt}")
+        if written_manifest is not None:
+            print(f"Manifest: {written_manifest}")
         return 0
     if result.stdout:
         print(result.stdout, end="")
     if result.stderr:
         print(result.stderr, file=sys.stderr, end="")
-    if written_receipt is not None:
-        print(f"Receipt: {written_receipt}")
+    if written_manifest is not None:
+        print(f"Manifest: {written_manifest}")
     return result.returncode
 
 def _parallel_setup_payload(
@@ -889,9 +985,9 @@ def _parallel_setup_payload(
         ),
     )
 
-def _write_receipt_enabled(args: argparse.Namespace) -> bool:
+def _write_manifest_enabled(args: argparse.Namespace) -> bool:
     return bool(
-        getattr(args, "write_receipt", False)
+        getattr(args, "write_manifest", False)
         or getattr(args, "record_inputs_copy", False)
-        or getattr(args, "receipt_file", None) is not None,
+        or getattr(args, "manifest_file", None) is not None,
     )

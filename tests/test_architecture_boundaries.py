@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 UI_PREFIXES = ("ofti.app", "ofti.ui", "ofti.ui_curses")
@@ -12,6 +13,10 @@ UPSTREAM_FOAMLIB = "foamlib"
 # completed.
 KNOWN_UI_IN_TOOLS: set[Path] = set()
 KNOWN_DIRECT_FOAMLIB: set[Path] = set()
+KNOWN_DOMAIN_TERMS: set[Path] = set()
+DOMAIN_FORBIDDEN_RE = re.compile(
+    r"hy2Foam|air5|air11|N2\+|O2\+|NO\+|\be-\b|\belectron\b|\bion(?:ized|s)?\b",
+)
 
 
 def _imports(path: Path) -> set[str]:
@@ -70,4 +75,15 @@ def test_library_modules_do_not_import_cli_adapters() -> None:
         bad = [name for name in imports if name.startswith(CLI_ADAPTER_PREFIX)]
         if bad:
             offenders[path] = bad
+    assert offenders == {}
+
+
+def test_core_and_tools_do_not_spread_hy2foam_domain_terms() -> None:
+    offenders: dict[Path, list[str]] = {}
+    for path in _py_files("ofti/core") + _py_files("ofti/tools"):
+        if path in KNOWN_DOMAIN_TERMS:
+            continue
+        matches = sorted(set(DOMAIN_FORBIDDEN_RE.findall(path.read_text(encoding="utf-8"))))
+        if matches:
+            offenders[path] = matches
     assert offenders == {}

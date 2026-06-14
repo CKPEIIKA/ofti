@@ -17,6 +17,9 @@ from ofti.core.field_diagnostics import (
 )
 from ofti.core.field_diagnostics import (
     field_sanity_payload,
+    parse_field_rules,
+    write_compare_report,
+    write_physical_report,
 )
 from ofti.core.solver_checks import resolve_solver_name
 from ofti.core.solver_status import latest_solver_job, solver_status_text
@@ -417,9 +420,22 @@ def physical_payload(
     *,
     time_name: str = "latest",
     fields: list[str] | None = None,
+    rules: list[str] | None = None,
+    patch: str | None = None,
+    out_dir: Path | None = None,
+    report_stem: str = "physical",
 ) -> dict[str, Any]:
     case_path = case_source_service.require_case_dir(case_dir)
-    return field_sanity_payload(case_path, time_name=time_name, fields=fields)
+    payload = field_sanity_payload(
+        case_path,
+        time_name=time_name,
+        fields=fields,
+        rules=parse_field_rules(rules),
+        patch=patch,
+    )
+    if out_dir is not None:
+        payload["outputs"] = write_physical_report(payload, out_dir, stem=report_stem)
+    return payload
 
 
 def compare_fields_payload(
@@ -427,18 +443,32 @@ def compare_fields_payload(
     right_case: Path,
     *,
     time_name: str = "latest",
+    reference_time: str | None = None,
+    candidate_time: str | None = None,
     fields: list[str] | None = None,
     preset: str | None = None,
+    patch: str | None = None,
+    out_dir: Path | None = None,
+    abs_tol: float = 1e-300,
+    rel_tol: float = 1e-12,
 ) -> dict[str, Any]:
     left = case_source_service.require_case_dir(left_case)
     right = case_source_service.require_case_dir(right_case)
-    return compare_fields_core_payload(
+    payload = compare_fields_core_payload(
         left,
         right,
         time_name=time_name,
+        reference_time=reference_time,
+        candidate_time=candidate_time,
         fields=fields,
         preset=preset,
+        patch=patch,
+        abs_tol=abs_tol,
+        rel_tol=rel_tol,
     )
+    if out_dir is not None:
+        payload["outputs"] = write_compare_report(payload, out_dir)
+    return payload
 
 
 def copy_payload(

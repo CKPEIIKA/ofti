@@ -420,17 +420,17 @@ def _write_proc_entry(proc_root: Path, pid: int, ppid: int, cmdline: bytes, cwd:
 
 
 def test_knife_scan_proc_detects_mpi_launcher_and_rank_processes(tmp_path: Path) -> None:
-    case = _make_case(tmp_path / "case", solver="hy2Foam")
+    case = _make_case(tmp_path / "case", solver="simpleFoam")
     proc_root = tmp_path / "proc"
     proc_root.mkdir()
 
-    _write_proc_entry(proc_root, 10, 1, b"mpirun\x00-np\x004\x00hy2Foam\x00-case\x00.\x00", case)
-    _write_proc_entry(proc_root, 11, 10, b"hy2Foam\x00-parallel\x00-case\x00.\x00", case)
-    _write_proc_entry(proc_root, 12, 10, b"hy2Foam\x00-parallel\x00-case\x00.\x00", case)
+    _write_proc_entry(proc_root, 10, 1, b"mpirun\x00-np\x004\x00simpleFoam\x00-case\x00.\x00", case)
+    _write_proc_entry(proc_root, 11, 10, b"simpleFoam\x00-parallel\x00-case\x00.\x00", case)
+    _write_proc_entry(proc_root, 12, 10, b"simpleFoam\x00-parallel\x00-case\x00.\x00", case)
 
     rows = knife._scan_proc_solver_processes(
         case,
-        "hy2Foam",
+        "simpleFoam",
         tracked_pids={11},
         proc_root=proc_root,
         include_tracked=True,
@@ -488,7 +488,7 @@ def test_knife_status_payload_includes_runtime_snapshot(tmp_path: Path, monkeypa
 
 
 def test_knife_converge_payload_strict(tmp_path: Path) -> None:
-    log = tmp_path / "log.hy2Foam"
+    log = tmp_path / "log.simpleFoam"
     log.write_text(
         "\n".join(
             [

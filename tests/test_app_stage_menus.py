@@ -57,7 +57,7 @@ def test_main_menu_no_tools_option(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 def test_simulation_menu_stage_actions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     case = tmp_path / "case"
     (case / "system").mkdir(parents=True)
-    (case / "system" / "controlDict").write_text("application hy2Foam;\n")
+    (case / "system" / "controlDict").write_text("application simpleFoam;\n")
     (case / "system" / "decomposeParDict").write_text("numberOfSubdomains 2;\n")
     calls: list[str] = []
 
@@ -254,7 +254,7 @@ def test_simulation_menu_disables_parametric_without_preprocessing_extras(
 ) -> None:
     case = tmp_path / "case"
     (case / "system").mkdir(parents=True)
-    (case / "system" / "controlDict").write_text("application hy2Foam;\n")
+    (case / "system" / "controlDict").write_text("application simpleFoam;\n")
     (case / "system" / "decomposeParDict").write_text("numberOfSubdomains 2;\n")
     captured: dict[str, object] = {}
 

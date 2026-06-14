@@ -94,7 +94,7 @@ def test_runtime_control_snapshot_reads_include_and_metrics(tmp_path: Path) -> N
             ],
         ),
     )
-    log_path = case / "log.hy2Foam"
+    log_path = case / "log.simpleFoam"
     log_path.write_text(
         "\n".join(
             [
@@ -112,8 +112,8 @@ def test_runtime_control_snapshot_reads_include_and_metrics(tmp_path: Path) -> N
 
     snapshot = svc.runtime_control_snapshot(
         case,
-        "hy2Foam",
-        resolve_log_source_fn=lambda source: source / "log.hy2Foam",
+        "simpleFoam",
+        resolve_log_source_fn=lambda source: source / "log.simpleFoam",
     )
 
     assert snapshot["latest_time"] == 0.2
@@ -137,7 +137,7 @@ def test_runtime_control_resolve_solver_log_fallback(tmp_path: Path) -> None:
 
     missing = svc.resolve_solver_log(
         case,
-        "hy2Foam",
+        "pisoFoam",
         resolve_log_source_fn=lambda _source: (_ for _ in ()).throw(ValueError("none")),
     )
     assert missing is None
@@ -152,7 +152,7 @@ def test_runtime_control_resolve_solver_log_prefers_hint_over_fallback(tmp_path:
 
     found = svc.resolve_solver_log(
         case,
-        "hy2Foam",
+        "simpleFoam",
         resolve_log_source_fn=lambda source: source / "log.decomposePar",
         log_path_hint=hint,
     )
@@ -162,7 +162,7 @@ def test_runtime_control_resolve_solver_log_prefers_hint_over_fallback(tmp_path:
 def test_runtime_control_enriches_live_criterion_values(tmp_path: Path) -> None:
     case = _make_case(tmp_path / "case")
     (case / "system" / "controlDict").write_text("startTime 0;\nendTime 1;\nresidualTolerance 0.05;\n")
-    (case / "log.hy2Foam").write_text(
+    (case / "log.simpleFoam").write_text(
         "\n".join(
             [
                 "Time = 0.1",
@@ -180,8 +180,8 @@ def test_runtime_control_enriches_live_criterion_values(tmp_path: Path) -> None:
 
     snapshot = svc.runtime_control_snapshot(
         case,
-        "hy2Foam",
-        resolve_log_source_fn=lambda source: source / "log.hy2Foam",
+        "simpleFoam",
+        resolve_log_source_fn=lambda source: source / "log.simpleFoam",
     )
     criteria = snapshot["run_time_control"]["criteria"]
     assert criteria
@@ -219,7 +219,7 @@ def test_runtime_control_marks_startup_unmet_reason(tmp_path: Path) -> None:
             ],
         ),
     )
-    (case / "log.hy2Foam").write_text(
+    (case / "log.simpleFoam").write_text(
         "\n".join(
             [
                 "Time = 0.1",
@@ -232,8 +232,8 @@ def test_runtime_control_marks_startup_unmet_reason(tmp_path: Path) -> None:
 
     snapshot = svc.runtime_control_snapshot(
         case,
-        "hy2Foam",
-        resolve_log_source_fn=lambda source: source / "log.hy2Foam",
+        "simpleFoam",
+        resolve_log_source_fn=lambda source: source / "log.simpleFoam",
     )
     rows = snapshot["run_time_control"]["criteria"]
     assert rows
@@ -266,7 +266,7 @@ def test_runtime_control_observes_nested_runtime_criteria_values(tmp_path: Path)
             ],
         ),
     )
-    (case / "log.hy2Foam").write_text(
+    (case / "log.simpleFoam").write_text(
         "\n".join(
             [
                 "Time = 0.1",
@@ -280,8 +280,8 @@ def test_runtime_control_observes_nested_runtime_criteria_values(tmp_path: Path)
     )
     snapshot = svc.runtime_control_snapshot(
         case,
-        "hy2Foam",
-        resolve_log_source_fn=lambda source: source / "log.hy2Foam",
+        "simpleFoam",
+        resolve_log_source_fn=lambda source: source / "log.simpleFoam",
     )
     rows = snapshot["run_time_control"]["criteria"]
     assert rows
@@ -312,7 +312,7 @@ def test_runtime_control_does_not_auto_pass_when_conditions_not_met(tmp_path: Pa
             ],
         ),
     )
-    (case / "log.hy2Foam").write_text(
+    (case / "log.simpleFoam").write_text(
         "\n".join(
             [
                 "Time = 0.1",
@@ -324,8 +324,8 @@ def test_runtime_control_does_not_auto_pass_when_conditions_not_met(tmp_path: Pa
     )
     snapshot = svc.runtime_control_snapshot(
         case,
-        "hy2Foam",
-        resolve_log_source_fn=lambda source: source / "log.hy2Foam",
+        "simpleFoam",
+        resolve_log_source_fn=lambda source: source / "log.simpleFoam",
     )
     rows = snapshot["run_time_control"]["criteria"]
     assert rows
@@ -358,7 +358,7 @@ def test_runtime_control_snapshot_full_uses_filtered_log_reader(
             ],
         ),
     )
-    log_path = case / "log.hy2Foam"
+    log_path = case / "log.simpleFoam"
     log_path.write_text("unused\n")
     seen: dict[str, Any] = {}
 
@@ -385,8 +385,8 @@ def test_runtime_control_snapshot_full_uses_filtered_log_reader(
     )
     snapshot = svc.runtime_control_snapshot(
         case,
-        "hy2Foam",
-        resolve_log_source_fn=lambda source: source / "log.hy2Foam",
+        "simpleFoam",
+        resolve_log_source_fn=lambda source: source / "log.simpleFoam",
         lightweight=False,
         max_log_bytes=None,
     )
@@ -404,11 +404,11 @@ def test_runtime_control_snapshot_with_max_log_bytes_uses_plain_reader(
 ) -> None:
     case = _make_case(tmp_path / "case")
     (case / "system" / "controlDict").write_text("startTime 0;\nendTime 1;\nresidualTolerance 0.01;\n")
-    (case / "log.hy2Foam").write_text("Time = 0.1\nExecutionTime = 0.5 s\n")
+    (case / "log.simpleFoam").write_text("Time = 0.1\nExecutionTime = 0.5 s\n")
     seen = {"read": 0, "filtered": 0}
 
     def _read(path: Path, *, max_bytes=None) -> str:
-        assert path.name == "log.hy2Foam"
+        assert path.name == "log.simpleFoam"
         seen["read"] += 1
         assert max_bytes == 1234
         return "Time = 0.1\nExecutionTime = 0.5 s\n"
@@ -421,8 +421,8 @@ def test_runtime_control_snapshot_with_max_log_bytes_uses_plain_reader(
     monkeypatch.setattr(svc, "read_log_text_filtered", _filtered)
     _ = svc.runtime_control_snapshot(
         case,
-        "hy2Foam",
-        resolve_log_source_fn=lambda source: source / "log.hy2Foam",
+        "simpleFoam",
+        resolve_log_source_fn=lambda source: source / "log.simpleFoam",
         max_log_bytes=1234,
     )
     assert seen["read"] == 1

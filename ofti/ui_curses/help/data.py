@@ -28,7 +28,7 @@ CONTEXT_HELP: dict[str, list[str]] = {
         "Run solver (parallel) uses mpirun with safe prep defaults.",
         "Safe prep includes sync-subdomains and decomposePar prelaunch.",
         (
-            "CLI runs can write immutable receipts; "
+            "CLI runs can write immutable manifests; "
             "add --record-inputs-copy for restore-grade snapshots."
         ),
         "Case status/current jobs and runtime checks reuse knife shared services.",
@@ -56,7 +56,7 @@ CONTEXT_HELP: dict[str, list[str]] = {
         "Preflight/doctor/status checks are available here for setup phase.",
         "Initial fields summary shows internalField and boundary patch values.",
         "Set dictionary entry writes one key path directly into a dictionary file.",
-        "CLI receipt verify/restore can check or recreate recorded case inputs.",
+        "CLI manifest verify/restore can check or recreate recorded case inputs.",
     ],
     "tools": [
         "Run OpenFOAM tools or presets.",

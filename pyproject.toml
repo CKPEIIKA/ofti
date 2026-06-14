@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ofti"
-version = "0.4.0"
-description = "Curses-based OpenFOAM case editor"
+version = "0.6.0"
+description = "CLI-first OpenFOAM case utilities with a curses TUI"
 readme = "README.md"
-authors = [{name = "OpenFOAM TUI maintainers"}]
+authors = [{name = "OpenFOAM Terminal Interface maintainers"}]
 license = {file = "LICENSE"}
 requires-python = ">=3.10"
-keywords = ["OpenFOAM", "TUI", "curses"]
+keywords = ["OpenFOAM", "CLI", "TUI", "curses"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
