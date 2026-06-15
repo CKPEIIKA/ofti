@@ -82,13 +82,17 @@ def parse_field_rules(values: list[str] | None) -> list[FieldRule]:
             rules.append(FieldRule(name=value.strip()))
             continue
         name, raw_checks = value.split(":", 1)
-        finite = False
+        # Finite checking is on by default: `rho:min=0` should reject NaN/Inf
+        # just like a bare `rho` rule. Use `nofinite` or `finite=false` to skip.
+        finite = True
         min_value: float | None = None
         max_value: float | None = None
         for part in raw_checks.split(","):
             key, _, raw = part.strip().partition("=")
             if key == "finite":
-                finite = True
+                finite = _truthy(raw) if raw else True
+            elif key == "nofinite":
+                finite = False
             elif key == "min":
                 min_value = float(raw)
             elif key == "max":
@@ -117,6 +121,10 @@ def field_names_for_rules(
 
 def finite_required(rule: FieldRule | None) -> bool:
     return rule.finite if rule is not None else True
+
+
+def _truthy(raw: str) -> bool:
+    return raw.strip().lower() not in {"false", "0", "no", "off"}
 
 
 def rule_violations(

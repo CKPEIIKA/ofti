@@ -4,6 +4,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 PLUGIN_SRC = Path(__file__).resolve().parents[1] / "src"
 if str(PLUGIN_SRC) not in sys.path:
     sys.path.insert(0, str(PLUGIN_SRC))
@@ -74,6 +76,44 @@ def test_preflight_checks_species_patches_and_turbulence(tmp_path: Path) -> None
     assert checks["species_patch_consistency"]["status"] == "FAIL"
     assert "O2:missing=wall" in checks["species_patch_consistency"]["detail"]
     assert checks["turbulence_consistency"]["detail"] == "RAS selected but RASProperties missing"
+
+
+@pytest.mark.parametrize(
+    ("version", "status"),
+    [
+        ("v2512", "PASS"),
+        ("2512", "PASS"),
+        ("v2406", "WARN"),
+    ],
+)
+def test_preflight_openfoam_version_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    version: str,
+    status: str,
+) -> None:
+    case = _case(tmp_path / "case")
+    monkeypatch.setenv("WM_PROJECT_VERSION", version)
+
+    payload = preflight_payload(case, time_name="0")
+
+    checks = {item["name"]: item for item in payload["checks"]}
+    assert checks["openfoam_version"]["status"] == status
+    assert version in checks["openfoam_version"]["detail"]
+
+
+def test_preflight_openfoam_version_unset_warns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _case(tmp_path / "case")
+    monkeypatch.delenv("WM_PROJECT_VERSION", raising=False)
+
+    payload = preflight_payload(case, time_name="0")
+
+    checks = {item["name"]: item for item in payload["checks"]}
+    assert checks["openfoam_version"]["status"] == "WARN"
+    assert "not set" in checks["openfoam_version"]["detail"]
 
 
 def test_preflight_checks_species_order_sources(tmp_path: Path) -> None:

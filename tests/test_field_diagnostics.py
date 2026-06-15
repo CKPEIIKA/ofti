@@ -236,6 +236,78 @@ def test_physical_custom_rules_and_reports_on_real_files(tmp_path: Path) -> None
     assert Path(outputs["markdown"]).read_text(encoding="utf-8").startswith("# Physical Checks")
 
 
+def test_parse_field_rules_finite_defaults_and_optout() -> None:
+    (rule,) = diag.parse_field_rules(["rho:min=0"])
+    assert rule.finite is True
+    assert rule.min_value == 0.0
+    assert diag.parse_field_rules(["rho:min=0,nofinite"])[0].finite is False
+    assert diag.parse_field_rules(["rho:min=0,finite=false"])[0].finite is False
+    assert diag.parse_field_rules(["rho:finite=0"])[0].finite is False
+    assert diag.parse_field_rules(["rho"])[0].finite is True
+    assert diag.parse_field_rules(["U:finite"])[0].finite is True
+
+
+@pytest.mark.parametrize("bad_value", [float("nan"), float("inf")])
+def test_min_rule_flags_nonfinite_by_default(tmp_path: Path, monkeypatch, bad_value: float) -> None:
+    monkeypatch.setattr(diag.foamlib_integration, "available", lambda: False)
+    case = _make_case(tmp_path / "case")
+    _write_scalar(case / "0" / "rho", [1.0, bad_value, 2.0])
+
+    payload = diag.field_sanity_payload(
+        case,
+        time_name="0",
+        rules=diag.parse_field_rules(["rho:min=0"]),
+    )
+
+    assert payload["ok"] is False
+    assert payload["hard_errors"] == ["rho: nonfinite values=1"]
+
+
+def test_nofinite_optout_skips_nonfinite_but_keeps_bounds(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(diag.foamlib_integration, "available", lambda: False)
+    case = _make_case(tmp_path / "case")
+    _write_scalar(case / "0" / "rho", [-0.5, float("nan")])
+
+    payload = diag.field_sanity_payload(
+        case,
+        time_name="0",
+        rules=diag.parse_field_rules(["rho:min=0,nofinite"]),
+    )
+
+    assert payload["ok"] is True
+    assert payload["hard_errors"] == []
+    assert {row["field"] for row in payload["violations"]} == {"rho"}
+
+
+def test_uniform_nonfinite_field_flagged(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(diag.foamlib_integration, "available", lambda: False)
+    case = _make_case(tmp_path / "case")
+    _write_scalar(case / "0" / "p", float("inf"))
+
+    payload = diag.field_sanity_payload(
+        case,
+        time_name="0",
+        rules=diag.parse_field_rules(["p:max=10"]),
+    )
+
+    assert payload["ok"] is False
+    assert payload["hard_errors"] == ["p: nonfinite values=1"]
+
+
+def test_missing_field_with_rule_is_hard_error(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(diag.foamlib_integration, "available", lambda: False)
+    case = _make_case(tmp_path / "case")
+
+    payload = diag.field_sanity_payload(
+        case,
+        time_name="0",
+        rules=diag.parse_field_rules(["rho:min=0"]),
+    )
+
+    assert payload["ok"] is False
+    assert payload["hard_errors"]
+
+
 def test_compare_fields_reference_candidate_times_patch_and_reports(tmp_path: Path) -> None:
     left = _make_case(tmp_path / "left")
     right = _make_case(tmp_path / "right")

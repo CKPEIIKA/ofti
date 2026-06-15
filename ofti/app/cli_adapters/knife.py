@@ -89,7 +89,7 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         dest="field_rules",
         action="append",
         default=[],
-        help="Custom check rule like rho:min=0 or U:finite; repeatable",
+        help="Custom check rule like rho:min=0 (finite by default; nofinite to skip); repeatable",
     )
     physical.add_argument("--patch", default=None, help="Check a boundary patch value")
     physical.add_argument(

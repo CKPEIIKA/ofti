@@ -46,8 +46,25 @@ class PluginRegistry:
     knife_commands: dict[str, KnifeCommandProvider] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
 
-    def add_preset(self, preset: FieldPreset) -> None:
-        self.presets[preset.name] = preset
+    def add_preset(self, preset: FieldPreset) -> bool:
+        return self._register(self.presets, preset.name, preset, "field preset")
+
+    def add_physical_profile(self, provider: PhysicalRuleProvider) -> bool:
+        return self._register(
+            self.physical_profiles, provider.name, provider, "physical profile",
+        )
+
+    def add_knife_command(self, provider: KnifeCommandProvider) -> bool:
+        return self._register(
+            self.knife_commands, provider.name, provider, "knife command",
+        )
+
+    def _register(self, target: dict[str, Any], name: str, value: Any, kind: str) -> bool:
+        if name in target:
+            self.errors.append(f"duplicate {kind} '{name}' ignored")
+            return False
+        target[name] = value
+        return True
 
 
 def builtin_registry() -> PluginRegistry:

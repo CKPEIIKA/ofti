@@ -11,18 +11,48 @@ class FakeProfile:
     def detect(self, case_dir: Path) -> ProfileMatch:
         return ProfileMatch(confidence=1.0, reasons=(str(case_dir),))
 
-    def fields(self, _case_dir: Path) -> list[str]:
+    def fields(self, case_dir: Path) -> list[str]:
+        del case_dir
         return ["rho", "T"]
 
-    def rules(self, _case_dir: Path) -> list[str]:
+    def rules(self, case_dir: Path) -> list[str]:
+        del case_dir
         return ["rho:min=0", "T:min=0"]
+
+
+class FakeCommand:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def add_parser(self, subparsers: object) -> None:
+        del subparsers
+
+    def run(self, args: object) -> int:
+        del args
+        return 0
 
 
 def test_plugin_registry_accepts_fake_profile_and_preset() -> None:
     registry = builtin_registry()
     registry.add_preset(FieldPreset("fake-flow", ("rho", "T"), source="test"))
-    registry.physical_profiles["fake"] = FakeProfile()
+    registry.add_physical_profile(FakeProfile())
 
     assert registry.presets["flow"].source == "core"
     assert registry.presets["fake-flow"].fields == ("rho", "T")
     assert registry.physical_profiles["fake"].rules(Path("case")) == ["rho:min=0", "T:min=0"]
+
+
+def test_plugin_registry_rejects_duplicate_names_loudly() -> None:
+    registry = builtin_registry()
+
+    assert registry.add_knife_command(FakeCommand("charge")) is True
+    first = registry.knife_commands["charge"]
+    # A second plugin claiming the same command name must not overwrite silently.
+    assert registry.add_knife_command(FakeCommand("charge")) is False
+    assert registry.knife_commands["charge"] is first
+    assert any("duplicate knife command 'charge'" in err for err in registry.errors)
+
+    assert registry.add_preset(FieldPreset("flow", ("p",), source="test")) is False
+    assert registry.presets["flow"].source == "core"
+    assert registry.add_physical_profile(FakeProfile()) is True
+    assert registry.add_physical_profile(FakeProfile()) is False
