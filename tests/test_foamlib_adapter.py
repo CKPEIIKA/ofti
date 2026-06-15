@@ -61,7 +61,10 @@ def test_foamlib_node_type_details_for_field_vectors() -> None:
     assert foamlib_integration.node_type_label(node) == "vector"
     details = foamlib_integration.node_type_details(node)
     assert "foamlib type: vector" in details
-    assert any(line.startswith("shape:") for line in details)
+    # shape:/dtype: lines only appear when foamlib backs the value with a numpy
+    # array; some environments parse "uniform (1 0 0)" to a plain tuple. Assert
+    # the stable contract instead of the numpy-specific enrichment.
+    assert any(line.startswith("python type:") for line in details)
 
 
 def test_foamlib_file_dict_uses_case_relative_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
