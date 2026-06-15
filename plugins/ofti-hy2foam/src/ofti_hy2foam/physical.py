@@ -12,8 +12,14 @@ from .field_boundaries import field_boundary_patches, patch_value_summary
 AIR5_SPECIES = ("N2", "O2", "NO", "N", "O")
 AIR11_SPECIES = (*AIR5_SPECIES, "N2+", "O2+", "NO+", "N+", "O+", "e-")
 CORE_FIELDS = ("Tt", "Tv", "Tov", "p", "rho", "e", "ev")
+# Transport quantities gathered for scanning.
 TRANSPORT_PREFIXES = ("Dmix", "rhoD", "J")
 TRANSPORT_FIELDS = ("qDiff", "wallHeatFlux")
+# Sign classification: diffusion coefficients (Dmix*, rhoD*) are nonnegative, but
+# diffusion-flux components (J_*) and heat fluxes (qDiff, wallHeatFlux) are signed
+# and only checked for finiteness. Species mass fractions are bounded to [0, 1].
+NONNEGATIVE_PREFIXES = ("Dmix", "rhoD")
+_FRACTION_TOL = 1e-8
 
 
 class Hy2FoamPhysicalProfile:
@@ -33,7 +39,7 @@ class Hy2FoamPhysicalProfile:
         return hy2foam_default_fields(case_dir)
 
     def rules(self, case_dir: Path) -> list[str]:
-        return [f"{name}:min=0" for name in hy2foam_default_fields(case_dir)]
+        return [_field_rule(name) for name in hy2foam_default_fields(case_dir)]
 
 
 def hy2foam_default_fields(case_dir: Path, *, time_name: str = "latest") -> list[str]:
@@ -75,6 +81,15 @@ def physical_diagnostics_payload(
             )
         if _must_be_nonnegative(name) and summary["min"] is not None and summary["min"] < 0.0:
             violations.append({"field": name, "kind": "min>=0", "min": summary["min"]})
+        if name in AIR11_SPECIES and _fraction_out_of_bounds(summary):
+            violations.append(
+                {
+                    "field": name,
+                    "kind": "fraction",
+                    "min": summary["min"],
+                    "max": summary["max"],
+                },
+            )
     species_sum = species_sum_diagnostic(time_dir, species)
     if species_sum["checked"] and species_sum.get("max_abs_deviation", 0.0) > 1e-8:
         violations.append({"field": "sum(Y)", "kind": "species_sum", **species_sum})
@@ -200,10 +215,24 @@ def _summary(name: str, values: list[float]) -> dict[str, Any]:
     }
 
 
+def _field_rule(name: str) -> str:
+    if name in AIR11_SPECIES:
+        return f"{name}:min=0,max=1"
+    if _must_be_nonnegative(name):
+        return f"{name}:min=0"
+    return name  # signed quantity (J_*, qDiff, wallHeatFlux): finiteness only
+
+
 def _must_be_nonnegative(name: str) -> bool:
-    return name in {*CORE_FIELDS, *TRANSPORT_FIELDS, *AIR11_SPECIES} or name.startswith(
-        TRANSPORT_PREFIXES,
-    )
+    return name in CORE_FIELDS or name.startswith(NONNEGATIVE_PREFIXES)
+
+
+def _fraction_out_of_bounds(summary: dict[str, Any]) -> bool:
+    minimum = summary["min"]
+    maximum = summary["max"]
+    if minimum is None or maximum is None:
+        return False
+    return minimum < 0.0 or maximum > 1.0 + _FRACTION_TOL
 
 
 def _unique(values: list[str]) -> list[str]:

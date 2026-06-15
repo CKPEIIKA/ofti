@@ -13,6 +13,7 @@ if str(PLUGIN_SRC) not in sys.path:
     sys.path.insert(0, str(PLUGIN_SRC))
 
 from ofti_hy2foam.physical import (  # noqa: E402
+    Hy2FoamPhysicalProfile,
     physical_diagnostics_payload,
     species_sum_diagnostic,
     two_temperature_diagnostic,
@@ -81,6 +82,46 @@ def test_physical_payload_collects_transport_and_core_violations(tmp_path: Path)
     assert "min>=0" in kinds
     assert "nonfinite" in kinds
     assert "two_temperature_ratio" in kinds
+
+
+def test_signed_flux_negative_is_not_a_violation(tmp_path: Path) -> None:
+    case = _case(tmp_path / "case")
+    _scalar(case / "0" / "Tt", [1000.0, 1000.0])
+    _scalar(case / "0" / "Tv", [1000.0, 1000.0])
+    # Diffusion flux and heat fluxes are signed; negative values are physical.
+    _scalar(case / "0" / "J_N2", [-3.0, 2.0])
+    _scalar(case / "0" / "qDiff", [-50.0, 10.0])
+    _scalar(case / "0" / "wallHeatFlux", [-1000.0, 0.0])
+
+    payload = physical_diagnostics_payload(case, time_name="0", species=("N2", "O2"))
+
+    assert payload["physical_ok"] is True
+    assert payload["violations"] == []
+
+
+def test_species_mass_fraction_above_one_is_flagged(tmp_path: Path) -> None:
+    case = _case(tmp_path / "case")
+    _scalar(case / "0" / "N2", [0.5, 1.4])
+
+    payload = physical_diagnostics_payload(case, time_name="0", species=("N2",))
+
+    fraction = [item for item in payload["violations"] if item["kind"] == "fraction"]
+    assert fraction and fraction[0]["field"] == "N2"
+    assert payload["physical_ok"] is False
+
+
+def test_profile_rules_classify_signed_and_fraction_fields(tmp_path: Path) -> None:
+    case = _case(tmp_path / "case")
+    for name in ("Tt", "Tv", "p", "rho", "e", "ev", "Tov", "N2", "Dmix_N2", "J_N2", "qDiff"):
+        _scalar(case / "0" / name, [1.0])
+
+    rules = set(Hy2FoamPhysicalProfile().rules(case))
+
+    assert "rho:min=0" in rules
+    assert "Dmix_N2:min=0" in rules
+    assert "N2:min=0,max=1" in rules
+    assert "J_N2" in rules  # signed: finiteness only
+    assert "qDiff" in rules
 
 
 def test_physical_payload_reports_patch_ranges(tmp_path: Path) -> None:
