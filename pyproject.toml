@@ -9,10 +9,13 @@ description = "CLI-first OpenFOAM case utilities with a curses TUI"
 readme = "README.md"
 authors = [{name = "OpenFOAM Terminal Interface maintainers"}]
 license = {file = "LICENSE"}
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 keywords = ["OpenFOAM", "CLI", "TUI", "curses"]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: POSIX :: Linux",
 ]
@@ -37,6 +40,9 @@ omit = [
     "ofti/app/screens/*",
     "ofti/ui_curses/*",
 ]
+
+[tool.ty.environment]
+python-version = "3.11"
 
 [tool.setuptools.packages.find]
 where = ["."]
