@@ -109,3 +109,5 @@ unfixable = []
 "tests/test_smoke_cli.py" = ["PLC0415"]
 "tests/test_times_extra.py" = ["TRY003"]
 "tests/test_foamlib_integration_helpers.py" = ["ARG001"]
+# cli_tools re-exports handlers under TYPE_CHECKING for static visibility.
+"ofti/app/cli_tools.py" = ["F401"]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from types import ModuleType
+from typing import TYPE_CHECKING
 
 from ofti.app.cli_adapters import knife as _knife_adapter
 from ofti.app.cli_adapters import main as _main_adapter
@@ -18,6 +19,47 @@ from ofti.tools.cli_tools import watch as watch_ops
 
 build_parser = _main_adapter.build_parser
 ofti_version = _main_adapter.ofti_version
+
+if TYPE_CHECKING:
+    # `_export_private_handlers` copies these handlers into the module namespace
+    # at runtime; re-export them statically so type checkers (and callers/tests
+    # that reach them through `cli_tools`) can see them. F401 is ignored for this
+    # file in ruff.toml because these are intentional re-exports.
+    from ofti.app.cli_adapters.knife import (
+        _knife_adopt,
+        _knife_campaign_compare,
+        _knife_campaign_list,
+        _knife_campaign_rank,
+        _knife_campaign_status,
+        _knife_compare,
+        _knife_converge,
+        _knife_criteria,
+        _knife_current,
+        _knife_doctor,
+        _knife_eta,
+        _knife_initials,
+        _knife_manifest_restore,
+        _knife_manifest_verify,
+        _knife_manifest_write,
+        _knife_preflight,
+        _knife_report,
+        _knife_set,
+        _knife_stability,
+        _knife_status,
+    )
+    from ofti.app.cli_adapters.plot import _plot_metrics, _plot_residuals
+    from ofti.app.cli_adapters.run import _run_solver_execute, _run_tool
+    from ofti.app.cli_adapters.watch import (
+        _watch_external,
+        _watch_interval,
+        _watch_jobs,
+        _watch_json_payload,
+        _watch_output,
+        _watch_pause,
+        _watch_resume,
+        _watch_start,
+        _watch_stop,
+    )
 
 
 def _export_private_handlers(module: ModuleType) -> None:
