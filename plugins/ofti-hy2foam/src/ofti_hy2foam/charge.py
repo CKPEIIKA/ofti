@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 from typing import Any
@@ -20,10 +21,14 @@ class Hy2FoamChargeCommand:
         parser = subparsers.add_parser("charge", help="Report hy2Foam charge observability")
         parser.add_argument("case_dir", type=Path)
         parser.add_argument("--time", default="latest")
+        parser.add_argument("--json", action="store_true")
         parser.set_defaults(func=self.run)
 
     def run(self, args) -> int:
         payload = charge_payload(args.case_dir, time_name=str(getattr(args, "time", "latest")))
+        if bool(getattr(args, "json", False)):
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0 if payload["ok"] else 1
         print(f"case={payload['case']}")
         print(f"time={payload['time']}")
         print(f"charged_species={','.join(payload['charged_species'])}")

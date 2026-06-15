@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -23,10 +24,14 @@ class Hy2FoamComparePreflightCommand:
         )
         parser.add_argument("left_case", type=Path)
         parser.add_argument("right_case", type=Path)
+        parser.add_argument("--json", action="store_true")
         parser.set_defaults(func=self.run)
 
     def run(self, args) -> int:
         payload = compare_preflight_payload(args.left_case, args.right_case)
+        if bool(getattr(args, "json", False)):
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0 if payload["ok"] else 1
         print(f"latest_common_time={payload['latest_common_time']}")
         print(f"same_mesh={payload['same_mesh']['same']}")
         return 0 if payload["ok"] else 1
@@ -45,6 +50,7 @@ class Hy2FoamPatchCompareCommand:
         parser.add_argument("--patch", required=True)
         parser.add_argument("--preset", default="hy2foam-wall")
         parser.add_argument("--time", default=None)
+        parser.add_argument("--json", action="store_true")
         parser.set_defaults(func=self.run)
 
     def run(self, args) -> int:
@@ -55,6 +61,9 @@ class Hy2FoamPatchCompareCommand:
             preset=str(args.preset),
             time_name=getattr(args, "time", None),
         )
+        if bool(getattr(args, "json", False)):
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0 if payload["ok"] else 1
         print(f"time={payload['time']} patch={payload['patch']} same={payload['same']}")
         for error in payload.get("errors", []):
             print(f"error={error}")

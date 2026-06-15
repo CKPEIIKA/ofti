@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 from collections import Counter
@@ -21,10 +22,14 @@ class Hy2FoamPreflightCommand:
         parser = subparsers.add_parser("hy2foam-preflight", help="Run hy2Foam-specific preflight")
         parser.add_argument("case_dir", type=Path)
         parser.add_argument("--time", default="latest")
+        parser.add_argument("--json", action="store_true")
         parser.set_defaults(func=self.run)
 
     def run(self, args) -> int:
         payload = preflight_payload(args.case_dir, time_name=str(getattr(args, "time", "latest")))
+        if bool(getattr(args, "json", False)):
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0 if payload["ok"] else 1
         print(f"case={payload['case']}")
         print(f"ok={payload['ok']}")
         for check in payload["checks"]:

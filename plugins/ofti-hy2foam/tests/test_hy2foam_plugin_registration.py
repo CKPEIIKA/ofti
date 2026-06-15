@@ -1,10 +1,16 @@
 # ruff: noqa: INP001
 from __future__ import annotations
 
+import argparse
+import io
+import json
 import sys
+from contextlib import redirect_stdout
 from pathlib import Path
 
-from ofti.plugins import PluginRegistry
+import pytest
+
+from ofti.plugins import KnifeCommandProvider, PluginRegistry
 
 PLUGIN_SRC = Path(__file__).resolve().parents[1] / "src"
 if str(PLUGIN_SRC) not in sys.path:
@@ -28,3 +34,50 @@ def test_hy2foam_plugin_registers_presets_profile_and_charge_command() -> None:
     assert "hy2foam-preflight" in registry.knife_commands
     assert "hy2foam-compare-check" in registry.knife_commands
     assert "hy2foam-patch-compare" in registry.knife_commands
+
+
+def _command_parser(command: KnifeCommandProvider) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers()
+    command.add_parser(sub)
+    return parser
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["charge", "case", "--json"],
+        ["hy2foam-preflight", "case", "--json"],
+        ["hy2foam-compare-check", "left", "right", "--json"],
+        ["hy2foam-patch-compare", "left", "right", "--patch", "wall", "--json"],
+    ],
+)
+def test_plugin_commands_accept_json_flag(argv: list[str]) -> None:
+    registry = PluginRegistry()
+    register(registry)
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers()
+    for command in registry.knife_commands.values():
+        command.add_parser(sub)
+
+    args = parser.parse_args(argv)
+
+    assert args.json is True
+
+
+def test_charge_command_json_output_is_valid(tmp_path: Path) -> None:
+    registry = PluginRegistry()
+    register(registry)
+    case = tmp_path / "case"
+    (case / "0").mkdir(parents=True)
+    parser = _command_parser(registry.knife_commands["charge"])
+
+    args = parser.parse_args(["charge", str(case), "--json"])
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        code = args.func(args)
+
+    payload = json.loads(buffer.getvalue())
+    assert code == 0
+    assert payload["case"] == str(case)
+    assert "charged_species" in payload
