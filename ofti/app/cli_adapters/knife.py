@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
@@ -1151,7 +1152,7 @@ def _knife_current(args: argparse.Namespace) -> int:
     _print_knife_current(payload)
     return 0
 
-def _knife_current_payload(args: argparse.Namespace) -> dict[str, object]:
+def _knife_current_payload(args: argparse.Namespace) -> Mapping[str, object]:
     scope_root = cast("Path", getattr(args, "root", None) or args.case_dir)
     recursive = bool(getattr(args, "recursive", False))
     live = bool(getattr(args, "live", False))
@@ -1173,7 +1174,7 @@ def _knife_current_payload(args: argparse.Namespace) -> dict[str, object]:
     except TypeError:
         return knife_ops.current_payload(scope_root)
 
-def _print_knife_current(payload: dict[str, object]) -> None:
+def _print_knife_current(payload: Mapping[str, object]) -> None:
     print(f"case={payload['case']}")
     if "scope" in payload:
         print(f"scope={payload.get('scope')}")
@@ -1236,7 +1237,7 @@ def _knife_current_scope_payload(
     *,
     live: bool,
     recursive: bool,
-) -> dict[str, object]:
+) -> Mapping[str, object]:
     try:
         return knife_ops.current_scope_payload(case_dir, live=live, recursive=recursive)
     except (AttributeError, TypeError):

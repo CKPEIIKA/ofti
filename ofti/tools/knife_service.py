@@ -5,8 +5,9 @@ import os
 import re
 import shutil
 import signal
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ofti.core.boundary import list_field_files, read_optional, zero_dir
 from ofti.core.case_copy import copy_case_directory
@@ -71,7 +72,7 @@ def current_payload(case_dir: Path, *, live: bool = False) -> case_status_servic
         live=live,
     )
     warning = process_scan_service.proc_access_warning()
-    case_status_service.attach_process_visibility(payload, warning)
+    case_status_service.attach_process_visibility(cast("dict[str, Any]", payload), warning)
     return payload
 
 
@@ -333,7 +334,7 @@ def _adopt_rows_by_case(
     return by_case
 
 
-def _adopt_case_path(row: dict[str, Any]) -> Path | None:
+def _adopt_case_path(row: Mapping[str, Any]) -> Path | None:
     case_raw = str(row.get("case") or "").strip()
     if not case_raw:
         return None
@@ -552,7 +553,7 @@ def status_payload(
         tail_bytes=tail_bytes,
     )
     warning = process_scan_service.proc_access_warning()
-    case_status_service.attach_process_visibility(payload, warning)
+    case_status_service.attach_process_visibility(cast("dict[str, Any]", payload), warning)
     return payload
 
 

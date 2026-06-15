@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ofti.core.table import render_kv, render_table
 
 
-def preflight_table_lines(payload: dict[str, Any]) -> list[str]:
+def preflight_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv(
         [
             ("case", payload.get("case")),
@@ -31,7 +32,7 @@ def preflight_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def doctor_table_lines(payload: dict[str, Any]) -> list[str]:
+def doctor_table_lines(payload: Mapping[str, Any]) -> list[str]:
     errors = list(payload.get("errors", []))
     warnings = list(payload.get("warnings", []))
     lines = render_kv(
@@ -65,7 +66,7 @@ def doctor_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def status_table_lines(payload: dict[str, Any]) -> list[str]:
+def status_table_lines(payload: Mapping[str, Any]) -> list[str]:
     rtc = _dict(payload.get("run_time_control"))
     lines = render_kv(
         [
@@ -113,7 +114,7 @@ def status_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def current_table_lines(payload: dict[str, Any]) -> list[str]:
+def current_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv(
         [
             ("case", payload.get("case")),
@@ -142,7 +143,7 @@ def current_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def criteria_payload_table_lines(payload: dict[str, Any]) -> list[str]:
+def criteria_payload_table_lines(payload: Mapping[str, Any]) -> list[str]:
     criteria = list(payload.get("criteria", []))
     lines = render_kv(
         [
@@ -179,7 +180,7 @@ def criteria_table_lines(rows: list[object]) -> list[str]:
     )
 
 
-def eta_table_lines(payload: dict[str, Any]) -> list[str]:
+def eta_table_lines(payload: Mapping[str, Any]) -> list[str]:
     return render_kv(
         [
             ("case", payload.get("case")),
@@ -197,7 +198,7 @@ def eta_table_lines(payload: dict[str, Any]) -> list[str]:
     )
 
 
-def report_table_lines(payload: dict[str, Any]) -> list[str]:
+def report_table_lines(payload: Mapping[str, Any]) -> list[str]:
     log = _dict(payload.get("log"))
     metrics = _dict(payload.get("metrics"))
     criteria = _dict(payload.get("criteria"))
@@ -228,7 +229,7 @@ def report_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def metrics_table_lines(payload: dict[str, Any]) -> list[str]:
+def metrics_table_lines(payload: Mapping[str, Any]) -> list[str]:
     execution = _dict(payload.get("execution_time"))
     times = _dict(payload.get("times"))
     courant = _dict(payload.get("courant"))
@@ -249,7 +250,7 @@ def metrics_table_lines(payload: dict[str, Any]) -> list[str]:
     )
 
 
-def residual_payload_table_lines(payload: dict[str, Any]) -> list[str]:
+def residual_payload_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv([("log", payload.get("log"))])
     fields = list(payload.get("fields", []))
     if fields:
@@ -270,7 +271,7 @@ def residuals_table_lines(rows: list[object]) -> list[str]:
     )
 
 
-def compare_table_lines(payload: dict[str, Any]) -> list[str]:
+def compare_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv(
         [
             ("left_case", payload.get("left_case")),
@@ -287,7 +288,7 @@ def compare_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def initials_table_lines(payload: dict[str, Any]) -> list[str]:
+def initials_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv(
         [
             ("case", payload.get("case")),
@@ -318,7 +319,7 @@ def initials_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def converge_table_lines(payload: dict[str, Any]) -> list[str]:
+def converge_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv(
         [
             ("log", payload.get("log")),
@@ -372,7 +373,7 @@ def converge_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def stability_table_lines(payload: dict[str, Any]) -> list[str]:
+def stability_table_lines(payload: Mapping[str, Any]) -> list[str]:
     return render_kv(
         [
             ("log", payload.get("log")),
@@ -415,7 +416,7 @@ def initial_boundary_rows_table(rows: list[object]) -> list[str]:
     )
 
 
-def jobs_payload_table_lines(payload: dict[str, Any]) -> list[str]:
+def jobs_payload_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv(
         [
             ("case", payload.get("case")),
@@ -434,7 +435,7 @@ def jobs_payload_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def campaign_list_table_lines(payload: dict[str, Any]) -> list[str]:
+def campaign_list_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv(
         [
             ("case", payload.get("case")),
@@ -449,7 +450,7 @@ def campaign_list_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def campaign_status_table_lines(payload: dict[str, Any]) -> list[str]:
+def campaign_status_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv(
         [
             ("case", payload.get("case")),
@@ -464,7 +465,7 @@ def campaign_status_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def campaign_rank_table_lines(payload: dict[str, Any]) -> list[str]:
+def campaign_rank_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv(
         [
             ("case", payload.get("case")),
@@ -483,7 +484,7 @@ def campaign_rank_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def campaign_compare_table_lines(payload: dict[str, Any]) -> list[str]:
+def campaign_compare_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv(
         [
             ("case", payload.get("case")),
@@ -503,7 +504,7 @@ def campaign_compare_table_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
-def run_status_table_lines(payload: dict[str, Any]) -> list[str]:
+def run_status_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv(
         [
             ("set", payload.get("set_dir")),
