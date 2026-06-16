@@ -7,7 +7,7 @@ import pytest
 
 from ofti.core import dict_compare
 from ofti.core.dict_compare import DictDiff, ValueDiff
-from ofti.tools import knife_service
+from ofti.tools import knife_campaign, knife_service
 from ofti.tools.cli_tools import knife
 
 
@@ -925,7 +925,7 @@ def test_knife_campaign_stop_keep_payload_branches(
     _make_case(root / "caseB")
     _make_case(root / "caseC")
     monkeypatch.setattr(
-        knife_service,
+        knife_campaign,
         "campaign_rank_payload",
         lambda *_a, **_k: {
             "case": str(root),
@@ -971,10 +971,10 @@ def test_knife_campaign_summary_paths_and_group_helpers(tmp_path: Path) -> None:
     paths = knife.campaign_case_paths(root, summary_csv=summary)
     assert paths == [case_a.resolve(), case_b.resolve()]
 
-    rows = knife_service._summary_rows(summary)
-    assert knife_service._summary_row_for_case(case_a, rows) is not None
-    assert knife_service._campaign_group_value(case_a, group_by="speed", summary_rows=rows) == "15M"
-    assert knife_service._campaign_group_value(case_a, group_by="other", summary_rows=rows) == "all"
+    rows = knife_campaign._summary_rows(summary)
+    assert knife_campaign._summary_row_for_case(case_a, rows) is not None
+    assert knife_campaign._campaign_group_value(case_a, group_by="speed", summary_rows=rows) == "15M"
+    assert knife_campaign._campaign_group_value(case_a, group_by="other", summary_rows=rows) == "all"
 
 
 def test_knife_eta_helpers_cover_modes() -> None:

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from ofti.tools import knife_analysis as analysis
+from ofti.tools import knife_campaign as campaign
+from ofti.tools import knife_process as processes
 from ofti.tools import knife_service as service
 
-ProcEntry = service.ProcEntry
+ProcEntry = processes.ProcEntry
 _DELTA_T_RE = service._DELTA_T_RE
 _END_TIME_RE = service._END_TIME_RE
 
@@ -24,37 +26,37 @@ eta_payload = service.eta_payload
 report_payload = service.report_payload
 report_markdown = service.report_markdown
 stop_payload = service.stop_payload
-campaign_case_paths = service.campaign_case_paths
-campaign_list_payload = service.campaign_list_payload
-campaign_status_payload = service.campaign_status_payload
-campaign_rank_payload = service.campaign_rank_payload
-campaign_stop_worst_payload = service.campaign_stop_worst_payload
-campaign_keep_best_payload = service.campaign_keep_best_payload
-campaign_compare_payload = service.campaign_compare_payload
+campaign_case_paths = campaign.campaign_case_paths
+campaign_list_payload = campaign.campaign_list_payload
+campaign_status_payload = campaign.campaign_status_payload
+campaign_rank_payload = campaign.campaign_rank_payload
+campaign_stop_worst_payload = campaign.campaign_stop_worst_payload
+campaign_keep_best_payload = campaign.campaign_keep_best_payload
+campaign_compare_payload = campaign.campaign_compare_payload
 converge_payload = service.converge_payload
 stability_payload = service.stability_payload
 preflight_payload = service.preflight_payload
 set_entry_payload = service.set_entry_payload
 
 _fallback_solver = service._fallback_solver
-_running_job_pids = service._running_job_pids
-_scan_proc_solver_processes = service._scan_proc_solver_processes
-_proc_table = service._proc_table
-_launcher_pids_for_case = service._launcher_pids_for_case
-_launcher_has_solver_descendant = service._launcher_has_solver_descendant
-_has_ancestor = service._has_ancestor
-_read_proc_args = service._read_proc_args
-_read_proc_ppid = service._read_proc_ppid
-_process_role = service._process_role
-_args_match_solver = service._args_match_solver
-_token_matches_solver = service._token_matches_solver
-_targets_case = service._targets_case
-_entry_targets_case = service._entry_targets_case
-_proc_cwd = service._proc_cwd
-_launcher_descendant_targets_case = service._launcher_descendant_targets_case
-_path_within = service._path_within
-_looks_like_solver_args = service._looks_like_solver_args
-_guess_solver_from_args = service._guess_solver_from_args
+_running_job_pids = processes._running_job_pids
+_scan_proc_solver_processes = processes._scan_proc_solver_processes
+_proc_table = processes._proc_table
+_launcher_pids_for_case = processes._launcher_pids_for_case
+_launcher_has_solver_descendant = processes._launcher_has_solver_descendant
+_has_ancestor = processes._has_ancestor
+_read_proc_args = processes._read_proc_args
+_read_proc_ppid = processes._read_proc_ppid
+_process_role = processes._process_role
+_args_match_solver = processes._args_match_solver
+_token_matches_solver = processes._token_matches_solver
+_targets_case = processes._targets_case
+_entry_targets_case = processes._entry_targets_case
+_proc_cwd = processes._proc_cwd
+_launcher_descendant_targets_case = processes._launcher_descendant_targets_case
+_path_within = processes._path_within
+_looks_like_solver_args = processes._looks_like_solver_args
+_guess_solver_from_args = processes._guess_solver_from_args
 _runtime_control_snapshot = service._runtime_control_snapshot
 _resolve_solver_log = service._resolve_solver_log
 _run_time_control_data = analysis._run_time_control_data
