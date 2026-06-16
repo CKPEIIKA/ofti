@@ -236,6 +236,39 @@ def test_physical_custom_rules_and_reports_on_real_files(tmp_path: Path) -> None
     assert Path(outputs["markdown"]).read_text(encoding="utf-8").startswith("# Physical Checks")
 
 
+def test_resolve_and_read_decomposed_time_directories(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(diag.foamlib_integration, "available", lambda: False)
+    case = _make_case(tmp_path / "case")
+    for proc, values in (("processor0", [1.0, 2.0]), ("processor1", [3.0, float("nan")])):
+        time_dir = case / proc / "1e-06"
+        time_dir.mkdir(parents=True)
+        _write_scalar(time_dir / "p", values)
+
+    # Resolution falls back to the processor directories instead of failing.
+    assert diag.resolve_time_dir(case, "1e-06") == case / "processor0" / "1e-06"
+
+    payload = diag.field_sanity_payload(case, time_name="1e-06", fields=["p"])
+
+    # Values are aggregated across all processor subdomains.
+    assert payload["fields"][0]["count"] == 4
+    assert payload["fields"][0]["nonfinite_count"] == 1
+    assert payload["hard_errors"] == ["p: nonfinite values=1"]
+
+
+def test_latest_time_uses_decomposed_times(tmp_path: Path, monkeypatch) -> None:
+    import ofti.core.times as times_mod
+
+    def _raise(*_args, **_kwargs):
+        raise OSError("no foamListTimes")
+
+    monkeypatch.setattr(times_mod, "run_trusted", _raise)
+    case = _make_case(tmp_path / "case")  # root keeps 0/
+    (case / "processor0" / "0").mkdir(parents=True)
+    (case / "processor0" / "2e-05").mkdir(parents=True)
+
+    assert times_mod.latest_time(case) == "2e-05"
+
+
 def test_parse_field_rules_finite_defaults_and_optout() -> None:
     (rule,) = diag.parse_field_rules(["rho:min=0"])
     assert rule.finite is True

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ofti.core.field_presets import resolve_field_preset
-from ofti.core.times import latest_time
+from ofti.core.times import PROCESSOR_RE, latest_time, processor_dirs
 from ofti.foamlib import adapter as foamlib_integration
 
 _COMMENT_BLOCK_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
@@ -49,9 +49,15 @@ class FieldData:
 def resolve_time_dir(case_path: Path, time_name: str) -> Path:
     selected = latest_time(case_path) if time_name == "latest" else time_name
     time_dir = case_path / selected
-    if not time_dir.is_dir():
-        raise ValueError(f"time directory not found: {selected}")
-    return time_dir
+    if time_dir.is_dir():
+        return time_dir
+    # Decomposed parallel case: time directories live under processor*/. Return
+    # the first processor's time dir; read_field_values aggregates across them.
+    for proc in processor_dirs(case_path):
+        candidate = proc / selected
+        if candidate.is_dir():
+            return candidate
+    raise ValueError(f"time directory not found: {selected}")
 
 
 def resolve_field_names(
@@ -78,6 +84,55 @@ def read_internal_field(path: Path) -> FieldData:
 
 
 def read_field_values(path: Path, *, patch: str | None = None) -> FieldData:
+    proc_paths = _decomposed_field_paths(path)
+    if proc_paths is not None:
+        return _read_field_aggregate(path.name, proc_paths, patch=patch)
+    return _read_field_single(path, patch=patch)
+
+
+def _decomposed_field_paths(path: Path) -> list[Path] | None:
+    proc_dir = path.parent.parent
+    if not PROCESSOR_RE.match(proc_dir.name):
+        return None
+    case_root = proc_dir.parent
+    time_name = path.parent.name
+    field_rel = path.name
+    matches = [proc / time_name / field_rel for proc in processor_dirs(case_root)]
+    existing = [candidate for candidate in matches if candidate.is_file()]
+    return existing if len(existing) > 1 else None
+
+
+def _read_field_aggregate(
+    name: str,
+    paths: list[Path],
+    *,
+    patch: str | None,
+) -> FieldData:
+    combined: list[tuple[float, ...]] = []
+    for candidate in paths:
+        try:
+            data = _read_field_single(candidate, patch=patch)
+        except ValueError:
+            # A named patch may be absent on some subdomains (internal processor
+            # boundaries); skip those and keep aggregating the rest.
+            if patch is not None:
+                continue
+            raise
+        combined.extend(data.values)
+    if not combined:
+        label = f"boundaryField.{patch}.value" if patch else "internalField"
+        raise ValueError(f"unsupported or missing {label}: {name}")
+    return FieldData(
+        name=name,
+        path=paths[0],
+        kind=_field_kind_from_list(combined),
+        values=combined,
+        declared_count=len(combined),
+        uniform=False,
+    )
+
+
+def _read_field_single(path: Path, *, patch: str | None = None) -> FieldData:
     if not path.is_file():
         raise ValueError(f"field not found: {path.name}")
     node_data = _field_from_foamlib(path, patch=patch)
