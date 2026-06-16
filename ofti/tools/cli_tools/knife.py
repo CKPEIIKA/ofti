@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ofti.tools import knife_analysis as analysis
 from ofti.tools import knife_service as service
 
 ProcEntry = service.ProcEntry
@@ -56,33 +57,33 @@ _looks_like_solver_args = service._looks_like_solver_args
 _guess_solver_from_args = service._guess_solver_from_args
 _runtime_control_snapshot = service._runtime_control_snapshot
 _resolve_solver_log = service._resolve_solver_log
-_run_time_control_data = service._run_time_control_data
-_read_with_local_includes = service._read_with_local_includes
-_strip_include_token = service._strip_include_token
-_resolve_include_path = service._resolve_include_path
-_strip_comments = service._strip_comments
-_iter_blocks_recursive = service._iter_blocks_recursive
-_iter_named_blocks = service._iter_named_blocks
-_parse_block_name = service._parse_block_name
-_matching_brace = service._matching_brace
-_first_block_body = service._first_block_body
-_dedupe_criteria = service._dedupe_criteria
-_inline_criteria = service._inline_criteria
-_runtime_control_conditions = service._runtime_control_conditions
-_runtime_control_block_rows = service._runtime_control_block_rows
-_criterion_status = service._criterion_status
-_eta_seconds = service._eta_seconds
-_is_log_fresh = service._is_log_fresh
-_latest_iteration = service._latest_iteration
-_first_match = service._first_match
-_last_float = service._last_float
-_to_float = service._to_float
-_collect_floats = service._collect_floats
-_band = service._band
-_thermo_out_of_range_count = service._thermo_out_of_range_count
-_residual_flatline = service._residual_flatline
-_extract_series = service._extract_series
-_windowed_stability = service._windowed_stability
+_run_time_control_data = analysis._run_time_control_data
+_read_with_local_includes = analysis._read_with_local_includes
+_strip_include_token = analysis._strip_include_token
+_resolve_include_path = analysis._resolve_include_path
+_strip_comments = analysis._strip_comments
+_iter_blocks_recursive = analysis._iter_blocks_recursive
+_iter_named_blocks = analysis._iter_named_blocks
+_parse_block_name = analysis._parse_block_name
+_matching_brace = analysis._matching_brace
+_first_block_body = analysis._first_block_body
+_dedupe_criteria = analysis._dedupe_criteria
+_inline_criteria = analysis._inline_criteria
+_runtime_control_conditions = analysis._runtime_control_conditions
+_runtime_control_block_rows = analysis._runtime_control_block_rows
+_criterion_status = analysis._criterion_status
+_eta_seconds = analysis._eta_seconds
+_is_log_fresh = analysis._is_log_fresh
+_latest_iteration = analysis._latest_iteration
+_first_match = analysis._first_match
+_last_float = analysis._last_float
+_to_float = analysis._to_float
+_collect_floats = analysis._collect_floats
+_band = analysis._band
+_thermo_out_of_range_count = analysis._thermo_out_of_range_count
+_residual_flatline = analysis._residual_flatline
+_extract_series = analysis._extract_series
+_windowed_stability = analysis._windowed_stability
 _compare_file_filter = service._compare_file_filter
 _criterion_source = service.criterion_source
 _criteria_satisfaction_eta = service.criteria_satisfaction_eta
