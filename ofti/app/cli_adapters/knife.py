@@ -5,7 +5,7 @@ import json
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from ofti.app.cli_adapters.common import solver_name_for_manifest
 from ofti.app.cli_adapters.plot import _plot_metrics
@@ -843,7 +843,33 @@ def _knife_physical(args: argparse.Namespace) -> int:
     )
     if profile_name:
         payload["profile"] = str(profile_name)
+        _merge_profile_diagnostics(payload, profile, args)
     return _print_physical_payload(payload, args)
+
+
+def _merge_profile_diagnostics(
+    payload: dict[str, object],
+    profile: object,
+    args: argparse.Namespace,
+) -> None:
+    diagnostics_fn = getattr(profile, "diagnostics", None)
+    if not callable(diagnostics_fn):
+        return
+    try:
+        diagnostics = diagnostics_fn(args.case_dir, time_name=str(getattr(args, "time", "latest")))
+    except (ValueError, OSError):
+        return
+    if not isinstance(diagnostics, dict):
+        return
+    extra = [item for item in diagnostics.get("violations", []) if isinstance(item, dict)]
+    payload["diagnostics"] = {
+        key: value for key, value in diagnostics.items() if key != "violations"
+    }
+    if extra:
+        violations = list(cast("list[object]", payload.get("violations", [])))
+        violations.extend(extra)
+        payload["violations"] = violations
+    payload["physical_ok"] = not payload.get("violations") and not payload.get("hard_errors")
 
 
 def _unique_cli_items(values: list[str]) -> list[str]:
@@ -878,7 +904,29 @@ def _print_physical_payload(payload: dict[str, object], args: argparse.Namespace
         print(f"violation: {item}")
     for item in cast("list[str]", payload.get("hard_errors", [])):
         print(f"hard_error: {item}")
+    _print_physical_diagnostics(payload)
     return _physical_exit_code(payload, fail_on_bad=bool(getattr(args, "fail_on_bad", False)))
+
+
+def _print_physical_diagnostics(payload: dict[str, object]) -> None:
+    raw = payload.get("diagnostics")
+    if not isinstance(raw, dict):
+        return
+    diagnostics = cast("dict[str, Any]", raw)
+    species_sum = diagnostics.get("species_sum")
+    if isinstance(species_sum, dict):
+        summary = cast("dict[str, Any]", species_sum)
+        if summary.get("checked"):
+            print(f"species_sum: max_abs_deviation={summary.get('max_abs_deviation')}")
+    two_temperature = diagnostics.get("two_temperature")
+    if isinstance(two_temperature, dict):
+        ratio = cast("dict[str, Any]", two_temperature)
+        if ratio.get("checked"):
+            print(
+                f"two_temperature: ok={ratio.get('ok')} "
+                f"ratio_min={ratio.get('ratio_min')} "
+                f"ratio_max={ratio.get('ratio_max')}",
+            )
 
 
 def _physical_exit_code(payload: dict[str, object], *, fail_on_bad: bool) -> int:

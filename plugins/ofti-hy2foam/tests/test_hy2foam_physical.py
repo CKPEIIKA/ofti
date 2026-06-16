@@ -124,6 +124,22 @@ def test_profile_rules_classify_signed_and_fraction_fields(tmp_path: Path) -> No
     assert "qDiff" in rules
 
 
+def test_profile_diagnostics_reports_species_sum_and_two_temperature(tmp_path: Path) -> None:
+    case = _case(tmp_path / "case")
+    _scalar(case / "0" / "Tt", [1000.0, 1000.0])
+    _scalar(case / "0" / "Tv", [1.0, 100.0])  # Tv/Tt = 0.001 -> below 0.02 floor
+    _scalar(case / "0" / "N2", [0.7, 0.7])
+    _scalar(case / "0" / "O2", [0.2, 0.1])  # sums to 0.9/0.8, deviates from 1
+
+    diagnostics = Hy2FoamPhysicalProfile().diagnostics(case, time_name="0")
+
+    assert diagnostics["species_sum"]["checked"] is True
+    assert diagnostics["two_temperature"]["checked"] is True
+    kinds = {item["kind"] for item in diagnostics["violations"]}
+    assert "species_sum" in kinds
+    assert "two_temperature_ratio" in kinds
+
+
 def test_physical_payload_reports_patch_ranges(tmp_path: Path) -> None:
     case = _case(tmp_path / "case")
     boundary = (

@@ -41,6 +41,30 @@ class Hy2FoamPhysicalProfile:
     def rules(self, case_dir: Path) -> list[str]:
         return [_field_rule(name) for name in hy2foam_default_fields(case_dir)]
 
+    def diagnostics(self, case_dir: Path, *, time_name: str = "latest") -> dict[str, Any]:
+        """Whole-field checks beyond per-field rules: species sum and 2T ratio."""
+        time_dir = resolve_time_dir(case_dir, time_name)
+        species = tuple(name for name in AIR11_SPECIES if (time_dir / name).is_file())
+        species_sum: dict[str, Any] = (
+            species_sum_diagnostic(time_dir, species)
+            if len(species) >= 2
+            else {"checked": False, "reason": "fewer than two species fields"}
+        )
+        two_temperature = two_temperature_diagnostic(time_dir, tv_tt_min=0.02, tv_tt_max=50.0)
+        violations: list[dict[str, Any]] = []
+        deviation = species_sum.get("max_abs_deviation") if species_sum.get("checked") else None
+        if deviation is not None and deviation > _FRACTION_TOL:
+            violations.append({"field": "sum(Y)", "kind": "species_sum", **species_sum})
+        if two_temperature.get("checked") and not two_temperature.get("ok", True):
+            violations.append(
+                {"field": "Tv/Tt", "kind": "two_temperature_ratio", **two_temperature},
+            )
+        return {
+            "species_sum": species_sum,
+            "two_temperature": two_temperature,
+            "violations": violations,
+        }
+
 
 def hy2foam_default_fields(case_dir: Path, *, time_name: str = "latest") -> list[str]:
     time_dir = resolve_time_dir(case_dir, time_name)

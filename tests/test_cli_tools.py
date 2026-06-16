@@ -1407,6 +1407,58 @@ def test_knife_physical_profile_forwards_plugin_fields_and_rules(
     }
 
 
+def test_knife_physical_profile_merges_diagnostics(tmp_path, capsys, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case")
+
+    class FakeProfile:
+        name = "fake"
+
+        def detect(self, case_dir: Path) -> ProfileMatch:
+            return ProfileMatch(confidence=1.0, reasons=(str(case_dir),))
+
+        def fields(self, case_dir: Path) -> list[str]:
+            del case_dir
+            return ["rho"]
+
+        def rules(self, case_dir: Path) -> list[str]:
+            del case_dir
+            return ["rho:min=0"]
+
+        def diagnostics(self, case_dir: Path, *, time_name: str = "latest") -> dict[str, object]:
+            del case_dir, time_name
+            return {
+                "species_sum": {"checked": True, "max_abs_deviation": 0.2},
+                "two_temperature": {"checked": False},
+                "violations": [{"field": "sum(Y)", "kind": "species_sum"}],
+            }
+
+    registry = PluginRegistry(physical_profiles={"fake": FakeProfile()})
+    monkeypatch.setattr("ofti.app.cli_adapters.knife.discover_plugins", lambda: registry)
+
+    def _payload(case_dir: Path, **kwargs: object) -> dict[str, object]:
+        del case_dir, kwargs
+        return {
+            "case": str(case),
+            "time": "0",
+            "field_count": 1,
+            "ok": True,
+            "physical_ok": True,
+            "hard_errors": [],
+            "violations": [],
+            "fields": [],
+        }
+
+    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.physical_payload", _payload)
+
+    code = cli_tools.main(["knife", "physical", str(case), "--profile", "fake", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0  # ok=True and no --fail-on-bad
+    assert payload["diagnostics"]["species_sum"]["max_abs_deviation"] == 0.2
+    assert any(item["kind"] == "species_sum" for item in payload["violations"])
+    assert payload["physical_ok"] is False  # merged diagnostic violation flips it
+
+
 def test_knife_plugin_command_is_dispatched(capsys, monkeypatch) -> None:
     class FakeCommand:
         name = "fake-plugin"
