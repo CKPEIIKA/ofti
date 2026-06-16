@@ -188,8 +188,31 @@ def write_case_run_manifest(
     )
 
 
+def resolve_manifest_file(path: Path) -> Path:
+    """Resolve a manifest path, accepting a directory that contains one.
+
+    A bare file path is returned as-is. A directory is searched for
+    ``manifest.json`` directly, then ``runs/*/manifest.json``, then any
+    ``*/manifest.json``; the most recently modified match wins.
+    """
+    resolved = path.expanduser()
+    if resolved.is_file():
+        return resolved.resolve()
+    if resolved.is_dir():
+        direct = resolved / "manifest.json"
+        if direct.is_file():
+            return direct.resolve()
+        candidates = sorted(resolved.glob("runs/*/manifest.json"))
+        if not candidates:
+            candidates = sorted(resolved.glob("*/manifest.json"))
+        if candidates:
+            return max(candidates, key=lambda item: item.stat().st_mtime).resolve()
+        raise ValueError(f"no manifest found under directory: {resolved}")
+    raise ValueError(f"manifest not found: {resolved}")
+
+
 def load_run_manifest(path: Path) -> dict[str, Any]:
-    manifest_path = path.expanduser().resolve()
+    manifest_path = resolve_manifest_file(path)
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise TypeError(f"invalid manifest payload: {manifest_path}")
@@ -200,7 +223,7 @@ def load_run_manifest(path: Path) -> dict[str, Any]:
 
 
 def verify_run_manifest(manifest_path: Path, *, case_path: Path | None = None) -> dict[str, Any]:
-    resolved_manifest = manifest_path.expanduser().resolve()
+    resolved_manifest = resolve_manifest_file(manifest_path)
     manifest = load_run_manifest(resolved_manifest)
     default_case = Path(str(manifest["case"]["path"]))
     target_case = (case_path or default_case).expanduser().resolve()
@@ -264,7 +287,7 @@ def restore_run_manifest(
     only: tuple[str, ...] | list[str] | None = None,
     skip: tuple[str, ...] | list[str] | None = None,
 ) -> dict[str, Any]:
-    resolved_manifest = manifest_path.expanduser().resolve()
+    resolved_manifest = resolve_manifest_file(manifest_path)
     manifest = load_run_manifest(resolved_manifest)
     relative_inputs = manifest.get("inputs", {}).get("inputs_copy_path")
     if not relative_inputs:

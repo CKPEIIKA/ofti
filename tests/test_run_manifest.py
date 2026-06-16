@@ -8,6 +8,7 @@ import pytest
 from ofti.core import run_manifest, run_receipt
 from ofti.core.run_manifest import (
     build_run_manifest,
+    resolve_manifest_file,
     restore_run_manifest,
     verify_run_manifest,
     write_case_run_manifest,
@@ -409,3 +410,38 @@ def test_relative_manifest_output_resolves_from_launch_directory(
     )
 
     assert manifest_path == (launch_dir / "manifests" / "run-a" / "manifest.json").resolve()
+
+
+def test_verify_manifest_accepts_case_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    monkeypatch.chdir(case)  # default output -> case/runs/<stamp>/manifest.json
+
+    manifest_path = write_case_run_manifest(
+        case,
+        name="simpleFoam",
+        command="simpleFoam",
+        background=False,
+        detached=False,
+        parallel=0,
+        mpi=None,
+        sync_subdomains=True,
+        prepare_parallel=True,
+        clean_processors=False,
+    )
+    assert manifest_path.is_relative_to(case / "runs")
+
+    # Passing the case directory must locate the manifest, not raise IsADirectoryError.
+    assert resolve_manifest_file(case) == manifest_path
+    payload = verify_run_manifest(case)
+    assert payload["manifest"] == str(manifest_path)
+    assert payload["ok"] is True
+
+
+def test_resolve_manifest_file_errors_when_directory_has_no_manifest(tmp_path: Path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(ValueError, match="no manifest found"):
+        resolve_manifest_file(empty)

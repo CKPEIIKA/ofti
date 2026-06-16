@@ -218,7 +218,11 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         "verify",
         help="Verify current case inputs against a recorded manifest",
     )
-    manifest_verify.add_argument("manifest", type=Path)
+    manifest_verify.add_argument(
+        "manifest",
+        type=Path,
+        help="Manifest file, or a directory containing runs/*/manifest.json",
+    )
     manifest_verify.add_argument("--case", dest="case_dir", default=None, type=Path)
     manifest_verify.add_argument("--json", action="store_true")
     manifest_verify.set_defaults(func=_knife_manifest_verify)
@@ -227,7 +231,11 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         "restore",
         help="Restore case inputs from a manifest with recorded input copies",
     )
-    manifest_restore.add_argument("manifest", type=Path)
+    manifest_restore.add_argument(
+        "manifest",
+        type=Path,
+        help="Manifest file, or a directory containing runs/*/manifest.json",
+    )
     manifest_restore.add_argument("--to", dest="destination", required=True, type=Path)
     manifest_restore.add_argument(
         "--only",
