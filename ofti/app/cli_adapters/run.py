@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 from typing import cast
@@ -17,6 +16,7 @@ from ofti.app.cli_help import (
     _add_easy_on_cpu_flag,
     _add_table_flag,
     _help_handler,
+    emit_json,
 )
 from ofti.core import run_manifest as manifest_ops
 from ofti.core.field_diagnostics import split_field_list
@@ -443,7 +443,7 @@ def _run_matrix(args: argparse.Namespace) -> int:
         "queue": queue_result,
     }
     if bool(getattr(args, "json", False)):
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         if queue_result and queue_result.get("ok") is False:
             return 1
         return 0
@@ -494,7 +494,7 @@ def _run_parametric(args: argparse.Namespace) -> int:
         clean_processors=bool(getattr(args, "clean_processors", False)),
     )
     if bool(getattr(args, "json", False)):
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         queue = cast("dict[str, object] | None", payload.get("queue"))
         if queue and queue.get("ok") is False:
             return 1
@@ -540,7 +540,7 @@ def _run_queue(args: argparse.Namespace) -> int:
         queue_root=args.set_dir,
     )
     if bool(getattr(args, "json", False)):
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if bool(payload.get("ok", True)) else 1
     print(
         f"count={payload['count']} max_parallel={payload['max_parallel']} "
@@ -588,7 +588,7 @@ def _run_smoke(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     if bool(getattr(args, "json", False)):
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if bool(payload.get("ok")) else 1
     print(f"case={payload['case']}")
     print(f"solver={payload['solver']} ok={payload['ok']} returncode={payload['returncode']}")
@@ -611,7 +611,7 @@ def _run_status(args: argparse.Namespace) -> int:
         tail_bytes=tail_bytes_with_cpu_mode(args),
     )
     if bool(getattr(args, "json", False)):
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.run_status_table_lines(payload)))
@@ -642,7 +642,7 @@ def _run_resize_parallel(args: argparse.Namespace) -> int:
         stop_timeout=float(getattr(args, "stop_timeout", 45.0)),
     )
     if bool(getattr(args, "json", False)):
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if bool(payload.get("ok", False)) else 1
     if bool(getattr(args, "table", False)):
         _print_resize_table(payload)
@@ -721,7 +721,7 @@ def _run_tool(args: argparse.Namespace) -> int:
             "stdout": result.stdout,
             "stderr": result.stderr,
         }
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return result.returncode
     if result.pid is not None:
         print(f"Started {display_name} in background: pid={result.pid} log={result.log_path}")
@@ -735,7 +735,7 @@ def _run_tool(args: argparse.Namespace) -> int:
 def _run_tool_list(args: argparse.Namespace) -> int:
     payload = run_ops.tool_catalog_payload(args.case_dir)
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
     else:
         for name in payload["tools"]:
             print(name)
@@ -745,16 +745,13 @@ def _run_tool_unknown(args: argparse.Namespace) -> int:
     names = run_ops.tool_catalog_names(args.case_dir)
     available = ", ".join(names)
     if args.json:
-        print(
-            json.dumps(
-                {
-                    "error": "unknown tool",
-                    "requested": args.name,
-                    "available": names,
-                },
-                indent=2,
-                sort_keys=True,
-            ),
+        emit_json(
+            {
+                "error": "unknown tool",
+                "requested": args.name,
+                "available": names,
+            },
+            args,
             file=sys.stderr,
         )
         return 1
@@ -826,24 +823,21 @@ def _run_solver_dry_run(
         else None
     )
     if getattr(args, "json", False):
-        print(
-            json.dumps(
-                {
-                    "case": str(Path(args.case_dir).resolve()),
-                    "name": display,
-                    "command": cmd_text,
-                    "dry_run": True,
-                    "sync_subdomains": sync_subdomains,
-                    "clean_processors": clean_processors,
-                    "prepare_parallel": prepare_parallel,
-                    "write_manifest": write_manifest,
-                    "record_inputs_copy": bool(getattr(args, "record_inputs_copy", False)),
-                    "manifest_path": str(manifest_path) if manifest_path is not None else None,
-                    "parallel_setup": parallel_setup,
-                },
-                indent=2,
-                sort_keys=True,
-            ),
+        emit_json(
+            {
+                "case": str(Path(args.case_dir).resolve()),
+                "name": display,
+                "command": cmd_text,
+                "dry_run": True,
+                "sync_subdomains": sync_subdomains,
+                "clean_processors": clean_processors,
+                "prepare_parallel": prepare_parallel,
+                "write_manifest": write_manifest,
+                "record_inputs_copy": bool(getattr(args, "record_inputs_copy", False)),
+                "manifest_path": str(manifest_path) if manifest_path is not None else None,
+                "parallel_setup": parallel_setup,
+            },
+            args,
         )
         return 0
     print(cmd_text)
@@ -947,7 +941,7 @@ def _run_solver_execute(
             "stderr": result.stderr,
             "dry_run": False,
         }
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return result.returncode
     if result.pid is not None:
         print(f"Started {display} in background: pid={result.pid} log={result.log_path}")

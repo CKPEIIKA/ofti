@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
 from ofti.app.cli_help import (
     _add_table_flag,
     _help_handler,
+    emit_json,
 )
 from ofti.tools import table_render_service
 from ofti.tools.cli_tools import plot as plot_ops
@@ -52,7 +52,7 @@ def _plot_metrics(args: argparse.Namespace) -> int:
         print(f"ofti: {exc}", file=sys.stderr)
         return 1
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.metrics_table_lines(payload)))
@@ -85,7 +85,7 @@ def _plot_residuals(args: argparse.Namespace) -> int:
         print(f"No residuals found in {payload['log']}", file=sys.stderr)
         return 1
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.residual_payload_table_lines(payload)))

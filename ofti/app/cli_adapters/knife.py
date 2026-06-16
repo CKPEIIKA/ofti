@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -16,6 +15,7 @@ from ofti.app.cli_help import (
     _add_easy_on_cpu_flag,
     _add_table_flag,
     _help_handler,
+    emit_json,
 )
 from ofti.core import run_manifest as manifest_ops
 from ofti.core.field_diagnostics import split_field_list
@@ -751,7 +751,7 @@ def _add_plugin_knife_commands(
 def _knife_doctor(args: argparse.Namespace) -> int:
     payload = knife_ops.doctor_payload(args.case_dir)
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return knife_ops.doctor_exit_code(payload)
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.doctor_table_lines(payload)))
@@ -773,7 +773,7 @@ def _knife_doctor(args: argparse.Namespace) -> int:
 def _knife_preflight(args: argparse.Namespace) -> int:
     payload = knife_ops.preflight_payload(args.case_dir)
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if payload["ok"] else 1
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.preflight_table_lines(payload)))
@@ -798,7 +798,7 @@ def _knife_compare(args: argparse.Namespace) -> int:
     except TypeError:
         payload = knife_ops.compare_payload(args.left_case, args.right_case)
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.compare_table_lines(payload)))
@@ -884,7 +884,7 @@ def _unique_cli_items(values: list[str]) -> list[str]:
 
 def _print_physical_payload(payload: dict[str, object], args: argparse.Namespace) -> int:
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return _physical_exit_code(payload, fail_on_bad=bool(getattr(args, "fail_on_bad", False)))
     print(f"case={payload['case']}")
     print(f"time={payload['time']} fields={payload['field_count']}")
@@ -960,7 +960,7 @@ def _knife_compare_fields(args: argparse.Namespace) -> int:
         rel_tol=float(getattr(args, "rel_tol", 1e-12)),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if bool(payload.get("ok", False)) else 1
     print(f"left_case={payload['left_case']}")
     print(f"right_case={payload['right_case']}")
@@ -1027,7 +1027,7 @@ def _knife_copy(args: argparse.Namespace) -> int:
         print(f"ofti: {exc}", file=sys.stderr)
         return 1
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     print(f"source={payload['source']}")
     print(f"destination={payload['destination']}")
@@ -1072,7 +1072,7 @@ def _knife_manifest_write(args: argparse.Namespace) -> int:
         "ok": True,
     }
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.campaign_list_table_lines(payload)))
@@ -1089,7 +1089,7 @@ def _knife_manifest_verify(args: argparse.Namespace) -> int:
         case_path=getattr(args, "case_dir", None),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if bool(payload.get("ok")) else 1
     print(f"manifest={payload['manifest']}")
     print(f"case={payload['case']}")
@@ -1121,7 +1121,7 @@ def _knife_manifest_restore(args: argparse.Namespace) -> int:
         skip=getattr(args, "skip", []),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if bool(payload.get("ok")) else 1
     print(f"manifest={payload['manifest']}")
     print(f"destination={payload['destination']}")
@@ -1136,7 +1136,7 @@ def _knife_manifest_restore(args: argparse.Namespace) -> int:
 def _knife_initials(args: argparse.Namespace) -> int:
     payload = knife_ops.initials_payload(args.case_dir)
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.initials_table_lines(payload)))
@@ -1188,7 +1188,7 @@ def _knife_status(args: argparse.Namespace) -> int:
     except TypeError:
         payload = knife_ops.status_payload(args.case_dir)
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.status_table_lines(payload)))
@@ -1200,7 +1200,7 @@ def _knife_status(args: argparse.Namespace) -> int:
 def _knife_current(args: argparse.Namespace) -> int:
     payload = _knife_current_payload(args)
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.current_table_lines(payload)))
@@ -1310,7 +1310,7 @@ def _knife_adopt(args: argparse.Namespace) -> int:
         all_untracked=bool(getattr(args, "all_untracked", False)),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if not payload["failed"] else 1
     _print_knife_adopt(payload)
     return 0 if not payload["failed"] else 1
@@ -1371,7 +1371,7 @@ def _knife_stop(args: argparse.Namespace) -> int:
         signal_name=str(getattr(args, "signal", "TERM")),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if not payload["failed"] else 1
     print(f"case={payload['case']}")
     print(f"signal={payload.get('signal')}")
@@ -1407,7 +1407,7 @@ def _knife_converge(args: argparse.Namespace) -> int:
         print(f"ofti: {exc}", file=sys.stderr)
         return 1
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if payload["ok"] else 1
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.converge_table_lines(payload)))
@@ -1452,7 +1452,7 @@ def _knife_stability(args: argparse.Namespace) -> int:
         print(f"ofti: {exc}", file=sys.stderr)
         return 1
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if payload["status"] == "pass" else 1
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.stability_table_lines(payload)))
@@ -1476,7 +1476,7 @@ def _knife_criteria(args: argparse.Namespace) -> int:
         tail_bytes=tail_bytes_with_cpu_mode(args),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if not payload.get("failed") else 1
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.criteria_payload_table_lines(payload)))
@@ -1501,7 +1501,7 @@ def _knife_eta(args: argparse.Namespace) -> int:
         tail_bytes=tail_bytes_with_cpu_mode(args),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.eta_table_lines(payload)))
@@ -1524,7 +1524,7 @@ def _knife_report(args: argparse.Namespace) -> int:
         tail_bytes=tail_bytes_with_cpu_mode(args),
     )
     if bool(getattr(args, "json", False)):
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.report_table_lines(payload)))
@@ -1532,7 +1532,7 @@ def _knife_report(args: argparse.Namespace) -> int:
     if fmt == "md":
         print(knife_ops.report_markdown(payload))
         return 0
-    print(json.dumps(payload, indent=2, sort_keys=True))
+    emit_json(payload, args)
     return 0
 
 def _knife_campaign_list(args: argparse.Namespace) -> int:
@@ -1542,7 +1542,7 @@ def _knife_campaign_list(args: argparse.Namespace) -> int:
         summary_csv=getattr(args, "summary_csv", None),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.campaign_list_table_lines(payload)))
@@ -1561,7 +1561,7 @@ def _knife_campaign_status(args: argparse.Namespace) -> int:
         tail_bytes=int(getattr(args, "tail_bytes", 256 * 1024)),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.campaign_status_table_lines(payload)))
@@ -1585,7 +1585,7 @@ def _knife_campaign_rank(args: argparse.Namespace) -> int:
         tail_bytes=int(getattr(args, "tail_bytes", 256 * 1024)),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.campaign_rank_table_lines(payload)))
@@ -1610,7 +1610,7 @@ def _knife_campaign_stop(args: argparse.Namespace) -> int:
         tail_bytes=int(getattr(args, "tail_bytes", 256 * 1024)),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         failed = [item for item in payload["actions"] if item.get("failed")]
         return 0 if not failed else 1
     print(f"case={payload['case']}")
@@ -1631,7 +1631,7 @@ def _knife_campaign_keep(args: argparse.Namespace) -> int:
         tail_bytes=int(getattr(args, "tail_bytes", 256 * 1024)),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         failed = [item for item in payload["actions"] if item.get("failed")]
         return 0 if not failed else 1
     print(f"case={payload['case']}")
@@ -1649,7 +1649,7 @@ def _knife_campaign_compare(args: argparse.Namespace) -> int:
         summary_csv=getattr(args, "summary_csv", None),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.campaign_compare_table_lines(payload)))
@@ -1665,7 +1665,7 @@ def _knife_set(args: argparse.Namespace) -> int:
     value = " ".join(args.value).strip()
     payload = knife_ops.set_entry_payload(args.case_dir, args.file, args.key, value)
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if payload["ok"] else 1
     print(f"file={payload['file']}")
     print(f"key={payload['key']}")

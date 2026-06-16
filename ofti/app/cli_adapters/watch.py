@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 from collections.abc import Callable
@@ -15,6 +14,7 @@ from ofti.app.cli_help import (
     _add_easy_on_cpu_flag,
     _add_table_flag,
     _help_handler,
+    emit_json,
 )
 from ofti.tools import table_render_service
 from ofti.tools.cli_tools import watch as watch_ops
@@ -365,13 +365,7 @@ def _watch_jobs(args: argparse.Namespace) -> int:
     )
     profile = _watch_profile(args.case_dir, getattr(args, "output", None))
     if args.json:
-        print(
-            json.dumps(
-                _watch_json_payload("jobs", payload, profile=profile),
-                indent=2,
-                sort_keys=True,
-            ),
-        )
+        emit_json(_watch_json_payload("jobs", payload, profile=profile), args)
         return 0
     if bool(getattr(args, "table", False)):
         print("\n".join(table_render_service.jobs_payload_table_lines(payload)))
@@ -415,13 +409,7 @@ def _watch_log(args: argparse.Namespace) -> int:
         return 1
     profile = _watch_profile(args.case_dir, getattr(args, "output", None))
     if args.json:
-        print(
-            json.dumps(
-                _watch_json_payload("log", payload, profile=profile),
-                indent=2,
-                sort_keys=True,
-            ),
-        )
+        emit_json(_watch_json_payload("log", payload, profile=profile), args)
         return 0
     if profile == "brief":
         print(f"log={payload['log']} lines={len(payload['lines'])}")
@@ -449,13 +437,7 @@ def _watch_attach(args: argparse.Namespace) -> int:
             return 1
         job_id = adopted.get("job_id")
         if args.json:
-            print(
-                json.dumps(
-                    _watch_json_payload("adopt", adopted, profile="detailed"),
-                    indent=2,
-                    sort_keys=True,
-                ),
-            )
+            emit_json(_watch_json_payload("adopt", adopted, profile="detailed"), args)
             return 0
     attached_args = argparse.Namespace(
         source=args.source if args.source is not None else args.case_dir,
@@ -488,13 +470,7 @@ def _watch_attach_watcher(args: argparse.Namespace, watcher_raw: list[str]) -> i
         name=str(getattr(args, "watcher_name", "watcher")),
     )
     if args.json:
-        print(
-            json.dumps(
-                _watch_json_payload("attach.watcher", payload, profile="detailed"),
-                indent=2,
-                sort_keys=True,
-            ),
-        )
+        emit_json(_watch_json_payload("attach.watcher", payload, profile="detailed"), args)
         return 0 if bool(payload.get("ok", True)) else 1
     return _print_watch_external_attach(args, payload)
 
@@ -538,7 +514,7 @@ def _watch_start(args: argparse.Namespace) -> int:
             name=str(getattr(args, "watcher_name", "watcher")),
         )
         if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True))
+            emit_json(payload, args)
             return 0 if bool(payload.get("ok", True)) else 1
         print(f"case={payload['case']}")
         print(f"kind={payload.get('kind', 'watcher')}")
@@ -567,7 +543,7 @@ def _watch_stop(args: argparse.Namespace) -> int:
         signal_name=signal_name,
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if not payload["failed"] else 1
     print(f"case={payload['case']}")
     print(f"signal={payload.get('signal', signal_name)}")
@@ -593,7 +569,7 @@ def _watch_pause(args: argparse.Namespace) -> int:
         kind=str(getattr(args, "kind", "any")),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if not payload["failed"] else 1
     print(f"case={payload['case']}")
     print(f"selected={payload['selected']}")
@@ -616,7 +592,7 @@ def _watch_resume(args: argparse.Namespace) -> int:
         kind=str(getattr(args, "kind", "any")),
     )
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0 if not payload["failed"] else 1
     print(f"case={payload['case']}")
     print(f"selected={payload['selected']}")
@@ -633,7 +609,7 @@ def _watch_resume(args: argparse.Namespace) -> int:
 def _watch_interval(args: argparse.Namespace) -> int:
     payload = watch_ops.interval_payload(args.case_dir, seconds=args.seconds)
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     print(f"case={payload['case']}")
     print(f"effective={payload['effective']}")
@@ -652,7 +628,7 @@ def _watch_output(args: argparse.Namespace) -> int:
     profile = "brief" if brief else "detailed" if detailed else None
     payload = watch_ops.output_profile_payload(args.case_dir, profile=profile)
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        emit_json(payload, args)
         return 0
     print(f"case={payload['case']}")
     print(f"effective={payload['effective']}")
@@ -699,13 +675,7 @@ def _watch_external_render(
 ) -> int:
     profile = _watch_profile(args.case_dir, getattr(args, "output", None))
     if args.json:
-        print(
-            json.dumps(
-                _watch_json_payload(f"external.{mode}", payload, profile=profile),
-                indent=2,
-                sort_keys=True,
-            ),
-        )
+        emit_json(_watch_json_payload(f"external.{mode}", payload, profile=profile), args)
         return _watch_external_json_exit(mode, payload)
     handlers: dict[str, Callable[[dict[str, object]], int]] = {
         "status": _print_watch_external_status,

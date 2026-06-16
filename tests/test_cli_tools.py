@@ -1459,6 +1459,27 @@ def test_knife_physical_profile_merges_diagnostics(tmp_path, capsys, monkeypatch
     assert payload["physical_ok"] is False  # merged diagnostic violation flips it
 
 
+def test_json_output_carries_schema_version_and_command(tmp_path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+
+    code = cli_tools.main(["knife", "preflight", str(case), "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code in (0, 1)
+    assert payload["schema_version"] == 1
+    assert payload["command"] == "knife preflight"
+
+
+def test_json_command_name_includes_nested_subcommand(tmp_path, capsys) -> None:
+    # campaign list is a nested knife subcommand (dest=campaign_command).
+    code = cli_tools.main(["knife", "campaign", "list", str(tmp_path), "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["schema_version"] == 1
+    assert payload["command"] == "knife campaign list"
+
+
 def test_knife_plugin_command_is_dispatched(capsys, monkeypatch) -> None:
     class FakeCommand:
         name = "fake-plugin"

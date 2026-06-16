@@ -80,7 +80,9 @@ patch comparison helpers.
 
 - `-h` / `--help` is available at each command level.
 - `-V` / `--version`, `--version`, and `ofti version` print the package version.
-- `--json` is optional machine output for automation.
+- `--json` is optional machine output for automation. Every JSON object carries
+  a `schema_version` (currently `1`) and the `command` that produced it, so
+  scripts can pin to a stable shape.
 - `--table` is optional aligned human output for structured read-only commands.
 - `--json` and `--table` are mutually exclusive.
 - `--easy-on-cpu` bounds log reads and slows polling to keep watch/status
