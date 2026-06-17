@@ -39,6 +39,8 @@ def _option_kwargs(opt: OptionSpec) -> dict[str, Any]:
         kwargs["type"] = opt.type
     if opt.default is not UNSET:
         kwargs["default"] = opt.default
+    if opt.required:
+        kwargs["required"] = True
     return kwargs
 
 

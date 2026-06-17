@@ -48,3 +48,20 @@ def test_build_spec_parser_enforces_choices() -> None:
 
     with pytest.raises(SystemExit):
         parser.parse_args(["demo", "--mode", "z"])
+
+
+def test_build_spec_parser_enforces_required_option() -> None:
+    spec = CommandSpec(
+        name="demo",
+        summary="d",
+        handler=_handler,
+        options=(OptionSpec(("--patch",), required=True),),
+    )
+    parser = argparse.ArgumentParser()
+    build_spec_parser(parser.add_subparsers(), spec)
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["demo"])  # missing required --patch
+
+    args = parser.parse_args(["demo", "--patch", "wall"])
+    assert args.patch == "wall"

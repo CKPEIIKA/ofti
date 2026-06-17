@@ -76,6 +76,14 @@ case-specific assumptions into OFTI core. This repository includes an
 presets, physical checks, charge observability, preflight checks, and same-mesh
 patch comparison helpers.
 
+Plugin knife commands are declared as framework-neutral `CommandSpec` objects
+(`ofti.core.command_spec`) — a command exposes a `command_spec()` method that
+names its positional arguments, options, and handler, and the active CLI adapter
+builds the parser from that spec. Plugins do not touch argparse directly, and
+they emit machine output through the shared output contract
+(`ofti.core.output_contract.stamp_payload`) so plugin `--json` carries the same
+`schema_version`/`command` envelope as core commands.
+
 ## CLI CONTRACT
 
 - `-h` / `--help` is available at each command level.

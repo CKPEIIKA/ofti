@@ -39,6 +39,7 @@ class OptionSpec:
     choices: tuple[str, ...] | None = None
     type: Callable[[str], Any] | None = None
     default: Any = UNSET
+    required: bool = False
 
 
 @dataclass(frozen=True)

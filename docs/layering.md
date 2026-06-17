@@ -40,6 +40,9 @@ behavior in reusable library modules, and keep CLI/TUI code as adapters.
    - Argparse, dispatch, output modes, exit-code mapping, and help text.
    - Calls OFTI library services.
    - Does not parse OpenFOAM files or implement case management directly.
+   - Builds parsers from framework-neutral `CommandSpec`s where commands are
+     declared as specs (`ofti/app/cli_adapters/command_builder.build_spec_parser`);
+     argparse stays an adapter detail. See "Plugin command specs" below.
 
 4. TUI adapter: `ofti/app`, `ofti/ui`, `ofti/ui_curses`
    - Flow, prompts, layout, rendering, key bindings.
@@ -83,6 +86,24 @@ that re-exports them (e.g. `knife_service` + `knife_process`/`knife_campaign`/
 - Shared module objects (`os`, `subprocess`, service modules) are imported
   normally in siblings; tests patch attributes on the shared object, so those
   patches still apply.
+
+## Plugin command specs
+
+CLI commands — especially plugin-provided knife commands — are described as
+framework-neutral specs in `ofti/core/command_spec.py` (`CommandSpec`,
+`ArgumentSpec`, `OptionSpec`), which know nothing about argparse. The argparse
+adapter `ofti/app/cli_adapters/command_builder.build_spec_parser` turns a spec
+into a subparser; a future Click/Typer adapter would consume the same specs.
+
+- A plugin command class exposes `command_spec(self) -> CommandSpec` (naming its
+  positional arguments, options, and `handler`) instead of poking argparse via
+  `add_parser`. The registry hook (`knife_parser`) prefers `command_spec` and
+  only falls back to a legacy `add_parser` when a command predates the spec API.
+- Plugin handlers emit machine output through the shared output contract
+  (`ofti/core/output_contract.stamp_payload` + `command_name`), so plugin
+  `--json` carries the same `schema_version`/`command` envelope as core
+  commands. Core CLI output (`cli_help.emit_json`) routes through the same
+  contract, keeping one JSON shape across core and plugins.
 
 ## Rules of thumb
 

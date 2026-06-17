@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ofti.core.command_spec import ArgumentSpec, CommandSpec, OptionSpec
 from ofti.core.field_compare import compare_fields_payload
 from ofti.core.output_contract import command_name, stamp_payload
 from ofti.core.times import time_directories
@@ -18,15 +19,17 @@ PATCH_PRESETS = {preset.name: preset.fields for preset in (TRANSPORT, TWO_TEMPER
 class Hy2FoamComparePreflightCommand:
     name = "hy2foam-compare-check"
 
-    def add_parser(self, subparsers) -> None:
-        parser = subparsers.add_parser(
-            "hy2foam-compare-check",
-            help="Check hy2Foam case pair before cellwise field comparison",
+    def command_spec(self) -> CommandSpec:
+        return CommandSpec(
+            name="hy2foam-compare-check",
+            summary="Check hy2Foam case pair before cellwise field comparison",
+            handler=self.run,
+            arguments=(
+                ArgumentSpec("left_case", type=Path),
+                ArgumentSpec("right_case", type=Path),
+            ),
+            options=(OptionSpec(("--json",), action="store_true"),),
         )
-        parser.add_argument("left_case", type=Path)
-        parser.add_argument("right_case", type=Path)
-        parser.add_argument("--json", action="store_true")
-        parser.set_defaults(func=self.run)
 
     def run(self, args) -> int:
         payload = compare_preflight_payload(args.left_case, args.right_case)
@@ -41,18 +44,22 @@ class Hy2FoamComparePreflightCommand:
 class Hy2FoamPatchCompareCommand:
     name = "hy2foam-patch-compare"
 
-    def add_parser(self, subparsers) -> None:
-        parser = subparsers.add_parser(
-            "hy2foam-patch-compare",
-            help="Compare hy2Foam patch field values between two same-mesh cases",
+    def command_spec(self) -> CommandSpec:
+        return CommandSpec(
+            name="hy2foam-patch-compare",
+            summary="Compare hy2Foam patch field values between two same-mesh cases",
+            handler=self.run,
+            arguments=(
+                ArgumentSpec("left_case", type=Path),
+                ArgumentSpec("right_case", type=Path),
+            ),
+            options=(
+                OptionSpec(("--patch",), required=True),
+                OptionSpec(("--preset",), default="hy2foam-wall"),
+                OptionSpec(("--time",), default=None),
+                OptionSpec(("--json",), action="store_true"),
+            ),
         )
-        parser.add_argument("left_case", type=Path)
-        parser.add_argument("right_case", type=Path)
-        parser.add_argument("--patch", required=True)
-        parser.add_argument("--preset", default="hy2foam-wall")
-        parser.add_argument("--time", default=None)
-        parser.add_argument("--json", action="store_true")
-        parser.set_defaults(func=self.run)
 
     def run(self, args) -> int:
         payload = patch_compare_payload(

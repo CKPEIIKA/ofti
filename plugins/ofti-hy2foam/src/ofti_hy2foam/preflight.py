@@ -7,6 +7,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from ofti.core.command_spec import ArgumentSpec, CommandSpec, OptionSpec
 from ofti.core.field_io import resolve_time_dir
 from ofti.core.output_contract import command_name, stamp_payload
 
@@ -19,12 +20,17 @@ REQUIRED_FIELDS = ("Tt", "Tv", "p", "U")
 class Hy2FoamPreflightCommand:
     name = "hy2foam-preflight"
 
-    def add_parser(self, subparsers) -> None:
-        parser = subparsers.add_parser("hy2foam-preflight", help="Run hy2Foam-specific preflight")
-        parser.add_argument("case_dir", type=Path)
-        parser.add_argument("--time", default="latest")
-        parser.add_argument("--json", action="store_true")
-        parser.set_defaults(func=self.run)
+    def command_spec(self) -> CommandSpec:
+        return CommandSpec(
+            name="hy2foam-preflight",
+            summary="Run hy2Foam-specific preflight",
+            handler=self.run,
+            arguments=(ArgumentSpec("case_dir", type=Path),),
+            options=(
+                OptionSpec(("--time",), default="latest"),
+                OptionSpec(("--json",), action="store_true"),
+            ),
+        )
 
     def run(self, args) -> int:
         payload = preflight_payload(args.case_dir, time_name=str(getattr(args, "time", "latest")))
