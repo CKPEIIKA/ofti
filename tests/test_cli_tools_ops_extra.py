@@ -11,7 +11,7 @@ from typing import cast
 import pytest
 
 from ofti.tools import case_source_service, knife_service, watch_service
-from ofti.tools.cli_tools import common, knife, run, watch
+from ofti.tools.cli_tools import common, knife, run, run_queue, watch
 
 
 def _make_case(path: Path, solver: str = "simpleFoam") -> Path:
@@ -742,8 +742,8 @@ def test_run_queue_payload_dry_run_and_active_flow(
         poll["calls"] += 1
         return poll["calls"] <= 2 and pid in {101, 202}
 
-    monkeypatch.setattr(run, "_pid_running", _pid_running)
-    monkeypatch.setattr(run.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(run_queue, "_pid_running", _pid_running)
+    monkeypatch.setattr(run_queue.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(
         run,
         "status_row_payload",
@@ -943,7 +943,7 @@ def test_run_queue_and_case_set_error_branches(
         "execute_case_command",
         lambda *_a, **_k: (_ for _ in ()).throw(ValueError("start failed")),
     )
-    monkeypatch.setattr(run.time, "sleep", lambda _sec: None)
+    monkeypatch.setattr(run_queue.time, "sleep", lambda _sec: None)
     failed = run.queue_payload(cases=[case], max_parallel=2, dry_run=False)
     assert failed["ok"] is False
     assert failed["failed_to_start"][0]["error"] == "start failed"
