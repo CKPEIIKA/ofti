@@ -63,10 +63,32 @@ imports below adapters, and no direct upstream `foamlib` imports outside
 `tests/test_architecture_boundaries.py` are empty; new code must keep them
 empty.
 
+## Service facade pattern
+
+Large service modules are kept under ~1000 lines by extracting cohesive
+clusters into sibling modules while the original stays the canonical surface
+that re-exports them (e.g. `knife_service` + `knife_process`/`knife_campaign`/
+`knife_runtime`/`knife_analysis`; `runtime_control_service` + `runtime_criteria`;
+`watch_service` + `watch_external`; `cli_tools/run` + `run_smoke`/`run_queue`;
+`cli_adapters/knife` + `knife_parser`). Conventions:
+
+- The facade re-exports moved names via module-alias assignment
+  (`x = _sibling.x`) when they are not used internally, so ruff does not prune
+  them and tests/adapters keep one import surface.
+- When an extracted sibling must call back into a function that stays in the
+  facade (or is monkeypatched on it), it uses a lazy accessor
+  (`def _svc(): from ... import facade; return facade`) instead of a top-level
+  import. This breaks the import cycle and preserves `facade.name`
+  monkeypatch behavior at call time.
+- Shared module objects (`os`, `subprocess`, service modules) are imported
+  normally in siblings; tests patch attributes on the shared object, so those
+  patches still apply.
+
 ## Rules of thumb
 
 - Add a new module only when it has clear ownership and prevents duplication.
-- Avoid facade packages and "manager" classes.
+- Avoid facade packages and "manager" classes; the service-facade split above
+  is the sanctioned exception for oversized single modules.
 - Prefer small functions and explicit data flow.
 - Keep UI code dumb: format and display data, do not parse OpenFOAM files.
 - Keep adapters thin: parse arguments/input, call library functions, render
