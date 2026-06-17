@@ -6,7 +6,7 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from textwrap import dedent
 
-from ofti.app.cli_adapters.knife import _build_knife_parser
+from ofti.app.cli_adapters.knife_parser import _build_knife_parser
 from ofti.app.cli_adapters.plot import _build_plot_parser
 from ofti.app.cli_adapters.run import _build_run_parser
 from ofti.app.cli_adapters.watch import _build_watch_parser

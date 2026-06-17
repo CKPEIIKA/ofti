@@ -1493,7 +1493,7 @@ def test_knife_plugin_command_is_dispatched(capsys, monkeypatch) -> None:
             return 0
 
     registry = PluginRegistry(knife_commands={"fake-plugin": FakeCommand()})
-    monkeypatch.setattr("ofti.app.cli_adapters.knife.discover_plugins", lambda: registry)
+    monkeypatch.setattr("ofti.app.cli_adapters.knife_parser.discover_plugins", lambda: registry)
 
     code = cli_tools.main(["knife", "fake-plugin"])
 
