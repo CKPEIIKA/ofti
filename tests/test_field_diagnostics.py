@@ -255,13 +255,9 @@ def test_resolve_and_read_decomposed_time_directories(tmp_path: Path, monkeypatc
     assert payload["hard_errors"] == ["p: nonfinite values=1"]
 
 
-def test_latest_time_uses_decomposed_times(tmp_path: Path, monkeypatch) -> None:
+def test_latest_time_uses_decomposed_times(tmp_path: Path) -> None:
     import ofti.core.times as times_mod
 
-    def _raise(*_args, **_kwargs):
-        raise OSError("no foamListTimes")
-
-    monkeypatch.setattr(times_mod, "run_trusted", _raise)
     case = _make_case(tmp_path / "case")  # root keeps 0/
     (case / "processor0" / "0").mkdir(parents=True)
     (case / "processor0" / "2e-05").mkdir(parents=True)

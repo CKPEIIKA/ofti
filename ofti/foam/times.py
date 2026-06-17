@@ -1,12 +1,18 @@
+"""OpenFOAM-assisted time discovery (the trusted-subprocess boundary).
+
+Tries ``foamListTimes`` and falls back to the pure filesystem scan in
+``ofti.core.times`` (which also understands decomposed ``processor*`` cases).
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
 
+from ofti.core.times import latest_time as scan_latest_time
 from ofti.foam.subprocess_utils import run_trusted
 
 
 def latest_time(case_path: Path) -> str:
-    """Return latest time using OpenFOAM when available, then filesystem scan."""
     try:
         result = run_trusted(
             ["foamListTimes", "-latestTime"],
@@ -21,20 +27,4 @@ def latest_time(case_path: Path) -> str:
         value = (result.stdout or "").strip()
         if value:
             return value
-    return _latest_time_scan(case_path)
-
-
-def _latest_time_scan(case_path: Path) -> str:
-    latest_value = 0.0
-    found = False
-    for entry in case_path.iterdir():
-        if not entry.is_dir():
-            continue
-        try:
-            value = float(entry.name)
-        except ValueError:
-            continue
-        if not found or value > latest_value:
-            latest_value = value
-            found = True
-    return f"{latest_value:g}" if found else "0"
+    return scan_latest_time(case_path)

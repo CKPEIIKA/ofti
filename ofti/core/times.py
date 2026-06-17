@@ -1,9 +1,13 @@
+"""Pure, filesystem-only time-directory discovery (no process execution).
+
+OpenFOAM-assisted ``latest_time`` (foamListTimes) lives in ``ofti.foam.times``;
+this module stays in the pure core layer.
+"""
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
-
-from ofti.foam.subprocess_utils import run_trusted
 
 PROCESSOR_RE = re.compile(r"^processor\d+$")
 
@@ -46,19 +50,6 @@ def time_directories(case_path: Path) -> list[Path]:
 
 
 def latest_time(case_path: Path) -> str:
-    try:
-        result = run_trusted(
-            ["foamListTimes", "-latestTime"],
-            cwd=case_path,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
-        result = None
-    if result is not None and result.returncode == 0:
-        value = (result.stdout or "").strip()
-        if value:
-            return value
+    """Latest time directory by filesystem scan (root + ``processor*``)."""
     times = time_directories(case_path)
     return times[-1].name if times else "0"

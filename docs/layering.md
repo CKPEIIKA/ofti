@@ -22,8 +22,13 @@ behavior in reusable library modules, and keep CLI/TUI code as adapters.
      case.
 
 2. OFTI library: `ofti/core`, `ofti/foam`, `ofti/tools`
-   - `ofti/core`: pure domain/file logic; no curses, no UI, no OpenFOAM process
-     execution.
+   - `ofti/core`: pure domain/file logic; no curses, no UI, and no raw
+     subprocess. The few core services that need an OpenFOAM tool (run-manifest
+     provenance, pipeline run, dict-generation fallback) reach it only through
+     the `ofti/foam` trusted-subprocess boundary (`run_trusted`); core never
+     imports `subprocess` directly. Filesystem-only time discovery lives in
+     `ofti/core/times`; OpenFOAM-assisted `latest_time` (foamListTimes) lives in
+     `ofti/foam/times`. Enforced by `tests/test_architecture_boundaries.py`.
    - `ofti/foam`: OpenFOAM environment discovery and trusted subprocess
      boundary.
    - `ofti/tools`: reusable case services shared by CLI and TUI.

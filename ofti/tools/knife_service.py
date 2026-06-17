@@ -22,7 +22,7 @@ from ofti.core.field_diagnostics import (
 )
 from ofti.core.solver_checks import resolve_solver_name
 from ofti.core.solver_status import latest_solver_job, solver_status_text
-from ofti.core.times import latest_time
+from ofti.foam.times import latest_time
 from ofti.tools import (
     case_source_service,
     case_status_service,

@@ -78,6 +78,29 @@ def test_library_modules_do_not_import_cli_adapters() -> None:
     assert offenders == {}
 
 
+_RAW_SUBPROCESS_RE = re.compile(r"\bsubprocess\b|\bPopen\b|\bos\.(system|exec|spawn)")
+
+
+def test_core_does_not_use_raw_subprocess() -> None:
+    # ofti/core stays pure: OpenFOAM tool execution must go through the foam
+    # trusted-subprocess boundary (ofti.foam.subprocess_utils.run_trusted), never
+    # raw subprocess/Popen/os.system.
+    offenders: dict[Path, list[str]] = {}
+    for path in _py_files("ofti/core"):
+        matches = sorted(set(_RAW_SUBPROCESS_RE.findall(path.read_text(encoding="utf-8"))))
+        if matches:
+            offenders[path] = matches
+    assert offenders == {}
+
+
+def test_core_subprocess_access_is_only_via_foam_boundary() -> None:
+    # The only sanctioned subprocess gateway for core is the foam boundary.
+    for path in _py_files("ofti/core"):
+        for name in _imports(path):
+            if "subprocess" in name:
+                assert name == "ofti.foam.subprocess_utils", f"{path} imports {name}"
+
+
 def test_core_and_tools_do_not_spread_hy2foam_domain_terms() -> None:
     offenders: dict[Path, list[str]] = {}
     for path in _py_files("ofti/core") + _py_files("ofti/tools"):

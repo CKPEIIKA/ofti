@@ -6,7 +6,7 @@ from typing import Any
 from ofti.app.tool_screens.menu_helpers import build_menu
 from ofti.app.tool_screens.runner import _show_message, run_tool_command
 from ofti.core.entry_io import list_subkeys
-from ofti.core.times import latest_time
+from ofti.foam.times import latest_time
 from ofti.ui_curses.prompts import prompt_args_line
 from ofti.ui_curses.tool_dicts_ui import _ensure_tool_dict
 

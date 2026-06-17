@@ -15,9 +15,9 @@ from ofti.app.tool_screens.runner import (
 from ofti.core.case import detect_mesh_stats, detect_parallel_settings, detect_solver
 from ofti.core.dict_compare import compare_case_dicts
 from ofti.core.mesh_info import mesh_counts
-from ofti.core.times import latest_time
 from ofti.core.tool_output import CommandResult, format_command_result
 from ofti.foam.subprocess_utils import run_trusted as _run_trusted
+from ofti.foam.times import latest_time
 from ofti.ui.status import status_message
 from ofti.ui_curses.help import diagnostics_help
 from ofti.ui_curses.prompts import prompt_line
