@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from ofti.tools import runtime_control_service as rtc
+from ofti.tools import runtime_criteria as rc
 from ofti.tools import watch_service
 
 
@@ -50,10 +51,10 @@ def test_runtime_control_include_resolution_and_helpers(tmp_path: Path, monkeypa
 
 
 def test_runtime_control_eta_and_reason_helpers() -> None:
-    assert rtc.reason_from_evidence("start window") == "startup"
-    assert rtc.reason_from_evidence("not enough samples") == "not_enough_samples"
-    assert rtc.reason_from_evidence("window too wide") == "window"
-    assert rtc.reason_from_evidence("other") is None
+    assert rc.reason_from_evidence("start window") == "startup"
+    assert rc.reason_from_evidence("not enough samples") == "not_enough_samples"
+    assert rc.reason_from_evidence("window too wide") == "window"
+    assert rc.reason_from_evidence("other") is None
 
     assert rtc.criterion_unmet_reason(
         status="pass",
@@ -89,10 +90,10 @@ def test_runtime_control_eta_and_reason_helpers() -> None:
     assert rtc.criterion_eta_seconds([1, 2, 3], tolerance=0.1, comparator="le", execution_times=[1], use_delta=False, status="fail") is None
     assert rtc.criterion_eta_seconds([3.0, 2.0, 1.0, 0.5], tolerance=0.1, comparator="le", execution_times=[1, 2, 3, 4], use_delta=False, status="pass") == 0.0
 
-    assert rtc.criterion_eta_samples_needed(1.0, tolerance=1.0, comparator="le", slope=-1.0) == 0.0
-    assert rtc.criterion_eta_samples_needed(2.0, tolerance=1.0, comparator="le", slope=0.1) < 0
-    assert rtc.criterion_eta_samples_needed(0.5, tolerance=1.0, comparator="ge", slope=-0.1) < 0
-    assert rtc.criterion_eta_samples_needed(0.2, tolerance=1.0, comparator="ge", slope=0.2) > 0
+    assert rc.criterion_eta_samples_needed(1.0, tolerance=1.0, comparator="le", slope=-1.0) == 0.0
+    assert rc.criterion_eta_samples_needed(2.0, tolerance=1.0, comparator="le", slope=0.1) < 0
+    assert rc.criterion_eta_samples_needed(0.5, tolerance=1.0, comparator="ge", slope=-0.1) < 0
+    assert rc.criterion_eta_samples_needed(0.2, tolerance=1.0, comparator="ge", slope=0.2) > 0
 
     assert rtc.latest_iteration("", 0) is None
     assert rtc.latest_iteration("", 3) == 3
