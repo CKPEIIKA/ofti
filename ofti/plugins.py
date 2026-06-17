@@ -6,6 +6,8 @@ from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any, Protocol
 
+from ofti.core.command_spec import CommandSpec
+
 
 @dataclass(frozen=True)
 class FieldPreset:
@@ -32,6 +34,8 @@ class PhysicalRuleProvider(Protocol):
 
 
 class KnifeCommandProvider(Protocol):
+    """Legacy command provider that builds its own argparse subparser."""
+
     name: str
 
     def add_parser(self, subparsers: Any) -> None: ...
@@ -39,11 +43,29 @@ class KnifeCommandProvider(Protocol):
     def run(self, args: Any) -> int: ...
 
 
+class SpecCommandProvider(Protocol):
+    """Preferred command provider: declares a framework-neutral CommandSpec.
+
+    The CLI adapter builds argparse from the spec, so the plugin never touches
+    argparse internals. ``command_spec().handler`` is the run callable.
+    """
+
+    name: str
+
+    def command_spec(self) -> CommandSpec: ...
+
+    def run(self, args: Any) -> int: ...
+
+
+#: A knife command is either a legacy add_parser provider or a spec provider.
+KnifeCommand = KnifeCommandProvider | SpecCommandProvider
+
+
 @dataclass
 class PluginRegistry:
     presets: dict[str, FieldPreset] = field(default_factory=dict)
     physical_profiles: dict[str, PhysicalRuleProvider] = field(default_factory=dict)
-    knife_commands: dict[str, KnifeCommandProvider] = field(default_factory=dict)
+    knife_commands: dict[str, KnifeCommand] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
 
     def add_preset(self, preset: FieldPreset) -> bool:
@@ -54,7 +76,7 @@ class PluginRegistry:
             self.physical_profiles, provider.name, provider, "physical profile",
         )
 
-    def add_knife_command(self, provider: KnifeCommandProvider) -> bool:
+    def add_knife_command(self, provider: KnifeCommand) -> bool:
         return self._register(
             self.knife_commands, provider.name, provider, "knife command",
         )

@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from ofti.core.command_spec import ArgumentSpec, CommandSpec, OptionSpec
 from ofti.core.field_io import flat_values, read_field_values, resolve_time_dir
 from ofti.core.output_contract import command_name, stamp_payload
 
@@ -18,12 +19,17 @@ ELECTRON_FIELDS = ("e-", "E")
 class Hy2FoamChargeCommand:
     name = "charge"
 
-    def add_parser(self, subparsers) -> None:
-        parser = subparsers.add_parser("charge", help="Report hy2Foam charge observability")
-        parser.add_argument("case_dir", type=Path)
-        parser.add_argument("--time", default="latest")
-        parser.add_argument("--json", action="store_true")
-        parser.set_defaults(func=self.run)
+    def command_spec(self) -> CommandSpec:
+        return CommandSpec(
+            name="charge",
+            summary="Report hy2Foam charge observability",
+            handler=self.run,
+            arguments=(ArgumentSpec("case_dir", type=Path),),
+            options=(
+                OptionSpec(("--time",), default="latest"),
+                OptionSpec(("--json",), action="store_true"),
+            ),
+        )
 
     def run(self, args) -> int:
         payload = charge_payload(args.case_dir, time_name=str(getattr(args, "time", "latest")))

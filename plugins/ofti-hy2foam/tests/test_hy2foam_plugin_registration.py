@@ -7,10 +7,12 @@ import json
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from ofti.plugins import KnifeCommandProvider, PluginRegistry
+from ofti.app.cli_adapters.command_builder import build_spec_parser
+from ofti.plugins import PluginRegistry
 
 PLUGIN_SRC = Path(__file__).resolve().parents[1] / "src"
 if str(PLUGIN_SRC) not in sys.path:
@@ -36,10 +38,19 @@ def test_hy2foam_plugin_registers_presets_profile_and_charge_command() -> None:
     assert "hy2foam-patch-compare" in registry.knife_commands
 
 
-def _command_parser(command: KnifeCommandProvider) -> argparse.ArgumentParser:
+def _add_command(sub: Any, command: Any) -> None:
+    # Mirror the CLI adapter: prefer a CommandSpec, fall back to add_parser.
+    spec_fn = getattr(command, "command_spec", None)
+    if callable(spec_fn):
+        build_spec_parser(sub, spec_fn())
+    else:
+        command.add_parser(sub)
+
+
+def _command_parser(command: Any) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers()
-    command.add_parser(sub)
+    _add_command(sub, command)
     return parser
 
 
@@ -58,7 +69,7 @@ def test_plugin_commands_accept_json_flag(argv: list[str]) -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers()
     for command in registry.knife_commands.values():
-        command.add_parser(sub)
+        _add_command(sub, command)
 
     args = parser.parse_args(argv)
 

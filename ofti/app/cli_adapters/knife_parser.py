@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from ofti.app.cli_adapters.command_builder import build_spec_parser
 from ofti.app.cli_adapters.knife import (
     _knife_adopt,
     _knife_campaign_compare,
@@ -761,7 +762,12 @@ def _add_plugin_knife_commands(
 ) -> None:
     registry = discover_plugins()
     for name, command in sorted(registry.knife_commands.items()):
+        spec_fn = getattr(command, "command_spec", None)
+        add_parser_fn = getattr(command, "add_parser", None)
         try:
-            command.add_parser(subparsers)
+            if callable(spec_fn):
+                build_spec_parser(subparsers, spec_fn())
+            elif callable(add_parser_fn):
+                add_parser_fn(subparsers)
         except argparse.ArgumentError as exc:
             registry.errors.append(f"{name}: {exc}")
