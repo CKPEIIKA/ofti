@@ -5,38 +5,21 @@ import json
 from collections.abc import Callable
 from typing import TextIO
 
+from ofti.core.output_contract import command_name, stamp_payload
+
 Handler = Callable[[argparse.Namespace], int]
 _EASY_ON_CPU_TAIL_BYTES = 256 * 1024
 _EASY_ON_CPU_MIN_POLL_INTERVAL = 1.0
 
-#: Bumped when the machine-readable JSON payload shape changes in a breaking way.
-JSON_SCHEMA_VERSION = 1
-
-
 def emit_json(payload: object, args: argparse.Namespace, *, file: TextIO | None = None) -> None:
-    """Print a JSON payload, stamping dict payloads with schema_version/command.
+    """Print a JSON payload through the shared output contract.
 
-    Treats CLI JSON as a versioned API. A payload's own keys win, so an existing
-    ``command`` (or a payload that already carries ``schema_version``) is kept.
-    Pass ``file=sys.stderr`` for machine-readable error output.
+    Stamps dict payloads with schema_version/command (see
+    ``ofti.core.output_contract``). Pass ``file=sys.stderr`` for machine-readable
+    error output.
     """
-    if isinstance(payload, dict) and "schema_version" not in payload:
-        payload = {
-            "schema_version": JSON_SCHEMA_VERSION,
-            "command": command_name(args),
-            **payload,
-        }
-    print(json.dumps(payload, indent=2, sort_keys=True), file=file)
-
-
-def command_name(args: argparse.Namespace) -> str:
-    parts = [
-        getattr(args, "group", None),
-        getattr(args, "command", None),
-        getattr(args, "manifest_command", None),
-        getattr(args, "campaign_command", None),
-    ]
-    return " ".join(str(part) for part in parts if part)
+    stamped = stamp_payload(payload, command_name(args))
+    print(json.dumps(stamped, indent=2, sort_keys=True), file=file)
 
 
 def _help_handler(parser: argparse.ArgumentParser) -> Handler:

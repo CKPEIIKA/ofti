@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.field_compare import compare_fields_payload
+from ofti.core.output_contract import command_name, stamp_payload
 from ofti.core.times import time_directories
 
 from .presets import TRANSPORT, TWO_TEMPERATURE, WALL
@@ -30,7 +31,7 @@ class Hy2FoamComparePreflightCommand:
     def run(self, args) -> int:
         payload = compare_preflight_payload(args.left_case, args.right_case)
         if bool(getattr(args, "json", False)):
-            print(json.dumps(payload, indent=2, sort_keys=True))
+            print(json.dumps(stamp_payload(payload, command_name(args)), indent=2, sort_keys=True))
             return 0 if payload["ok"] else 1
         print(f"latest_common_time={payload['latest_common_time']}")
         print(f"same_mesh={payload['same_mesh']['same']}")
@@ -62,7 +63,7 @@ class Hy2FoamPatchCompareCommand:
             time_name=getattr(args, "time", None),
         )
         if bool(getattr(args, "json", False)):
-            print(json.dumps(payload, indent=2, sort_keys=True))
+            print(json.dumps(stamp_payload(payload, command_name(args)), indent=2, sort_keys=True))
             return 0 if payload["ok"] else 1
         print(f"time={payload['time']} patch={payload['patch']} same={payload['same']}")
         for error in payload.get("errors", []):

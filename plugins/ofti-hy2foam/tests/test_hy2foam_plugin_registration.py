@@ -81,3 +81,6 @@ def test_charge_command_json_output_is_valid(tmp_path: Path) -> None:
     assert code == 0
     assert payload["case"] == str(case)
     assert "charged_species" in payload
+    # Plugin JSON goes through the shared output contract.
+    assert payload["schema_version"] == 1
+    assert "command" in payload

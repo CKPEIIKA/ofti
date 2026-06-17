@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.field_io import resolve_time_dir
+from ofti.core.output_contract import command_name, stamp_payload
 
 from .field_boundaries import field_boundary_patches, mesh_patch_names
 from .physical import AIR11_SPECIES
@@ -28,7 +29,7 @@ class Hy2FoamPreflightCommand:
     def run(self, args) -> int:
         payload = preflight_payload(args.case_dir, time_name=str(getattr(args, "time", "latest")))
         if bool(getattr(args, "json", False)):
-            print(json.dumps(payload, indent=2, sort_keys=True))
+            print(json.dumps(stamp_payload(payload, command_name(args)), indent=2, sort_keys=True))
             return 0 if payload["ok"] else 1
         print(f"case={payload['case']}")
         print(f"ok={payload['ok']}")
