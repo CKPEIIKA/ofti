@@ -96,6 +96,12 @@ def _tutorial_template(profile: TutorialProfile) -> Path | None:
         candidate = Path(root).expanduser() / profile.relative_path
         if (candidate / "system" / "controlDict").is_file():
             return candidate.resolve()
+    # Fall back to the runnable cavity bundled in the repo so the real suite works
+    # out of the box when OpenFOAM is installed but tutorials are not shipped.
+    if profile.name == "icoFoam-cavity":
+        bundled = Path(__file__).resolve().parents[1] / "examples" / "cavity"
+        if (bundled / "system" / "controlDict").is_file():
+            return bundled.resolve()
     return None
 
 
