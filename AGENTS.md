@@ -13,10 +13,35 @@ small, composable tools; clear layering; and Unix-style CLI behavior.
 
 ## Layering rules
 
-- `ofti/core` and shared service modules hold domain logic.
-- `ofti/tools/cli_tools/*` and `ofti/app/cli_tools.py` are interface adapters.
+- `ofti/foamlib` is the only layer that imports upstream `foamlib` directly.
+- `ofti/core` holds pure domain/file logic: no curses, no UI, and no raw
+  subprocess. Core reaches OpenFOAM tools only through the `ofti/foam`
+  trusted-subprocess boundary (`run_trusted`); this is enforced by
+  `tests/test_architecture_boundaries.py`.
+- `ofti/foam` owns OpenFOAM environment discovery and the trusted subprocess
+  boundary; `ofti/tools` holds reusable case services shared by CLI and TUI.
+- `ofti/app/cli_adapters/*`, `ofti/app/cli_tools.py`, and `ofti/tools/cli_tools/*`
+  are the CLI adapters; `ofti/app`, `ofti/ui`, `ofti/ui_curses`, `ofti/ui_textual`
+  are the TUI adapters. Adapters parse input, call services, and render output.
 - TUI flows should reuse the same service/core functions as CLI commands.
 - If logic is needed by more than one command/screen, move it out of UI layer.
+- Oversized service modules use the facade pattern (a canonical module that
+  re-exports cohesive sibling modules); see `docs/layering.md`.
+
+## CLI command & plugin API
+
+- Commands are described as framework-neutral specs in
+  `ofti/core/command_spec.py` (`CommandSpec`/`ArgumentSpec`/`OptionSpec`); the
+  argparse adapter `ofti/app/cli_adapters/command_builder.build_spec_parser`
+  builds parsers from them. Plugins declare `command_spec()` and never touch
+  argparse.
+- Machine output is stamped through the shared output contract
+  `ofti/core/output_contract.py` (`stamp_payload`/`command_name`), so every
+  `--json` object carries a `schema_version` and the `command` that produced it
+  — for core and plugin commands alike.
+- Plugins register through `ofti/plugins.py` (`PluginRegistry`) via the
+  `ofti.plugins` entry-point group; registration refuses to overwrite an
+  existing preset/profile/command name.
 
 ## Unix-way CLI expectations
 
