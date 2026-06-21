@@ -195,7 +195,9 @@ def _species_orders(case_dir: Path) -> list[tuple[str, str, tuple[str, ...]]]:
 
 def _species_order_entries(text: str) -> list[tuple[str, tuple[str, ...]]]:
     entries: list[tuple[str, tuple[str, ...]]] = []
-    keys = r"(?:species|speciesOrder|stateInputOrder|inputOrder|outputOrder)"
+    # Stock hy2Foam only: thermo/chemistry/transport species ordering. The NN-fork
+    # keys (stateInputOrder/inputOrder/outputOrder) live in the hy2foam-mod plugin.
+    keys = r"(?:species|speciesOrder)"
     for match in re.finditer(rf"\b(?P<key>{keys})\s*\((?P<body>[^)]*)\)\s*;", text, re.DOTALL):
         species = _recognized_species(match.group("body"))
         if len(species) >= 2:

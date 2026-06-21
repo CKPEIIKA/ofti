@@ -123,16 +123,19 @@ def test_preflight_checks_species_order_sources(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (case / "constant" / "transportProperties").write_text(
-        "speciesOrder (N2 O2 NO N O);\n",
+        "speciesOrder (O2 N2 NO N O);\n",  # reordered vs thermo -> stock mismatch
         encoding="utf-8",
     )
+    # NN-fork ordering keys belong to hy2foam-mod; the stock check must ignore them.
     (case / "system" / "nnModel").write_text(
-        "stateInputOrder (p Tt Tv O2 N2 NO N O);\n",
+        "stateInputOrder (p Tt Tv NO N O O2 N2);\n",
         encoding="utf-8",
     )
 
     payload = preflight_payload(case, time_name="0")
 
     checks = {item["name"]: item for item in payload["checks"]}
+    detail = checks["species_order_consistency"]["detail"]
     assert checks["species_order_consistency"]["status"] == "FAIL"
-    assert "system/nnModel:stateInputOrder" in checks["species_order_consistency"]["detail"]
+    assert "transportProperties:speciesOrder" in detail
+    assert "nnModel" not in detail  # NN-fork key extracted out of the stock plugin

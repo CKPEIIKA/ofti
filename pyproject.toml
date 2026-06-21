@@ -43,6 +43,9 @@ omit = [
 
 [tool.ty.environment]
 python-version = "3.11"
+# Plugin packages live under plugins/*/src and are not installed in the dev env;
+# point ty at them so plugin tests/modules resolve their imports.
+extra-paths = ["plugins/ofti-hy2foam/src", "plugins/hy2foam-mod/src"]
 
 [tool.setuptools.packages.find]
 where = ["."]
