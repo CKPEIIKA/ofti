@@ -189,6 +189,11 @@ def proc_table(proc_root: Path) -> dict[int, ProcEntry]:
         if not entry.is_dir() or not entry.name.isdigit():
             continue
         pid = int(entry.name)
+        if read_proc_state(entry) == "Z":
+            # Defunct/zombie processes keep a readable comm (e.g. "icoFoam") even
+            # though their cmdline is empty, so they would otherwise be miscounted
+            # as a running solver until the parent reaps them.
+            continue
         args = read_proc_args(entry)
         ppid = read_proc_ppid(entry)
         cwd, cwd_error = proc_cwd_with_error(entry)
@@ -324,6 +329,18 @@ def read_proc_ppid(proc_dir: Path) -> int:
         return int(parts[1])
     except ValueError:
         return -1
+
+
+def read_proc_state(proc_dir: Path) -> str:
+    """Return the single-character process state from /proc/<pid>/stat ("Z" = zombie)."""
+    stat_path = proc_dir / "stat"
+    try:
+        text = stat_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+    if ") " not in text:
+        return ""
+    return text.split(") ", 1)[1][:1]
 
 
 def process_role(args: list[str], solver: str | None) -> str | None:

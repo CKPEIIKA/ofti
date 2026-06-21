@@ -19,10 +19,11 @@ def _write_proc_entry(
     cmdline: bytes,
     cwd: Path | None,
     comm: str | None = None,
+    state: str = "S",
 ) -> Path:
     proc_dir = proc_root / str(pid)
     proc_dir.mkdir()
-    stat_tail = f"S {ppid} 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+    stat_tail = f"{state} {ppid} 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
     (proc_dir / "stat").write_text(f"{pid} (cmd) {stat_tail}\n")
     (proc_dir / "cmdline").write_bytes(cmdline)
     if comm is not None:
@@ -236,6 +237,24 @@ def test_read_proc_args_falls_back_to_comm(tmp_path: Path) -> None:
         comm="simpleFoam",
     )
     assert svc.read_proc_args(proc_dir) == ["simpleFoam"]
+
+
+def test_proc_table_excludes_zombie_processes(tmp_path: Path) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    # A defunct solver: empty cmdline, but comm still reads the solver name.
+    _write_proc_entry(
+        proc_root, pid=501, ppid=1, cmdline=b"", cwd=None, comm="simpleFoam", state="Z",
+    )
+    _write_proc_entry(
+        proc_root, pid=502, ppid=1, cmdline=b"simpleFoam\x00-parallel\x00", cwd=None,
+    )
+
+    table = svc.proc_table(proc_root)
+
+    assert 501 not in table  # zombie is not counted as a running process
+    assert 502 in table
+    assert svc.read_proc_state(proc_root / "501") == "Z"
 
 
 def test_scan_processes_reports_unknown_case_with_explicit_error(tmp_path: Path) -> None:
