@@ -8,8 +8,10 @@ from typing import Any
 from ofti.core.command_spec import ArgumentSpec, CommandSpec, OptionSpec
 from ofti.core.field_compare import compare_fields_payload
 from ofti.core.output_contract import command_name, stamp_payload
+from ofti.core.table import render_table
 from ofti.core.times import time_directories
 
+from .output import emit_payload
 from .presets import TRANSPORT, TWO_TEMPERATURE, WALL
 
 MESH_FILES = ("boundary", "points", "faces", "owner", "neighbour")
@@ -28,17 +30,44 @@ class Hy2FoamComparePreflightCommand:
                 ArgumentSpec("left_case", type=Path),
                 ArgumentSpec("right_case", type=Path),
             ),
-            options=(OptionSpec(("--json",), action="store_true"),),
+            options=(
+                OptionSpec(("--json",), action="store_true"),
+                OptionSpec(("--table",), action="store_true"),
+            ),
         )
 
     def run(self, args) -> int:
         payload = compare_preflight_payload(args.left_case, args.right_case)
-        if bool(getattr(args, "json", False)):
-            print(json.dumps(stamp_payload(payload, command_name(args)), indent=2, sort_keys=True))
-            return 0 if payload["ok"] else 1
-        print(f"latest_common_time={payload['latest_common_time']}")
-        print(f"same_mesh={payload['same_mesh']['same']}")
-        return 0 if payload["ok"] else 1
+        return emit_payload(
+            args,
+            payload,
+            text_lines=_compare_check_text_lines,
+            table_lines=_compare_check_table_lines,
+        )
+
+
+def _compare_check_text_lines(payload: dict[str, Any]) -> list[str]:
+    return [
+        f"latest_common_time={payload['latest_common_time']}",
+        f"same_mesh={payload['same_mesh']['same']}",
+    ]
+
+
+def _compare_check_table_lines(payload: dict[str, Any]) -> list[str]:
+    header = [
+        f"latest_common_time={payload['latest_common_time']}",
+        f"same_mesh={payload['same_mesh']['same']}",
+    ]
+    table = render_table(
+        payload["same_mesh"]["files"],
+        [
+            ("file", "File"),
+            ("same", "Same"),
+            ("left_present", "Left"),
+            ("right_present", "Right"),
+        ],
+    )
+    return [*header, *table]
 
 
 class Hy2FoamPatchCompareCommand:

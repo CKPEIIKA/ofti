@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import re
 from collections import Counter
@@ -9,9 +8,10 @@ from typing import Any
 
 from ofti.core.command_spec import ArgumentSpec, CommandSpec, OptionSpec
 from ofti.core.field_io import resolve_time_dir
-from ofti.core.output_contract import command_name, stamp_payload
+from ofti.core.table import render_table
 
 from .field_boundaries import field_boundary_patches, mesh_patch_names
+from .output import emit_payload
 from .physical import AIR11_SPECIES
 
 REQUIRED_FIELDS = ("Tt", "Tv", "p", "U")
@@ -29,19 +29,35 @@ class Hy2FoamPreflightCommand:
             options=(
                 OptionSpec(("--time",), default="latest"),
                 OptionSpec(("--json",), action="store_true"),
+                OptionSpec(("--table",), action="store_true"),
             ),
         )
 
     def run(self, args) -> int:
         payload = preflight_payload(args.case_dir, time_name=str(getattr(args, "time", "latest")))
-        if bool(getattr(args, "json", False)):
-            print(json.dumps(stamp_payload(payload, command_name(args)), indent=2, sort_keys=True))
-            return 0 if payload["ok"] else 1
-        print(f"case={payload['case']}")
-        print(f"ok={payload['ok']}")
-        for check in payload["checks"]:
-            print(f"{check['name']}={check['status']} {check['detail']}")
-        return 0 if payload["ok"] else 1
+        return emit_payload(
+            args,
+            payload,
+            text_lines=_preflight_text_lines,
+            table_lines=_preflight_table_lines,
+        )
+
+
+def _preflight_text_lines(payload: dict[str, Any]) -> list[str]:
+    lines = [f"case={payload['case']}", f"ok={payload['ok']}"]
+    lines.extend(
+        f"{check['name']}={check['status']} {check['detail']}" for check in payload["checks"]
+    )
+    return lines
+
+
+def _preflight_table_lines(payload: dict[str, Any]) -> list[str]:
+    header = [f"case={payload['case']}", f"ok={payload['ok']}"]
+    table = render_table(
+        payload["checks"],
+        [("name", "Check"), ("status", "Status"), ("detail", "Detail")],
+    )
+    return [*header, *table]
 
 
 def preflight_payload(case_dir: Path, *, time_name: str = "latest") -> dict[str, Any]:

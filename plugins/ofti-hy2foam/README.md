@@ -40,6 +40,8 @@ ofti knife physical CASE --profile hy2foam --json
 
 Every command supports `--json` (machine output stamped with `schema_version`
 and `command`) and returns `0` on success, `1` on a failed check.
+`hy2foam-preflight` and `hy2foam-compare-check` also accept `--table` for aligned
+human output (mutually exclusive with `--json`).
 
 ```bash
 # Charge / ionization observability (electron + ion number density, net imbalance)
