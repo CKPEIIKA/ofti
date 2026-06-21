@@ -323,7 +323,10 @@ def _parse_value(text: str) -> tuple[float, ...]:
 
 
 def _parse_nonuniform_values(kind: str, body: str) -> list[tuple[float, ...]]:
-    if "vector" in kind.lower():
+    lowered = kind.lower()
+    # vector, (symm/spherical)tensor are all written as parenthesized component
+    # tuples; only plain scalar lists are bare numbers.
+    if "vector" in lowered or "tensor" in lowered:
         return [_parse_value(match.group(1)) for match in _VECTOR_RE.finditer(body)]
     return [(float(token),) for token in _NUMBER_RE.findall(body)]
 
