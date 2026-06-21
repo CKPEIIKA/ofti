@@ -763,11 +763,10 @@ def _add_plugin_knife_commands(
     registry = discover_plugins()
     for name, command in sorted(registry.knife_commands.items()):
         spec_fn = getattr(command, "command_spec", None)
-        add_parser_fn = getattr(command, "add_parser", None)
+        if not callable(spec_fn):
+            registry.errors.append(f"{name}: plugin command lacks command_spec()")
+            continue
         try:
-            if callable(spec_fn):
-                build_spec_parser(subparsers, spec_fn())
-            elif callable(add_parser_fn):
-                add_parser_fn(subparsers)
+            build_spec_parser(subparsers, spec_fn())
         except argparse.ArgumentError as exc:
             registry.errors.append(f"{name}: {exc}")

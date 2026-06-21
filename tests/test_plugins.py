@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ofti.core.command_spec import CommandSpec
 from ofti.plugins import FieldPreset, ProfileMatch, builtin_registry
 
 
@@ -24,8 +25,8 @@ class FakeCommand:
     def __init__(self, name: str) -> None:
         self.name = name
 
-    def add_parser(self, subparsers: object) -> None:
-        del subparsers
+    def command_spec(self) -> CommandSpec:
+        return CommandSpec(name=self.name, summary="Fake command", handler=self.run)
 
     def run(self, args: object) -> int:
         del args

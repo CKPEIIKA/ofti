@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from ofti.app import cli_tools
-from ofti.plugins import PluginRegistry, ProfileMatch
+from ofti.core.command_spec import CommandSpec
+from ofti.plugins import PluginRegistry, ProfileMatch, SpecCommandProvider
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import watch as watch_ops
 from ofti.tools.cli_tools.run import RunResult
@@ -1484,11 +1486,13 @@ def test_knife_plugin_command_is_dispatched(capsys, monkeypatch) -> None:
     class FakeCommand:
         name = "fake-plugin"
 
-        def add_parser(self, subparsers) -> None:
-            parser = subparsers.add_parser("fake-plugin", help="Fake plugin command")
-            parser.set_defaults(func=self.run)
+        def command_spec(self) -> CommandSpec:
+            return CommandSpec(
+                name="fake-plugin", summary="Fake plugin command", handler=self.run,
+            )
 
-        def run(self, _args) -> int:
+        def run(self, args) -> int:
+            del args
             print("plugin-ok")
             return 0
 
@@ -1499,6 +1503,26 @@ def test_knife_plugin_command_is_dispatched(capsys, monkeypatch) -> None:
 
     assert code == 0
     assert capsys.readouterr().out.strip() == "plugin-ok"
+
+
+def test_knife_plugin_command_without_spec_is_skipped_with_error(monkeypatch) -> None:
+    import argparse
+
+    from ofti.app.cli_adapters import knife_parser
+
+    class BadCommand:  # intentionally lacks command_spec()
+        name = "bad"
+
+        def run(self, args) -> int:
+            del args
+            return 0
+
+    registry = PluginRegistry(knife_commands={"bad": cast(SpecCommandProvider, BadCommand())})
+    monkeypatch.setattr(knife_parser, "discover_plugins", lambda: registry)
+
+    knife_parser._add_plugin_knife_commands(argparse.ArgumentParser().add_subparsers())
+
+    assert any("lacks command_spec" in err for err in registry.errors)
 
 
 def test_knife_compare_fields_unknown_plugin_preset_returns_usage_error(tmp_path, capsys) -> None:

@@ -33,18 +33,8 @@ class PhysicalRuleProvider(Protocol):
     def rules(self, case_dir: Path) -> Sequence[str | Any]: ...
 
 
-class KnifeCommandProvider(Protocol):
-    """Legacy command provider that builds its own argparse subparser."""
-
-    name: str
-
-    def add_parser(self, subparsers: Any) -> None: ...
-
-    def run(self, args: Any) -> int: ...
-
-
 class SpecCommandProvider(Protocol):
-    """Preferred command provider: declares a framework-neutral CommandSpec.
+    """A knife command provider: declares a framework-neutral CommandSpec.
 
     The CLI adapter builds argparse from the spec, so the plugin never touches
     argparse internals. ``command_spec().handler`` is the run callable.
@@ -57,8 +47,8 @@ class SpecCommandProvider(Protocol):
     def run(self, args: Any) -> int: ...
 
 
-#: A knife command is either a legacy add_parser provider or a spec provider.
-KnifeCommand = KnifeCommandProvider | SpecCommandProvider
+#: A knife command declares a framework-neutral CommandSpec.
+KnifeCommand = SpecCommandProvider
 
 
 @dataclass

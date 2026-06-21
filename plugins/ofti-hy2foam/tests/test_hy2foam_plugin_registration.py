@@ -39,12 +39,8 @@ def test_hy2foam_plugin_registers_presets_profile_and_charge_command() -> None:
 
 
 def _add_command(sub: Any, command: Any) -> None:
-    # Mirror the CLI adapter: prefer a CommandSpec, fall back to add_parser.
-    spec_fn = getattr(command, "command_spec", None)
-    if callable(spec_fn):
-        build_spec_parser(sub, spec_fn())
-    else:
-        command.add_parser(sub)
+    # Mirror the CLI adapter: every plugin command declares a CommandSpec.
+    build_spec_parser(sub, command.command_spec())
 
 
 def _command_parser(command: Any) -> argparse.ArgumentParser:
