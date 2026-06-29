@@ -130,7 +130,9 @@ def test_foamlib_fallback_file_dict_and_field_entries(
     internal = foamlib_integration.read_field_entry_node(field, "internalField")
 
     assert payload["application"] == "simpleFoam"
-    assert internal.tolist() == [300.0, 301.0, 302.0]
+    tolist = getattr(internal, "tolist", None)
+    assert callable(tolist)
+    assert tolist() == [300.0, 301.0, 302.0]
     assert foamlib_integration.read_field_entry(field, "boundaryField.inlet.value") == "310.0;"
     assert foamlib_integration.node_type_label("uniform (1 0 0);") == "vector"
 

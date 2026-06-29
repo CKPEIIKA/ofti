@@ -319,6 +319,10 @@ def test_openfoam_env_helpers_and_screen(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert ofenv._prompt_text(screen, "path: ") == "b"
 
     cfg = ofenv.get_config()
+    old_bashrc = cfg.openfoam_bashrc
+    monkeypatch.setattr(cfg, "openfoam_bashrc", old_bashrc)
+    monkeypatch.setenv("OFTI_BASHRC", "")
+    monkeypatch.setenv("WM_PROJECT_DIR", "")
     ofenv._set_openfoam_bashrc(None)
     assert cfg.openfoam_bashrc is None
 

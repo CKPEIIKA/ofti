@@ -33,9 +33,16 @@ def _callbacks(dummy: DummyCallbacks) -> BrowserCallbacks:
 def test_open_in_external_editor(monkeypatch) -> None:
     screen = DummyScreen()
     callbacks = DummyCallbacks()
+    commands: list[list[str]] = []
     monkeypatch.setenv("EDITOR", "true")
     monkeypatch.setattr(entry_browser, "resolve_executable", lambda cmd: cmd)
-    monkeypatch.setattr(entry_browser, "run_trusted", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        entry_browser,
+        "run_trusted",
+        lambda cmd, *_args, **_kwargs: commands.append(list(cmd)),
+    )
     monkeypatch.setattr(entry_browser.curses, "endwin", lambda *_: None)
     result = entry_browser._open_in_external_editor(screen, "initial", _callbacks(callbacks))
-    assert result is not None
+    assert result == "initial"
+    assert commands and commands[0][0] == "true"
+    assert callbacks.messages == []

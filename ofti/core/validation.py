@@ -86,28 +86,30 @@ def dimensioned_value(value: str) -> str | None:
     [0 2 -2 0 0 0 0] 1e-05
     """
     text = value.strip().rstrip(";")
-    error: str | None = None
-    parsed: tuple[list[float], float | list[float], str] | None = None
+    prelim_error = _dimensioned_value_precheck(text)
+    if prelim_error:
+        return prelim_error
+    parsed = _parse_dimensioned_value(text)
+    if parsed is None:
+        return "Dimensioned value should be numeric or vector-like."
+    dims, payload, _normalized = parsed
+    if not foamlib_integration.validate_dimensioned_value(payload, dims):
+        return "Dimensioned value has invalid numeric/vector data."
+    return None
+
+
+def _dimensioned_value_precheck(text: str) -> str | None:
     if not text.startswith("["):
-        error = "Dimensioned value must start with dimensions, e.g. [0 1 -2 0 0 0 0] 1e-05."
-    elif "]" not in text:
-        error = "Dimensioned value missing closing bracket."
-    else:
-        dims_text, rest = text.split("]", 1)
-        dims_err = dimension_set_values(dims_text + "]")
-        if dims_err:
-            error = dims_err
-        elif not rest.strip():
-            error = "Dimensioned value missing numeric value."
-        else:
-            parsed = _parse_dimensioned_value(text)
-            if parsed is None:
-                error = "Dimensioned value should be numeric or vector-like."
-    if error is None and parsed is not None:
-        dims, payload, _normalized = parsed
-        if not foamlib_integration.validate_dimensioned_value(payload, dims):
-            error = "Dimensioned value has invalid numeric/vector data."
-    return error
+        return "Dimensioned value must start with dimensions, e.g. [0 1 -2 0 0 0 0] 1e-05."
+    if "]" not in text:
+        return "Dimensioned value missing closing bracket."
+    dims_text, rest = text.split("]", 1)
+    dims_err = dimension_set_values(dims_text + "]")
+    if dims_err:
+        return dims_err
+    if not rest.strip():
+        return "Dimensioned value missing numeric value."
+    return None
 
 
 def normalize_dimension_set(value: str) -> str | None:

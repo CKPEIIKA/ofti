@@ -12,28 +12,27 @@ from ofti.foam.openfoam import OpenFOAMError
 def detect_mesh_stats(case_path: Path) -> str:
     log_path = latest_checkmesh_log(case_path)
     if log_path is None:
-        if has_mesh(case_path):
-            cells, faces, points = mesh_counts(case_path)
-            if cells or faces or points:
-                parts = []
-                if cells is not None:
-                    parts.append(f"{cells} cells")
-                if faces is not None:
-                    parts.append(f"faces={faces}")
-                if points is not None:
-                    parts.append(f"points={points}")
-                return ", ".join(parts)
-            return "mesh (no checkMesh log)"
-        return "unknown"
+        return _mesh_stats_without_log(case_path)
     try:
         text = _read_log_snippet(log_path)
     except OSError:
         return "mesh (log unreadable)" if has_mesh(case_path) else "unknown"
+    return _mesh_stats_from_log(case_path, text)
 
+
+def _mesh_stats_without_log(case_path: Path) -> str:
+    if not has_mesh(case_path):
+        return "unknown"
+    cells, faces, points = mesh_counts(case_path)
+    parts = _mesh_count_parts(cells=cells, faces=faces, points=points)
+    return ", ".join(parts) if parts else "mesh (no checkMesh log)"
+
+
+def _mesh_stats_from_log(case_path: Path, text: str) -> str:
     cells = parse_cells_count(text)
     skew = _format_float(parse_max_skewness(text))
     non_orth = _format_float(parse_max_non_orth(text))
-    parts = []
+    parts: list[str] = []
     if cells:
         parts.append(f"{cells} cells")
     if skew:
@@ -43,6 +42,22 @@ def detect_mesh_stats(case_path: Path) -> str:
     if parts:
         return ", ".join(parts)
     return "mesh (unparsed)" if has_mesh(case_path) else "unknown"
+
+
+def _mesh_count_parts(
+    *,
+    cells: int | None,
+    faces: int | None,
+    points: int | None,
+) -> list[str]:
+    parts: list[str] = []
+    if cells is not None:
+        parts.append(f"{cells} cells")
+    if faces is not None:
+        parts.append(f"faces={faces}")
+    if points is not None:
+        parts.append(f"points={points}")
+    return parts
 
 
 def detect_solver(case_path: Path) -> str:

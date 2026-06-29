@@ -154,8 +154,8 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         help="Safely stop, reconstruct, redecompose, and resume with a new MPI size",
         description=(
             "Safely resize a running/decomposed parallel case: writeNow, wait for stop, "
-            "snapshot inputs, reconstruct latest time, update decomposeParDict, "
-            "decompose latest time, and optionally restart."
+            "snapshot inputs, verify the latest complete processor time, reconstruct it, "
+            "update decomposeParDict, decompose latest time, and optionally restart."
         ),
     )
     resize.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
@@ -188,7 +188,7 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         "--no-write-now",
         dest="write_now",
         action="store_false",
-        help="Skip live writeNow request",
+        help="Skip live writeNow request before reconstructing processor results",
     )
     resize.add_argument(
         "--force-stop",

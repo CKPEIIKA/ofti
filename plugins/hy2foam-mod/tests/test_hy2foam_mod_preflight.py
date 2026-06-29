@@ -26,6 +26,18 @@ def test_mod_plugin_registers_nn_preflight_command() -> None:
     register(registry)
 
     assert "hy2foam-mod-preflight" in registry.knife_commands
+    assert "hy2foam-mod" in registry.bundle_hints
+
+
+def test_mod_bundle_hints_for_nncompiled_cases(tmp_path: Path) -> None:
+    registry = PluginRegistry()
+    register(registry)
+    case = _case(tmp_path / "case")
+    (case / "constant" / "nnTransport").write_text("precompiledModel model.so;\n")
+
+    hints = registry.bundle_hints["hy2foam-mod"].bundle_hints(case)
+
+    assert any("NNcompiled runtime" in hint for hint in hints)
 
 
 def test_nn_species_order_mismatch_is_detected(tmp_path: Path) -> None:

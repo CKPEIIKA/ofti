@@ -15,6 +15,10 @@ pip install ./plugins/ofti-hy2foam
 The plugin registers through the `ofti.plugins` entry point, so once installed
 its presets, profile, and commands appear under `ofti knife` automatically.
 
+It also contributes `ofti bundle` target-host hints for hy2Foam-like cases, so
+portable archives warn about required compatible OpenFOAM/hyStrath/hy2Foam
+runtime libraries and thermochemistry/species-order files.
+
 ## Field presets
 
 Use with `ofti knife compare-fields --preset <name>` or

@@ -339,6 +339,8 @@ def _stability_prompt_config(stdscr: Any) -> dict[str, Any] | None:
     values = (pattern_raw, tolerance, window, startup, comparator_raw)
     if any(value is None for value in values):
         return None
+    if tolerance is None or window is None or startup is None:
+        return None
     comparator = (str(comparator_raw) or "le").strip().lower()
     if comparator not in {"le", "lt", "ge", "gt"}:
         show_message(stdscr, "Unsupported comparator. Use le, lt, ge, or gt.")

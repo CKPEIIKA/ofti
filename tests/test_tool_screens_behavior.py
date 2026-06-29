@@ -11,6 +11,7 @@ class FakeScreen:
         self._keys = list(keys or [])
         self._inputs = list(inputs or [])
         self._input_buffer: list[int] = []
+        self.output: list[str] = []
 
     def clear(self) -> None:
         pass
@@ -24,8 +25,9 @@ class FakeScreen:
     def getyx(self):
         return (0, 0)
 
-    def addstr(self, *args, **kwargs) -> None:
-        pass
+    def addstr(self, *args, **_kwargs) -> None:
+        if args:
+            self.output.append(str(args[-1]))
 
     def attron(self, *args, **kwargs) -> None:
         pass
@@ -85,9 +87,10 @@ def test_dictionary_compare_screen(monkeypatch, tmp_path: Path) -> None:
     case_dir.mkdir()
     other.mkdir()
 
-    screen = FakeScreen(keys=[ord("h")], inputs=[str(other)])
+    screen = FakeScreen(inputs=[str(other)])
     monkeypatch.setattr(curses, "echo", lambda *_: None)
     monkeypatch.setattr(curses, "noecho", lambda *_: None)
     monkeypatch.setattr("ofti.app.tool_screens.diagnostics.compare_case_dicts", lambda *_: [])
 
     dictionary_compare_screen(screen, case_dir)
+    assert any("No dictionary key differences" in line for line in screen.output)

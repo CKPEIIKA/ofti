@@ -519,7 +519,7 @@ class _TrackedJobProcess:
         deadline = None if timeout is None else (time.monotonic() + timeout)
         while self.poll() is None:
             if deadline is not None and time.monotonic() >= deadline:
-                raise subprocess.TimeoutExpired(cmd=str(self._pid), timeout=timeout)
+                raise subprocess.TimeoutExpired(cmd=str(self._pid), timeout=timeout or 0.0)
             time.sleep(0.05)
         return 0
 
@@ -871,8 +871,10 @@ def _watch_interval(settings: dict[str, Any]) -> float:
 
 def _watch_output(settings: dict[str, Any]) -> WatchOutputProfile:
     value = str(settings.get("output") or "").strip().lower()
-    if value in {"brief", "detailed"}:
-        return value  # type: ignore[return-value]
+    if value == "brief":
+        return "brief"
+    if value == "detailed":
+        return "detailed"
     return _WATCH_SETTINGS_DEFAULT_OUTPUT
 
 

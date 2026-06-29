@@ -107,44 +107,46 @@ def _tool_command(
     tool_set: set[str] | None = None,
 ) -> CommandAction | None:
     if name == "tool":
-        if len(parts) < 2:
-            return CommandAction(
-                CommandKind.TOOLS,
-                raw=raw,
-                error="Usage: :tool <name>",
-            )
-        return CommandAction(
-            CommandKind.RUN_TOOL,
-            raw=raw,
-            args=(" ".join(parts[1:]),),
-            background=background,
-        )
+        return _explicit_tool_command(raw, parts, background)
     if name == "run":
-        if len(parts) == 1:
-            if tool_set is None or "run" not in tool_set:
-                return CommandAction(CommandKind.RUN_SOLVER, raw=raw)
-            return CommandAction(
-                CommandKind.RUN_TOOL,
-                raw=raw,
-                args=("run",),
-                background=background,
-            )
-        return CommandAction(
-            CommandKind.RUN_TOOL,
-            raw=raw,
-            args=(" ".join(parts[1:]),),
-            background=background,
-        )
+        return _run_command(raw, parts, background, tool_set)
     if name == "solver":
-        if len(parts) > 1:
-            return CommandAction(
-                CommandKind.RUN_TOOL,
-                raw=raw,
-                args=(" ".join(parts[1:]),),
-                background=background,
-            )
-        return CommandAction(CommandKind.RUN_SOLVER, raw=raw)
+        return _solver_command(raw, parts, background)
     return None
+
+
+def _explicit_tool_command(raw: str, parts: list[str], background: bool) -> CommandAction:
+    if len(parts) < 2:
+        return CommandAction(CommandKind.TOOLS, raw=raw, error="Usage: :tool <name>")
+    return _run_tool_action(raw, " ".join(parts[1:]), background)
+
+
+def _run_command(
+    raw: str,
+    parts: list[str],
+    background: bool,
+    tool_set: set[str] | None,
+) -> CommandAction:
+    if len(parts) == 1:
+        if tool_set is None or "run" not in tool_set:
+            return CommandAction(CommandKind.RUN_SOLVER, raw=raw)
+        return _run_tool_action(raw, "run", background)
+    return _run_tool_action(raw, " ".join(parts[1:]), background)
+
+
+def _solver_command(raw: str, parts: list[str], background: bool) -> CommandAction:
+    if len(parts) == 1:
+        return CommandAction(CommandKind.RUN_SOLVER, raw=raw)
+    return _run_tool_action(raw, " ".join(parts[1:]), background)
+
+
+def _run_tool_action(raw: str, arg: str, background: bool) -> CommandAction:
+    return CommandAction(
+        CommandKind.RUN_TOOL,
+        raw=raw,
+        args=(arg,),
+        background=background,
+    )
 
 
 def _cancel_command(name: str, raw: str, parts: list[str]) -> CommandAction | None:
@@ -186,7 +188,6 @@ def parse_command(command: str, tool_names: Iterable[str] | None = None) -> Comm
     cmd = _strip_command(command)
     if not cmd:
         return None
-
     if cmd.startswith("!"):
         payload = cmd[1:].lstrip()
         return CommandAction(CommandKind.TERMINAL, raw=cmd, args=(payload,))
@@ -198,34 +199,46 @@ def parse_command(command: str, tool_names: Iterable[str] | None = None) -> Comm
         return CommandAction(CommandKind.UNKNOWN, raw=cmd, background=background)
     name = sanitized_parts[0].lower()
 
-    action = _simple_command(name, cmd)
-    if action is None:
-        action = _tool_command(
-            name,
-            cmd,
-            sanitized_parts,
-            background,
-            tool_set=tool_set,
-        )
-    if action is None:
-        action = _cancel_command(name, cmd, sanitized_parts)
-    if action is None:
-        action = _clone_command(name, cmd, sanitized_parts)
-    if action is None:
-        terminal_action = _terminal_command(name, cmd, sanitized_parts)
-        if terminal_action is not None:
-            action = terminal_action
-    cleaned_cmd = " ".join(sanitized_parts)
-    if action is None and cleaned_cmd in tool_set:
-        action = CommandAction(
-            CommandKind.RUN_TOOL,
-            raw=cmd,
-            args=(cleaned_cmd,),
-            background=background,
-        )
-    if action is None:
-        action = CommandAction(CommandKind.UNKNOWN, raw=cmd)
-    return action
+    action = _named_command_action(name, cmd, sanitized_parts, background, tool_set)
+    return action or CommandAction(CommandKind.UNKNOWN, raw=cmd)
+
+
+def _named_command_action(
+    name: str,
+    cmd: str,
+    parts: list[str],
+    background: bool,
+    tool_set: set[str],
+) -> CommandAction | None:
+    for resolver in (
+        lambda: _simple_command(name, cmd),
+        lambda: _tool_command(name, cmd, parts, background, tool_set=tool_set),
+        lambda: _cancel_command(name, cmd, parts),
+        lambda: _clone_command(name, cmd, parts),
+        lambda: _terminal_command(name, cmd, parts),
+        lambda: _tool_name_command(cmd, parts, background, tool_set),
+    ):
+        action = resolver()
+        if action is not None:
+            return action
+    return None
+
+
+def _tool_name_command(
+    cmd: str,
+    parts: list[str],
+    background: bool,
+    tool_set: set[str],
+) -> CommandAction | None:
+    cleaned_cmd = " ".join(parts)
+    if cleaned_cmd not in tool_set:
+        return None
+    return CommandAction(
+        CommandKind.RUN_TOOL,
+        raw=cmd,
+        args=(cleaned_cmd,),
+        background=background,
+    )
 
 
 def is_blocked_in_no_foam(action: CommandAction) -> bool:

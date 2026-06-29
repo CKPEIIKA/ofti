@@ -141,39 +141,56 @@ def _read_field_single(path: Path, *, patch: str | None = None) -> FieldData:
     text = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"))
     if patch:
         text = _patch_value_text(text, patch)
-    name = path.name
+    text_match = _field_text_match(text, patch=patch)
+    if text_match is not None:
+        return _field_data_from_match(path, text_match)
+    label = f"boundaryField.{patch}.value" if patch else "internalField"
+    raise ValueError(f"unsupported or missing {label}: {path.name}")
+
+
+def _field_text_match(text: str, *, patch: str | None) -> re.Match[str] | None:
     uniform = _UNIFORM_RE.search(text) if patch is None else _uniform_value_match(text)
     if uniform:
-        values = _parse_value(uniform.group("value"))
-        if not values:
-            raise ValueError(f"internalField has no numeric values: {name}")
-        return FieldData(
-            name=name,
-            path=path,
-            kind=_field_kind(values),
-            values=[values],
-            declared_count=1,
-            uniform=True,
+        return uniform
+    return _NONUNIFORM_RE.search(text) if patch is None else _nonuniform_value_match(text)
+
+
+def _field_data_from_match(path: Path, match: re.Match[str]) -> FieldData:
+    if "value" in match.groupdict():
+        return _uniform_field_data(path, match.group("value"))
+    return _nonuniform_field_data(path, match)
+
+
+def _uniform_field_data(path: Path, raw_value: str) -> FieldData:
+    values = _parse_value(raw_value)
+    if not values:
+        raise ValueError(f"internalField has no numeric values: {path.name}")
+    return FieldData(
+        name=path.name,
+        path=path,
+        kind=_field_kind(values),
+        values=[values],
+        declared_count=1,
+        uniform=True,
+    )
+
+
+def _nonuniform_field_data(path: Path, match: re.Match[str]) -> FieldData:
+    values = _parse_nonuniform_values(match.group("kind"), match.group("body"))
+    declared = int(match.group("count"))
+    if declared != len(values):
+        raise ValueError(
+            f"internalField count mismatch for {path.name}: "
+            f"declared {declared}, parsed {len(values)}",
         )
-    nonuniform = _NONUNIFORM_RE.search(text) if patch is None else _nonuniform_value_match(text)
-    if nonuniform:
-        values = _parse_nonuniform_values(nonuniform.group("kind"), nonuniform.group("body"))
-        declared = int(nonuniform.group("count"))
-        if declared != len(values):
-            raise ValueError(
-                f"internalField count mismatch for {name}: "
-                f"declared {declared}, parsed {len(values)}",
-            )
-        return FieldData(
-            name=name,
-            path=path,
-            kind=_field_kind_from_list(values),
-            values=values,
-            declared_count=declared,
-            uniform=False,
-        )
-    label = f"boundaryField.{patch}.value" if patch else "internalField"
-    raise ValueError(f"unsupported or missing {label}: {name}")
+    return FieldData(
+        name=path.name,
+        path=path,
+        kind=_field_kind_from_list(values),
+        values=values,
+        declared_count=declared,
+        uniform=False,
+    )
 
 
 def field_summary_row(data: FieldData) -> dict[str, object]:

@@ -78,34 +78,58 @@ def field_sanity_payload(
 def parse_field_rules(values: list[str] | None) -> list[FieldRule]:
     rules: list[FieldRule] = []
     for value in values or []:
-        if ":" not in value:
-            rules.append(FieldRule(name=value.strip()))
-            continue
-        name, raw_checks = value.split(":", 1)
-        # Finite checking is on by default: `rho:min=0` should reject NaN/Inf
-        # just like a bare `rho` rule. Use `nofinite` or `finite=false` to skip.
-        finite = True
-        min_value: float | None = None
-        max_value: float | None = None
-        for part in raw_checks.split(","):
-            key, _, raw = part.strip().partition("=")
-            if key == "finite":
-                finite = _truthy(raw) if raw else True
-            elif key == "nofinite":
-                finite = False
-            elif key == "min":
-                min_value = float(raw)
-            elif key == "max":
-                max_value = float(raw)
-        rules.append(
-            FieldRule(
-                name=name.strip(),
-                finite=finite,
-                min_value=min_value,
-                max_value=max_value,
-            ),
-        )
+        rules.append(_parse_field_rule(value))
     return rules
+
+
+def _parse_field_rule(value: str) -> FieldRule:
+    if ":" not in value:
+        return FieldRule(name=value.strip())
+    name, raw_checks = value.split(":", 1)
+    finite, min_value, max_value = _parse_rule_checks(raw_checks)
+    return FieldRule(
+        name=name.strip(),
+        finite=finite,
+        min_value=min_value,
+        max_value=max_value,
+    )
+
+
+def _parse_rule_checks(raw_checks: str) -> tuple[bool, float | None, float | None]:
+    # Finite checking is on by default: `rho:min=0` should reject NaN/Inf
+    # just like a bare `rho` rule. Use `nofinite` or `finite=false` to skip.
+    finite = True
+    min_value: float | None = None
+    max_value: float | None = None
+    for part in raw_checks.split(","):
+        key, _, raw = part.strip().partition("=")
+        finite, min_value, max_value = _updated_rule_check(
+            key,
+            raw,
+            finite=finite,
+            min_value=min_value,
+            max_value=max_value,
+        )
+    return finite, min_value, max_value
+
+
+def _updated_rule_check(
+    key: str,
+    raw: str,
+    *,
+    finite: bool,
+    min_value: float | None,
+    max_value: float | None,
+) -> tuple[bool, float | None, float | None]:
+    if key == "finite":
+        return (_truthy(raw) if raw else True), min_value, max_value
+    if key == "nofinite":
+        return False, min_value, max_value
+    if key == "min":
+        return finite, float(raw), max_value
+    if key == "max":
+        return finite, min_value, float(raw)
+    return finite, min_value, max_value
 
 
 def field_names_for_rules(

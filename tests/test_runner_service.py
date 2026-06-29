@@ -6,6 +6,10 @@ from typing import cast
 from ofti.tools import runner_service as svc
 
 
+class _PopenResult:
+    pid = 123
+
+
 def test_runner_service_foreground_env_and_output(tmp_path: Path, monkeypatch) -> None:
     case = tmp_path / "case"
     case.mkdir()
@@ -31,7 +35,7 @@ def test_runner_service_foreground_env_and_output(tmp_path: Path, monkeypatch) -
         background=False,
         with_bashrc_fn=lambda cmd: cmd,
         run_trusted_fn=_run_trusted,
-        popen_fn=lambda *_a, **_k: None,
+        popen_fn=lambda *_a, **_k: _PopenResult(),
         register_job_fn=lambda *_a, **_k: None,
     )
 
@@ -60,7 +64,7 @@ def test_runner_service_foreground_writes_requested_log(tmp_path: Path, monkeypa
         log_path=Path("log.simpleFoam"),
         with_bashrc_fn=lambda cmd: cmd,
         run_trusted_fn=lambda *_a, **_k: _Result(),
-        popen_fn=lambda *_a, **_k: None,
+        popen_fn=lambda *_a, **_k: _PopenResult(),
         register_job_fn=lambda *_a, **_k: None,
     )
 

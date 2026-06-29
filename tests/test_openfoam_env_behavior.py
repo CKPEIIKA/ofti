@@ -44,8 +44,15 @@ def test_detect_openfoam_version_from_foamversion(monkeypatch) -> None:
 
 
 def test_ensure_environment(monkeypatch) -> None:
-    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/foamDictionary")
+    checked: list[str] = []
+
+    def fake_which(cmd: str) -> str:
+        checked.append(cmd)
+        return "/usr/bin/foamVersion"
+
+    monkeypatch.setattr("shutil.which", fake_which)
     ensure_environment()
+    assert checked == ["foamVersion"]
 
 
 def test_with_bashrc_injects_marker(tmp_path: Path, monkeypatch) -> None:

@@ -222,35 +222,75 @@ def read_log_tail_lines(
     max_bytes: int = _DEFAULT_TAIL_MAX_BYTES,
     chunk_size: int = 64 * 1024,
 ) -> list[str]:
-    if max_lines <= 0:
+    _validate_tail_window(max_lines=max_lines, max_bytes=max_bytes, chunk_size=chunk_size)
+    if max_lines <= 0 or max_bytes <= 0:
         return []
+    data, truncated = _read_tail_line_bytes(
+        path,
+        max_lines=max_lines,
+        max_bytes=max_bytes,
+        chunk_size=chunk_size,
+    )
+    if truncated:
+        data = _drop_partial_first_line(data)
+    lines = data.decode("utf-8", errors="ignore").splitlines()
+    return lines[-max_lines:]
+
+
+def _validate_tail_window(*, max_lines: int, max_bytes: int, chunk_size: int) -> None:
     if chunk_size <= 0:
         raise ValueError("chunk_size must be > 0")
-    if max_bytes <= 0:
-        return []
+    if max_lines <= 0 or max_bytes <= 0:
+        return
+
+
+def _read_tail_line_bytes(
+    path: Path,
+    *,
+    max_lines: int,
+    max_bytes: int,
+    chunk_size: int,
+) -> tuple[bytes, bool]:
     with path.open("rb") as handle:
         handle.seek(0, 2)
         end = handle.tell()
         if end <= 0:
-            return []
+            return b"", False
         start = max(0, end - max_bytes)
-        pos = end
-        chunks: list[bytes] = []
-        newline_count = 0
-        while pos > start and newline_count <= max_lines:
-            step = min(chunk_size, pos - start)
-            pos -= step
-            handle.seek(pos)
-            block = handle.read(step)
-            chunks.append(block)
-            newline_count += block.count(b"\n")
-    data = b"".join(reversed(chunks))
-    if start > 0:
-        first_newline = data.find(b"\n")
-        if first_newline >= 0:
-            data = data[first_newline + 1 :]
-    lines = data.decode("utf-8", errors="ignore").splitlines()
-    return lines[-max_lines:]
+        chunks = _read_reverse_chunks(
+            handle,
+            start=start,
+            end=end,
+            max_lines=max_lines,
+            chunk_size=chunk_size,
+        )
+    return b"".join(reversed(chunks)), start > 0
+
+
+def _read_reverse_chunks(
+    handle,
+    *,
+    start: int,
+    end: int,
+    max_lines: int,
+    chunk_size: int,
+) -> list[bytes]:
+    pos = end
+    chunks: list[bytes] = []
+    newline_count = 0
+    while pos > start and newline_count <= max_lines:
+        step = min(chunk_size, pos - start)
+        pos -= step
+        handle.seek(pos)
+        block = handle.read(step)
+        chunks.append(block)
+        newline_count += block.count(b"\n")
+    return chunks
+
+
+def _drop_partial_first_line(data: bytes) -> bytes:
+    first_newline = data.find(b"\n")
+    return data[first_newline + 1 :] if first_newline >= 0 else data
 
 
 def _read_tail_bytes(path: Path, *, max_bytes: int | None) -> tuple[bytes, bool]:

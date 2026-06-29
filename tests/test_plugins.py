@@ -33,14 +33,23 @@ class FakeCommand:
         return 0
 
 
+class FakeBundleHints:
+    name = "fake-bundle"
+
+    def bundle_hints(self, case_dir: Path) -> list[str]:
+        return [f"bundle:{case_dir}"]
+
+
 def test_plugin_registry_accepts_fake_profile_and_preset() -> None:
     registry = builtin_registry()
     registry.add_preset(FieldPreset("fake-flow", ("rho", "T"), source="test"))
     registry.add_physical_profile(FakeProfile())
+    registry.add_bundle_hint_provider(FakeBundleHints())
 
     assert registry.presets["flow"].source == "core"
     assert registry.presets["fake-flow"].fields == ("rho", "T")
     assert registry.physical_profiles["fake"].rules(Path("case")) == ["rho:min=0", "T:min=0"]
+    assert registry.bundle_hints["fake-bundle"].bundle_hints(Path("case")) == ["bundle:case"]
 
 
 def test_plugin_registry_rejects_duplicate_names_loudly() -> None:

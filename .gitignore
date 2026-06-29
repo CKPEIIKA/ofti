@@ -22,6 +22,16 @@ qa_output.txt
 scripts/foamlib_mcp.py
 refs/
 docs/
+!docs/
+docs/*
+!docs/examples/
+docs/examples/*
+!docs/examples/formats/
+!docs/examples/formats/*
+!docs/formats.md
+!docs/runtime-files.md
+!docs/schemas/
+!docs/schemas/*
 quality.txt
 .vscode/settings.json
 .ofti/

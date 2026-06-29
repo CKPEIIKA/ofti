@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ofti.dev/schemas/ofti.run-manifest.v1.schema.json",
+  "title": "OFTI Run Manifest v1",
+  "type": "object",
+  "required": ["format", "format_version", "manifest_kind", "case", "launch", "inputs"],
+  "properties": {
+    "format": {"const": "ofti.run-manifest"},
+    "format_version": {"const": 1},
+    "schema_version": {"const": 1},
+    "manifest_kind": {"enum": ["ofti_run_manifest", "ofti_run_receipt"]},
+    "created_at": {"type": "string"},
+    "updated_at": {"type": "string"},
+    "case": {"type": "object"},
+    "launch": {"type": "object"},
+    "openfoam": {"type": "object"},
+    "inputs": {"type": "object"}
+  },
+  "additionalProperties": true
+}

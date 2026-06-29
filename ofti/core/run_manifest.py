@@ -17,6 +17,8 @@ from ofti.foam.openfoam_env import detect_openfoam_version, resolve_openfoam_bas
 from ofti.foam.subprocess_utils import resolve_executable, run_trusted
 
 SCHEMA_VERSION = 1
+FORMAT = "ofti.run-manifest"
+FORMAT_VERSION = 1
 MANIFEST_KIND = "ofti_run_manifest"
 LEGACY_RECEIPT_KIND = "ofti_run_receipt"
 SUPPORTED_MANIFEST_KINDS = {MANIFEST_KIND, LEGACY_RECEIPT_KIND}
@@ -71,10 +73,14 @@ def build_run_manifest(
     input_rows = collect_case_inputs(case_dir)
     chosen_solver = solver_name or detect_solver(case_dir)
     build = _build_provenance(chosen_solver, bashrc=bashrc)
+    created_at = _utc_now()
     return {
+        "format": FORMAT,
+        "format_version": FORMAT_VERSION,
         "schema_version": SCHEMA_VERSION,
         "manifest_kind": MANIFEST_KIND,
-        "created_at": _utc_now(),
+        "created_at": created_at,
+        "updated_at": created_at,
         "case": {
             "name": case_dir.name,
             "path": str(case_dir),
@@ -288,33 +294,11 @@ def restore_run_manifest(
     skip: tuple[str, ...] | list[str] | None = None,
 ) -> dict[str, Any]:
     resolved_manifest = resolve_manifest_file(manifest_path)
-    manifest = load_run_manifest(resolved_manifest)
-    relative_inputs = manifest.get("inputs", {}).get("inputs_copy_path")
-    if not relative_inputs:
-        raise ValueError("manifest does not include recorded inputs; restore is not possible")
-    inputs_path = resolved_manifest.parent / str(relative_inputs)
-    if not inputs_path.is_dir():
-        raise ValueError(f"recorded inputs directory not found: {inputs_path}")
-    dest = destination.expanduser().resolve()
-    if dest.exists():
-        if any(dest.iterdir()):
-            raise ValueError(f"destination already exists and is not empty: {dest}")
-    else:
-        dest.mkdir(parents=True, exist_ok=False)
+    inputs_path = _manifest_inputs_path(resolved_manifest)
+    dest = _prepare_restore_destination(destination)
     selected_roots = select_manifest_restore_roots(only=only, skip=skip)
-    restored: list[str] = []
-    for entry in sorted(inputs_path.iterdir(), key=lambda item: item.name):
-        if entry.name not in selected_roots:
-            continue
-        target = dest / entry.name
-        if entry.is_dir():
-            shutil.copytree(entry, target, symlinks=True)
-        else:
-            shutil.copy2(entry, target, follow_symlinks=True)
-        restored.append(entry.name)
-    restored_manifest = dest / ".ofti" / "restored_from_manifest.json"
-    restored_manifest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(resolved_manifest, restored_manifest, follow_symlinks=True)
+    restored = _restore_input_roots(inputs_path, dest, selected_roots)
+    restored_manifest = _copy_restored_manifest(resolved_manifest, dest)
     return {
         "manifest": str(resolved_manifest),
         "destination": str(dest),
@@ -323,6 +307,52 @@ def restore_run_manifest(
         "restored_manifest": str(restored_manifest),
         "ok": True,
     }
+
+
+def _manifest_inputs_path(resolved_manifest: Path) -> Path:
+    manifest = load_run_manifest(resolved_manifest)
+    relative_inputs = manifest.get("inputs", {}).get("inputs_copy_path")
+    if not relative_inputs:
+        raise ValueError("manifest does not include recorded inputs; restore is not possible")
+    inputs_path = resolved_manifest.parent / str(relative_inputs)
+    if not inputs_path.is_dir():
+        raise ValueError(f"recorded inputs directory not found: {inputs_path}")
+    return inputs_path
+
+
+def _prepare_restore_destination(destination: Path) -> Path:
+    dest = destination.expanduser().resolve()
+    if dest.exists() and any(dest.iterdir()):
+        raise ValueError(f"destination already exists and is not empty: {dest}")
+    dest.mkdir(parents=True, exist_ok=True)
+    return dest
+
+
+def _restore_input_roots(
+    inputs_path: Path,
+    dest: Path,
+    selected_roots: tuple[str, ...],
+) -> list[str]:
+    restored: list[str] = []
+    for entry in sorted(inputs_path.iterdir(), key=lambda item: item.name):
+        if entry.name in selected_roots:
+            _copy_restore_entry(entry, dest / entry.name)
+            restored.append(entry.name)
+    return restored
+
+
+def _copy_restore_entry(entry: Path, target: Path) -> None:
+    if entry.is_dir():
+        shutil.copytree(entry, target, symlinks=True)
+    else:
+        shutil.copy2(entry, target, follow_symlinks=True)
+
+
+def _copy_restored_manifest(resolved_manifest: Path, dest: Path) -> Path:
+    restored_manifest = dest / ".ofti" / "restored_from_manifest.json"
+    restored_manifest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(resolved_manifest, restored_manifest, follow_symlinks=True)
+    return restored_manifest
 
 
 def collect_case_inputs(
@@ -524,8 +554,29 @@ def _resolve_solver_binary_path(solver_name: str, *, bashrc: Path | None) -> Pat
 
 def _linked_library_rows(binary_path_value: Any) -> dict[str, Any]:
     if not binary_path_value:
-        return {"count": 0, "hash": None, "files": [], "missing": []}
-    binary_path = Path(str(binary_path_value))
+        return _empty_linked_library_rows()
+    stdout = _ldd_stdout(Path(str(binary_path_value)))
+    if stdout is None:
+        return _empty_linked_library_rows()
+    files: list[dict[str, Any]] = []
+    missing: list[str] = []
+    seen: set[str] = set()
+    for line in stdout.splitlines():
+        _collect_linked_library_row(line, files=files, missing=missing, seen=seen)
+    files.sort(key=lambda row: str(row["path"]))
+    return {
+        "count": len(files),
+        "hash": _tree_hash(files) if files else None,
+        "files": files,
+        "missing": missing,
+    }
+
+
+def _empty_linked_library_rows() -> dict[str, Any]:
+    return {"count": 0, "hash": None, "files": [], "missing": []}
+
+
+def _ldd_stdout(binary_path: Path) -> str | None:
     try:
         result = run_trusted(
             ["ldd", str(binary_path)],
@@ -534,41 +585,37 @@ def _linked_library_rows(binary_path_value: Any) -> dict[str, Any]:
             check=False,
         )
     except (OSError, FileNotFoundError):
-        return {"count": 0, "hash": None, "files": [], "missing": []}
-    if result.returncode != 0:
-        return {"count": 0, "hash": None, "files": [], "missing": []}
-    files: list[dict[str, Any]] = []
-    missing: list[str] = []
-    seen: set[str] = set()
-    for line in result.stdout.splitlines():
-        row = line.strip()
-        if not row:
-            continue
-        resolved = _ldd_resolved_path(row)
-        if resolved == "missing":
-            missing.append(row)
-            continue
-        if resolved is None:
-            continue
-        if resolved in seen:
-            continue
-        seen.add(resolved)
-        path = Path(resolved)
-        if not path.is_file():
-            continue
-        files.append(
-            {
-                "path": str(path),
-                "sha256": _sha256_file(path),
-                "size": path.stat().st_size,
-            },
-        )
-    files.sort(key=lambda row: str(row["path"]))
+        return None
+    return result.stdout if result.returncode == 0 else None
+
+
+def _collect_linked_library_row(
+    line: str,
+    *,
+    files: list[dict[str, Any]],
+    missing: list[str],
+    seen: set[str],
+) -> None:
+    row = line.strip()
+    if not row:
+        return
+    resolved = _ldd_resolved_path(row)
+    if resolved == "missing":
+        missing.append(row)
+        return
+    if resolved is None or resolved in seen:
+        return
+    seen.add(resolved)
+    path = Path(resolved)
+    if path.is_file():
+        files.append(_linked_library_file_row(path))
+
+
+def _linked_library_file_row(path: Path) -> dict[str, Any]:
     return {
-        "count": len(files),
-        "hash": _tree_hash(files) if files else None,
-        "files": files,
-        "missing": missing,
+        "path": str(path),
+        "sha256": _sha256_file(path),
+        "size": path.stat().st_size,
     }
 
 

@@ -58,8 +58,6 @@ class GridAxis(TypedDict):
     values: list[str]
 
 
-
-
 def normalize_tool_name(value: str) -> str:
     lowered = value.strip().lower()
     return "".join(ch for ch in lowered if ch.isalnum() or ch in {"-", "_", ".", ":"})
@@ -136,6 +134,21 @@ def solver_command(
     sync_subdomains: bool = True,
 ) -> tuple[str, list[str]]:
     case_path = require_case_dir(case_dir)
+    chosen_solver = _validated_solver(case_path, solver)
+    cmd = [chosen_solver]
+    if parallel > 1:
+        cmd = _parallel_solver_command(
+            case_path,
+            chosen_solver,
+            parallel=parallel,
+            mpi=mpi,
+            sync_subdomains=sync_subdomains,
+        )
+    display = f"{chosen_solver}-parallel" if parallel > 1 else chosen_solver
+    return display, cmd
+
+
+def _validated_solver(case_path: Path, solver: str | None) -> str:
     chosen_solver = solver
     if not chosen_solver:
         chosen_solver, error = resolve_solver_name(case_path)
@@ -143,23 +156,28 @@ def solver_command(
             raise ValueError(f"Cannot resolve solver: {error}")
     if not chosen_solver:
         raise ValueError("Cannot resolve solver from case.")
-
     errors = validate_initial_fields(case_path)
     if errors:
         raise ValueError("\n".join(errors))
+    return chosen_solver
 
-    cmd = [chosen_solver]
-    if parallel > 1:
-        if sync_subdomains:
-            _sync_parallel_subdomains(case_path, requested=parallel)
-        else:
-            _require_parallel_subdomains(case_path, requested=parallel)
-        launcher = mpi or detect_mpi_launcher()
-        if not launcher:
-            raise ValueError("MPI launcher not found (tried mpirun, mpiexec).")
-        cmd = [launcher, "-np", str(parallel), chosen_solver, "-parallel"]
-    display = f"{chosen_solver}-parallel" if parallel > 1 else chosen_solver
-    return display, cmd
+
+def _parallel_solver_command(
+    case_path: Path,
+    chosen_solver: str,
+    *,
+    parallel: int,
+    mpi: str | None,
+    sync_subdomains: bool,
+) -> list[str]:
+    if sync_subdomains:
+        _sync_parallel_subdomains(case_path, requested=parallel)
+    else:
+        _require_parallel_subdomains(case_path, requested=parallel)
+    launcher = mpi or detect_mpi_launcher()
+    if not launcher:
+        raise ValueError("MPI launcher not found (tried mpirun, mpiexec).")
+    return [launcher, "-np", str(parallel), chosen_solver, "-parallel"]
 
 
 def prepare_parallel_case(
@@ -531,30 +549,41 @@ def _resolve_tool_from_catalog(
 def parse_matrix_axes(raw_axes: list[str], *, default_dict: str) -> list[MatrixAxis]:
     axes: list[MatrixAxis] = []
     for spec in raw_axes:
-        token = spec.strip()
-        if not token:
-            continue
-        if "=" not in token:
-            raise ValueError(f"invalid matrix axis (expected key=values): {spec}")
-        left, right = token.split("=", 1)
-        if ":" in left:
-            dict_path_raw, entry_raw = left.split(":", 1)
-            dict_path = dict_path_raw.strip()
-            entry = entry_raw.strip()
-        else:
-            dict_path = default_dict.strip()
-            entry = left.strip()
-        values = [value.strip() for value in right.split(",") if value.strip()]
-        if not dict_path:
-            raise ValueError(f"invalid matrix axis dict path: {spec}")
-        if not entry:
-            raise ValueError(f"invalid matrix axis entry: {spec}")
-        if not values:
-            raise ValueError(f"invalid matrix axis values: {spec}")
-        axes.append({"dict_path": dict_path, "entry": entry, "values": values})
+        axis = _parse_matrix_axis(spec, default_dict=default_dict)
+        if axis is not None:
+            axes.append(axis)
     if not axes:
         raise ValueError("at least one --param axis is required")
     return axes
+
+
+def _parse_matrix_axis(spec: str, *, default_dict: str) -> MatrixAxis | None:
+    token = spec.strip()
+    if not token:
+        return None
+    if "=" not in token:
+        raise ValueError(f"invalid matrix axis (expected key=values): {spec}")
+    left, right = token.split("=", 1)
+    dict_path, entry = _matrix_axis_target(left, default_dict=default_dict)
+    values = [value.strip() for value in right.split(",") if value.strip()]
+    _validate_matrix_axis(spec, dict_path=dict_path, entry=entry, values=values)
+    return {"dict_path": dict_path, "entry": entry, "values": values}
+
+
+def _matrix_axis_target(left: str, *, default_dict: str) -> tuple[str, str]:
+    if ":" not in left:
+        return default_dict.strip(), left.strip()
+    dict_path_raw, entry_raw = left.split(":", 1)
+    return dict_path_raw.strip(), entry_raw.strip()
+
+
+def _validate_matrix_axis(spec: str, *, dict_path: str, entry: str, values: list[str]) -> None:
+    if not dict_path:
+        raise ValueError(f"invalid matrix axis dict path: {spec}")
+    if not entry:
+        raise ValueError(f"invalid matrix axis entry: {spec}")
+    if not values:
+        raise ValueError(f"invalid matrix axis values: {spec}")
 
 
 def parse_sweep_values(raw_values: list[str]) -> list[str]:
@@ -904,28 +933,40 @@ def _stop_reason(payload: Mapping[str, Any], *, state: str) -> str:
     if isinstance(solver_error, str) and solver_error:
         return solver_error
     rtc = payload.get("run_time_control", {})
-    reason = ""
+    reason = _criteria_stop_reason(rtc)
+    if not reason and _end_time_reached(payload, rtc):
+        reason = "end_time_reached"
+    if not reason:
+        reason = "criteria_failed" if state == "failed" else "stopped"
+    return reason
+
+
+def _criteria_stop_reason(rtc: Any) -> str:
+    if not isinstance(rtc, Mapping):
+        return ""
     criteria = rtc.get("criteria", [])
-    if isinstance(criteria, list):
-        for row in criteria:
-            if str(row.get("status")) == "pass":
-                continue
-            reason = str(row.get("unmet_reason") or "").strip()
-            if reason:
-                break
-        if criteria and int(rtc.get("unknown", 0) or 0) == 0:
-            reason = reason or "criteria_met"
+    if not isinstance(criteria, list):
+        return ""
+    reason = next(
+        (
+            str(row.get("unmet_reason") or "").strip()
+            for row in criteria
+            if isinstance(row, Mapping) and str(row.get("status")) != "pass"
+        ),
+        "",
+    )
+    if criteria and int(rtc.get("unknown", 0) or 0) == 0:
+        return reason or "criteria_met"
+    return reason
+
+
+def _end_time_reached(payload: Mapping[str, Any], rtc: Any) -> bool:
+    if not isinstance(rtc, Mapping):
+        return False
     latest_time = payload.get("latest_time")
     end_time = rtc.get("end_time")
-    if (
-        not reason and
+    return (
         isinstance(latest_time, (int, float))
         and isinstance(end_time, (int, float))
         and latest_time >= end_time
-    ):
-        reason = "end_time_reached"
-    if not reason and state == "failed":
-        reason = "criteria_failed"
-    return reason or "stopped"
-
-
+    )

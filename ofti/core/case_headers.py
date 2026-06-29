@@ -5,32 +5,37 @@ from pathlib import Path
 
 
 def detect_case_header_version(case_path: Path) -> str:
-    versions: list[str] = []
     control_dict = case_path / "system" / "controlDict"
     control_version = extract_header_version(control_dict)
-    if control_version:
-        versions.append(control_version)
-
-    sample_files = case_header_candidates(case_path, max_files=20)
-    for path in sample_files:
-        if path == control_dict:
-            continue
-        version = extract_header_version(path)
-        if version:
-            versions.append(version)
+    versions = _detected_versions(case_path, control_dict, control_version)
 
     if not versions:
         return "unknown"
 
-    counts: dict[str, int] = {}
-    for version in versions:
-        counts[version] = counts.get(version, 0) + 1
-
-    best_count = max(counts.values())
-    best_versions = [v for v, count in counts.items() if count == best_count]
+    best_versions = _most_common_versions(versions)
     if control_version and control_version in best_versions:
         return control_version
     return sorted(best_versions)[0]
+
+
+def _detected_versions(
+    case_path: Path,
+    control_dict: Path,
+    control_version: str | None,
+) -> list[str]:
+    versions = [control_version] if control_version else []
+    for path in case_header_candidates(case_path, max_files=20):
+        if path != control_dict and (version := extract_header_version(path)):
+            versions.append(version)
+    return versions
+
+
+def _most_common_versions(versions: list[str]) -> list[str]:
+    counts: dict[str, int] = {}
+    for version in versions:
+        counts[version] = counts.get(version, 0) + 1
+    best_count = max(counts.values())
+    return [version for version, count in counts.items() if count == best_count]
 
 
 def parse_header_comment_version(text: str) -> str | None:

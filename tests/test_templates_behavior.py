@@ -14,4 +14,7 @@ def test_find_example_file_returns_path() -> None:
 
 def test_load_example_template_missing() -> None:
     rel = Path("does") / "not" / "exist"
-    assert templates.load_example_template(rel) is None
+    content = templates.load_example_template(rel)
+    match = templates.find_example_file(rel)
+    assert content is None
+    assert match is None

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -516,19 +516,19 @@ def _print_knife_current(payload: Mapping[str, object]) -> None:
         print("solver=<mixed>")
     if payload.get("proc_access_warning"):
         print(f"proc_access_warning={payload['proc_access_warning']}")
-    visibility = payload.get("process_visibility")
-    if isinstance(visibility, dict) and visibility.get("message"):
+    visibility = _object_mapping(payload.get("process_visibility"))
+    if visibility.get("message"):
         print(f"process_visibility={visibility['message']}")
-    runs = list(payload.get("runs", []))
+    runs = _object_sequence(payload.get("runs"))
     if runs:
         _print_current_runs(runs)
     elif not payload["jobs"]:
         print("No tracked running jobs.")
     else:
-        _print_current_jobs(list(payload["jobs"]))
-    _print_current_untracked(list(payload["untracked_processes"]))
+        _print_current_jobs(_object_sequence(payload.get("jobs")))
+    _print_current_untracked(_object_sequence(payload.get("untracked_processes")))
 
-def _print_current_runs(runs: list[object]) -> None:
+def _print_current_runs(runs: Sequence[object]) -> None:
     print("runs:")
     for run_obj in runs:
         run = cast("dict[str, object]", run_obj)
@@ -538,7 +538,7 @@ def _print_current_runs(runs: list[object]) -> None:
             f"launcher_pid={run.get('launcher_pid')} solvers={run.get('solver_pids', [])}",
         )
 
-def _print_current_jobs(jobs: list[object]) -> None:
+def _print_current_jobs(jobs: Sequence[object]) -> None:
     print("tracked_jobs:")
     for job_obj in jobs:
         job = cast("dict[str, object]", job_obj)
@@ -547,7 +547,7 @@ def _print_current_jobs(jobs: list[object]) -> None:
             f"status={job.get('status', 'unknown')}",
         )
 
-def _print_current_untracked(processes: list[object]) -> None:
+def _print_current_untracked(processes: Sequence[object]) -> None:
     if not processes:
         print("untracked_solver_processes=none")
         return
@@ -612,26 +612,44 @@ def _print_knife_adopt(payload: dict[str, object]) -> None:
     if "cases_total" in payload:
         print(f"cases_total={payload.get('cases_total')}")
     print(f"selected={payload['selected']}")
-    print(f"adopted={len(payload['adopted'])}")
-    if payload["adopted"]:
+    adopted = _object_sequence(payload.get("adopted"))
+    skipped = _object_sequence(payload.get("skipped"))
+    failed = _object_sequence(payload.get("failed"))
+    print(f"adopted={len(adopted)}")
+    if adopted:
         print("adopted_rows:")
-        for row in payload["adopted"]:
+        for row_obj in adopted:
+            row = _object_mapping(row_obj)
             print(
                 f"- id={row.get('id')} pid={row.get('pid')} "
                 f"role={row.get('role')} name={row.get('name')} case={row.get('case')}",
             )
-    if payload["skipped"]:
+    if skipped:
         print("skipped:")
-        for row in payload["skipped"]:
+        for row_obj in skipped:
+            row = _object_mapping(row_obj)
             print(
                 f"- pid={row.get('pid')} reason={row.get('reason')} case={row.get('case')}",
             )
-    if payload["failed"]:
+    if failed:
         print("failed:")
-        for row in payload["failed"]:
+        for row_obj in failed:
+            row = _object_mapping(row_obj)
             print(
                 f"- pid={row.get('pid')} error={row.get('error')} case={row.get('case')}",
             )
+
+
+def _object_sequence(value: object) -> list[object]:
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return []
+
+
+def _object_mapping(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items()}
 
 def _knife_stop(args: argparse.Namespace) -> int:
     case_dir = getattr(args, "case_override", None) or args.case_dir

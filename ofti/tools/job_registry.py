@@ -3,8 +3,14 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Mapping, Sequence
+from contextlib import suppress
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+JOBS_FORMAT = "ofti.jobs"
+JOBS_FORMAT_VERSION = 1
 
 
 def register_job(
@@ -66,36 +72,56 @@ def finish_job(
 
 def refresh_jobs(case_path: Path) -> list[dict[str, object]]:
     jobs = load_jobs(case_path)
+    updated = _recover_running_identities(case_path, jobs)
+    updated = _mark_finished_jobs(case_path, jobs) or updated
+    if updated:
+        save_jobs(case_path, jobs)
+    return jobs
+
+
+def _recover_running_identities(case_path: Path, jobs: list[dict[str, object]]) -> bool:
     updated = False
     known_ids = {str(job.get("id")) for job in jobs}
     for identity in load_run_identities(case_path):
         job_id = str(identity.get("id") or "")
-        if not job_id or job_id in known_ids:
-            continue
-        if not _identity_running(identity):
+        if not job_id or job_id in known_ids or not _identity_running(identity):
             continue
         jobs.append(_job_from_run_identity(identity))
         known_ids.add(job_id)
         updated = True
+    return updated
+
+
+def _mark_finished_jobs(case_path: Path, jobs: list[dict[str, object]]) -> bool:
+    updated = False
     for job in jobs:
-        if job.get("status") in {"running", "paused"}:
-            pid = job.get("pid")
-            if isinstance(pid, int) and not _pid_running(pid) and not _job_solver_running(job):
-                job["status"] = "finished"
-                job["ended_at"] = job.get("ended_at") or time.time()
-                _save_run_identity(case_path, job)
-                updated = True
-    if updated:
-        save_jobs(case_path, jobs)
-    return jobs
+        if not _job_process_finished(job):
+            continue
+        job["status"] = "finished"
+        job["ended_at"] = job.get("ended_at") or time.time()
+        _save_run_identity(case_path, job)
+        updated = True
+    return updated
+
+
+def _job_process_finished(job: dict[str, object]) -> bool:
+    if job.get("status") not in {"running", "paused"}:
+        return False
+    pid = job.get("pid")
+    return isinstance(pid, int) and not _pid_running(pid) and not _job_solver_running(job)
 
 
 def load_jobs(case_path: Path) -> list[dict[str, object]]:
     path = _jobs_path(case_path)
     try:
         data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError:
         return []
+    except json.JSONDecodeError:
+        _quarantine_corrupt_jobs(path)
+        return []
+    if isinstance(data, dict):
+        data = data.get("jobs")
     if not isinstance(data, list):
         return []
     return [job for job in data if isinstance(job, dict)]
@@ -104,7 +130,14 @@ def load_jobs(case_path: Path) -> list[dict[str, object]]:
 def save_jobs(case_path: Path, jobs: list[dict[str, object]]) -> None:
     path = _jobs_path(case_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(jobs, indent=2, sort_keys=True))
+    payload = {
+        "format": JOBS_FORMAT,
+        "format_version": JOBS_FORMAT_VERSION,
+        "case_dir": str(case_path.resolve()),
+        "updated_at": _utc_now(),
+        "jobs": jobs,
+    }
+    _write_json_atomic(path, payload)
 
 
 def load_run_identities(case_path: Path) -> list[dict[str, object]]:
@@ -126,6 +159,25 @@ def load_run_identities(case_path: Path) -> list[dict[str, object]]:
 
 def _jobs_path(case_path: Path) -> Path:
     return case_path / ".ofti" / "jobs.json"
+
+
+def _write_json_atomic(path: Path, payload: Mapping[str, object]) -> None:
+    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _quarantine_corrupt_jobs(path: Path) -> None:
+    if not path.exists():
+        return
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    target = path.with_name(f"{path.name}.corrupt.{stamp}")
+    with suppress(OSError):
+        path.replace(target)
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _runs_path(case_path: Path) -> Path:
@@ -211,7 +263,7 @@ def _job_solver_running(job: dict[str, object]) -> bool:
     return _active_pid(_int_list(job.get("solver_pids"))) is not None
 
 
-def _active_pid(pids: list[int | None]) -> int | None:
+def _active_pid(pids: Sequence[int | None]) -> int | None:
     for pid in pids:
         if isinstance(pid, int) and _pid_running(pid):
             return pid

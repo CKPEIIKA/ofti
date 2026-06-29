@@ -13,13 +13,17 @@ import os
 import time
 from collections.abc import Mapping
 from contextlib import suppress
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ofti.foamlib import runner as foamlib_runner
 from ofti.tools import runner_service
 
 from .common import require_case_dir
+
+QUEUE_FORMAT = "ofti.queue-record"
+QUEUE_FORMAT_VERSION = 1
 
 
 def _run() -> Any:
@@ -42,27 +46,9 @@ def queue_payload(
     clean_processors: bool = False,
     queue_root: Path | None = None,
 ) -> dict[str, Any]:
-    if max_parallel <= 0:
-        raise ValueError("max_parallel must be > 0")
-    if backend not in {"process", "foamlib-async", "foamlib-slurm"}:
-        raise ValueError("backend must be one of: process, foamlib-async, foamlib-slurm")
+    _validate_queue_options(max_parallel=max_parallel, backend=backend)
     normalized_cases = [require_case_dir(path) for path in cases]
-    plan: list[dict[str, Any]] = []
-    for case_path in normalized_cases:
-        display, cmd = _run().solver_command(
-            case_path,
-            solver=solver,
-            parallel=parallel,
-            mpi=mpi,
-        )
-        plan.append(
-            {
-                "case": str(case_path),
-                "name": display,
-                "command": _run().dry_run_command(cmd),
-                "solver_cmd": _run()._solver_token_from_command(cmd, parallel=parallel),
-            },
-        )
+    plan = _queue_plan(normalized_cases, solver=solver, parallel=parallel, mpi=mpi)
     payload = _queue_payload_init(
         plan=plan,
         normalized_cases=normalized_cases,
@@ -75,21 +61,94 @@ def queue_payload(
         clean_processors=clean_processors,
         queue_root=queue_root,
     )
-    if prepare_parallel and parallel > 1:
-        for row in plan:
-            row_case = Path(str(row["case"]))
-            try:
-                row["parallel_setup"] = _run().prepare_parallel_case(
-                    row_case,
-                    parallel=parallel,
-                    clean_processors=clean_processors,
-                    dry_run=True,
-                )
-            except ValueError as exc:
-                row["parallel_setup_error"] = str(exc)
+    _queue_plan_parallel_setup(
+        plan,
+        parallel=parallel,
+        prepare_parallel=prepare_parallel,
+        clean_processors=clean_processors,
+    )
     _queue_write_record(payload)
     if dry_run:
         return payload
+    _run_queue_backend(
+        payload,
+        plan=plan,
+        solver=solver,
+        parallel=parallel,
+        mpi=mpi,
+        max_parallel=max_parallel,
+        poll_interval=poll_interval,
+        backend=backend,
+        prepare_parallel=prepare_parallel,
+        clean_processors=clean_processors,
+    )
+    _queue_mark_complete(payload)
+    return payload
+
+
+def _validate_queue_options(*, max_parallel: int, backend: str) -> None:
+    if max_parallel <= 0:
+        raise ValueError("max_parallel must be > 0")
+    if backend not in {"process", "foamlib-async", "foamlib-slurm"}:
+        raise ValueError("backend must be one of: process, foamlib-async, foamlib-slurm")
+
+
+def _queue_plan(
+    cases: list[Path],
+    *,
+    solver: str | None,
+    parallel: int,
+    mpi: str | None,
+) -> list[dict[str, Any]]:
+    plan: list[dict[str, Any]] = []
+    for case_path in cases:
+        display, cmd = _run().solver_command(case_path, solver=solver, parallel=parallel, mpi=mpi)
+        plan.append(
+            {
+                "case": str(case_path),
+                "name": display,
+                "command": _run().dry_run_command(cmd),
+                "solver_cmd": _run()._solver_token_from_command(cmd, parallel=parallel),
+            },
+        )
+    return plan
+
+
+def _queue_plan_parallel_setup(
+    plan: list[dict[str, Any]],
+    *,
+    parallel: int,
+    prepare_parallel: bool,
+    clean_processors: bool,
+) -> None:
+    if not prepare_parallel or parallel <= 1:
+        return
+    for row in plan:
+        row_case = Path(str(row["case"]))
+        try:
+            row["parallel_setup"] = _run().prepare_parallel_case(
+                row_case,
+                parallel=parallel,
+                clean_processors=clean_processors,
+                dry_run=True,
+            )
+        except ValueError as exc:
+            row["parallel_setup_error"] = str(exc)
+
+
+def _run_queue_backend(
+    payload: dict[str, Any],
+    *,
+    plan: list[dict[str, Any]],
+    solver: str | None,
+    parallel: int,
+    mpi: str | None,
+    max_parallel: int,
+    poll_interval: float,
+    backend: str,
+    prepare_parallel: bool,
+    clean_processors: bool,
+) -> None:
     if backend == "process":
         if max_parallel == 1:
             _queue_sequential_process_backend(
@@ -122,8 +181,6 @@ def queue_payload(
             prepare_parallel=prepare_parallel,
             clean_processors=clean_processors,
         )
-    _queue_mark_complete(payload)
-    return payload
 
 
 def _queue_payload_init(
@@ -245,74 +302,133 @@ def _queue_process_backend(
     pending = list(plan)
     active: list[dict[str, Any]] = []
     while pending or active:
-        while pending and len(active) < int(payload["max_parallel"]):
-            row = pending.pop(0)
-            case_path = Path(str(row["case"]))
-            # Rebuild command from current case to avoid stale snapshots.
-            name, command = _run().solver_command(
-                case_path,
-                solver=solver,
-                parallel=parallel,
-                mpi=mpi,
-            )
-            if parallel > 1 and "-parallel" in command and prepare_parallel:
-                try:
-                    _run().prepare_parallel_case(
-                        case_path,
-                        parallel=parallel,
-                        clean_processors=clean_processors,
-                        dry_run=False,
-                    )
-                except ValueError as exc:
-                    payload["failed_to_start"].append({"case": str(case_path), "error": str(exc)})
-                    payload["ok"] = False
-                    _queue_write_record(payload)
-                    continue
-            try:
-                result = _run().execute_case_command(
-                    case_path,
-                    name,
-                    command,
-                    background=True,
-                    detached=True,
-                )
-            except ValueError as exc:
-                payload["failed_to_start"].append({"case": str(case_path), "error": str(exc)})
-                payload["ok"] = False
-                _queue_write_record(payload)
-                continue
-            if result.pid is None:
-                payload["failed_to_start"].append(
-                    {"case": str(case_path), "error": "missing background pid"},
-                )
-                payload["ok"] = False
-                _queue_write_record(payload)
-                continue
-            started = {
-                "case": str(case_path),
-                "pid": int(result.pid),
-                "name": name,
-                "log_path": str(result.log_path) if result.log_path is not None else "",
-                "started_at": time.time(),
-            }
-            active.append(started)
-            payload["started"].append(started)
-            _queue_write_record(payload)
+        _queue_launch_until_full(
+            payload,
+            pending=pending,
+            active=active,
+            solver=solver,
+            parallel=parallel,
+            mpi=mpi,
+            prepare_parallel=prepare_parallel,
+            clean_processors=clean_processors,
+        )
         if not active:
             break
         time.sleep(max(0.05, poll_interval))
-        still_active: list[dict[str, Any]] = []
-        for row in active:
-            pid = int(row["pid"])
-            if _pid_running(pid):
-                still_active.append(row)
-                continue
-            status_row = _run().status_row_payload(Path(str(row["case"])))
-            payload["finished"].append(
-                _queue_finished_row(status_row, case=str(row["case"]), pid=pid, returncode=None),
-            )
-            _queue_write_record(payload)
-        active = still_active
+        active[:] = _queue_poll_active(payload, active)
+
+
+def _queue_launch_until_full(
+    payload: dict[str, Any],
+    *,
+    pending: list[dict[str, Any]],
+    active: list[dict[str, Any]],
+    solver: str | None,
+    parallel: int,
+    mpi: str | None,
+    prepare_parallel: bool,
+    clean_processors: bool,
+) -> None:
+    while pending and len(active) < int(payload["max_parallel"]):
+        row = pending.pop(0)
+        started = _queue_start_background_row(
+            payload,
+            row,
+            solver=solver,
+            parallel=parallel,
+            mpi=mpi,
+            prepare_parallel=prepare_parallel,
+            clean_processors=clean_processors,
+        )
+        if started:
+            active.append(started)
+
+
+def _queue_start_background_row(
+    payload: dict[str, Any],
+    row: dict[str, Any],
+    *,
+    solver: str | None,
+    parallel: int,
+    mpi: str | None,
+    prepare_parallel: bool,
+    clean_processors: bool,
+) -> dict[str, Any] | None:
+    case_path = Path(str(row["case"]))
+    name, command = _run().solver_command(case_path, solver=solver, parallel=parallel, mpi=mpi)
+    try:
+        _prepare_queue_parallel_case(
+            case_path,
+            command,
+            parallel=parallel,
+            prepare_parallel=prepare_parallel,
+            clean_processors=clean_processors,
+        )
+        result = _run().execute_case_command(
+            case_path,
+            name,
+            command,
+            background=True,
+            detached=True,
+        )
+    except ValueError as exc:
+        _queue_failed_to_start(payload, case_path, str(exc))
+        return None
+    if result.pid is None:
+        _queue_failed_to_start(payload, case_path, "missing background pid")
+        return None
+    started = {
+        "case": str(case_path),
+        "pid": int(result.pid),
+        "name": name,
+        "log_path": str(result.log_path) if result.log_path is not None else "",
+        "started_at": time.time(),
+    }
+    payload["started"].append(started)
+    _queue_write_record(payload)
+    return started
+
+
+def _prepare_queue_parallel_case(
+    case_path: Path,
+    command: list[str],
+    *,
+    parallel: int,
+    prepare_parallel: bool,
+    clean_processors: bool,
+) -> None:
+    if parallel <= 1 or "-parallel" not in command or not prepare_parallel:
+        return
+    _run().prepare_parallel_case(
+        case_path,
+        parallel=parallel,
+        clean_processors=clean_processors,
+        dry_run=False,
+    )
+
+
+def _queue_failed_to_start(payload: dict[str, Any], case_path: Path, error: str) -> None:
+    payload["failed_to_start"].append({"case": str(case_path), "error": error})
+    payload["ok"] = False
+    _queue_write_record(payload)
+
+
+def _queue_poll_active(
+    payload: dict[str, Any],
+    active: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    still_active: list[dict[str, Any]] = []
+    for row in active:
+        pid = int(row["pid"])
+        if _pid_running(pid):
+            still_active.append(row)
+            continue
+        status_row = _run().status_row_payload(Path(str(row["case"])))
+        payload["finished"].append(
+            _queue_finished_row(status_row, case=str(row["case"]), pid=pid, returncode=None),
+        )
+        _queue_write_record(payload)
+    return still_active
 
 
 def _queue_foamlib_backend(
@@ -503,6 +619,7 @@ def _queue_write_record(payload: dict[str, Any]) -> None:
 
 def _queue_mark_complete(payload: dict[str, Any]) -> None:
     payload["completed_at"] = time.time()
+    payload["summary"] = _queue_summary(payload)
     _queue_write_record(payload)
 
 
@@ -511,26 +628,21 @@ def _queue_record_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     finished = list(payload.get("finished", []))
     failed = list(payload.get("failed_to_start", []))
     return {
+        "format": QUEUE_FORMAT,
+        "format_version": QUEUE_FORMAT_VERSION,
         "queue_id": payload.get("queue_id"),
         "queue_root": payload.get("queue_root"),
         "queue_path": payload.get("queue_path"),
-        "created_at": payload.get("created_at"),
-        "updated_at": payload.get("updated_at"),
-        "completed_at": payload.get("completed_at"),
+        "created_at": _queue_timestamp(payload.get("created_at")),
+        "updated_at": _queue_timestamp(payload.get("updated_at")),
+        "completed_at": _queue_timestamp(payload.get("completed_at")),
         "dry_run": bool(payload.get("dry_run")),
         "backend": payload.get("backend"),
         "count": int(payload.get("count", 0) or 0),
         "max_parallel": int(payload.get("max_parallel", 1) or 1),
         "parallel": int(payload.get("parallel", 0) or 0),
         "ok": bool(payload.get("ok", False)),
-        "summary": {
-            "planned": int(payload.get("count", 0) or 0),
-            "started": len(started),
-            "finished": len(finished),
-            "failed_to_start": len(failed),
-            "running": max(0, len(started) - len(finished)),
-            "outcomes": _queue_outcome_counts(finished),
-        },
+        "summary": _queue_summary(payload),
         "planned": list(payload.get("planned", [])),
         "started": started,
         "finished": finished,
@@ -538,14 +650,38 @@ def _queue_record_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _queue_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
+    started = list(payload.get("started", []))
+    finished = list(payload.get("finished", []))
+    failed = list(payload.get("failed_to_start", []))
+    return {
+        "planned": int(payload.get("count", 0) or 0),
+        "started": len(started),
+        "finished": len(finished),
+        "failed_to_start": len(failed),
+        "running": max(0, len(started) - len(finished)),
+        "outcomes": _queue_outcome_counts(finished),
+    }
+
+
 def _queue_outcome_counts(rows: list[object]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for row in rows:
-        if not isinstance(row, Mapping):
+        if not isinstance(row, dict):
             continue
-        outcome = str(row.get("outcome") or "unknown")
+        data = cast("dict[str, object]", row)
+        outcome = str(data.get("outcome") or "unknown")
         counts[outcome] = counts.get(outcome, 0) + 1
     return counts
+
+
+def _queue_timestamp(value: object) -> str | None:
+    if isinstance(value, int | float):
+        timestamp = datetime.fromtimestamp(float(value), UTC).replace(microsecond=0)
+        return timestamp.isoformat().replace("+00:00", "Z")
+    if isinstance(value, str) and value:
+        return value
+    return None
 
 
 def _queue_finished_row(

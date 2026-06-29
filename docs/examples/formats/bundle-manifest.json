@@ -1,0 +1,18 @@
+{
+  "format": "ofti.case-bundle",
+  "format_version": 1,
+  "version": 1,
+  "case_name": "cavity",
+  "start_time": "0",
+  "mesh_policy": "auto",
+  "application": "icoFoam",
+  "header_version": "v2512",
+  "files": [
+    {
+      "path": "system/controlDict",
+      "size": 42,
+      "sha256": "sha256-example"
+    }
+  ],
+  "warnings": []
+}

@@ -1,0 +1,44 @@
+{
+  "format": "ofti.queue-record",
+  "format_version": 1,
+  "queue_id": "queue-1779624400",
+  "queue_root": "/work",
+  "queue_path": "/work/.ofti/queues/queue-1779624400.json",
+  "created_at": "2026-06-29T22:54:18Z",
+  "updated_at": "2026-06-29T22:55:38Z",
+  "completed_at": "2026-06-29T22:55:38Z",
+  "dry_run": false,
+  "backend": "process",
+  "count": 1,
+  "max_parallel": 1,
+  "parallel": 0,
+  "ok": true,
+  "summary": {
+    "planned": 1,
+    "started": 1,
+    "finished": 1,
+    "failed_to_start": 0,
+    "running": 0,
+    "outcomes": {
+      "time": 1
+    }
+  },
+  "planned": [
+    {
+      "case": "/work/cavity",
+      "command": ["icoFoam"]
+    }
+  ],
+  "started": [],
+  "finished": [
+    {
+      "case": "/work/cavity",
+      "pid": 33223,
+      "state": "done",
+      "outcome": "time",
+      "returncode": 0,
+      "stop_reason": "end_time_reached"
+    }
+  ],
+  "failed_to_start": []
+}

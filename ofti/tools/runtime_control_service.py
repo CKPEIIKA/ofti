@@ -123,25 +123,13 @@ def runtime_control_snapshot(
         resolve_log_source_fn=resolve_log_source_fn,
         log_path_hint=log_path_hint,
     )
-    read_limit = max_log_bytes
-    if read_limit is None and lightweight:
-        read_limit = 2 * 1024 * 1024
-    text = ""
-    if log_path is not None:
-        if lightweight or read_limit is not None:
-            text = read_log_text(log_path, max_bytes=read_limit)
-        else:
-            text = read_log_text_filtered(
-                log_path,
-                terms=runtime_log_terms(case_path),
-            )
-    if text:
-        if lightweight:
-            metrics, residuals = parse_log_metrics(text), {}
-        else:
-            metrics, residuals = parse_log_metrics_and_residuals(text)
-    else:
-        metrics, residuals = parse_log_metrics(""), {}
+    text = _runtime_snapshot_text(
+        case_path,
+        log_path,
+        lightweight=lightweight,
+        max_log_bytes=max_log_bytes,
+    )
+    metrics, residuals = _runtime_snapshot_metrics(text, lightweight=lightweight)
     deltas = execution_time_deltas(metrics.execution_times)
     latest_time_value = metrics.times[-1] if metrics.times else None
     latest_delta_t = last_float(text, DELTA_T_RE)
@@ -179,6 +167,31 @@ def runtime_control_snapshot(
     }
 
 
+def _runtime_snapshot_text(
+    case_path: Path,
+    log_path: Path | None,
+    *,
+    lightweight: bool,
+    max_log_bytes: int | None,
+) -> str:
+    if log_path is None:
+        return ""
+    read_limit = max_log_bytes
+    if read_limit is None and lightweight:
+        read_limit = 2 * 1024 * 1024
+    if lightweight or read_limit is not None:
+        return read_log_text(log_path, max_bytes=read_limit)
+    return read_log_text_filtered(log_path, terms=runtime_log_terms(case_path))
+
+
+def _runtime_snapshot_metrics(text: str, *, lightweight: bool):
+    if not text:
+        return parse_log_metrics(""), {}
+    if lightweight:
+        return parse_log_metrics(text), {}
+    return parse_log_metrics_and_residuals(text)
+
+
 def control_dict_edit_payload(
     case_path: Path,
     updates: dict[str, str],
@@ -192,38 +205,15 @@ def control_dict_edit_payload(
     same call. This keeps live-run mutation paths explicit and recoverable.
     """
     control_dict = case_path / "system" / "controlDict"
-    if not control_dict.is_file():
-        return _control_edit_error(case_path, "system/controlDict is missing")
-    invalid = sorted(set(updates) - _CONTROL_EDIT_KEYS)
-    if invalid:
-        return _control_edit_error(case_path, f"unsupported controlDict keys: {', '.join(invalid)}")
-    if not updates:
-        return _control_edit_error(case_path, "no controlDict updates requested")
-
-    current = _control_dict_values(control_dict, updates.keys())
-    rows = [
-        {
-            "key": key,
-            "old": current.get(key) or "<missing>",
-            "new": str(value),
-            "path": "system/controlDict",
-        }
-        for key, value in sorted(updates.items())
-    ]
+    if error := _control_edit_precheck(case_path, control_dict, updates):
+        return error
+    rows = _control_edit_rows(control_dict, updates)
     diff = _control_edit_diff(rows)
-    snapshot_path: Path | None = None
-    if write_snapshot:
-        try:
-            snapshot_path = write_case_snapshot(case_path)
-        except (OSError, RuntimeError, ValueError) as exc:
-            return _control_edit_error(case_path, str(exc), updates=rows, diff=diff)
+    snapshot_path, error = _control_edit_snapshot(case_path, write_snapshot)
+    if error is not None:
+        return _control_edit_error(case_path, error, updates=rows, diff=diff)
     blocked = bool(apply and snapshot_path is None)
-    failures: list[str] = []
-    if apply and not blocked:
-        for row in rows:
-            key = row["key"]
-            if not _apply_control_dict_edit(case_path, control_dict, key, row["new"]):
-                failures.append(key)
+    failures = _apply_control_edits(case_path, control_dict, rows) if apply and not blocked else []
     return {
         "case": str(case_path),
         "path": "system/controlDict",
@@ -236,6 +226,59 @@ def control_dict_edit_payload(
         "failures": failures,
         "error": "snapshot required before applying runtime edits" if blocked else None,
     }
+
+
+def _control_edit_precheck(
+    case_path: Path,
+    control_dict: Path,
+    updates: dict[str, str],
+) -> ControlDictEditPayload | None:
+    if not control_dict.is_file():
+        return _control_edit_error(case_path, "system/controlDict is missing")
+    if not updates:
+        return _control_edit_error(case_path, "no controlDict updates requested")
+    invalid = sorted(set(updates) - _CONTROL_EDIT_KEYS)
+    if invalid:
+        return _control_edit_error(
+            case_path,
+            f"unsupported controlDict keys: {', '.join(invalid)}",
+        )
+    return None
+
+
+def _control_edit_rows(control_dict: Path, updates: dict[str, str]) -> list[dict[str, str]]:
+    current = _control_dict_values(control_dict, updates.keys())
+    return [
+        {
+            "key": key,
+            "old": current.get(key) or "<missing>",
+            "new": str(value),
+            "path": "system/controlDict",
+        }
+        for key, value in sorted(updates.items())
+    ]
+
+
+def _control_edit_snapshot(case_path: Path, write_snapshot: bool) -> tuple[Path | None, str | None]:
+    if not write_snapshot:
+        return None, None
+    try:
+        return write_case_snapshot(case_path), None
+    except (OSError, RuntimeError, ValueError) as exc:
+        return None, str(exc)
+
+
+def _apply_control_edits(
+    case_path: Path,
+    control_dict: Path,
+    rows: list[dict[str, str]],
+) -> list[str]:
+    failures: list[str] = []
+    for row in rows:
+        key = row["key"]
+        if not _apply_control_dict_edit(case_path, control_dict, key, row["new"]):
+            failures.append(key)
+    return failures
 
 
 def resolve_solver_log(
@@ -318,20 +361,24 @@ def runtime_log_terms(case_path: Path) -> list[str]:
     except OSError:
         return []
     clean_text = strip_comments(text)
-    terms: list[str] = []
-    for match in CRITERIA_RE.finditer(clean_text):
-        key = match.group("key").strip()
-        if key:
-            terms.append(key)
-    for _block_key, row in runtime_control_term_rows(clean_text):
-        cond_name, cond_type, field = row
-        if cond_name:
-            terms.append(cond_name)
-        if cond_type:
-            terms.append(cond_type)
-        if field:
-            terms.append(field)
+    terms = _inline_runtime_log_terms(clean_text)
+    terms.extend(_runtime_control_log_terms(clean_text))
     terms.extend(["runTimeControl", "condition", "conditions"])
+    return terms
+
+
+def _inline_runtime_log_terms(clean_text: str) -> list[str]:
+    return [
+        match.group("key").strip()
+        for match in CRITERIA_RE.finditer(clean_text)
+        if match.group("key").strip()
+    ]
+
+
+def _runtime_control_log_terms(clean_text: str) -> list[str]:
+    terms: list[str] = []
+    for _block_key, row in runtime_control_term_rows(clean_text):
+        terms.extend(term for term in row if term)
     return terms
 
 
@@ -409,25 +456,37 @@ def resolve_include_path(
 ) -> Path | None:
     if not include_raw:
         return None
-    expanded = os.path.expandvars(include_raw.replace("$FOAM_CASE", str(case_root)))
-    include_path = Path(expanded).expanduser()
+    include_path = _expanded_include_path(include_raw, case_root)
     if include_path.is_absolute():
         return include_path
     if include_kind == "includeEtc":
-        foam_etc = os.environ.get("FOAM_ETC")
-        wm_project_dir = os.environ.get("WM_PROJECT_DIR")
-        candidates: list[Path] = []
-        if foam_etc:
-            candidates.append(Path(foam_etc))
-        if wm_project_dir:
-            candidates.append(Path(wm_project_dir) / "etc")
-        for root in candidates:
-            candidate = (root / include_path).resolve()
-            if candidate.exists():
-                return candidate
-        if candidates:
-            return (candidates[0] / include_path).resolve()
+        return _resolve_include_etc(include_path)
     return (include_parent / include_path).resolve()
+
+
+def _expanded_include_path(include_raw: str, case_root: Path) -> Path:
+    expanded = os.path.expandvars(include_raw.replace("$FOAM_CASE", str(case_root)))
+    return Path(expanded).expanduser()
+
+
+def _include_etc_roots() -> list[Path]:
+    roots: list[Path] = []
+    if foam_etc := os.environ.get("FOAM_ETC"):
+        roots.append(Path(foam_etc))
+    if wm_project_dir := os.environ.get("WM_PROJECT_DIR"):
+        roots.append(Path(wm_project_dir) / "etc")
+    return roots
+
+
+def _resolve_include_etc(include_path: Path) -> Path | None:
+    roots = _include_etc_roots()
+    for root in roots:
+        candidate = (root / include_path).resolve()
+        if candidate.exists():
+            return candidate
+    if roots:
+        return (roots[0] / include_path).resolve()
+    return None
 
 
 def strip_comments(text: str) -> str:
@@ -624,53 +683,87 @@ def enrich_criteria(
     lines = log_lines if log_lines is not None else log_text.splitlines()
     gate_status, gate_evidence = runtime_conditions_gate(lines)
     for row in rows:
-        key = str(row.get("key", "")).strip()
-        value = str(row.get("value", "")).strip()
-        observed = criterion_observations(key, log_text, log_lines=lines)
-        tolerance = to_float(first_float(value))
-        comparator = criterion_comparator(key)
-        delta_mode = criterion_uses_delta(key)
-
-        live_value = observed[-1] if observed else None
-        live_delta = rolling_band(observed[-6:]) if observed else None
-        sample_count = len(observed)
-        measured = live_delta if delta_mode and live_delta is not None else live_value
-
-        status = str(row.get("status", "unknown")).strip().lower()
-        if measured is not None and tolerance is not None and status == "unknown":
-            if criterion_matches(measured, tolerance, comparator):
-                if gate_status == "unmet":
-                    if row.get("evidence") is None and gate_evidence:
-                        row["evidence"] = gate_evidence
-                else:
-                    status = "pass"
-            else:
-                status = "fail"
-
-        unmet_reason = criterion_unmet_reason(
-            status=status,
-            evidence=row.get("evidence"),
+        _enrich_criterion_row(
+            row,
+            log_text,
+            lines=lines,
+            gate=(gate_status, gate_evidence),
             criteria_start=criteria_start,
             latest_time=latest_time,
-            samples=sample_count,
-            minimum_samples=4 if delta_mode else 1,
-        )
-        eta_value = criterion_eta_seconds(
-            observed,
-            tolerance=tolerance,
-            comparator=comparator,
             execution_times=execution_times,
-            use_delta=delta_mode,
-            status=status,
         )
-        row["status"] = status
-        row["live_value"] = live_value
-        row["live_delta"] = live_delta
-        row["tolerance"] = tolerance
-        row["eta_seconds"] = eta_value
-        row["unmet_reason"] = unmet_reason
-        row["samples"] = sample_count
     return rows
+
+
+def _enrich_criterion_row(
+    row: CriterionRow,
+    log_text: str,
+    *,
+    lines: list[str],
+    gate: tuple[str | None, str | None],
+    criteria_start: float | None,
+    latest_time: float | None,
+    execution_times: list[float],
+) -> None:
+    key = str(row.get("key", "")).strip()
+    value = str(row.get("value", "")).strip()
+    observed = criterion_observations(key, log_text, log_lines=lines)
+    tolerance = to_float(first_float(value))
+    comparator = criterion_comparator(key)
+    delta_mode = criterion_uses_delta(key)
+    live_value = observed[-1] if observed else None
+    live_delta = rolling_band(observed[-6:]) if observed else None
+    sample_count = len(observed)
+    measured = live_delta if delta_mode and live_delta is not None else live_value
+    status = _criterion_status_from_measurement(
+        row,
+        measured=measured,
+        tolerance=tolerance,
+        comparator=comparator,
+        gate=gate,
+    )
+    row["status"] = status
+    row["live_value"] = live_value
+    row["live_delta"] = live_delta
+    row["tolerance"] = tolerance
+    row["eta_seconds"] = criterion_eta_seconds(
+        observed,
+        tolerance=tolerance,
+        comparator=comparator,
+        execution_times=execution_times,
+        use_delta=delta_mode,
+        status=status,
+    )
+    row["unmet_reason"] = criterion_unmet_reason(
+        status=status,
+        evidence=row.get("evidence"),
+        criteria_start=criteria_start,
+        latest_time=latest_time,
+        samples=sample_count,
+        minimum_samples=4 if delta_mode else 1,
+    )
+    row["samples"] = sample_count
+
+
+def _criterion_status_from_measurement(
+    row: CriterionRow,
+    *,
+    measured: float | None,
+    tolerance: float | None,
+    comparator: str,
+    gate: tuple[str | None, str | None],
+) -> str:
+    status = str(row.get("status", "unknown")).strip().lower()
+    if measured is None or tolerance is None or status != "unknown":
+        return status
+    if not criterion_matches(measured, tolerance, comparator):
+        return "fail"
+    gate_status, gate_evidence = gate
+    if gate_status == "unmet":
+        if row.get("evidence") is None and gate_evidence:
+            row["evidence"] = gate_evidence
+        return status
+    return "pass"
 
 
 def runtime_conditions_gate(lines: list[str]) -> tuple[str | None, str | None]:
@@ -767,5 +860,3 @@ def last_float(text: str, pattern: re.Pattern[str]) -> float | None:
     if not values:
         return None
     return to_float(values[-1])
-
-

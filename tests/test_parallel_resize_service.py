@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -52,6 +53,9 @@ def _case(tmp_path: Path) -> Path:
     )
     (case / "processor0").mkdir()
     (case / "processor1").mkdir()
+    for proc in ("processor0", "processor1"):
+        (case / proc / "10").mkdir()
+        (case / proc / "10" / "U").write_text("internalField uniform (0 0 0);\n")
     return case
 
 
@@ -69,6 +73,7 @@ def test_parallel_resize_dry_run_plans_safe_steps(tmp_path: Path) -> None:
     assert [row["step"] for row in payload["steps"]] == [
         "snapshot",
         "write-now",
+        "verify-processor-time",
         "reconstruct",
         "clean-processors",
         "set-subdomains",
@@ -94,6 +99,8 @@ def test_parallel_resize_executes_reconstruct_decompose_and_restart(
 
     def _execute_case_command(_case, _name, command, **_kwargs):
         commands.append(list(command))
+        if command[0] == "reconstructPar":
+            (case / "10" / "U").write_text("reconstructed\n")
         return SimpleNamespace(returncode=0, stdout="", stderr="", log_path=None)
 
     monkeypatch.setattr(
@@ -124,7 +131,7 @@ def test_parallel_resize_executes_reconstruct_decompose_and_restart(
     assert (snapshot / "inputs" / "system" / "controlDict").is_file()
     assert (snapshot / "inputs" / "constant").is_dir()
     assert commands == [
-        ["reconstructPar", "-latestTime"],
+        ["reconstructPar", "-time", "10"],
         ["decomposePar", "-force", "-latestTime"],
     ]
     assert not (case / "processor0").exists()
@@ -134,7 +141,90 @@ def test_parallel_resize_executes_reconstruct_decompose_and_restart(
     assert "stopAt endTime;" in control
     write_step = next(row for row in payload["steps"] if row["step"] == "write-now")
     assert write_step["acknowledged"] is True
+    assert write_step["requested"] is False
+    verify_step = next(row for row in payload["steps"] if row["step"] == "verify-processor-time")
+    assert verify_step["latest_complete_time"] == "10"
+    assert verify_step["incomplete_latest_discarded"] is False
     assert "To rollback inputs" in str(payload["rollback"])
+
+
+def test_parallel_resize_discards_incomplete_latest_processor_time(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    case = _case(tmp_path)
+    (case / "processor0" / "20").mkdir()
+    (case / "processor0" / "20" / "U").write_text("partial\n")
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(
+        parallel_resize_service.knife_service,
+        "current_payload",
+        lambda *_a, **_k: {"jobs_running": 0},
+    )
+    def _execute_case_command(_case, _name, command, **_kwargs):
+        commands.append(list(command))
+        if command[0] == "reconstructPar":
+            (case / "10" / "U").write_text("reconstructed\n")
+        return SimpleNamespace(returncode=0, stdout="", stderr="", log_path=None)
+
+    monkeypatch.setattr(
+        parallel_resize_service.run_ops,
+        "execute_case_command",
+        _execute_case_command,
+    )
+
+    payload = parallel_resize_service.parallel_resize_payload(
+        case,
+        from_ranks=2,
+        to_ranks=4,
+        start=False,
+    )
+
+    assert payload["ok"] is True
+    assert commands[0] == ["reconstructPar", "-time", "10"]
+    verify_step = next(row for row in payload["steps"] if row["step"] == "verify-processor-time")
+    assert verify_step["latest_processor_time"] == "20"
+    assert verify_step["latest_complete_time"] == "10"
+    assert verify_step["incomplete_latest_discarded"] is True
+    assert verify_step["missing_latest_processors"] == ["processor1"]
+
+
+def test_parallel_resize_keeps_processors_when_reconstruct_output_is_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    case = _case(tmp_path)
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(
+        parallel_resize_service.knife_service,
+        "current_payload",
+        lambda *_a, **_k: {"jobs_running": 0},
+    )
+    monkeypatch.setattr(
+        parallel_resize_service.run_ops,
+        "execute_case_command",
+        lambda _case, _name, command, **_kwargs: (
+            commands.append(list(command))
+            or SimpleNamespace(returncode=0, stdout="", stderr="", log_path=None)
+        ),
+    )
+
+    payload = parallel_resize_service.parallel_resize_payload(
+        case,
+        from_ranks=2,
+        to_ranks=4,
+        start=False,
+    )
+
+    assert payload["ok"] is False
+    assert "processor directories were left untouched" in str(payload["error"])
+    assert commands == [["reconstructPar", "-time", "10"]]
+    assert (case / "processor0").is_dir()
+    assert (case / "processor1").is_dir()
+    clean_step = next(row for row in payload["steps"] if row["step"] == "clean-processors")
+    assert clean_step["status"] == "pending"
 
 
 def test_parallel_resize_stop_timeout_reports_rollback(tmp_path: Path, monkeypatch) -> None:
@@ -161,7 +251,7 @@ def test_parallel_resize_stop_timeout_reports_rollback(tmp_path: Path, monkeypat
 def test_parallel_resize_requires_decomposed_case_for_execution(tmp_path: Path, monkeypatch) -> None:
     case = _case(tmp_path)
     for path in (case / "processor0", case / "processor1"):
-        path.rmdir()
+        shutil.rmtree(path)
     monkeypatch.setattr(
         parallel_resize_service.knife_service,
         "current_payload",

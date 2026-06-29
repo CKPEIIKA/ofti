@@ -50,7 +50,10 @@ def test_write_manifest_with_recorded_inputs_copy(
 
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest_path.is_relative_to(tmp_path / "runs")
+    assert payload["format"] == "ofti.run-manifest"
+    assert payload["format_version"] == 1
     assert payload["manifest_kind"] == "ofti_run_manifest"
+    assert payload["updated_at"] == payload["created_at"]
     assert payload["inputs"]["recorded_inputs_copy"] is True
     assert payload["inputs"]["inputs_copy_path"] == "inputs"
     assert (manifest_path.parent / "inputs" / "system" / "controlDict").is_file()

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
+from ofti.app.commands import CommandCallbacks
 from ofti.app.menus.config import config_menu
 from ofti.app.menus.mesh import mesh_menu
 from ofti.app.menus.physics import physics_menu
@@ -44,7 +46,7 @@ def test_main_menu_no_tools_option(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         stdscr=object(),
         case_path=case,
         state=AppState(),
-        command_callbacks=SimpleNamespace(),
+        command_callbacks=cast(CommandCallbacks, SimpleNamespace()),
         editor_screen=lambda *_a, **_k: None,
         check_syntax_screen=lambda *_a, **_k: None,
         global_search_screen=lambda *_a, **_k: None,
@@ -271,8 +273,7 @@ def test_simulation_menu_disables_parametric_without_preprocessing_extras(
     disabled = captured["disabled"]
     assert isinstance(disabled, set)
     assert 18 in disabled
-    reasons = captured["reasons"]
-    assert isinstance(reasons, dict)
+    reasons = cast(dict[int, object], captured["reasons"])
     assert "preprocessing extras" in str(reasons[18])
 
 
@@ -295,6 +296,5 @@ def test_postprocessing_menu_disables_tables_without_postprocessing_extras(
     disabled = captured["disabled"]
     assert isinstance(disabled, set)
     assert 5 in disabled
-    reasons = captured["reasons"]
-    assert isinstance(reasons, dict)
+    reasons = cast(dict[int, object], captured["reasons"])
     assert "postprocessing extras" in str(reasons[5])

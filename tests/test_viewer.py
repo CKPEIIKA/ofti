@@ -7,6 +7,7 @@ class FakeViewerScreen:
     def __init__(self, keys, inputs=None) -> None:
         self._keys = list(keys)
         self._inputs = [s.encode() for s in (inputs or [])]
+        self.output: list[str] = []
 
     def erase(self) -> None:
         pass
@@ -17,8 +18,9 @@ class FakeViewerScreen:
     def getmaxyx(self):
         return (10, 80)
 
-    def addstr(self, *args, **kwargs) -> None:
-        pass
+    def addstr(self, *args, **_kwargs) -> None:
+        if args:
+            self.output.append(str(args[-1]))
 
     def refresh(self) -> None:
         pass
@@ -39,6 +41,7 @@ def test_viewer_display_exits_on_back(monkeypatch) -> None:
     screen = FakeViewerScreen(keys=[ord("h")])
     viewer = Viewer(screen, "line1\nline2")
     viewer.display()
+    assert any("line1" in line for line in screen.output)
 
 
 def test_viewer_search(monkeypatch) -> None:
@@ -47,3 +50,5 @@ def test_viewer_search(monkeypatch) -> None:
     screen = FakeViewerScreen(keys=[ord("/"), ord("h")], inputs=["line2"])
     viewer = Viewer(screen, "line1\nline2\nline3")
     viewer.display()
+    assert any("Search:" in line for line in screen.output)
+    assert any("line2" in line for line in screen.output)

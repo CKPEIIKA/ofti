@@ -85,9 +85,15 @@ def test_logs_screen_large_log_uses_bounded_fallback(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(logs_view, "_select_log_file", lambda *_a, **_k: log_path)
     orig_stat = os.stat
 
-    def _stat(path: str | bytes | os.PathLike[str] | os.PathLike[bytes], *args: object, **kwargs: object) -> os.stat_result:
-        result = orig_stat(path, *args, **kwargs)
-        if Path(path) == log_path:
+    def _stat(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result:
+        result = orig_stat(path, dir_fd=dir_fd, follow_symlinks=follow_symlinks)
+        path_str = os.fspath(path)
+        if isinstance(path_str, str) and Path(path_str) == log_path:
             return os.stat_result(
                 (
                     result.st_mode,

@@ -51,11 +51,18 @@ class SpecCommandProvider(Protocol):
 KnifeCommand = SpecCommandProvider
 
 
+class BundleHintProvider(Protocol):
+    name: str
+
+    def bundle_hints(self, case_dir: Path) -> Sequence[str]: ...
+
+
 @dataclass
 class PluginRegistry:
     presets: dict[str, FieldPreset] = field(default_factory=dict)
     physical_profiles: dict[str, PhysicalRuleProvider] = field(default_factory=dict)
     knife_commands: dict[str, KnifeCommand] = field(default_factory=dict)
+    bundle_hints: dict[str, BundleHintProvider] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
 
     def add_preset(self, preset: FieldPreset) -> bool:
@@ -69,6 +76,11 @@ class PluginRegistry:
     def add_knife_command(self, provider: KnifeCommand) -> bool:
         return self._register(
             self.knife_commands, provider.name, provider, "knife command",
+        )
+
+    def add_bundle_hint_provider(self, provider: BundleHintProvider) -> bool:
+        return self._register(
+            self.bundle_hints, provider.name, provider, "bundle hint provider",
         )
 
     def _register(self, target: dict[str, Any], name: str, value: Any, kind: str) -> bool:

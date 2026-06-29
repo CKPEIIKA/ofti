@@ -14,9 +14,11 @@ UPSTREAM_FOAMLIB = "foamlib"
 KNOWN_UI_IN_TOOLS: set[Path] = set()
 KNOWN_DIRECT_FOAMLIB: set[Path] = set()
 KNOWN_DOMAIN_TERMS: set[Path] = set()
+KNOWN_OVERSIZED_MODULES: dict[Path, str] = {}
 DOMAIN_FORBIDDEN_RE = re.compile(
     r"hy2Foam|air5|air11|N2\+|O2\+|NO\+|\be-\b|\belectron\b|\bion(?:ized|s)?\b",
 )
+MAX_PRODUCTION_MODULE_SLOC = 1000
 
 
 def _imports(path: Path) -> set[str]:
@@ -32,6 +34,10 @@ def _imports(path: Path) -> set[str]:
 
 def _py_files(root: str) -> list[Path]:
     return sorted(Path(root).rglob("*.py"))
+
+
+def _sloc(path: Path) -> int:
+    return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
 
 
 def test_new_library_modules_do_not_import_ui_adapters() -> None:
@@ -110,3 +116,25 @@ def test_core_and_tools_do_not_spread_hy2foam_domain_terms() -> None:
         if matches:
             offenders[path] = matches
     assert offenders == {}
+
+
+def test_production_modules_stay_under_size_ratchet() -> None:
+    roots = _py_files("ofti") + _py_files("plugins")
+    oversized = {
+        path: _sloc(path)
+        for path in roots
+        if _sloc(path) > MAX_PRODUCTION_MODULE_SLOC
+        and path not in KNOWN_OVERSIZED_MODULES
+        and "tests" not in path.parts
+    }
+    assert oversized == {}
+
+
+def test_oversized_module_allowlist_matches_current_tree() -> None:
+    current = {
+        path
+        for path in _py_files("ofti") + _py_files("plugins")
+        if _sloc(path) > MAX_PRODUCTION_MODULE_SLOC
+        and "tests" not in path.parts
+    }
+    assert current == set(KNOWN_OVERSIZED_MODULES)

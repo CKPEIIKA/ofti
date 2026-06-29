@@ -46,4 +46,6 @@ def test_prompt_input_collects_text(monkeypatch) -> None:
 def test_prompt_input_esc_returns_none(monkeypatch) -> None:
     screen = FakeInputScreen([27])
     monkeypatch.setattr(curses, "curs_set", lambda *_: None)
-    assert prompt_input(screen, "Prompt: ") is None
+    result = prompt_input(screen, "Prompt: ")
+    assert result is None
+    assert "Prompt: " in screen.buffer

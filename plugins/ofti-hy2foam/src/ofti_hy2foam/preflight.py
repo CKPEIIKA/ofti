@@ -169,22 +169,21 @@ def _turbulence_consistency_check(case_dir: Path) -> dict[str, str]:
     if not match:
         return _check("turbulence_consistency", "FAIL", "simulationType missing")
     simulation_type = match.group(1).strip()
-    status = "PASS"
-    detail = simulation_type
-    if simulation_type == "laminar":
-        if (case_dir / "constant" / "RASProperties").exists():
-            status = "WARN"
-            detail = "laminar with RASProperties present"
-    elif simulation_type == "RAS" and not (case_dir / "constant" / "RASProperties").is_file():
-        status = "FAIL"
-        detail = "RAS selected but RASProperties missing"
-    elif simulation_type == "LES" and not (case_dir / "constant" / "LESProperties").is_file():
-        status = "FAIL"
-        detail = "LES selected but LESProperties missing"
-    elif simulation_type not in {"RAS", "LES"}:
-        status = "WARN"
-        detail = f"unknown simulationType {simulation_type}"
+    status, detail = _turbulence_status(case_dir, simulation_type)
     return _check("turbulence_consistency", status, detail)
+
+
+def _turbulence_status(case_dir: Path, simulation_type: str) -> tuple[str, str]:
+    constant = case_dir / "constant"
+    if simulation_type == "laminar" and (constant / "RASProperties").exists():
+        return "WARN", "laminar with RASProperties present"
+    if simulation_type == "RAS" and not (constant / "RASProperties").is_file():
+        return "FAIL", "RAS selected but RASProperties missing"
+    if simulation_type == "LES" and not (constant / "LESProperties").is_file():
+        return "FAIL", "LES selected but LESProperties missing"
+    if simulation_type not in {"laminar", "RAS", "LES"}:
+        return "WARN", f"unknown simulationType {simulation_type}"
+    return "PASS", simulation_type
 
 
 def _check(name: str, status: str, detail: str) -> dict[str, str]:

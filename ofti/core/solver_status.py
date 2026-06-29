@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from math import log10
 from pathlib import Path
+from typing import Any
 
 from ofti.core.checkmesh import extract_last_courant
 from ofti.foamlib.logs import parse_residuals
@@ -27,10 +28,22 @@ def latest_solver_job(case_path: Path, solver: str) -> SolverJobSummary | None:
     last = max(solver_jobs, key=lambda job: job.get("started_at") or 0)
     return SolverJobSummary(
         name=solver,
-        status=last.get("status", "unknown"),
-        returncode=last.get("returncode"),
-        started_at=last.get("started_at"),
+        status=_str_value(last.get("status"), default="unknown"),
+        returncode=_int_or_none(last.get("returncode")),
+        started_at=_float_or_none(last.get("started_at")),
     )
+
+
+def _str_value(value: Any, *, default: str) -> str:
+    return value if isinstance(value, str) else default
+
+
+def _int_or_none(value: Any) -> int | None:
+    return value if isinstance(value, int) else None
+
+
+def _float_or_none(value: Any) -> float | None:
+    return float(value) if isinstance(value, (int, float)) else None
 
 
 def solver_status_text(summary: SolverJobSummary) -> str:
@@ -99,24 +112,9 @@ def last_courant_value(lines: Iterable[str]) -> float | None:
 def _sparkline(values: list[float], width: int) -> str:
     if not values or width <= 0:
         return ""
-    if len(values) <= width:
-        sample = values
-    else:
-        step = len(values) / width
-        sample = [values[int(i * step)] for i in range(width)]
-
+    sample = _sparkline_sample(values, width)
     safe = [val if val > 0 else 1e-16 for val in sample]
-    vmin = min(safe)
-    vmax = max(safe)
-    if vmax <= 0:
-        vmax = 1e-16
-    ratio = vmax / vmin if vmin > 0 else vmax
-    if ratio > 1e3:
-        scaled = [log10(val) for val in safe]
-        vmin = min(scaled)
-        vmax = max(scaled)
-    else:
-        scaled = safe
+    scaled, vmin, vmax = _sparkline_scale(safe)
 
     levels = " .:-=+*#%@"
     span = vmax - vmin
@@ -129,3 +127,20 @@ def _sparkline(values: list[float], width: int) -> str:
         idx = max(0, min(len(levels) - 1, idx))
         chars.append(levels[idx])
     return "".join(chars)
+
+
+def _sparkline_sample(values: list[float], width: int) -> list[float]:
+    if len(values) <= width:
+        return values
+    step = len(values) / width
+    return [values[int(i * step)] for i in range(width)]
+
+
+def _sparkline_scale(values: list[float]) -> tuple[list[float], float, float]:
+    vmin = min(values)
+    vmax = max(*values, 1e-16)
+    ratio = vmax / vmin if vmin > 0 else vmax
+    if ratio <= 1e3:
+        return values, vmin, vmax
+    scaled = [log10(val) for val in values]
+    return scaled, min(scaled), max(scaled)

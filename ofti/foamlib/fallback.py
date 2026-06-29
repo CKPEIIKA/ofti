@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -8,6 +9,20 @@ from typing import cast
 class ListNode(list[object]):
     def tolist(self) -> list[object]:
         return list(self)
+
+
+@dataclass
+class _BoundaryState:
+    current_patch: str | None = None
+    brace_depth: int = 0
+    pending_patch: str | None = None
+
+
+@dataclass(frozen=True)
+class _ParsedEntry:
+    key: str
+    value: object
+    index: int
 
 
 def available() -> bool:
@@ -117,52 +132,102 @@ def parse_boundary_file(path: Path) -> tuple[list[str], dict[str, str]]:
     patches: list[str] = []
     patch_types: dict[str, str] = {}
     in_entries = False
-    current_patch: str | None = None
-    brace_depth = 0
-    pending_patch: str | None = None
+    state = _BoundaryState()
     for raw in text.splitlines():
         line = _strip_comments(raw).strip()
         if not line or line.startswith("FoamFile"):
             continue
         if not in_entries:
-            if line == "(" or line.endswith("("):
-                in_entries = True
+            in_entries = _boundary_entries_start(line)
             continue
-        if line.startswith(")"):
+        if _boundary_entries_end(line):
             break
-        if current_patch is None:
-            if pending_patch and line.startswith("{"):
-                current_patch = pending_patch
-                pending_patch = None
-                patches.append(current_patch)
-                brace_depth = 1
-                continue
-            name = _match_patch_start(line)
-            if name:
-                current_patch = name
-                patches.append(name)
-                if "type" in line and ";" in line:
-                    tokens = line.replace(";", " ").split()
-                    if len(tokens) >= 4:
-                        patch_types[current_patch] = tokens[3]
-                brace_depth = line.count("{") - line.count("}")
-                if brace_depth <= 0:
-                    current_patch = None
-                    brace_depth = 0
-                continue
-            if _looks_like_patch_name(line):
-                pending_patch = line.strip('"')
-            continue
-        if "type" in line and ";" in line:
-            tokens = line.replace(";", " ").split()
-            if len(tokens) >= 2 and tokens[0] == "type":
-                patch_types[current_patch] = tokens[1]
-        brace_depth += line.count("{")
-        brace_depth -= line.count("}")
-        if brace_depth <= 0:
-            current_patch = None
-            brace_depth = 0
+        _consume_boundary_line(line, state, patches, patch_types)
     return patches, patch_types
+
+
+def _boundary_entries_start(line: str) -> bool:
+    return line == "(" or line.endswith("(")
+
+
+def _boundary_entries_end(line: str) -> bool:
+    return line.startswith(")")
+
+
+def _consume_boundary_line(
+    line: str,
+    state: _BoundaryState,
+    patches: list[str],
+    patch_types: dict[str, str],
+) -> None:
+    if state.current_patch is None:
+        _start_boundary_patch(line, state, patches, patch_types)
+        return
+    _consume_boundary_patch_body(line, state, patch_types)
+
+
+def _start_boundary_patch(
+    line: str,
+    state: _BoundaryState,
+    patches: list[str],
+    patch_types: dict[str, str],
+) -> None:
+    if state.pending_patch and line.startswith("{"):
+        _open_boundary_patch(state.pending_patch, state, patches, brace_depth=1)
+        return
+    name = _match_patch_start(line)
+    if name:
+        _open_boundary_patch(name, state, patches, brace_depth=_line_brace_delta(line))
+        _store_inline_patch_type(name, line, patch_types)
+        _close_boundary_patch_if_done(state)
+    elif _looks_like_patch_name(line):
+        state.pending_patch = line.strip('"')
+
+
+def _open_boundary_patch(
+    name: str,
+    state: _BoundaryState,
+    patches: list[str],
+    *,
+    brace_depth: int,
+) -> None:
+    state.current_patch = name
+    state.pending_patch = None
+    state.brace_depth = brace_depth
+    patches.append(name)
+
+
+def _store_inline_patch_type(name: str, line: str, patch_types: dict[str, str]) -> None:
+    tokens = line.replace(";", " ").split()
+    if "type" in line and ";" in line and len(tokens) >= 4:
+        patch_types[name] = tokens[3]
+
+
+def _consume_boundary_patch_body(
+    line: str,
+    state: _BoundaryState,
+    patch_types: dict[str, str],
+) -> None:
+    if state.current_patch is not None:
+        _store_patch_type_from_body(state.current_patch, line, patch_types)
+    state.brace_depth += _line_brace_delta(line)
+    _close_boundary_patch_if_done(state)
+
+
+def _store_patch_type_from_body(patch: str, line: str, patch_types: dict[str, str]) -> None:
+    tokens = line.replace(";", " ").split()
+    if "type" in line and ";" in line and len(tokens) >= 2 and tokens[0] == "type":
+        patch_types[patch] = tokens[1]
+
+
+def _line_brace_delta(line: str) -> int:
+    return line.count("{") - line.count("}")
+
+
+def _close_boundary_patch_if_done(state: _BoundaryState) -> None:
+    if state.brace_depth <= 0:
+        state.current_patch = None
+        state.brace_depth = 0
 
 
 def rename_boundary_patch(path: Path, old: str, new: str) -> bool:
@@ -319,47 +384,70 @@ def _parse_entries(tokens: list[str], index: int) -> tuple[dict[str, object], in
     data: dict[str, object] = {}
     i = index
     while i < len(tokens):
-        tok = tokens[i]
-        if tok == "}":
+        if tokens[i] == "}":
             return data, i + 1
-        if tok in {";", "{", ")"}:
-            i += 1
+        skipped = _skip_entry_noise(tokens, i)
+        if skipped != i:
+            i = skipped
             continue
-        if tok == "(":
-            i = _skip_paren(tokens, i + 1)
-            continue
-        key = _strip_quotes(tok)
-        i += 1
-        if i >= len(tokens):
+        parsed = _parse_entry(tokens, i)
+        if parsed is None:
             break
-        cur = tokens[i]
-        if cur == "{":
-            nested, i = _parse_entries(tokens, i + 1)
-            data[key] = nested
-            continue
-        value_tokens: list[str] = []
-        while i < len(tokens) and tokens[i] != ";":
-            part = tokens[i]
-            if part == "{":
-                nested, i = _parse_entries(tokens, i + 1)
-                data[key] = nested
-                break
-            if part == "(":
-                content, i = _collect_paren(tokens, i + 1)
-                value_tokens.append(f"({content})")
-                continue
-            if part == "}":
-                break
-            value_tokens.append(_strip_quotes(part))
-            i += 1
-        else:
-            # no break
-            pass
-        if key not in data:
-            data[key] = _convert_scalar(" ".join(value_tokens).strip())
-        if i < len(tokens) and tokens[i] == ";":
-            i += 1
+        data[parsed.key] = parsed.value
+        i = parsed.index
     return data, i
+
+
+def _skip_entry_noise(tokens: list[str], index: int) -> int:
+    tok = tokens[index]
+    if tok in {";", "{", ")"}:
+        return index + 1
+    if tok == "(":
+        return _skip_paren(tokens, index + 1)
+    return index
+
+
+def _parse_entry(tokens: list[str], index: int) -> _ParsedEntry | None:
+    key = _strip_quotes(tokens[index])
+    value_index = index + 1
+    if value_index >= len(tokens):
+        return None
+    if tokens[value_index] == "{":
+        nested, next_index = _parse_entries(tokens, value_index + 1)
+        return _ParsedEntry(key, nested, next_index)
+    value, next_index = _parse_entry_value(tokens, value_index)
+    return _ParsedEntry(key, value, _skip_entry_semicolon(tokens, next_index))
+
+
+def _parse_entry_value(tokens: list[str], index: int) -> tuple[object, int]:
+    value_tokens: list[str] = []
+    i = index
+    while i < len(tokens) and tokens[i] != ";":
+        parsed_nested = _parse_nested_value(tokens, i)
+        if parsed_nested is not None:
+            return parsed_nested
+        if tokens[i] == "}":
+            break
+        if tokens[i] == "(":
+            content, i = _collect_paren(tokens, i + 1)
+            value_tokens.append(f"({content})")
+            continue
+        value_tokens.append(_strip_quotes(tokens[i]))
+        i += 1
+    return _convert_scalar(" ".join(value_tokens).strip()), i
+
+
+def _parse_nested_value(tokens: list[str], index: int) -> tuple[object, int] | None:
+    if tokens[index] != "{":
+        return None
+    nested, next_index = _parse_entries(tokens, index + 1)
+    return nested, next_index
+
+
+def _skip_entry_semicolon(tokens: list[str], index: int) -> int:
+    if index < len(tokens) and tokens[index] == ";":
+        return index + 1
+    return index
 
 
 def _skip_paren(tokens: list[str], index: int) -> int:

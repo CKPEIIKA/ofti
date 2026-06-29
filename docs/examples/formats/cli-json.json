@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "command": "bundle",
+  "ok": true,
+  "archive": "cavity.ofti.tar.gz",
+  "warnings": []
+}

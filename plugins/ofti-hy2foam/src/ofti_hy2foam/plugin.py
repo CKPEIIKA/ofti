@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ofti.plugins import PluginRegistry
 
+from .bundle import Hy2FoamBundleHints
 from .charge import Hy2FoamChargeCommand
 from .compare import Hy2FoamComparePreflightCommand, Hy2FoamPatchCompareCommand
 from .physical import Hy2FoamPhysicalProfile
@@ -17,3 +18,4 @@ def register(registry: PluginRegistry) -> None:
     registry.add_knife_command(Hy2FoamPreflightCommand())
     registry.add_knife_command(Hy2FoamComparePreflightCommand())
     registry.add_knife_command(Hy2FoamPatchCompareCommand())
+    registry.add_bundle_hint_provider(Hy2FoamBundleHints())

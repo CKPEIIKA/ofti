@@ -90,51 +90,17 @@ def physical_diagnostics_payload(
 ) -> dict[str, Any]:
     time_dir = resolve_time_dir(case_dir, time_name)
     fields = hy2foam_default_fields(case_dir, time_name=time_name)
-    violations: list[dict[str, Any]] = []
-    summaries: list[dict[str, Any]] = []
-    for name in fields:
-        path = time_dir / name
-        if not path.is_file():
-            continue
-        values = _read_flat(path)
-        summary = _summary(name, values)
-        summaries.append(summary)
-        if summary["nonfinite_count"]:
-            violations.append(
-                {"field": name, "kind": "nonfinite", "count": summary["nonfinite_count"]},
-            )
-        if _must_be_nonnegative(name) and summary["min"] is not None and summary["min"] < 0.0:
-            violations.append({"field": name, "kind": "min>=0", "min": summary["min"]})
-        if name in AIR11_SPECIES and _fraction_out_of_bounds(summary):
-            violations.append(
-                {
-                    "field": name,
-                    "kind": "fraction",
-                    "min": summary["min"],
-                    "max": summary["max"],
-                },
-            )
+    summaries, violations = _field_summaries_and_violations(time_dir, fields)
     species_sum = species_sum_diagnostic(time_dir, species)
-    if species_sum["checked"] and species_sum.get("max_abs_deviation", 0.0) > 1e-8:
-        violations.append({"field": "sum(Y)", "kind": "species_sum", **species_sum})
+    violations.extend(_species_sum_violations(species_sum))
     two_temperature = two_temperature_diagnostic(
         time_dir,
         tv_tt_min=tv_tt_min,
         tv_tt_max=tv_tt_max,
     )
-    if two_temperature["checked"] and not two_temperature["ok"]:
-        violations.append({"field": "Tv/Tt", "kind": "two_temperature_ratio", **two_temperature})
+    violations.extend(_two_temperature_violations(two_temperature))
     patch_ranges = patch_range_diagnostics(time_dir, fields, patches=patches)
-    for row in patch_ranges:
-        if row["nonfinite_count"]:
-            violations.append(
-                {
-                    "field": row["field"],
-                    "patch": row["patch"],
-                    "kind": "patch_nonfinite",
-                    "count": row["nonfinite_count"],
-                },
-            )
+    violations.extend(_patch_range_violations(patch_ranges))
     return {
         "case": str(case_dir),
         "time": time_dir.name,
@@ -148,6 +114,60 @@ def physical_diagnostics_payload(
             "patch_ranges": patch_ranges,
         },
     }
+
+
+def _field_summaries_and_violations(
+    time_dir: Path,
+    fields: list[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    summaries: list[dict[str, Any]] = []
+    violations: list[dict[str, Any]] = []
+    for name in fields:
+        path = time_dir / name
+        if not path.is_file():
+            continue
+        summary = _summary(name, _read_flat(path))
+        summaries.append(summary)
+        violations.extend(_field_summary_violations(name, summary))
+    return summaries, violations
+
+
+def _field_summary_violations(name: str, summary: dict[str, Any]) -> list[dict[str, Any]]:
+    violations: list[dict[str, Any]] = []
+    if summary["nonfinite_count"]:
+        violations.append({"field": name, "kind": "nonfinite", "count": summary["nonfinite_count"]})
+    if _must_be_nonnegative(name) and summary["min"] is not None and summary["min"] < 0.0:
+        violations.append({"field": name, "kind": "min>=0", "min": summary["min"]})
+    if name in AIR11_SPECIES and _fraction_out_of_bounds(summary):
+        violations.append(
+            {"field": name, "kind": "fraction", "min": summary["min"], "max": summary["max"]},
+        )
+    return violations
+
+
+def _species_sum_violations(species_sum: dict[str, Any]) -> list[dict[str, Any]]:
+    if species_sum["checked"] and species_sum.get("max_abs_deviation", 0.0) > 1e-8:
+        return [{"field": "sum(Y)", "kind": "species_sum", **species_sum}]
+    return []
+
+
+def _two_temperature_violations(two_temperature: dict[str, Any]) -> list[dict[str, Any]]:
+    if two_temperature["checked"] and not two_temperature["ok"]:
+        return [{"field": "Tv/Tt", "kind": "two_temperature_ratio", **two_temperature}]
+    return []
+
+
+def _patch_range_violations(patch_ranges: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "field": row["field"],
+            "patch": row["patch"],
+            "kind": "patch_nonfinite",
+            "count": row["nonfinite_count"],
+        }
+        for row in patch_ranges
+        if row["nonfinite_count"]
+    ]
 
 
 def patch_range_diagnostics(

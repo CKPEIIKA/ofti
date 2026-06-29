@@ -3,10 +3,11 @@ from __future__ import annotations
 import curses
 import os
 import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ofti.foam.config import get_config, key_hint, key_in
 from ofti.foam.exceptions import QuitAppError
@@ -45,6 +46,12 @@ class RunningCaseChoice:
     solvers: tuple[str, ...]
 
 
+@dataclass
+class _RunningCaseBucket:
+    pids: set[int]
+    solvers: set[str]
+
+
 def discover_running_case_choices(start_path: Path) -> list[RunningCaseChoice]:
     """Return visible live solver case directories for the startup chooser."""
     scope = start_path if start_path.is_dir() else start_path.parent
@@ -59,7 +66,7 @@ def discover_running_case_choices(start_path: Path) -> list[RunningCaseChoice]:
     except (OSError, ValueError):
         return []
 
-    cases: dict[Path, dict[str, set[int] | set[str]]] = {}
+    cases: dict[Path, _RunningCaseBucket] = {}
     for row in rows:
         raw_case = str(row.get("case") or "").strip()
         if not raw_case:
@@ -70,25 +77,25 @@ def discover_running_case_choices(start_path: Path) -> list[RunningCaseChoice]:
             continue
         if not is_case_dir(case_path):
             continue
-        bucket = cases.setdefault(case_path, {"pids": set(), "solvers": set()})
+        bucket = cases.setdefault(case_path, _RunningCaseBucket(set(), set()))
         pid = row.get("pid")
         if isinstance(pid, int) and pid > 0:
-            bucket["pids"].add(pid)  # type: ignore[union-attr]
+            bucket.pids.add(pid)
         solver = str(row.get("solver") or "").strip()
         if solver and solver != "unknown":
-            bucket["solvers"].add(solver)  # type: ignore[union-attr]
+            bucket.solvers.add(solver)
 
     choices: list[RunningCaseChoice] = []
     for case_path, values in cases.items():
-        pids = tuple(sorted(pid for pid in values["pids"] if isinstance(pid, int)))
-        solvers = tuple(sorted(str(name) for name in values["solvers"]))
+        pids = tuple(sorted(values.pids))
+        solvers = tuple(sorted(values.solvers))
         choices.append(RunningCaseChoice(case_path, pids, solvers))
     return sorted(choices, key=lambda choice: choice.path.as_posix())
 
 
-def _scan_proc_solver_processes(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+def _scan_proc_solver_processes(*args: Any, **kwargs: Any) -> list[Mapping[str, object]]:
     service = import_module("ofti.tools.process_scan_service")
-    return service.scan_proc_solver_processes(*args, **kwargs)
+    return cast("list[Mapping[str, object]]", service.scan_proc_solver_processes(*args, **kwargs))
 
 
 def select_start_case(stdscr: Any, start_path: Path) -> Path | None:

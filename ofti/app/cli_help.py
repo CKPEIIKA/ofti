@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Callable
+from textwrap import dedent
 from typing import TextIO
 
 from ofti.core.output_contract import command_name, stamp_payload
@@ -108,6 +109,7 @@ _HELP_BY_DEST = {
 
 
 def _fill_missing_help(parser: argparse.ArgumentParser) -> None:
+    _fill_parser_examples(parser)
     for action in parser._actions:
         if isinstance(action, argparse._SubParsersAction):
             for subparser in action.choices.values():
@@ -117,3 +119,193 @@ def _fill_missing_help(parser: argparse.ArgumentParser) -> None:
             continue
         action.help = _HELP_BY_DEST.get(action.dest, action.dest.replace("_", " ").capitalize())
 
+
+def _fill_parser_examples(parser: argparse.ArgumentParser) -> None:
+    if parser.epilog:
+        return
+    parser.formatter_class = argparse.RawDescriptionHelpFormatter
+    parser.epilog = _EXAMPLES_BY_PROG.get(parser.prog, _generic_examples(parser.prog))
+
+
+def _generic_examples(prog: str) -> str:
+    for prefix, lines in _GENERIC_EXAMPLE_PREFIXES:
+        if prog.startswith(prefix):
+            return _examples(*(line.format(prog=prog) for line in lines))
+    return _examples(f"{prog} -h")
+
+
+def _examples(*lines: str) -> str:
+    return "Examples:\n" + "\n".join(f"  {line}" for line in lines)
+
+
+_GENERIC_EXAMPLE_PREFIXES = (
+    ("ofti version", ("ofti version", "ofti -V")),
+    ("ofti knife campaign", ("{prog} --set CASE_SET --json", "{prog} CASE_A CASE_B --table")),
+    ("ofti knife manifest", ("{prog} CASE --json", "{prog} CASE --table")),
+    ("ofti knife", ("{prog} CASE --json", "{prog} CASE --table")),
+    ("ofti watch", ("{prog} CASE --json", "{prog} CASE --easy-on-cpu")),
+    ("ofti run", ("{prog} CASE --json", "{prog} CASE --dry-run")),
+    ("ofti plot", ("{prog} CASE --table", "{prog} CASE --json")),
+)
+
+
+_EXAMPLES_BY_PROG = {
+    "ofti knife": dedent(
+        """\
+        Examples:
+          ofti knife preflight CASE --json
+          ofti knife status CASE --table
+          ofti knife physical CASE --field rho:min=0 --fail-on-bad
+        """,
+    ),
+    "ofti knife doctor": _examples("ofti knife doctor CASE", "ofti knife doctor CASE --json"),
+    "ofti knife preflight": _examples(
+        "ofti knife preflight CASE",
+        "ofti knife preflight CASE --json",
+    ),
+    "ofti knife compare": dedent(
+        """\
+        Examples:
+          ofti knife compare LEFT_CASE RIGHT_CASE
+          ofti knife compare LEFT_CASE RIGHT_CASE --json
+        """,
+    ),
+    "ofti knife physical": dedent(
+        """\
+        Examples:
+          ofti knife physical CASE --time latest --fields p,U,rho,T --json
+          ofti knife physical CASE --field rho:min=0 --field T:min=0 --fail-on-bad
+        """,
+    ),
+    "ofti knife compare-fields": dedent(
+        """\
+        Examples:
+          ofti knife compare-fields SERIAL_CASE PARALLEL_CASE --preset flow --json
+          ofti knife compare-fields CASE_A CASE_B --fields p,U,rho --time latest
+        """,
+    ),
+    "ofti knife copy": _examples(
+        "ofti knife copy DEST --case CASE",
+        "ofti knife copy DEST --case CASE --json",
+    ),
+    "ofti knife manifest": dedent(
+        """\
+        Examples:
+          ofti knife manifest write CASE --json
+          ofti knife manifest verify runs/manifest.json --json
+          ofti knife manifest restore runs/manifest.json --to restored-case
+        """,
+    ),
+    "ofti knife manifest write": _examples("ofti knife manifest write CASE --json"),
+    "ofti knife manifest verify": _examples(
+        "ofti knife manifest verify runs/manifest.json --json",
+    ),
+    "ofti knife manifest restore": dedent(
+        """\
+        Examples:
+          ofti knife manifest restore runs/manifest.json --to restored-case
+          ofti knife manifest restore runs/manifest.json --to restored-case --force
+        """,
+    ),
+    "ofti knife current": _examples("ofti knife current --root . --recursive --table"),
+    "ofti knife adopt": _examples("ofti knife adopt --root . --all-untracked --json"),
+    "ofti knife set": _examples("ofti knife set CASE system/controlDict endTime 10"),
+    "ofti knife stop": _examples(
+        "ofti knife stop CASE --all",
+        "ofti knife stop CASE --signal TERM",
+    ),
+    "ofti run": dedent(
+        """\
+        Examples:
+          ofti run solver CASE --dry-run --json
+          ofti run solver CASE --background --write-manifest
+          ofti run queue CASE_A CASE_B --max-parallel 1 --json
+        """,
+    ),
+    "ofti run tool": _examples(
+        "ofti run tool --list --case CASE",
+        "ofti run tool blockMesh --case CASE",
+    ),
+    "ofti run solver": dedent(
+        """\
+        Examples:
+          ofti run solver CASE --dry-run --json
+          ofti run solver CASE --background --write-manifest
+          ofti run solver CASE --parallel 4 --clean-processors
+        """,
+    ),
+    "ofti run smoke": _examples("ofti run smoke CASE --iterations 20 --timeout 5m --json"),
+    "ofti run resize-parallel": _examples(
+        "ofti run resize-parallel CASE --to 8 --dry-run --table",
+    ),
+    "ofti run matrix": _examples(
+        "ofti run matrix CASE --param application=simpleFoam,pisoFoam --no-launch --json",
+    ),
+    "ofti run parametric": _examples(
+        "ofti run parametric CASE --entry application --values simpleFoam,pisoFoam",
+    ),
+    "ofti run queue": _examples("ofti run queue CASE_A CASE_B --max-parallel 1 --json"),
+    "ofti run status": _examples(
+        "ofti run status --set CASE_SET --json",
+        "ofti run status CASE --table",
+    ),
+    "ofti watch": dedent(
+        """\
+        Examples:
+          ofti watch jobs CASE --table
+          ofti watch log CASE --lines 80
+          ofti watch stop CASE --signal TERM
+        """,
+    ),
+    "ofti watch jobs": _examples(
+        "ofti watch jobs CASE --table",
+        "ofti watch jobs CASE --json",
+    ),
+    "ofti watch log": _examples(
+        "ofti watch log CASE --lines 80",
+        "ofti watch log CASE --follow --easy-on-cpu",
+    ),
+    "ofti watch attach": _examples("ofti watch attach CASE --lines 80"),
+    "ofti watch start": _examples("ofti watch start CASE --background --write-manifest"),
+    "ofti watch stop": _examples(
+        "ofti watch stop CASE --all",
+        "ofti watch stop CASE --signal TERM",
+    ),
+    "ofti watch external": _examples("ofti watch external CASE --json"),
+    "ofti plot": _examples(
+        "ofti plot metrics CASE --table",
+        "ofti plot residuals CASE --json",
+    ),
+    "ofti plot metrics": _examples("ofti plot metrics CASE --table"),
+    "ofti plot criteria": _examples("ofti plot criteria CASE --table"),
+    "ofti plot residuals": _examples("ofti plot residuals CASE --json"),
+    "ofti bundle": dedent(
+        """\
+        Examples:
+          ofti bundle CASE --output case.ofti.tar.gz --mesh auto --time 0
+          ofti bundle CASE --output case.ofti.tar.gz --mesh include --table
+          ofti bundle CASE --output case.ofti.tar.gz --smoke --smoke-timeout 60s
+
+        Bundle intent:
+          Create the smallest portable archive that can run elsewhere: system/,
+          constant/, the selected start-time directory, Allrun/Allclean when
+          present, OFTI metadata, and mesh files when --mesh auto/include needs
+          them. Logs, processor* directories, postProcessing, and caches are
+          excluded. Add --smoke to prove the archive can be unbundled and run
+          on the current host before copying it elsewhere.
+        """,
+    ),
+    "ofti unbundle": dedent(
+        """\
+        Examples:
+          ofti unbundle case.ofti.tar.gz --to CASE_COPY
+          ofti unbundle case.ofti.tar.gz --to CASE_COPY --table
+          ofti unbundle case.ofti.tar.gz --to CASE_COPY --run --background --json
+
+        Target-host workflow:
+          Copy archive to another host, run unbundle there, then use --run (or
+          the printed `ofti run solver ...` command). Extraction verifies hashes
+          and refuses non-empty destinations unless --force is used.
+        """,
+    ),
+}

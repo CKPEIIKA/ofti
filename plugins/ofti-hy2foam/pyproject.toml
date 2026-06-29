@@ -1,6 +1,6 @@
 [project]
 name = "ofti-hy2foam"
-version = "0.1.0"
+version = "0.2.0"
 description = "hy2Foam plugin for OFTI"
 requires-python = ">=3.11"
 dependencies = ["ofti"]

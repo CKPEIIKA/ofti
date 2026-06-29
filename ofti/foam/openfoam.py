@@ -26,6 +26,7 @@ class OpenFOAMError(RuntimeError):
     def foamlib_entry_failed(cls, exc: Exception) -> OpenFOAMError:
         return cls(f"foamlib failed to parse entry: {exc}")
 
+
 def _foamlib_candidate(file_path: Path) -> bool:
     try:
         head = file_path.read_text(errors="ignore")[:2048]
@@ -131,34 +132,7 @@ def parse_required_entries(info_lines: Sequence[str]) -> list[str]:
     or bullet lists. This helper extracts the reported entry names
     so that callers can verify they exist on disk.
     """
-    required: list[str] = []
-    capture_block = False
-
-    for raw in info_lines:
-        line = raw.strip()
-        lower = line.lower()
-
-        if not line:
-            capture_block = False
-            continue
-
-        if lower.startswith("optional"):
-            # Explicitly skip optional hints when we are collecting a block.
-            continue
-
-        if lower.startswith(("required entries", "required entry")):
-            capture_block = True
-            after_colon = line.split(":", 1)[1] if ":" in line else ""
-            if after_colon.strip():
-                required.extend(_split_requirement_line(after_colon))
-                capture_block = False
-            continue
-
-        if capture_block:
-            if ":" in line and not lower.startswith("required"):
-                capture_block = False
-                continue
-            required.extend(_split_requirement_line(line))
+    required = _collect_required_entries(info_lines)
 
     # Deduplicate while keeping order.
     seen: set[str] = set()
@@ -169,6 +143,37 @@ def parse_required_entries(info_lines: Sequence[str]) -> list[str]:
         seen.add(item)
         unique.append(item)
     return unique
+
+
+def _collect_required_entries(info_lines: Sequence[str]) -> list[str]:
+    required: list[str] = []
+    capture_block = False
+    for raw in info_lines:
+        capture_block, entries = _required_entries_from_line(raw.strip(), capture_block)
+        required.extend(entries)
+    return required
+
+
+def _required_entries_from_line(line: str, capture_block: bool) -> tuple[bool, list[str]]:
+    if not line:
+        return False, []
+    lower = line.lower()
+    if lower.startswith("optional"):
+        return capture_block, []
+    if lower.startswith(("required entries", "required entry")):
+        return _required_header_entries(line)
+    if not capture_block:
+        return capture_block, []
+    if ":" in line and not lower.startswith("required"):
+        return False, []
+    return True, _split_requirement_line(line)
+
+
+def _required_header_entries(line: str) -> tuple[bool, list[str]]:
+    after_colon = line.split(":", 1)[1] if ":" in line else ""
+    if after_colon.strip():
+        return False, _split_requirement_line(after_colon)
+    return True, []
 
 
 def _split_requirement_line(text: str) -> list[str]:
@@ -248,42 +253,44 @@ def discover_case_files(case_dir: Path) -> dict[str, list[Path]]:
     Sections: "system", "constant", "0*".
     """
     case_dir = case_dir.resolve()
-    sections = {"system": [], "constant": [], "0*": []}  # type: Dict[str, List[Path]]
-
-    system_dir = case_dir / "system"
-    if system_dir.is_dir():
-        sections["system"] = sorted(p for p in system_dir.iterdir() if p.is_file())
-
-    constant_dir = case_dir / "constant"
-    if constant_dir.is_dir():
-        sections["constant"] = sorted(p for p in constant_dir.iterdir() if p.is_file())
-
-    zero_dirs: list[Path] = []
-    for entry in case_dir.iterdir():
-        if not entry.is_dir():
-            continue
-        name = entry.name
-        if not name.startswith("0"):
-            continue
-        include = True
-        try:
-            value = float(name)
-        except ValueError:
-            include = True
-        else:
-            include = value == 0.0
-        if include:
-            zero_dirs.append(entry)
-
-    zero_files: list[Path] = []
-    for d in zero_dirs:
-        zero_files.extend(p for p in d.iterdir() if p.is_file())
-    sections["0*"] = sorted(zero_files)
+    sections = {
+        "system": _section_files(case_dir / "system"),
+        "constant": _section_files(case_dir / "constant"),
+        "0*": _zero_time_files(case_dir),
+    }
 
     if os.environ.get("OFTI_STRICT_FOAMLIB") == "1":
         sections = _filter_foamlib_files(sections)
 
     return sections
+
+
+def _section_files(section_dir: Path) -> list[Path]:
+    if not section_dir.is_dir():
+        return []
+    return sorted(path for path in section_dir.iterdir() if path.is_file())
+
+
+def _zero_time_files(case_dir: Path) -> list[Path]:
+    files: list[Path] = []
+    for zero_dir in _zero_time_dirs(case_dir):
+        files.extend(path for path in zero_dir.iterdir() if path.is_file())
+    return sorted(files)
+
+
+def _zero_time_dirs(case_dir: Path) -> list[Path]:
+    return [
+        entry
+        for entry in case_dir.iterdir()
+        if entry.is_dir() and entry.name.startswith("0") and _is_zero_time_dir(entry.name)
+    ]
+
+
+def _is_zero_time_dir(name: str) -> bool:
+    try:
+        return float(name) == 0.0
+    except ValueError:
+        return True
 
 
 def _filter_foamlib_files(sections: dict[str, list[Path]]) -> dict[str, list[Path]]:
@@ -385,27 +392,29 @@ def _check_single_entry(file_path: Path, result: FileCheckResult, key: str) -> N
     required_issues = _required_entries_issues(file_path, key)
     if required_issues:
         result.errors.extend(required_issues)
-    value: str | None = None
-
     enum_values = get_entry_enum_values(file_path, key)
-    if enum_values:
-        if value is None:
-            try:
-                value = read_entry(file_path, key)
-            except OpenFOAMError as exc:
-                result.errors.append(f"{key}: {exc}")
-                return
-        if looks_like_dict(value):
-            return
-        token = normalize_scalar_token(value)
-        if not token:
-            return
-        allowed = {val.strip() for val in enum_values if val.strip()}
-        if token and token not in allowed:
-            allowed_list = ", ".join(sorted(allowed))
-            result.errors.append(
-                f"{key}: invalid value '{token}'. Allowed: {allowed_list}",
-            )
+    enum_issue = _entry_enum_issue(file_path, key, enum_values)
+    if enum_issue:
+        result.errors.append(enum_issue)
+
+
+def _entry_enum_issue(file_path: Path, key: str, enum_values: Sequence[str]) -> str | None:
+    if not enum_values:
+        return None
+    try:
+        value = read_entry(file_path, key)
+    except OpenFOAMError as exc:
+        return f"{key}: {exc}"
+    if looks_like_dict(value):
+        return None
+    token = normalize_scalar_token(value)
+    if not token:
+        return None
+    allowed = {val.strip() for val in enum_values if val.strip()}
+    if token in allowed:
+        return None
+    allowed_list = ", ".join(sorted(allowed))
+    return f"{key}: invalid value '{token}'. Allowed: {allowed_list}"
 
 
 def _required_entries_issues(file_path: Path, key: str) -> list[str]:
@@ -453,21 +462,27 @@ def _check_boundary_patches(
         patches, patch_types = foamlib_integration.parse_boundary_file(boundary_file)
     except Exception:
         return
-    if not patches:
-        return
-    if ".*" in boundary_keys:
-        return
-    mesh_patches = [
-        patch
-        for patch in patches
-        if not patch.startswith("processor") and patch_types.get(patch) != "processor"
-    ]
+    mesh_patches = _mesh_boundary_patches(patches, patch_types, boundary_keys)
     if not mesh_patches:
         return
     missing = [patch for patch in mesh_patches if patch not in boundary_keys]
     if missing:
         missing_list = ", ".join(missing)
         result.errors.append(f"boundaryField missing patches: {missing_list}")
+
+
+def _mesh_boundary_patches(
+    patches: Sequence[str],
+    patch_types: dict[str, str],
+    boundary_keys: Sequence[str],
+) -> list[str]:
+    if not patches or ".*" in boundary_keys:
+        return []
+    return [
+        patch
+        for patch in patches
+        if not patch.startswith("processor") and patch_types.get(patch) != "processor"
+    ]
 
 
 def _foamlib_quick_lint(file_path: Path, keys: Sequence[str]) -> list[str]:

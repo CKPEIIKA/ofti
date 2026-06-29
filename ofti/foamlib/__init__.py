@@ -24,7 +24,6 @@ from .logs import (
     parse_residuals,
     parse_time_steps,
 )
-from .parametric import build_parametric_cases
 from .postprocessing import (
     availability_error as postprocessing_availability_error,
 )
@@ -53,6 +52,15 @@ from .runner import (
 from .runner import (
     slurm_available as runner_slurm_available,
 )
+
+
+def __getattr__(name: str) -> object:
+    if name == "build_parametric_cases":
+        from .parametric import build_parametric_cases
+
+        return build_parametric_cases
+    raise AttributeError(name)
+
 
 __all__ = [
     "FoamlibUnavailableError",

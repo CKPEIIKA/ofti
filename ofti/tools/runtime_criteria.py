@@ -50,49 +50,65 @@ def criterion_observations(
     values: list[float] = []
     lines = log_lines if log_lines is not None else log_text.splitlines()
     for raw in lines:
-        line = raw.strip()
-        if not line:
-            continue
-        lower = line.lower()
-        for needle in needles:
-            at = lower.find(needle)
-            if at < 0:
-                continue
-            value = float_after_index(line, at)
-            if value is None:
-                value = to_float(first_float(line))
-            if value is None:
-                break
+        value = _criterion_observation_line(raw, needles)
+        if value is not None:
             values.append(value)
-            break
     return values
 
 
+def _criterion_observation_line(raw: str, needles: list[str]) -> float | None:
+    line = raw.strip()
+    if not line:
+        return None
+    lower = line.lower()
+    for needle in needles:
+        value = _criterion_value_for_needle(line, lower, needle)
+        if value is not None:
+            return value
+    return None
+
+
+def _criterion_value_for_needle(line: str, lower: str, needle: str) -> float | None:
+    at = lower.find(needle)
+    if at < 0:
+        return None
+    value = float_after_index(line, at)
+    if value is None:
+        value = to_float(first_float(line))
+    return value
+
+
 def criterion_needles(key: str) -> list[str]:
-    if not key:
-        return []
-    needles: list[str] = []
     full = key.strip().lower()
-    if full:
-        needles.append(full)
-    tokens = re.split(r"[./:\-]+", full)
+    if not full:
+        return []
+    needles = [full]
     compact: list[str] = []
-    for token in tokens:
-        cleaned = "".join(ch for ch in token if ch.isalnum() or ch in {"_", "+"}).strip("_")
-        if len(cleaned) < 3:
-            continue
-        if cleaned in _GENERIC_CRITERION_TOKENS:
+    for token in re.split(r"[./:\-]+", full):
+        cleaned = _criterion_token(token)
+        if not cleaned:
             continue
         compact.append(cleaned)
         if cleaned not in needles:
             needles.append(cleaned)
+    _append_joined_needles(needles, compact)
+    # Longest needles first avoid generic token capturing unrelated numbers.
+    needles.sort(key=len, reverse=True)
+    return needles
+
+
+def _criterion_token(token: str) -> str:
+    cleaned = "".join(ch for ch in token if ch.isalnum() or ch in {"_", "+"}).strip("_")
+    if len(cleaned) < 3 or cleaned in _GENERIC_CRITERION_TOKENS:
+        return ""
+    return cleaned
+
+
+def _append_joined_needles(needles: list[str], compact: list[str]) -> None:
     for idx in range(1, len(compact)):
         joined = f"{compact[idx - 1]} {compact[idx]}"
         if joined not in needles:
             needles.append(joined)
-    # Longest needles first avoid generic token capturing unrelated numbers.
-    needles.sort(key=len, reverse=True)
-    return needles
 
 
 def float_after_index(text: str, index: int) -> float | None:

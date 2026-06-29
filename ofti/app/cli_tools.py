@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Mapping
 from types import ModuleType
 from typing import TYPE_CHECKING
 
+from ofti.app.cli_adapters import bundle as _bundle_adapter
 from ofti.app.cli_adapters import knife as _knife_adapter
 from ofti.app.cli_adapters import main as _main_adapter
 from ofti.app.cli_adapters import plot as _plot_adapter
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
     # `_export_private_handlers` copies these handlers into the module namespace
     # at runtime; re-export them statically so type checkers (and callers/tests
     # that reach them through `cli_tools`) can see them. F401 is ignored for this
-    # file in ruff.toml because these are intentional re-exports.
+    # file in pyproject.toml because these are intentional re-exports.
     from ofti.app.cli_adapters.knife import (
         _knife_adopt,
         _knife_campaign_compare,
@@ -68,7 +70,14 @@ def _export_private_handlers(module: ModuleType) -> None:
             globals()[name] = getattr(module, name)
 
 
-for _module in (_knife_adapter, _plot_adapter, _watch_adapter, _run_adapter, _main_adapter):
+for _module in (
+    _bundle_adapter,
+    _knife_adapter,
+    _plot_adapter,
+    _watch_adapter,
+    _run_adapter,
+    _main_adapter,
+):
     _export_private_handlers(_module)
 
 _ORIG_WATCH_LOG = _watch_adapter._watch_log
@@ -100,9 +109,9 @@ def _watch_attach(args) -> int:
         _watch_adapter._watch_log = _ORIG_WATCH_LOG
 
 
-def _print_watch_external_attach(args, payload: dict[str, object]) -> int:
+def _print_watch_external_attach(args, payload: Mapping[str, object]) -> int:
     _watch_adapter._follow_log_path = globals()["_follow_log_path"]
-    return int(_ORIG_PRINT_WATCH_EXTERNAL_ATTACH(args, payload))
+    return int(_ORIG_PRINT_WATCH_EXTERNAL_ATTACH(args, dict(payload)))
 
 
 def main(argv: list[str] | None = None) -> int:

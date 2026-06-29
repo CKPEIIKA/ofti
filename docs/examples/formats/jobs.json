@@ -1,0 +1,23 @@
+{
+  "format": "ofti.jobs",
+  "format_version": 1,
+  "case_dir": "/work/cavity",
+  "updated_at": "2026-06-29T22:54:18Z",
+  "jobs": [
+    {
+      "id": "1779624396-33223",
+      "name": "icoFoam",
+      "kind": "solver",
+      "case_dir": "/work/cavity",
+      "pid": 33223,
+      "launcher_pid": 33220,
+      "solver_pids": [33223],
+      "command": "icoFoam",
+      "log": "/work/cavity/log.icoFoam",
+      "status": "running",
+      "started_at": 1779624396.0,
+      "ended_at": null,
+      "returncode": null
+    }
+  ]
+}

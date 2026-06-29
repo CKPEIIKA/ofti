@@ -12,12 +12,14 @@ class FakeScreen:
         self._keys = list(keys or [])
         self.height = 24
         self.width = 80
+        self.output: list[str] = []
 
     def clear(self) -> None:
         pass
 
     def addstr(self, *args) -> None:
-        pass
+        if args:
+            self.output.append(str(args[-1]))
 
     def refresh(self) -> None:
         pass
@@ -66,6 +68,7 @@ def test_no_foam_smoke_runs_without_terminal(monkeypatch, tmp_path: Path) -> Non
     monkeypatch.setattr(app.curses, "init_pair", fake_init_pair)
 
     app.run_tui(str(case_dir), debug=False)
+    assert any("OFTI" in line or "OpenFOAM" in line for line in screen.output)
 
 
 def test_main_menu_navigates_config_manager(monkeypatch, tmp_path: Path) -> None:

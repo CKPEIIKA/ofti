@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import signal
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
@@ -31,6 +30,7 @@ from ofti.tools import (
     watch_service,
 )
 from ofti.tools import knife_runtime as _runtime
+from ofti.tools import knife_stop as _stop
 from ofti.tools.case_doctor import build_case_doctor_report
 from ofti.tools.job_registry import refresh_jobs, register_job
 from ofti.tools.knife_process import (
@@ -54,6 +54,7 @@ stability_payload = _runtime.stability_payload
 
 _DELTA_T_RE = runtime_control_service.DELTA_T_RE
 _END_TIME_RE = runtime_control_service.END_TIME_RE
+_stop_untracked_solver_processes = _stop.stop_untracked_solver_processes
 
 
 def doctor_payload(case_dir: Path) -> dict[str, Any]:
@@ -181,104 +182,9 @@ def adopt_payload(
         root_is_case=root_is_case,
         recursive=recursive_effective,
     )
-    case_paths = set(rows_by_case)
-    if root_is_case:
-        case_paths.add(scope_root)
-
-    selected: list[dict[str, Any]] = []
-    skipped: list[dict[str, Any]] = []
-    adopted: list[dict[str, Any]] = []
-    failed: list[dict[str, Any]] = []
-    jobs_running_before = 0
-    for case_path in sorted(case_paths, key=str):
-        jobs = refresh_jobs(case_path)
-        active_jobs = [job for job in jobs if job.get("status") in {"running", "paused"}]
-        jobs_running_before += len(active_jobs)
-        tracked_pids = set(_running_job_pids(active_jobs))
-        case_rows = rows_by_case.get(case_path, [])
-        launcher_pids = {
-            int(row["pid"])
-            for row in case_rows
-            if str(row.get("role")) == "launcher" and int(row.get("pid", 0)) > 0
-        }
-
-        for row in case_rows:
-            pid = int(row.get("pid", 0) or 0)
-            if pid <= 0:
-                continue
-            role = str(row.get("role", "solver"))
-            launcher_pid = _to_positive_int(row.get("launcher_pid"))
-            if role == "solver" and launcher_pid is not None and launcher_pid in launcher_pids:
-                # The launcher process represents this solver subtree.
-                continue
-            if pid in tracked_pids:
-                skipped.append(
-                    {
-                        "case": str(case_path),
-                        "pid": pid,
-                        "reason": "already_tracked",
-                    },
-                )
-                continue
-            selected_row = {
-                "case": str(case_path),
-                "pid": pid,
-                "role": role,
-                "solver": row.get("solver"),
-                "command": str(row.get("command") or ""),
-                "launcher_pid": launcher_pid,
-                "solver_pids": row.get("solver_pids", []),
-                "log_path": row.get("log_path") or row.get("log"),
-            }
-            selected.append(selected_row)
-
-    for row in selected:
-        case_path = Path(str(row["case"]))
-        pid = int(row["pid"])
-        command = str(row.get("command") or "")
-        role = str(row.get("role") or "solver")
-        solver_name = str(row.get("solver") or "solver")
-        name = solver_name if role == "solver" else f"{solver_name}-launcher"
-        solver_pids = [item for item in row.get("solver_pids", []) if isinstance(item, int)]
-        log_path = _adopt_log_path(case_path, solver_name)
-        try:
-            job_id = register_job(
-                case_path,
-                name,
-                pid,
-                command,
-                log_path,
-                kind="solver",
-                detached=True,
-                extra={
-                    "adopted": True,
-                    "role": role,
-                    "solver_pids": solver_pids,
-                    "launcher_pid": pid if role == "launcher" else row.get("launcher_pid"),
-                },
-            )
-        except OSError as exc:
-            failed.append(
-                {
-                    "case": str(case_path),
-                    "pid": pid,
-                    "error": str(exc),
-                },
-            )
-            continue
-        adopted.append(
-            {
-                "case": str(case_path),
-                "id": job_id,
-                "pid": pid,
-                "name": name,
-                "role": role,
-                "solver_pids": solver_pids,
-                "launcher_pid": pid if role == "launcher" else row.get("launcher_pid"),
-                "log": str(log_path),
-                "command": command,
-            },
-        )
+    case_paths = _adopt_case_paths(rows_by_case, scope_root=scope_root, root_is_case=root_is_case)
+    selected, skipped, jobs_running_before = _select_adopt_rows(rows_by_case, case_paths)
+    adopted, failed = _register_adopted_rows(selected)
 
     return {
         "case": str(scope_root),
@@ -293,6 +199,184 @@ def adopt_payload(
         "skipped": skipped,
         "jobs_running_before": jobs_running_before,
         "jobs_running_after": jobs_running_before + len(adopted),
+    }
+
+
+def _adopt_case_paths(
+    rows_by_case: dict[Path, list[dict[str, Any]]],
+    *,
+    scope_root: Path,
+    root_is_case: bool,
+) -> set[Path]:
+    case_paths = set(rows_by_case)
+    if root_is_case:
+        case_paths.add(scope_root)
+    return case_paths
+
+
+def _select_adopt_rows(
+    rows_by_case: dict[Path, list[dict[str, Any]]],
+    case_paths: set[Path],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+    selected: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    jobs_running_before = 0
+    for case_path in sorted(case_paths, key=str):
+        active_jobs = _active_jobs(case_path)
+        jobs_running_before += len(active_jobs)
+        case_rows = rows_by_case.get(case_path, [])
+        selected.extend(_select_case_adopt_rows(case_path, case_rows, active_jobs, skipped))
+    return selected, skipped, jobs_running_before
+
+
+def _active_jobs(case_path: Path) -> list[dict[str, Any]]:
+    return [job for job in refresh_jobs(case_path) if job.get("status") in {"running", "paused"}]
+
+
+def _select_case_adopt_rows(
+    case_path: Path,
+    case_rows: list[dict[str, Any]],
+    active_jobs: list[dict[str, Any]],
+    skipped: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    tracked_pids = set(_running_job_pids(active_jobs))
+    launcher_pids = _launcher_pids(case_rows)
+    for row in case_rows:
+        selected_row = _adopt_selection_row(case_path, row, launcher_pids=launcher_pids)
+        if selected_row is None:
+            continue
+        if selected_row["pid"] in tracked_pids:
+            skipped.append(
+                {"case": str(case_path), "pid": selected_row["pid"], "reason": "already_tracked"},
+            )
+            continue
+        selected.append(selected_row)
+    return selected
+
+
+def _launcher_pids(rows: list[dict[str, Any]]) -> set[int]:
+    return {
+        int(row["pid"])
+        for row in rows
+        if str(row.get("role")) == "launcher" and int(row.get("pid", 0)) > 0
+    }
+
+
+def _adopt_selection_row(
+    case_path: Path,
+    row: dict[str, Any],
+    *,
+    launcher_pids: set[int],
+) -> dict[str, Any] | None:
+    pid = int(row.get("pid", 0) or 0)
+    if pid <= 0:
+        return None
+    role = str(row.get("role", "solver"))
+    launcher_pid = _to_positive_int(row.get("launcher_pid"))
+    if role == "solver" and launcher_pid is not None and launcher_pid in launcher_pids:
+        return None
+    return {
+        "case": str(case_path),
+        "pid": pid,
+        "role": role,
+        "solver": row.get("solver"),
+        "command": str(row.get("command") or ""),
+        "launcher_pid": launcher_pid,
+        "solver_pids": row.get("solver_pids", []),
+        "log_path": row.get("log_path") or row.get("log"),
+    }
+
+
+def _register_adopted_rows(
+    selected: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    adopted: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    for row in selected:
+        result, error = _register_adopted_row(row)
+        if result is not None:
+            adopted.append(result)
+        if error is not None:
+            failed.append(error)
+    return adopted, failed
+
+
+def _register_adopted_row(
+    row: dict[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    case_path = Path(str(row["case"]))
+    pid = int(row["pid"])
+    command = str(row.get("command") or "")
+    role = str(row.get("role") or "solver")
+    solver_name = str(row.get("solver") or "solver")
+    name = solver_name if role == "solver" else f"{solver_name}-launcher"
+    solver_pids = [item for item in row.get("solver_pids", []) if isinstance(item, int)]
+    log_path = _adopt_log_path(case_path, solver_name)
+    try:
+        job_id = register_job(
+            case_path,
+            name,
+            pid,
+            command,
+            log_path,
+            kind="solver",
+            detached=True,
+            extra=_adopt_job_extra(row, pid=pid, role=role, solver_pids=solver_pids),
+        )
+    except OSError as exc:
+        return None, {"case": str(case_path), "pid": pid, "error": str(exc)}
+    return (
+        _adopted_row(
+            row,
+            job_id=job_id,
+            pid=pid,
+            name=name,
+            role=role,
+            solver_pids=solver_pids,
+            log_path=log_path,
+            command=command,
+        ),
+        None,
+    )
+
+
+def _adopt_job_extra(
+    row: dict[str, Any],
+    *,
+    pid: int,
+    role: str,
+    solver_pids: list[int],
+) -> dict[str, Any]:
+    return {
+        "adopted": True,
+        "role": role,
+        "solver_pids": solver_pids,
+        "launcher_pid": pid if role == "launcher" else row.get("launcher_pid"),
+    }
+
+
+def _adopted_row(
+    row: dict[str, Any],
+    *,
+    job_id: str,
+    pid: int,
+    name: str,
+    role: str,
+    solver_pids: list[int],
+    log_path: Path,
+    command: str,
+) -> dict[str, Any]:
+    return {
+        "case": str(row["case"]),
+        "id": job_id,
+        "pid": pid,
+        "name": name,
+        "role": role,
+        "solver_pids": solver_pids,
+        "launcher_pid": pid if role == "launcher" else row.get("launcher_pid"),
+        "log": str(log_path),
+        "command": command,
     }
 
 
@@ -699,7 +783,7 @@ def stop_payload(
         kind="solver",
         signal_name=signal_upper,
     )
-    untracked = _stop_untracked_solver_processes(case_path, signal_name=signal_upper)
+    untracked = _stop.stop_untracked_solver_processes(case_path, signal_name=signal_upper)
     stopped = [*tracked.get("stopped", []), *untracked["stopped"]]
     failed = [*tracked.get("failed", []), *untracked["failed"]]
     return {
@@ -784,144 +868,6 @@ def _compare_file_filter(files: list[str] | None) -> set[str]:
     return selected
 
 
-def _stop_untracked_solver_processes(case_path: Path, *, signal_name: str) -> dict[str, Any]:
-    if not process_scan_service.is_case_dir(case_path):
-        return {
-            "case": str(case_path),
-            "selected": 0,
-            "stopped": [],
-            "failed": [],
-            "reason": "case_dir_is_not_openfoam_case",
-        }
-    tracked_jobs = refresh_jobs(case_path)
-    active_jobs = [job for job in tracked_jobs if job.get("status") in {"running", "paused"}]
-    tracked_pids = set(_running_job_pids(active_jobs))
-    rows = process_scan_service.scan_proc_solver_processes(
-        case_path,
-        None,
-        tracked_pids=tracked_pids,
-        include_tracked=False,
-        require_case_target=True,
-    )
-    case_str = str(case_path.resolve())
-    selected_rows = [row for row in rows if str(row.get("case") or "") == case_str]
-    if not selected_rows:
-        return {
-            "case": case_str,
-            "selected": 0,
-            "stopped": [],
-            "failed": [],
-            "reason": "no_untracked_solver_processes",
-        }
-    launchers = sorted(
-        {
-            int(row["pid"])
-            for row in selected_rows
-            if str(row.get("role")) == "launcher" and int(row.get("pid", 0)) > 0
-        },
-    )
-    solver_rows = [
-        row
-        for row in selected_rows
-        if str(row.get("role")) == "solver" and int(row.get("pid", 0)) > 0
-    ]
-    solver_pids = sorted({int(row["pid"]) for row in solver_rows})
-    if launchers:
-        launcher_process_groups = {
-            pid: _process_group_if_leader(pid)
-            for pid in launchers
-        }
-        safe_group_launchers = {
-            pid
-            for pid, pgid in launcher_process_groups.items()
-            if pgid == pid
-        }
-        solver_launcher: dict[int, int | None] = {
-            int(row["pid"]): (
-                launcher_pid if isinstance((launcher_pid := row.get("launcher_pid")), int) else None
-            )
-            for row in solver_rows
-        }
-        # Avoid double-signaling workers only when a launcher group can stop them.
-        solver_pids = [
-            pid
-            for pid in solver_pids
-            if solver_launcher.get(pid) not in safe_group_launchers
-        ]
-    else:
-        launcher_process_groups = {}
-    signal_code = _signal_number(signal_name)
-    stopped: list[dict[str, Any]] = []
-    failed: list[dict[str, Any]] = []
-
-    for row in selected_rows:
-        pid = int(row.get("pid", 0) or 0)
-        role = str(row.get("role") or "solver")
-        should_stop = pid in launchers or pid in solver_pids
-        if not should_stop:
-            continue
-        method = "process"
-        pgid: int | None = None
-        try:
-            if role == "launcher" and launcher_process_groups.get(pid) == pid:
-                os.killpg(pid, signal_code)
-                method = "process_group"
-                pgid = pid
-            else:
-                os.kill(pid, signal_code)
-        except OSError as exc:
-            failed.append(
-                {
-                    "id": None,
-                    "pid": pid,
-                    "name": f"untracked-{role}",
-                    "kind": "untracked",
-                    "role": role,
-                    "case": case_str,
-                    "error": str(exc),
-                },
-            )
-            continue
-        stopped_row = {
-            "id": None,
-            "pid": pid,
-            "name": f"untracked-{role}",
-            "kind": "untracked",
-            "role": role,
-            "case": case_str,
-            "launcher_pid": row.get("launcher_pid"),
-            "solver_pids": row.get("solver_pids", []),
-            "command": row.get("command"),
-            "method": method,
-        }
-        if pgid is not None:
-            stopped_row["pgid"] = pgid
-        stopped.append(stopped_row)
-    return {
-        "case": case_str,
-        "selected": len(stopped) + len(failed),
-        "stopped": stopped,
-        "failed": failed,
-        "launcher_pids": launchers,
-        "solver_pids": solver_pids,
-    }
-
-
-def _process_group_if_leader(pid: int) -> int | None:
-    try:
-        return os.getpgid(pid)
-    except OSError:
-        return None
-
-
-def _signal_number(name: str) -> int:
-    attr = f"SIG{name.strip().upper()}"
-    value = getattr(signal, attr, None)
-    if isinstance(value, int):
-        return value
-    return signal.SIGTERM
-
-
 def _runtime_control_snapshot(
     case_path: Path,
     solver: str | None,
@@ -969,16 +915,21 @@ def _live_stdout_log_path(case_path: Path, solver: str | None) -> Path | None:
         return None
     for role in ("launcher", "solver"):
         for row in rows:
-            if str(row.get("role")) != role:
-                continue
-            pid = int(row.get("pid", 0) or 0)
-            if pid <= 0:
-                continue
-            fd1 = Path("/proc") / str(pid) / "fd" / "1"
-            try:
-                candidate = fd1.resolve()
-            except OSError:
-                continue
-            if candidate.is_file():
+            candidate = _live_stdout_row_path(row, role=role)
+            if candidate is not None:
                 return candidate
     return None
+
+
+def _live_stdout_row_path(row: Mapping[str, Any], *, role: str) -> Path | None:
+    if str(row.get("role")) != role:
+        return None
+    pid = int(row.get("pid", 0) or 0)
+    if pid <= 0:
+        return None
+    fd1 = Path("/proc") / str(pid) / "fd" / "1"
+    try:
+        candidate = fd1.resolve()
+    except OSError:
+        return None
+    return candidate if candidate.is_file() else None

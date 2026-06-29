@@ -43,34 +43,48 @@ def read_parametric_presets(path: Path) -> tuple[list[ParametricPreset], list[st
     except OSError as exc:
         return [], [f"Failed to read {path.name}: {exc}"]
     for line_no, raw in enumerate(lines, start=1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if "|" in line:
-            parts = [part.strip() for part in line.split("|")]
-            if len(parts) != 4:
-                errors.append(f"Line {line_no}: expected 4 fields separated by |")
-                continue
-            name, dict_path, entry, values_raw = parts
-        elif ":" in line:
-            name_part, rest = line.split(":", 1)
-            tokens = rest.strip().split()
-            if len(tokens) < 2:
-                errors.append(f"Line {line_no}: expected '<dict> <entry> <values>'")
-                continue
-            name = name_part.strip()
-            dict_path = tokens[0]
-            entry = tokens[1]
-            values_raw = " ".join(tokens[2:]) if len(tokens) > 2 else ""
-        else:
-            errors.append(f"Line {line_no}: expected 'name | dict | entry | values'")
-            continue
-        values = [val.strip() for val in values_raw.split(",") if val.strip()]
-        if not (name and dict_path and entry and values):
-            errors.append(f"Line {line_no}: missing name, dict, entry, or values")
-            continue
-        presets.append(ParametricPreset(name, dict_path, entry, values))
+        preset, error = _parse_parametric_preset_line(raw, line_no)
+        if error:
+            errors.append(error)
+        if preset is not None:
+            presets.append(preset)
     return presets, errors
+
+
+def _parse_parametric_preset_line(
+    raw: str,
+    line_no: int,
+) -> tuple[ParametricPreset | None, str | None]:
+    line = raw.strip()
+    if not line or line.startswith("#"):
+        return None, None
+    fields, error = _parametric_preset_fields(line, line_no)
+    if error:
+        return None, error
+    name, dict_path, entry, values_raw = fields
+    values = [val.strip() for val in values_raw.split(",") if val.strip()]
+    if not (name and dict_path and entry and values):
+        return None, f"Line {line_no}: missing name, dict, entry, or values"
+    return ParametricPreset(name, dict_path, entry, values), None
+
+
+def _parametric_preset_fields(
+    line: str,
+    line_no: int,
+) -> tuple[tuple[str, str, str, str], str | None]:
+    if "|" in line:
+        parts = [part.strip() for part in line.split("|")]
+        if len(parts) != 4:
+            return ("", "", "", ""), f"Line {line_no}: expected 4 fields separated by |"
+        return (parts[0], parts[1], parts[2], parts[3]), None
+    if ":" not in line:
+        return ("", "", "", ""), f"Line {line_no}: expected 'name | dict | entry | values'"
+    name_part, rest = line.split(":", 1)
+    tokens = rest.strip().split()
+    if len(tokens) < 2:
+        return ("", "", "", ""), f"Line {line_no}: expected '<dict> <entry> <values>'"
+    values_raw = " ".join(tokens[2:]) if len(tokens) > 2 else ""
+    return (name_part.strip(), tokens[0], tokens[1], values_raw), None
 
 
 @dataclass(frozen=True)

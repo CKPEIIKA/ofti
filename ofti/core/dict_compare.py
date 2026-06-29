@@ -145,36 +145,13 @@ def _is_dictionary(rel_path: str, left_path: Path, right_path: Path) -> bool:
 
 
 def _compare_dictionary_file(rel_path: str, left_path: Path, right_path: Path) -> DictDiff | None:
-    left_data, left_error = _load_dict(left_path)
-    right_data, right_error = _load_dict(right_path)
-    left_flat = _flatten_mapping(left_data) if left_data else {}
-    right_flat = _flatten_mapping(right_data) if right_data else {}
-    if not left_flat:
-        left_flat = _raw_flatten_pairs(left_path)
-    if not right_flat:
-        right_flat = _raw_flatten_pairs(right_path)
-
-    if left_flat or right_flat:
-        left_keys = set(left_flat)
-        right_keys = set(right_flat)
-    else:
-        left_keys = _raw_key_scan(left_path)
-        right_keys = _raw_key_scan(right_path)
-
+    left_flat, left_error = _dictionary_pairs(left_path)
+    right_flat, right_error = _dictionary_pairs(right_path)
+    left_keys, right_keys = _dictionary_keys(left_path, right_path, left_flat, right_flat)
     missing_in_left = sorted(right_keys - left_keys)
     missing_in_right = sorted(left_keys - right_keys)
-    value_diffs: list[ValueDiff] = []
-    for key in sorted(left_keys & right_keys):
-        left_value = left_flat.get(key)
-        right_value = right_flat.get(key)
-        if left_value is None or right_value is None:
-            continue
-        if _normalize_scalar(left_value) == _normalize_scalar(right_value):
-            continue
-        value_diffs.append(ValueDiff(key=key, left=left_value, right=right_value))
-
-    errors = [item for item in (left_error, right_error) if item]
-    error_text = "; ".join(errors) if errors else None
+    value_diffs = _dictionary_value_diffs(left_keys & right_keys, left_flat, right_flat)
+    error_text = _join_errors(left_error, right_error)
     if not missing_in_left and not missing_in_right and not value_diffs and error_text is None:
         return None
     return DictDiff(
@@ -185,6 +162,55 @@ def _compare_dictionary_file(rel_path: str, left_path: Path, right_path: Path) -
         kind="dict",
         error=error_text,
     )
+
+
+def _dictionary_pairs(path: Path) -> tuple[dict[str, str], str | None]:
+    data, error = _load_dict(path)
+    flat = _flatten_mapping(data) if data else {}
+    return (flat or _raw_flatten_pairs(path)), error
+
+
+def _dictionary_keys(
+    left_path: Path,
+    right_path: Path,
+    left_flat: dict[str, str],
+    right_flat: dict[str, str],
+) -> tuple[set[str], set[str]]:
+    if left_flat or right_flat:
+        return set(left_flat), set(right_flat)
+    return _raw_key_scan(left_path), _raw_key_scan(right_path)
+
+
+def _dictionary_value_diffs(
+    keys: set[str],
+    left_flat: dict[str, str],
+    right_flat: dict[str, str],
+) -> list[ValueDiff]:
+    diffs: list[ValueDiff] = []
+    for key in sorted(keys):
+        diff = _dictionary_value_diff(key, left_flat, right_flat)
+        if diff is not None:
+            diffs.append(diff)
+    return diffs
+
+
+def _dictionary_value_diff(
+    key: str,
+    left_flat: dict[str, str],
+    right_flat: dict[str, str],
+) -> ValueDiff | None:
+    left_value = left_flat.get(key)
+    right_value = right_flat.get(key)
+    if left_value is None or right_value is None:
+        return None
+    if _normalize_scalar(left_value) == _normalize_scalar(right_value):
+        return None
+    return ValueDiff(key=key, left=left_value, right=right_value)
+
+
+def _join_errors(*errors: str | None) -> str | None:
+    values = [error for error in errors if error]
+    return "; ".join(values) if values else None
 
 
 def _compare_raw_file(rel_path: str, left_path: Path, right_path: Path) -> DictDiff | None:
@@ -249,23 +275,26 @@ def _raw_key_scan(path: Path) -> set[str]:
         return set()
     keys: set[str] = set()
     for raw in text.splitlines():
-        line = raw.split("//", 1)[0].strip()
-        if not line or line.startswith(("/*", "*", "#", "{", "}", "(", ")", ";")):
-            continue
-        if "{" in line:
-            token = line.split("{", 1)[0].strip().split()[:1]
-            if token:
-                candidate = token[0].strip('"')
-                if _is_key_token(candidate):
-                    keys.add(candidate)
-            continue
-        parts = line.replace(";", " ").split()
-        if not parts:
-            continue
-        candidate = parts[0].strip('"')
-        if _is_key_token(candidate):
+        candidate = _raw_key_candidate(raw)
+        if candidate is not None:
             keys.add(candidate)
     return keys
+
+
+def _raw_key_candidate(raw: str) -> str | None:
+    line = raw.split("//", 1)[0].strip()
+    if not line or line.startswith(("/*", "*", "#", "{", "}", "(", ")", ";")):
+        return None
+    token = _line_key_token(line)
+    return token if token and _is_key_token(token) else None
+
+
+def _line_key_token(line: str) -> str | None:
+    if "{" in line:
+        token = line.split("{", 1)[0].strip().split()[:1]
+    else:
+        token = line.replace(";", " ").split()[:1]
+    return token[0].strip('"') if token else None
 
 
 def _raw_flatten_pairs(path: Path) -> dict[str, str]:
@@ -278,29 +307,36 @@ def _raw_flatten_pairs(path: Path) -> dict[str, str]:
     stack: list[str] = []
     index = 0
     while index < len(tokens):
-        part = tokens[index]
-        if part == "}":
-            if stack:
-                stack.pop()
-            index += 1
-            continue
-        if part in {"{", ";"}:
-            index += 1
-            continue
-        key = part.strip('"')
-        if not _is_key_token(key):
-            index += 1
-            continue
-        index += 1
-        index, opened_block, value_tokens = _consume_raw_value(tokens, index)
-        if opened_block:
-            stack.append(key)
-            continue
-        if value_tokens:
-            value = _normalize_scalar(" ".join(value_tokens))
-            full_key = ".".join([*stack, key]) if stack else key
-            pairs[full_key] = value
+        index = _consume_raw_pair(tokens, index, stack, pairs)
     return pairs
+
+
+def _consume_raw_pair(
+    tokens: list[str],
+    index: int,
+    stack: list[str],
+    pairs: dict[str, str],
+) -> int:
+    part = tokens[index]
+    if part == "}":
+        if stack:
+            stack.pop()
+        return index + 1
+    if part in {"{", ";"}:
+        return index + 1
+    key = part.strip('"')
+    if not _is_key_token(key):
+        return index + 1
+    next_index, opened_block, value_tokens = _consume_raw_value(tokens, index + 1)
+    if opened_block:
+        stack.append(key)
+    elif value_tokens:
+        pairs[_stacked_key(stack, key)] = _normalize_scalar(" ".join(value_tokens))
+    return next_index
+
+
+def _stacked_key(stack: list[str], key: str) -> str:
+    return ".".join([*stack, key]) if stack else key
 
 
 def _raw_flatten_tokens(text: str) -> list[str]:

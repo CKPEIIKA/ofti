@@ -10,7 +10,7 @@ from ofti.app.app import run_tui
 from ofti.app.cli_tools import main as cli_tools_main
 from ofti.foam.openfoam import OpenFOAMError
 
-_CLI_TOOLS_GROUPS = {"knife", "plot", "watch", "run", "version"}
+_CLI_TOOLS_GROUPS = {"knife", "plot", "watch", "run", "bundle", "unbundle", "version"}
 _CLI_VERSION_FLAGS = {"-V", "--version"}
 
 
@@ -18,7 +18,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ofti",
         description="OpenFOAM CLI utilities with an interactive curses TUI",
-        epilog="Non-interactive tools: ofti knife|plot|watch|run ...",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  ofti CASE\n"
+            "  ofti knife preflight CASE --json\n"
+            "  ofti run solver CASE --dry-run\n"
+            "  ofti bundle CASE --output case.ofti.tar.gz\n"
+            "  ofti unbundle case.ofti.tar.gz --to CASE_COPY --run --background\n\n"
+            "Non-interactive tools: ofti knife|plot|watch|run|bundle|unbundle ..."
+        ),
     )
     parser.add_argument(
         "case_dir",

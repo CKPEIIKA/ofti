@@ -114,23 +114,41 @@ def rename_boundary_patch(case_path: Path, old: str, new: str) -> tuple[bool, st
     if old == new:
         return False, "New patch name matches the existing name."
     boundary_path = case_path / "constant" / "polyMesh" / "boundary"
+    valid, message = _boundary_edit_precheck(boundary_path, "Rename requires foamlib.")
+    if not valid:
+        return False, message
+    ok, message = _rename_boundary_file(boundary_path, old, new)
+    if not ok:
+        return False, message
+    _rename_field_boundary_entries(case_path, old, new)
+    return True, ""
+
+
+def _boundary_edit_precheck(boundary_path: Path, foamlib_message: str) -> tuple[bool, str]:
     if not boundary_path.is_file():
         return False, "Boundary file not found."
     if not foamlib_integration.available():
-        return False, "Rename requires foamlib."
+        return False, foamlib_message
+    return True, ""
+
+
+def _rename_boundary_file(boundary_path: Path, old: str, new: str) -> tuple[bool, str]:
     try:
         ok = foamlib_integration.rename_boundary_patch(boundary_path, old, new)
     except Exception as exc:
         return False, f"Failed to rename patch: {exc}"
     if not ok:
         return False, "Patch not found in boundary file."
+    return True, ""
+
+
+def _rename_field_boundary_entries(case_path: Path, old: str, new: str) -> None:
     for field in list_field_files(case_path):
         file_path = zero_dir(case_path) / field
         try:
             foamlib_integration.rename_boundary_field_patch(file_path, old, new)
         except Exception:
             continue
-    return True, ""
 
 
 def change_patch_type(case_path: Path, patch: str, new_type: str) -> tuple[bool, str]:
@@ -165,37 +183,59 @@ def parse_boundary_text(text: str) -> tuple[list[str], dict[str, str]]:
         line = strip_comments(raw).strip()
         if not line or line.startswith("FoamFile"):
             continue
-        if not state.in_entries:
-            if line == "(" or line.endswith("("):
-                state.in_entries = True
+        if _before_boundary_entries(line, state):
             continue
-        if line.startswith(")"):
+        if _end_boundary_entries(line):
             break
-
-        if state.current_patch is None:
-            if state.pending_patch and line.startswith("{"):
-                state.current_patch = state.pending_patch
-                state.pending_patch = None
-                patches.append(state.current_patch)
-                state.brace_depth = 1
-                continue
-            name = match_patch_start(line)
-            if name:
-                state.current_patch = name
-                patches.append(name)
-                state.brace_depth = 1
-                continue
-            if looks_like_patch_name(line):
-                state.pending_patch = line
-            continue
-
-        update_patch_type(line, state.current_patch, patch_types)
-        update_brace_depth(line, state)
-        if state.brace_depth <= 0:
-            state.current_patch = None
-            state.brace_depth = 0
+        _parse_boundary_line(line, state, patches, patch_types)
 
     return patches, patch_types
+
+
+def _before_boundary_entries(line: str, state: _BoundaryParseState) -> bool:
+    if state.in_entries:
+        return False
+    if line == "(" or line.endswith("("):
+        state.in_entries = True
+    return True
+
+
+def _end_boundary_entries(line: str) -> bool:
+    return line.startswith(")")
+
+
+def _parse_boundary_line(
+    line: str,
+    state: _BoundaryParseState,
+    patches: list[str],
+    patch_types: dict[str, str],
+) -> None:
+    if state.current_patch is None:
+        _start_boundary_patch(line, state, patches)
+        return
+    update_patch_type(line, state.current_patch, patch_types)
+    update_brace_depth(line, state)
+    if state.brace_depth <= 0:
+        state.current_patch = None
+        state.brace_depth = 0
+
+
+def _start_boundary_patch(line: str, state: _BoundaryParseState, patches: list[str]) -> None:
+    if state.pending_patch and line.startswith("{"):
+        _activate_patch(state.pending_patch, state, patches)
+        state.pending_patch = None
+        return
+    name = match_patch_start(line)
+    if name:
+        _activate_patch(name, state, patches)
+    elif looks_like_patch_name(line):
+        state.pending_patch = line
+
+
+def _activate_patch(name: str, state: _BoundaryParseState, patches: list[str]) -> None:
+    state.current_patch = name
+    patches.append(name)
+    state.brace_depth = 1
 
 
 def match_patch_start(line: str) -> str | None:

@@ -319,19 +319,20 @@ def untracked_running_count(rows: list[SolverProcessRow]) -> int:
     if not rows:
         return 0
     launcher_pids = {
-        int(row["pid"])
+        pid
         for row in rows
-        if str(row.get("role")) == "launcher" and int(row.get("pid", 0)) > 0
+        if str(row.get("role")) == "launcher" and (pid := _int_or_none(row.get("pid")))
     }
     solver_pids = {
-        int(row["pid"])
+        pid
         for row in rows
         if str(row.get("role")) == "solver"
-        and int(row.get("pid", 0)) > 0
-        and not (
-            isinstance(row.get("launcher_pid"), int)
-            and int(row.get("launcher_pid", 0)) > 0
-            and int(row.get("launcher_pid", 0)) in launcher_pids
-        )
+        and (pid := _int_or_none(row.get("pid")))
+        and not _owned_by_launcher(row, launcher_pids)
     }
     return len(launcher_pids) + len(solver_pids)
+
+
+def _owned_by_launcher(row: SolverProcessRow, launcher_pids: set[int]) -> bool:
+    launcher_pid = _int_or_none(row.get("launcher_pid"))
+    return launcher_pid in launcher_pids if launcher_pid is not None else False

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from ofti.tools import case_status_service as svc
 
@@ -279,7 +280,6 @@ def test_attach_process_visibility_explains_limited_live_scan() -> None:
 
     svc.attach_process_visibility(payload, "procfs pid 1 is unreadable")
 
-    visibility = payload["process_visibility"]
-    assert isinstance(visibility, dict)
+    visibility = cast(dict[str, object], payload["process_visibility"])
     assert visibility["limited"] is True
     assert "registry shows 1 tracked run" in str(visibility["message"])

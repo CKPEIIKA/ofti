@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
@@ -12,14 +12,19 @@ class FoamlibUnavailableError(RuntimeError):
         super().__init__("foamlib is not available")
 
 
+FoamCase: Any = None
+FoamFile: Any = None
+FoamFieldFile: Any = None
+
 try:  # pragma: no cover - exercised in tests when installed
     from foamlib import FoamCase, FoamFieldFile, FoamFile
     FOAMLIB_AVAILABLE = True
 except Exception:  # pragma: no cover - optional fallback
-    FoamCase = None  # type: ignore[assignment]
-    FoamFile = None  # type: ignore[assignment]
-    FoamFieldFile = None  # type: ignore[assignment]
     FOAMLIB_AVAILABLE = False
+
+FoamDictAssignment: Any = None
+FoamDictInstruction: Any = None
+foamlib_system: Any = None
 
 try:  # pragma: no cover - optional preprocessing extras
     from foamlib.preprocessing import system as foamlib_system
@@ -27,20 +32,19 @@ try:  # pragma: no cover - optional preprocessing extras
     FOAMLIB_PREPROCESSING = True
     FOAMLIB_SYSTEM = True
 except Exception:  # pragma: no cover - optional fallback
-    FoamDictAssignment = None  # type: ignore[assignment]
-    FoamDictInstruction = None  # type: ignore[assignment]
-    foamlib_system = None  # type: ignore[assignment]
     FOAMLIB_PREPROCESSING = False
     FOAMLIB_SYSTEM = False
+
+FoamlibDimensionSet: Any = None
+FoamlibDimensioned: Any = None
+FoamlibField: Any = None
 
 try:  # pragma: no cover - optional richer type helpers
     from foamlib.typing import Dimensioned as FoamlibDimensioned
     from foamlib.typing import DimensionSet as FoamlibDimensionSet
     from foamlib.typing import Field as FoamlibField
 except Exception:  # pragma: no cover - foamlib missing or changed
-    FoamlibDimensionSet = None  # type: ignore[assignment]
-    FoamlibDimensioned = None  # type: ignore[assignment]
-    FoamlibField = None  # type: ignore[assignment]
+    pass
 
 
 def available() -> bool:
@@ -189,7 +193,7 @@ def _numeric_list_label(values: object) -> str | None:
             raw_values = tolist()
     if not isinstance(raw_values, (list, tuple)):
         return None
-    return _numeric_sequence_label(raw_values)
+    return _numeric_sequence_label(cast("list[object] | tuple[object, ...]", raw_values))
 
 
 def _numeric_sequence_label(raw_values: list[object] | tuple[object, ...]) -> str | None:
@@ -354,19 +358,23 @@ def _snapshot_value(value: object) -> object:
         return {str(key): _snapshot_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_snapshot_value(item) for item in value]
-    tolist = getattr(value, "tolist", None)
-    if callable(tolist):
-        try:
-            return _snapshot_value(tolist())
-        except Exception:
-            pass
-    as_dict = getattr(value, "_asdict", None)
-    if callable(as_dict):
-        try:
-            return _snapshot_value(as_dict())
-        except Exception:
-            pass
+    converted = _snapshot_converted(value, "tolist")
+    if converted is not None:
+        return converted
+    converted = _snapshot_converted(value, "_asdict")
+    if converted is not None:
+        return converted
     return str(value)
+
+
+def _snapshot_converted(value: object, method_name: str) -> object | None:
+    converter = getattr(value, method_name, None)
+    if not callable(converter):
+        return None
+    try:
+        return _snapshot_value(converter())
+    except Exception:
+        return None
 
 
 def read_field_entry(file_path: Path, key: str) -> str:
@@ -471,30 +479,37 @@ def write_field_entry(file_path: Path, key: str, value: str) -> bool:
     if not FOAMLIB_AVAILABLE:
         return fallback.write_field_entry(file_path, key, value)
     field_file = _foam_field_file(file_path)
-    cleaned = value.strip()
-    if not cleaned:
-        return False
     key_parts = _split_key(key)
-    key_name = key_parts[-1] if key_parts else ""
-    if cleaned.startswith("{"):
-        payload = f"{key_name}\n{cleaned}\n"
-    else:
-        if not cleaned.endswith(";"):
-            cleaned = f"{cleaned};"
-        payload = f"{key_name} {cleaned}"
-    try:
-        loaded = FoamFieldFile.loads(payload, include_header=False)
-    except Exception:
-        return False
-    getter = getattr(loaded, "get", None)
-    if not callable(getter):
-        return False
-    parsed = getter(key_name)
+    parsed = _parse_field_entry_payload(key_parts, value)
     if parsed is None:
         return False
     with field_file:
         field_file[key_parts or None] = parsed
     return True
+
+
+def _parse_field_entry_payload(key_parts: tuple[str, ...], value: str) -> object | None:
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    key_name = key_parts[-1] if key_parts else ""
+    payload = _field_entry_payload_text(key_name, cleaned)
+    try:
+        loaded = FoamFieldFile.loads(payload, include_header=False)
+    except Exception:
+        return None
+    getter = getattr(loaded, "get", None)
+    if not callable(getter):
+        return None
+    return getter(key_name)
+
+
+def _field_entry_payload_text(key_name: str, cleaned: str) -> str:
+    if cleaned.startswith("{"):
+        return f"{key_name}\n{cleaned}\n"
+    if not cleaned.endswith(";"):
+        cleaned = f"{cleaned};"
+    return f"{key_name} {cleaned}"
 
 
 def apply_assignment(
@@ -597,17 +612,26 @@ def parse_boundary_file(path: Path) -> tuple[list[str], dict[str, str]]:
     if not isinstance(entries, list):
         return patches, patch_types
     for item in entries:
-        if not isinstance(item, tuple) or len(item) != 2:
+        row = _boundary_entry_row(item)
+        if row is None:
             continue
-        name, data = item
-        if not isinstance(name, str):
-            continue
+        name, entry_type = row
         patches.append(name)
-        if isinstance(data, dict):
-            entry_type = data.get("type")
-            if isinstance(entry_type, str):
-                patch_types[name] = entry_type
+        if entry_type is not None:
+            patch_types[name] = entry_type
     return patches, patch_types
+
+
+def _boundary_entry_row(item: object) -> tuple[str, str | None] | None:
+    if not isinstance(item, tuple) or len(item) != 2:
+        return None
+    name, data = item
+    if not isinstance(name, str):
+        return None
+    if not isinstance(data, Mapping):
+        return name, None
+    entry_type = cast("Mapping[str, object]", data).get("type")
+    return name, entry_type if isinstance(entry_type, str) else None
 
 
 def rename_boundary_patch(path: Path, old: str, new: str) -> bool:

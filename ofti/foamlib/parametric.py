@@ -3,11 +3,20 @@ from __future__ import annotations
 import itertools
 import re
 import shutil
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from ofti.core.case_copy import copy_case_directory
+
+CaseModifier: Any = None
+CaseParameter: Any = None
+GridCaseParameter: Any = None
+GridParameter: Any = None
+FoamDictAssignment: Any = None
+FoamDictInstruction: Any = None
+csv_generator: Any = None
+grid_generator: Any = None
 
 try:  # pragma: no cover - optional preprocessing extras
     from foamlib.preprocessing.case_modifier import CaseModifier, CaseParameter
@@ -19,14 +28,6 @@ try:  # pragma: no cover - optional preprocessing extras
     from foamlib.preprocessing.parameter_study import csv_generator, grid_generator
     FOAMLIB_PREPROCESSING = True
 except Exception:  # pragma: no cover - optional fallback
-    CaseModifier = None  # type: ignore[assignment]
-    CaseParameter = None  # type: ignore[assignment]
-    GridCaseParameter = None  # type: ignore[assignment]
-    GridParameter = None  # type: ignore[assignment]
-    FoamDictAssignment = None  # type: ignore[assignment]
-    FoamDictInstruction = None  # type: ignore[assignment]
-    csv_generator = None  # type: ignore[assignment]
-    grid_generator = None  # type: ignore[assignment]
     FOAMLIB_PREPROCESSING = False
 
 
@@ -70,26 +71,53 @@ def build_parametric_cases(
         if created:
             return created
 
+    return _build_parametric_cases_fallback(
+        case_path,
+        dict_path,
+        entry,
+        values,
+        output_root=output_root,
+    )
+
+
+def _build_parametric_cases_fallback(
+    case_path: Path,
+    dict_path: Path,
+    entry: str,
+    values: Iterable[str],
+    *,
+    output_root: Path | None = None,
+) -> list[Path]:
     output_root = output_root or case_path.parent
     created: list[Path] = []
-
     for raw_value in values:
         value = raw_value.strip()
         if not value:
             continue
-        suffix = _sanitize_value(value)
-        dest = output_root / f"{case_path.name}_{entry.replace('.', '_')}_{suffix}"
-        if dest.exists():
-            raise FileExistsError(dest)
-        shutil.copytree(case_path, dest, ignore=_default_ignore)
-        target_dict = dest / dict_path
-        if not target_dict.is_file():
-            raise FileNotFoundError(target_dict)
-        if not _write_dict_entry(target_dict, entry, value):
-            raise ParametricWriteError(entry, target_dict)
-        created.append(dest)
-
+        created.append(
+            _create_fallback_parametric_case(case_path, output_root, dict_path, entry, value),
+        )
     return created
+
+
+def _create_fallback_parametric_case(
+    case_path: Path,
+    output_root: Path,
+    dict_path: Path,
+    entry: str,
+    value: str,
+) -> Path:
+    suffix = _sanitize_value(value)
+    dest = output_root / f"{case_path.name}_{entry.replace('.', '_')}_{suffix}"
+    if dest.exists():
+        raise FileExistsError(dest)
+    shutil.copytree(case_path, dest, ignore=_default_ignore)
+    target_dict = dest / dict_path
+    if not target_dict.is_file():
+        raise FileNotFoundError(target_dict)
+    if not _write_dict_entry(target_dict, entry, value):
+        raise ParametricWriteError(entry, target_dict)
+    return dest
 
 
 def _build_parametric_cases_preprocessing(
@@ -165,7 +193,7 @@ def build_parametric_cases_from_csv(
 
 def build_parametric_cases_from_grid(
     case_path: Path,
-    axes: list[dict[str, Any]],
+    axes: Sequence[Mapping[str, Any]],
     *,
     output_root: Path | None = None,
 ) -> list[Path]:

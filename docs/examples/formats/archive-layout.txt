@@ -1,0 +1,9 @@
+cavity.ofti.tar.gz
+  .ofti/bundle.json
+  system/controlDict
+  system/fvSchemes
+  system/fvSolution
+  constant/transportProperties
+  constant/polyMesh/...
+  0/U
+  0/p

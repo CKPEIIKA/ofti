@@ -45,32 +45,41 @@ def wm_project_dir_from_bashrc(bashrc: Path) -> str | None:
 
 
 def auto_detect_bashrc_paths() -> list[Path]:
-    roots = [
+    found: list[Path] = []
+    seen: set[Path] = set()
+    for entry in _candidate_openfoam_dirs():
+        bashrc = entry / "etc" / "bashrc"
+        if bashrc.is_file() and bashrc not in seen:
+            found.append(bashrc)
+            seen.add(bashrc)
+    return found
+
+
+def _candidate_openfoam_dirs() -> list[Path]:
+    entries: list[Path] = []
+    for root in _openfoam_search_roots():
+        entries.extend(_openfoam_dirs_in(root))
+    return entries
+
+
+def _openfoam_search_roots() -> list[Path]:
+    return [
         Path("/opt"),
         Path("/usr/local"),
         Path("/Applications"),
         Path("/Volumes"),
         Path.home(),
     ]
-    found: list[Path] = []
-    seen: set[Path] = set()
-    for root in roots:
-        if not root.exists():
-            continue
-        try:
-            entries = list(root.iterdir())
-        except OSError:
-            continue
-        for entry in entries:
-            if not entry.is_dir():
-                continue
-            if "openfoam" not in entry.name.lower():
-                continue
-            bashrc = entry / "etc" / "bashrc"
-            if bashrc.is_file() and bashrc not in seen:
-                found.append(bashrc)
-                seen.add(bashrc)
-    return found
+
+
+def _openfoam_dirs_in(root: Path) -> list[Path]:
+    if not root.exists():
+        return []
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        return []
+    return [entry for entry in entries if entry.is_dir() and "openfoam" in entry.name.lower()]
 
 
 def with_bashrc(shell_cmd: str) -> str:

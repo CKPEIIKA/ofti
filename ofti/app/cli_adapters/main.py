@@ -6,6 +6,7 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from textwrap import dedent
 
+from ofti.app.cli_adapters.bundle import _build_bundle_parser
 from ofti.app.cli_adapters.knife_parser import _build_knife_parser
 from ofti.app.cli_adapters.plot import _build_plot_parser
 from ofti.app.cli_adapters.run import _build_run_parser
@@ -33,6 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
               ofti run tool --list --case CASE
               ofti run tool blockMesh --case CASE --background
               ofti run solver CASE --parallel 8 --dry-run
+              ofti bundle CASE --output case.ofti.tar.gz
+              ofti unbundle case.ofti.tar.gz --to CASE
               ofti run parametric CASE --entry application --values simpleFoam,pisoFoam
             """,
         ),
@@ -50,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_plot_parser(groups)
     _build_watch_parser(groups)
     _build_run_parser(groups)
+    _build_bundle_parser(groups)
     version_cmd = groups.add_parser("version", help="Show version and exit")
     version_cmd.set_defaults(func=_version_command)
     _fill_missing_help(parser)

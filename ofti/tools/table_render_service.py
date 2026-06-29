@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ofti.core.table import render_kv, render_table
@@ -86,7 +86,7 @@ def status_table_lines(payload: Mapping[str, Any]) -> list[str]:
             ("jobs_total", payload.get("jobs_total")),
         ],
     )
-    criteria = list(rtc.get("criteria", []))
+    criteria = _list(rtc.get("criteria"))
     lines.extend(
         [
             "",
@@ -103,8 +103,8 @@ def status_table_lines(payload: Mapping[str, Any]) -> list[str]:
     )
     if criteria:
         lines.extend(["", "Criteria", *criteria_table_lines(criteria)])
-    tracked = list(payload.get("tracked_solver_processes", []))
-    untracked = list(payload.get("untracked_solver_processes", []))
+    tracked = _list(payload.get("tracked_solver_processes"))
+    untracked = _list(payload.get("untracked_solver_processes"))
     if tracked:
         lines.extend(["", "Tracked solver processes", *process_table_lines(tracked)])
     if untracked:
@@ -163,7 +163,7 @@ def criteria_payload_table_lines(payload: Mapping[str, Any]) -> list[str]:
     return lines
 
 
-def criteria_table_lines(rows: list[object]) -> list[str]:
+def criteria_table_lines(rows: Sequence[object]) -> list[str]:
     return render_table(
         [_criteria_row(row) for row in rows],
         [
@@ -223,7 +223,7 @@ def report_table_lines(payload: Mapping[str, Any]) -> list[str]:
             ("eta_criteria_start_seconds", eta.get("criteria_start_seconds")),
         ],
     )
-    items = list(criteria.get("items", []))
+    items = _list(criteria.get("items"))
     if items:
         lines.extend(["", "Criteria", *criteria_table_lines(items)])
     return lines
@@ -252,13 +252,13 @@ def metrics_table_lines(payload: Mapping[str, Any]) -> list[str]:
 
 def residual_payload_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv([("log", payload.get("log"))])
-    fields = list(payload.get("fields", []))
+    fields = _list(payload.get("fields"))
     if fields:
         lines.extend(["", *residuals_table_lines(fields)])
     return lines
 
 
-def residuals_table_lines(rows: list[object]) -> list[str]:
+def residuals_table_lines(rows: Sequence[object]) -> list[str]:
     return render_table(
         [_dict(row) for row in rows],
         [
@@ -280,7 +280,7 @@ def compare_table_lines(payload: Mapping[str, Any]) -> list[str]:
             ("flat", payload.get("flat")),
         ],
     )
-    diffs = list(payload.get("diffs", []))
+    diffs = _list(payload.get("diffs"))
     if not diffs:
         lines.append("No dictionary key differences detected.")
         return lines
@@ -295,16 +295,16 @@ def initials_table_lines(payload: Mapping[str, Any]) -> list[str]:
             ("initial_dir", payload.get("initial_dir")),
             ("fields", payload.get("field_count")),
             ("patches", payload.get("patch_count")),
-            ("failed", len(list(payload.get("failed", [])))),
+            ("failed", len(_list(payload.get("failed")))),
         ],
     )
-    fields = list(payload.get("fields", []))
+    fields = _list(payload.get("fields"))
     if fields:
         lines.extend(["", "Fields", *initial_field_rows_table(fields)])
         boundary_rows = list(_initial_boundary_rows(fields))
         if boundary_rows:
             lines.extend(["", "Boundary conditions", *initial_boundary_rows_table(boundary_rows)])
-    failed = list(payload.get("failed", []))
+    failed = _list(payload.get("failed"))
     if failed:
         lines.extend(
             [
@@ -350,7 +350,10 @@ def converge_table_lines(payload: Mapping[str, Any]) -> list[str]:
         {
             "check": "residuals",
             "value": "flatline" if _dict(payload.get("residuals")).get("flatline") else "ok",
-            "limit": ",".join(_dict(payload.get("residuals")).get("flatline_fields", [])),
+            "limit": ",".join(
+                str(item)
+                for item in _list(_dict(payload.get("residuals")).get("flatline_fields"))
+            ),
             "ok": not _dict(payload.get("residuals")).get("flatline"),
         },
         {
@@ -391,7 +394,7 @@ def stability_table_lines(payload: Mapping[str, Any]) -> list[str]:
     )
 
 
-def compare_diff_rows_table(rows: list[object]) -> list[str]:
+def compare_diff_rows_table(rows: Sequence[object]) -> list[str]:
     return render_table([_compare_diff_row(row) for row in rows], [
         ("file", "File"),
         ("kind", "Kind"),
@@ -402,14 +405,14 @@ def compare_diff_rows_table(rows: list[object]) -> list[str]:
     ])
 
 
-def initial_field_rows_table(rows: list[object]) -> list[str]:
+def initial_field_rows_table(rows: Sequence[object]) -> list[str]:
     return render_table(
         [_initial_field_row(row) for row in rows],
         [("field", "Field"), ("internal", "Internal"), ("patches", "Patches")],
     )
 
 
-def initial_boundary_rows_table(rows: list[object]) -> list[str]:
+def initial_boundary_rows_table(rows: Sequence[object]) -> list[str]:
     return render_table(
         [_dict(row) for row in rows],
         [("field", "Field"), ("patch", "Patch"), ("type", "Type"), ("name", "Name")],
@@ -477,7 +480,7 @@ def campaign_rank_table_lines(payload: Mapping[str, Any]) -> list[str]:
     )
     rows = [
         {"rank": idx, **_dict(row)}
-        for idx, row in enumerate(list(payload.get("ranked", [])), start=1)
+        for idx, row in enumerate(_list(payload.get("ranked")), start=1)
     ]
     if rows:
         lines.extend(["", "Ranked cases", *campaign_case_rows_table(rows, rank=True)])
@@ -490,11 +493,11 @@ def campaign_compare_table_lines(payload: Mapping[str, Any]) -> list[str]:
             ("case", payload.get("case")),
             ("group_by", payload.get("group_by")),
             ("group_count", payload.get("group_count")),
-            ("comparisons", len(list(payload.get("comparisons", [])))),
+            ("comparisons", len(_list(payload.get("comparisons")))),
         ],
     )
     groups = [
-        {"group": key, "cases": len(list(values))}
+        {"group": key, "cases": len(_list(values))}
         for key, values in _dict(payload.get("groups")).items()
     ]
     if groups:
@@ -513,13 +516,115 @@ def run_status_table_lines(payload: Mapping[str, Any]) -> list[str]:
             ("count", payload.get("count")),
         ],
     )
-    rows = list(payload.get("rows", []))
+    rows = _list(payload.get("rows"))
     if rows:
         lines.extend(["", "Cases", *run_status_rows_table(rows)])
     return lines
 
 
-def campaign_case_rows_table(rows: list[object], *, rank: bool = False) -> list[str]:
+def bundle_table_lines(payload: Mapping[str, Any]) -> list[str]:
+    manifest = _dict(payload.get("manifest"))
+    requirements = _dict(payload.get("requirements"))
+    warnings = _list(manifest.get("warnings"))
+    lines = render_kv(
+        [
+            ("archive", payload.get("archive")),
+            ("case", payload.get("case_dir")),
+            ("ok", payload.get("ok")),
+            ("files", _file_count(manifest)),
+            ("start_time", manifest.get("start_time")),
+            ("solver", manifest.get("application")),
+            ("openfoam_header", manifest.get("header_version")),
+            ("mesh_included", requirements.get("mesh_included")),
+            ("run_command", requirements.get("run_command")),
+            ("next", payload.get("next")),
+        ],
+    )
+    notes = _list(requirements.get("notes"))
+    if notes:
+        lines.extend(
+            [
+                "",
+                "Target requirements",
+                *render_table(_message_rows(notes), [("message", "Message")]),
+            ],
+        )
+    if warnings:
+        lines.extend(
+            ["", "Warnings", *render_table(_message_rows(warnings), [("message", "Message")])],
+        )
+    smoke = _dict(payload.get("smoke"))
+    if smoke:
+        lines.extend(
+            [
+                "",
+                "Smoke",
+                *render_kv(
+                    [
+                        ("ok", smoke.get("ok")),
+                        ("returncode", smoke.get("returncode")),
+                        ("case", smoke.get("case")),
+                        ("log", smoke.get("log_path")),
+                    ],
+                ),
+            ],
+        )
+    return lines
+
+
+def unbundle_table_lines(payload: Mapping[str, Any]) -> list[str]:
+    manifest = _dict(payload.get("manifest"))
+    requirements = _dict(payload.get("requirements"))
+    warnings = _list(manifest.get("warnings"))
+    lines = render_kv(
+        [
+            ("archive", payload.get("archive")),
+            ("case", payload.get("case_dir")),
+            ("ok", payload.get("ok")),
+            ("files_verified", _file_count(manifest)),
+            ("start_time", manifest.get("start_time")),
+            ("solver", manifest.get("application")),
+            ("openfoam_header", manifest.get("header_version")),
+            ("mesh_included", requirements.get("mesh_included")),
+            ("run_command", requirements.get("run_command")),
+        ],
+    )
+    notes = _list(requirements.get("notes"))
+    if notes:
+        lines.extend(
+            [
+                "",
+                "Target requirements",
+                *render_table(_message_rows(notes), [("message", "Message")]),
+            ],
+        )
+    run = _dict(payload.get("run"))
+    if run:
+        lines.extend(
+            [
+                "",
+                "Run",
+                *render_kv(
+                    [
+                        ("returncode", run.get("returncode")),
+                        ("background", run.get("background")),
+                        ("pid", run.get("pid")),
+                        ("log", run.get("log")),
+                        ("manifest", run.get("manifest")),
+                    ],
+                ),
+            ],
+        )
+    else:
+        lines.append(f"next={payload.get('next')}")
+    if warnings:
+        lines.extend(
+            ["", "Warnings", *render_table(_message_rows(warnings), [("message", "Message")])],
+        )
+    return lines
+
+
+def campaign_case_rows_table(rows: Sequence[object], *, rank: bool = False) -> list[str]:
     columns = [
         ("case", "Case"),
         ("running", "Running"),
@@ -534,7 +639,7 @@ def campaign_case_rows_table(rows: list[object], *, rank: bool = False) -> list[
     return render_table([_dict(row) for row in rows], columns)
 
 
-def run_status_rows_table(rows: list[object]) -> list[str]:
+def run_status_rows_table(rows: Sequence[object]) -> list[str]:
     return render_table(
         [_dict(row) for row in rows],
         [
@@ -548,7 +653,7 @@ def run_status_rows_table(rows: list[object]) -> list[str]:
     )
 
 
-def jobs_table_lines(rows: list[object]) -> list[str]:
+def jobs_table_lines(rows: Sequence[object]) -> list[str]:
     return render_table(
         [_dict(row) for row in rows],
         [
@@ -562,7 +667,7 @@ def jobs_table_lines(rows: list[object]) -> list[str]:
     )
 
 
-def runs_table_lines(rows: list[object]) -> list[str]:
+def runs_table_lines(rows: Sequence[object]) -> list[str]:
     return render_table(
         [_dict(row) for row in rows],
         [
@@ -578,7 +683,7 @@ def runs_table_lines(rows: list[object]) -> list[str]:
     )
 
 
-def process_table_lines(rows: list[object]) -> list[str]:
+def process_table_lines(rows: Sequence[object]) -> list[str]:
     return render_table(
         [_dict(row) for row in rows],
         [
@@ -616,9 +721,9 @@ def _compare_diff_row(row: object) -> dict[str, object]:
     return {
         "file": data.get("rel_path"),
         "kind": data.get("kind", "dict"),
-        "missing_left": len(list(data.get("missing_in_left", []))),
-        "missing_right": len(list(data.get("missing_in_right", []))),
-        "value_diffs": len(list(value_diffs or [])),
+        "missing_left": len(_list(data.get("missing_in_left"))),
+        "missing_right": len(_list(data.get("missing_in_right"))),
+        "value_diffs": len(_list(value_diffs)),
         "error": data.get("error"),
     }
 
@@ -654,5 +759,21 @@ def _warning_lines(warning: object) -> list[str]:
     return ["", *render_kv([("proc_access_warning", warning)])]
 
 
+def _file_count(manifest: Mapping[str, Any]) -> int:
+    return len(_list(manifest.get("files")))
+
+
+def _message_rows(messages: Sequence[object]) -> list[dict[str, str]]:
+    return [{"message": str(message)} for message in messages]
+
+
+def _list(value: object) -> list[object]:
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return []
+
+
 def _dict(value: object) -> dict[str, object]:
-    return dict(value) if isinstance(value, dict) else {}
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items()}

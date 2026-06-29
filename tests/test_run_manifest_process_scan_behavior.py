@@ -159,7 +159,9 @@ def test_run_manifest_binary_library_and_git_branches(
     }
 
     def _run_git(cmd: list[str], **_kwargs: object) -> SimpleNamespace:
-        return dirty[tuple(cmd[3:])]
+        key = tuple(cmd[3:])
+        assert len(key) == 2
+        return dirty[(key[0], key[1])]
 
     monkeypatch.setattr(run_manifest, "run_trusted", _run_git)
     info = run_manifest._git_info(tmp_path)
@@ -239,10 +241,14 @@ def test_process_scan_warning_and_proc_reader_branches(
 
     original_read_text = Path.read_text
 
-    def _raise_for_comm(self: Path, *args: object, **kwargs: object) -> str:
+    def _raise_for_comm(
+        self: Path,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> str:
         if self.name == "comm":
             raise OSError("no comm")
-        return original_read_text(self, *args, **kwargs)
+        return original_read_text(self, encoding=encoding, errors=errors)
 
     monkeypatch.setattr(Path, "read_text", _raise_for_comm)
     assert scan.read_proc_comm(proc) is None
@@ -325,9 +331,11 @@ def test_process_scan_remaining_branch_helpers(tmp_path: Path) -> None:
     assert scan.discovery_error_text("custom error") == "custom error"
     assert scan.infer_case_path(scan.ProcEntry(pid=40, ppid=40, args=["simpleFoam"], cwd=None), table) is None
     assert scan.case_candidate_from_args(["simpleFoam", "-case"], case) is None
-    assert scan.case_candidate_from_args(["simpleFoam", "-case", "rel"], None).is_absolute()
+    candidate = scan.case_candidate_from_args(["simpleFoam", "-case", "rel"], None)
+    assert candidate is not None and candidate.is_absolute()
     assert scan.case_candidate_from_shell_args(["bash", "-lc", ""], case) is None
-    assert scan._shell_cd_candidate("; ; cd rel", None).is_absolute()
+    shell_candidate = scan._shell_cd_candidate("; ; cd rel", None)
+    assert shell_candidate is not None and shell_candidate.is_absolute()
     assert scan.guess_solver_from_args(["python"]) == "unknown"
     assert scan.launcher_pid_for_entry(scan.ProcEntry(pid=21, ppid=20, args=["simpleFoam"], cwd=None), table) == 20
 
@@ -404,10 +412,10 @@ def test_process_scan_scan_and_discovery_edge_branches(
 
     original_resolve = Path.resolve
 
-    def _raise_for_cwd(self: Path, *args: object, **kwargs: object) -> Path:
+    def _raise_for_cwd(self: Path, strict: bool = False) -> Path:
         if self.name == "cwd":
             raise OSError(errno.EACCES, "permission denied")
-        return original_resolve(self, *args, **kwargs)
+        return original_resolve(self, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", _raise_for_cwd)
     assert scan.proc_cwd_with_error(proc_dir) == (None, "permission denied")

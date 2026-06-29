@@ -22,6 +22,10 @@ def test_job_registry_roundtrip(tmp_path: Path) -> None:
     case_path = tmp_path / "case"
     case_path.mkdir()
     job_id = register_job(case_path, "solver", 99999, "solver", case_path / "log.solver")
+    registry_payload = json.loads((case_path / ".ofti" / "jobs.json").read_text())
+    assert registry_payload["format"] == "ofti.jobs"
+    assert registry_payload["format_version"] == 1
+    assert isinstance(registry_payload["jobs"], list)
     jobs = load_jobs(case_path)
     assert jobs
     assert jobs[0]["id"] == job_id
@@ -40,6 +44,19 @@ def test_job_registry_roundtrip(tmp_path: Path) -> None:
     assert identities[0]["returncode"] == 0
     current = json.loads((case_path / ".ofti" / "current_run.json").read_text())
     assert current["status"] == "finished"
+
+
+def test_job_registry_loads_legacy_raw_list_and_quarantines_corruption(tmp_path: Path) -> None:
+    case_path = tmp_path / "case"
+    jobs_file = case_path / ".ofti" / "jobs.json"
+    jobs_file.parent.mkdir(parents=True)
+    jobs_file.write_text('[{"id": "legacy", "kind": "solver"}]', encoding="utf-8")
+
+    assert load_jobs(case_path)[0]["id"] == "legacy"
+
+    jobs_file.write_text("{bad json", encoding="utf-8")
+    assert load_jobs(case_path) == []
+    assert any(path.name.startswith("jobs.json.corrupt.") for path in jobs_file.parent.iterdir())
 
 
 def test_refresh_jobs_marks_dead_pid(tmp_path: Path) -> None:

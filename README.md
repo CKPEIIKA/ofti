@@ -23,6 +23,8 @@ ofti knife <command> [CASE] [--json | --table]
 ofti run   <command> [CASE] [options]
 ofti watch <command> [CASE] [options]
 ofti plot  <command> [CASE] [options]
+ofti bundle CASE --output ARCHIVE
+ofti unbundle ARCHIVE --to CASE
 ofti -h | -V
 ```
 
@@ -76,6 +78,10 @@ case-specific assumptions into OFTI core. This repository includes an
 presets, physical checks, charge observability, preflight checks, and same-mesh
 patch comparison helpers.
 
+The separate `plugins/hy2foam-mod` package is for modified/NN fork features
+only. It layers over `ofti-hy2foam` and keeps `NNcompiled` / model-order checks
+out of stock hy2Foam support and out of OFTI core.
+
 Plugin knife commands are declared as framework-neutral `CommandSpec` objects
 (`ofti.core.command_spec`) — a command exposes a `command_spec()` method that
 names its positional arguments, options, and handler, and the active CLI adapter
@@ -90,7 +96,8 @@ they emit machine output through the shared output contract
 - `-V` / `--version`, `--version`, and `ofti version` print the package version.
 - `--json` is optional machine output for automation. Every JSON object carries
   a `schema_version` (currently `1`) and the `command` that produced it, so
-  scripts can pin to a stable shape.
+  scripts can pin to a stable shape. Persisted JSON files use `format` and
+  `format_version`; see `docs/formats.md`.
 - `--table` is optional aligned human output for structured read-only commands.
 - `--json` and `--table` are mutually exclusive.
 - `--easy-on-cpu` bounds log reads and slows polling to keep watch/status
@@ -108,16 +115,20 @@ they emit machine output through the shared output contract
 
 ## COMMANDS
 
-`ofti` exposes four non-interactive command groups. Prefer built-in help for
-command-level details:
+`ofti` exposes non-interactive command groups plus top-level bundle helpers.
+Prefer built-in help for command-level details:
 
 ```bash
 ofti -h
 ofti knife -h
 ofti run -h
 ofti watch log -h
+ofti bundle -h
+ofti unbundle -h
 ```
 
+- **`bundle` / `unbundle`** — portable case archives with an embedded manifest
+  and hash verification for moving a minimal runnable case to another host.
 - **`knife`** — case inspection, diagnostics, and quick edits (status,
   preflight, doctor, criteria, ETA, initials, physical/compare-fields, copy,
   current/adopt, manifests). See *KNIFE WORKFLOWS* and *RUN MANIFESTS*.
@@ -153,12 +164,63 @@ ofti run tool --list --case CASE --json
 ofti run solver CASE --dry-run --json
 ofti run solver CASE --parallel 8 --clean-processors --json
 ofti run solver CASE --parallel 8 --no-prepare-parallel --json
+ofti run resize-parallel CASE --from 8 --to 16 --json
 ofti run smoke CASE --iterations 20 --timeout 5m --out smoke --json
 ofti run matrix CASE --param application=simpleFoam,pisoFoam --no-launch --json
 ofti run parametric CASE --entry application --values simpleFoam,pisoFoam --json
 ofti run parametric CASE --csv studies/parametric.csv --run-solver --max-parallel 4 --json
 ofti run status --set CASE_SET --fast --easy-on-cpu --json
 ```
+
+`run resize-parallel` is the safe resume path for changing MPI size. It can ask
+a live solver for `writeNow`, waits for the solver to stop, snapshots
+`system/`, `constant/`, and `0/`, checks that all `processor*` directories have a
+complete common latest time, reconstructs only that complete time, discards later
+partial processor writes by cleaning old `processor*`, updates
+`numberOfSubdomains`, sets `startFrom latestTime`, redecomposes, and optionally
+restarts.
+
+Portable case bundles:
+
+```bash
+ofti bundle CASE --output case.ofti.tar.gz --mesh auto --time 0 --json
+ofti bundle CASE --output case.ofti.tar.gz --mesh include --table
+ofti bundle CASE --output case.ofti.tar.gz --smoke --smoke-timeout 60s --json
+ofti unbundle case.ofti.tar.gz --to CASE_COPY --json
+ofti unbundle case.ofti.tar.gz --to CASE_COPY --table
+ofti unbundle case.ofti.tar.gz --to CASE_COPY --run --background --json
+```
+
+Bundles include `system/`, `constant/`, the selected start-time directory,
+local dictionary files referenced by `#include "..."`, `Allrun`/`Allclean`
+when present, `ofti.*` metadata, and `constant/polyMesh` when `--mesh include`
+or `--mesh auto` detects an existing mesh. They exclude logs, `processor*`,
+`postProcessing`, and caches by default. OFTI refuses to bundle cases missing
+`system/controlDict`, `constant/`, the selected start time, or a solver
+`application`, and prints warnings when the target host may need mesh generation
+or when a local include cannot be bundled. It also runs a lightweight syntax
+lint on bundled dictionaries and reports likely missing semicolons or unmatched
+braces as warnings.
+The deterministic `.tar.gz` archive embeds `.ofti/bundle.json` with file hashes;
+`unbundle` refuses non-empty destinations unless `--force` and verifies hashes
+after extraction. `.tar.zst` is also supported when the optional Python
+`zstandard` backend is installed; OFTI does not shell out to `zstd` from core.
+Use `--json` for automation or `--table` for a compact human summary.
+The manifest records the controlDict solver application and detected OpenFOAM
+header version when present, so the target host can check it is using a
+compatible solver/runtime.
+Installed plugins may append target-host hints to the manifest; for example the
+hy2Foam plugins warn about required hyStrath/modified-runtime libraries and
+solver-specific model assets.
+Use `bundle --smoke` before copying to prove the archive can be extracted and
+run through a bounded solver smoke test on the current host.
+`unbundle --run` executes the restored case through the same solver service as
+`ofti run solver`; add `--background` to register a watchable job and still
+write a run manifest.
+
+The slow real-case suite includes bundle/unbundle coverage for a toy OpenFOAM
+case: it verifies manifest hashes, preflight/status on the restored copy, and a
+bounded solver smoke run from the unbundled case.
 
 Monitoring (`watch`) and plotting (`plot`):
 
@@ -362,8 +424,8 @@ Post‑Processing notes:
 - `WM_PROJECT_DIR` and the standard OpenFOAM variables — used to detect the
   active environment and locate tools.
 
-User config TOML, case-local preset files, and runtime JSON records are
-described in `docs/runtime-files.md`.
+User config TOML, case-local preset files, runtime JSON records, and bundle
+format rules are described in `docs/runtime-files.md` and `docs/formats.md`.
 
 ## FILES
 
@@ -385,6 +447,9 @@ Quality gates:
 - `ruff check`
 - `ty check`
 - `pytest` with coverage gate `--cov-fail-under=85`
+
+Testing policy is in `docs/testing.md`: new tests should assert behavior, not
+only raise coverage, and slow OpenFOAM tests stay opt-in.
 
 Adapter layout:
 

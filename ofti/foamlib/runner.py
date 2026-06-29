@@ -3,15 +3,19 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 from ofti.foamlib.adapter import FoamlibUnavailableError, available
 
+AsyncFoamCase: Any = None
+AsyncSlurmFoamCase: Any = None
+FoamCase: Any = None
+
+FOAMLIB_RUNNER_IMPORT_ERROR: str | None = None
 try:  # pragma: no cover - optional dependency
     from foamlib import AsyncFoamCase, AsyncSlurmFoamCase, FoamCase
-except Exception:  # pragma: no cover - optional dependency
-    AsyncFoamCase = None  # type: ignore[assignment]
-    AsyncSlurmFoamCase = None  # type: ignore[assignment]
-    FoamCase = None  # type: ignore[assignment]
+except Exception as exc:  # pragma: no cover - optional dependency
+    FOAMLIB_RUNNER_IMPORT_ERROR = str(exc)
 
 
 def run_case(
@@ -21,7 +25,7 @@ def run_case(
     parallel: bool | None = None,
     cpus: int | None = None,
     check: bool = True,
-    log: bool = True,
+    log: bool | str = True,
 ) -> None:
     if not available() or FoamCase is None:
         raise FoamlibUnavailableError()
@@ -160,25 +164,71 @@ async def _run_cases_async_impl(
 ) -> list[Path]:
     if max_parallel <= 0:
         raise ValueError("max_parallel must be > 0")
-    failures: list[Path] = []
     if check:
-        for case_path in case_paths:
-            try:
-                await _run_case_async(
-                    case_path,
-                    cmd,
-                    parallel=parallel,
-                    cpus=cpus,
-                    check=check,
-                    log=log,
-                    slurm=slurm,
-                    fallback=fallback,
-                )
-            except Exception:
-                failures.append(case_path)
-                break
-        return failures
+        return await _run_cases_sequential(
+            case_paths,
+            cmd,
+            parallel=parallel,
+            cpus=cpus,
+            check=check,
+            log=log,
+            slurm=slurm,
+            fallback=fallback,
+        )
+    return await _run_cases_parallel(
+        case_paths,
+        cmd,
+        parallel=parallel,
+        cpus=cpus,
+        check=check,
+        log=log,
+        max_parallel=max_parallel,
+        slurm=slurm,
+        fallback=fallback,
+    )
 
+
+async def _run_cases_sequential(
+    case_paths: list[Path],
+    cmd: str | None,
+    *,
+    parallel: bool | None,
+    cpus: int | None,
+    check: bool,
+    log: bool | str,
+    slurm: bool,
+    fallback: bool,
+) -> list[Path]:
+    for case_path in case_paths:
+        try:
+            await _run_case_async(
+                case_path,
+                cmd,
+                parallel=parallel,
+                cpus=cpus,
+                check=check,
+                log=log,
+                slurm=slurm,
+                fallback=fallback,
+            )
+        except Exception:
+            return [case_path]
+    return []
+
+
+async def _run_cases_parallel(
+    case_paths: list[Path],
+    cmd: str | None,
+    *,
+    parallel: bool | None,
+    cpus: int | None,
+    check: bool,
+    log: bool | str,
+    max_parallel: int,
+    slurm: bool,
+    fallback: bool,
+) -> list[Path]:
+    failures: list[Path] = []
     sem = asyncio.Semaphore(max_parallel)
 
     async def _guarded(path: Path) -> tuple[Path, BaseException | None]:

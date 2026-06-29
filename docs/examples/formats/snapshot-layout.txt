@@ -1,0 +1,8 @@
+.ofti/parallel-resize/20260629T224504Z/
+  case_snapshot.json
+  inputs/
+    system/controlDict
+    system/decomposeParDict
+    constant/...
+    0/U
+    0/p

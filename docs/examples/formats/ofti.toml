@@ -1,0 +1,10 @@
+format = "ofti.config"
+format_version = 1
+
+[case]
+name = "cavity"
+default_solver = "icoFoam"
+
+[run]
+default_parallel = 2
+log_tail_bytes = 262144

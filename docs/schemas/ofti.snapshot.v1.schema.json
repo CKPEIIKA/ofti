@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ofti.dev/schemas/ofti.snapshot.v1.schema.json",
+  "title": "OFTI Snapshot Manifest v1",
+  "type": "object",
+  "required": ["format", "format_version", "created_at", "reason", "files"],
+  "properties": {
+    "format": {"const": "ofti.snapshot"},
+    "format_version": {"const": 1},
+    "created_at": {"type": "string"},
+    "reason": {"type": "string"},
+    "case_dir": {"type": "string"},
+    "roots": {"type": "array", "items": {"type": "string"}},
+    "files": {"type": "array"}
+  },
+  "additionalProperties": true
+}

@@ -24,6 +24,14 @@ def test_cli_main_delegates_tool_subcommand(monkeypatch) -> None:
     tool_main.assert_called_once_with(["knife", "status"])
 
 
+def test_cli_main_delegates_bundle_subcommands() -> None:
+    with mock.patch("ofti.app.cli.cli_tools_main", return_value=0) as tool_main:
+        code = cli.main(["bundle", "CASE", "--output", "case.ofti.tar.gz"])
+
+    assert code == 0
+    tool_main.assert_called_once_with(["bundle", "CASE", "--output", "case.ofti.tar.gz"])
+
+
 def test_cli_main_delegates_version_flag() -> None:
     with mock.patch("ofti.app.cli.cli_tools_main", return_value=0) as tool_main:
         code = cli.main(["--version"])
@@ -43,4 +51,5 @@ def test_cli_main_delegates_version_subcommand() -> None:
 def test_cli_help_mentions_version_and_noninteractive_tools() -> None:
     help_text = cli.build_parser().format_help()
     assert "--version" in help_text
-    assert "knife|plot|watch|run" in help_text
+    assert "knife|plot|watch|run|bundle|unbundle" in help_text
+    assert "Examples:" in help_text

@@ -4,13 +4,13 @@ from pathlib import Path
 from typing import Any
 
 POSTPROCESSING_IMPORT_ERROR: str | None = None
+list_function_objects: Any = None
+load_tables: Any = None
 
 try:  # pragma: no cover - optional postprocessing extras
     from foamlib.postprocessing.load_tables import list_function_objects, load_tables
     FOAMLIB_POSTPROCESSING = True
 except Exception as exc:  # pragma: no cover - optional fallback
-    list_function_objects = None  # type: ignore[assignment]
-    load_tables = None  # type: ignore[assignment]
     FOAMLIB_POSTPROCESSING = False
     POSTPROCESSING_IMPORT_ERROR = str(exc)
 

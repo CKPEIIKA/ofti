@@ -36,6 +36,19 @@ def test_hy2foam_plugin_registers_presets_profile_and_charge_command() -> None:
     assert "hy2foam-preflight" in registry.knife_commands
     assert "hy2foam-compare-check" in registry.knife_commands
     assert "hy2foam-patch-compare" in registry.knife_commands
+    assert "hy2foam" in registry.bundle_hints
+
+
+def test_hy2foam_bundle_hints_only_for_hy2foam_like_cases(tmp_path: Path) -> None:
+    registry = PluginRegistry()
+    register(registry)
+    case = tmp_path / "case"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "controlDict").write_text('libs ("libhyStrath.so");\n')
+
+    hints = registry.bundle_hints["hy2foam"].bundle_hints(case)
+
+    assert any("hyStrath/hy2Foam runtime" in hint for hint in hints)
 
 
 def _add_command(sub: Any, command: Any) -> None:

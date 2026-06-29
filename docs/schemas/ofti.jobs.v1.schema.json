@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ofti.dev/schemas/ofti.jobs.v1.schema.json",
+  "title": "OFTI Job Registry v1",
+  "type": "object",
+  "required": ["format", "format_version", "jobs"],
+  "properties": {
+    "format": {"const": "ofti.jobs"},
+    "format_version": {"const": 1},
+    "case_dir": {"type": "string"},
+    "updated_at": {"type": "string"},
+    "jobs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "status"],
+        "properties": {
+          "id": {"type": "string"},
+          "kind": {"type": "string"},
+          "status": {"type": "string"},
+          "pid": {"type": ["integer", "null"]},
+          "launcher_pid": {"type": ["integer", "null"]},
+          "solver_pids": {"type": "array", "items": {"type": "integer"}}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

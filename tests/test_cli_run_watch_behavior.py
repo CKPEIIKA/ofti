@@ -802,6 +802,7 @@ def test_run_queue_sequential_records_returncode_and_outcome(
     finished = cast("list[dict[str, object]]", payload["finished"])
     assert [row["returncode"] for row in finished] == [0, 9]
     assert [row["outcome"] for row in finished] == ["time", "crashed"]
+    assert payload["summary"]["outcomes"] == {"time": 1, "crashed": 1}
 
 
 def test_run_queue_writes_durable_queue_record(
@@ -840,6 +841,8 @@ def test_run_queue_writes_durable_queue_record(
     queue_path = Path(cast("str", payload["queue_path"]))
     assert queue_path.is_file()
     record = json.loads(queue_path.read_text(encoding="utf-8"))
+    assert record["format"] == "ofti.queue-record"
+    assert record["format_version"] == 1
     assert record["queue_id"] == payload["queue_id"]
     assert record["summary"]["planned"] == 2
     assert record["summary"]["finished"] == 2

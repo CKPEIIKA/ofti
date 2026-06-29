@@ -110,57 +110,117 @@ def scan_proc_solver_processes(
     launcher_pids = launcher_pids_for_case(table, solver_name, case_root)
     processes: list[ProcRow] = []
     for entry in table.values():
-        if not entry.args:
-            continue
-        role = process_role(entry.args, solver_name)
-        if role is None:
-            continue
-        tracked = _entry_tracked(entry, table, tracked_pids, role=role)
-        if tracked and not include_tracked:
-            continue
-        discovery = discover_case(
+        row = _proc_solver_row(
             entry,
             table,
+            solver=solver,
+            solver_name=solver_name,
+            tracked_pids=tracked_pids,
+            include_tracked=include_tracked,
+            require_case_target=require_case_target,
+            case_root=case_root,
+            case_root_is_case=case_root_is_case,
             launcher_cases=launcher_cases,
+            launcher_pids=launcher_pids,
             proc_root=proc_root,
         )
-        inferred_case = discovery.case
-        inferred_in_scope = inferred_case is not None and _in_scope_case(
-            inferred_case,
-            case_root,
-            case_root_is_case=case_root_is_case,
-        )
-        in_scope = (
-            entry_targets_case(entry, case_root)
-            or inferred_in_scope
-            or entry.pid in launcher_pids
-            or has_ancestor(entry.pid, launcher_pids, table)
-        )
-        if require_case_target and not in_scope:
-            continue
-        if role == "launcher" and not launcher_has_solver_descendant(
-            entry.pid,
-            table,
-            solver_name,
-        ):
-            continue
-        row: ProcRow = {
-            "pid": entry.pid,
-            "ppid": entry.ppid,
-            "solver": solver or guess_solver_from_args(entry.args),
-            "role": role,
-            "tracked": tracked,
-            "case": _case_to_text(inferred_case),
-            "command": " ".join(entry.args),
-            "discovery_source": discovery.source,
-            "discovery_error": discovery.error,
-            "launcher_pid": discovery.launcher_pid,
-        }
-        if role == "launcher":
-            row["solver_pids"] = solver_descendant_pids(entry.pid, table, solver_name)
-        processes.append(row)
+        if row is not None:
+            processes.append(row)
     processes.sort(key=lambda item: int(item.get("pid", 0)))
     return processes
+
+
+def _proc_solver_row(
+    entry: ProcEntry,
+    table: dict[int, ProcEntry],
+    *,
+    solver: str | None,
+    solver_name: str | None,
+    tracked_pids: set[int],
+    include_tracked: bool,
+    require_case_target: bool,
+    case_root: Path,
+    case_root_is_case: bool,
+    launcher_cases: dict[int, Path],
+    launcher_pids: set[int],
+    proc_root: Path,
+) -> ProcRow | None:
+    role = process_role(entry.args, solver_name) if entry.args else None
+    if role is None:
+        return None
+    tracked = _entry_tracked(entry, table, tracked_pids, role=role)
+    if tracked and not include_tracked:
+        return None
+    discovery = discover_case(entry, table, launcher_cases=launcher_cases, proc_root=proc_root)
+    if require_case_target and not _entry_in_scan_scope(
+        entry,
+        table,
+        discovery.case,
+        case_root=case_root,
+        case_root_is_case=case_root_is_case,
+        launcher_pids=launcher_pids,
+    ):
+        return None
+    if role == "launcher" and not launcher_has_solver_descendant(entry.pid, table, solver_name):
+        return None
+    return _proc_row(
+        entry,
+        solver=solver,
+        solver_name=solver_name,
+        role=role,
+        tracked=tracked,
+        discovery=discovery,
+        table=table,
+    )
+
+
+def _entry_in_scan_scope(
+    entry: ProcEntry,
+    table: dict[int, ProcEntry],
+    inferred_case: Path | None,
+    *,
+    case_root: Path,
+    case_root_is_case: bool,
+    launcher_pids: set[int],
+) -> bool:
+    inferred_in_scope = inferred_case is not None and _in_scope_case(
+        inferred_case,
+        case_root,
+        case_root_is_case=case_root_is_case,
+    )
+    return (
+        entry_targets_case(entry, case_root)
+        or inferred_in_scope
+        or entry.pid in launcher_pids
+        or has_ancestor(entry.pid, launcher_pids, table)
+    )
+
+
+def _proc_row(
+    entry: ProcEntry,
+    *,
+    solver: str | None,
+    solver_name: str | None,
+    role: str,
+    tracked: bool,
+    discovery: ProcessCaseDiscovery,
+    table: dict[int, ProcEntry],
+) -> ProcRow:
+    row: ProcRow = {
+        "pid": entry.pid,
+        "ppid": entry.ppid,
+        "solver": solver or guess_solver_from_args(entry.args),
+        "role": role,
+        "tracked": tracked,
+        "case": _case_to_text(discovery.case),
+        "command": " ".join(entry.args),
+        "discovery_source": discovery.source,
+        "discovery_error": discovery.error,
+        "launcher_pid": discovery.launcher_pid,
+    }
+    if role == "launcher":
+        row["solver_pids"] = solver_descendant_pids(entry.pid, table, solver_name)
+    return row
 
 
 def _entry_tracked(
@@ -209,36 +269,46 @@ def launcher_pids_for_case(
     launcher_pids: set[int] = set()
     case_root_is_case = is_case_dir(case_path)
     for entry in table.values():
-        if not entry.args:
-            continue
-        base = Path(entry.args[0]).name.lower()
-        if base not in _MPI_LAUNCHERS:
-            continue
-        inferred_case = infer_case_path(entry, table)
-        targeted = (
-            entry_targets_case(entry, case_path)
-            or launcher_descendant_targets_case(entry.pid, table, case_path)
-            or (
-                inferred_case is not None
-                and _in_scope_case(
-                    inferred_case,
-                    case_path,
-                    case_root_is_case=case_root_is_case,
-                )
-            )
+        targets_case = _launcher_targets_case(
+            entry,
+            table,
+            case_path,
+            case_root_is_case=case_root_is_case,
         )
-        if not targeted:
-            continue
-        if solver is None:
-            if launcher_has_solver_descendant(entry.pid, table, None):
-                launcher_pids.add(entry.pid)
-            continue
-        if any(token_matches_solver(arg, solver) for arg in entry.args):
-            launcher_pids.add(entry.pid)
-            continue
-        if launcher_has_solver_descendant(entry.pid, table, solver):
+        if targets_case and _launcher_matches_solver(entry, table, solver):
             launcher_pids.add(entry.pid)
     return launcher_pids
+
+
+def _launcher_targets_case(
+    entry: ProcEntry,
+    table: dict[int, ProcEntry],
+    case_path: Path,
+    *,
+    case_root_is_case: bool,
+) -> bool:
+    if not entry.args or Path(entry.args[0]).name.lower() not in _MPI_LAUNCHERS:
+        return False
+    inferred_case = infer_case_path(entry, table)
+    return (
+        entry_targets_case(entry, case_path)
+        or launcher_descendant_targets_case(entry.pid, table, case_path)
+        or (
+            inferred_case is not None
+            and _in_scope_case(inferred_case, case_path, case_root_is_case=case_root_is_case)
+        )
+    )
+
+
+def _launcher_matches_solver(
+    entry: ProcEntry,
+    table: dict[int, ProcEntry],
+    solver: str | None,
+) -> bool:
+    if solver is None:
+        return launcher_has_solver_descendant(entry.pid, table, None)
+    args_match = any(token_matches_solver(arg, solver) for arg in entry.args)
+    return args_match or launcher_has_solver_descendant(entry.pid, table, solver)
 
 
 def launcher_has_solver_descendant(
@@ -393,23 +463,22 @@ def _shell_command_matches_solver(args: list[str], solver: str) -> bool:
 
 
 def _shell_command_has_any_solver(args: list[str]) -> bool:
-    if not args:
-        return False
-    base = Path(args[0]).name.lower()
-    if base not in _SHELL_LAUNCHERS:
-        return False
-    for idx, token in enumerate(args[:-1]):
-        if token not in {"-c", "-lc"}:
-            continue
-        command = args[idx + 1]
-        if not command:
-            continue
-        cleaned = command.replace(";", " ").replace("&&", " ")
-        for part in cleaned.split():
-            name = Path(part.strip("'\"")).name
-            if name.endswith("Foam"):
-                return True
-    return False
+    return any(_command_has_foam_token(command) for command in _shell_commands(args))
+
+
+def _shell_commands(args: list[str]) -> list[str]:
+    if not args or Path(args[0]).name.lower() not in _SHELL_LAUNCHERS:
+        return []
+    return [
+        args[idx + 1]
+        for idx, token in enumerate(args[:-1])
+        if token in {"-c", "-lc"} and args[idx + 1]
+    ]
+
+
+def _command_has_foam_token(command: str) -> bool:
+    cleaned = command.replace(";", " ").replace("&&", " ")
+    return any(Path(part.strip("'\"")).name.endswith("Foam") for part in cleaned.split())
 
 
 def targets_case(proc_dir: Path, args: list[str], case_path: Path) -> bool:
@@ -501,27 +570,35 @@ def _shell_cd_candidate(command: str, cwd: Path | None) -> Path | None:
     current_dir = cwd.resolve() if cwd is not None else None
     latest_candidate: Path | None = None
     for chunk in chunks:
-        if not chunk:
+        path_arg = _cd_path_arg(chunk)
+        if path_arg is None:
             continue
-        try:
-            parts = shlex.split(chunk)
-        except ValueError:
-            parts = chunk.split()
-        if not parts or parts[0] != "cd" or len(parts) < 2:
-            continue
-        path_arg = parts[1].strip()
-        if not path_arg or path_arg == "-":
-            continue
-        candidate = Path(path_arg).expanduser()
-        if candidate.is_absolute():
-            resolved = candidate.resolve()
-        elif current_dir is not None:
-            resolved = (current_dir / candidate).resolve()
-        else:
-            resolved = candidate.resolve()
+        resolved = _resolve_shell_cd_path(path_arg, current_dir)
         latest_candidate = resolved
         current_dir = resolved
     return latest_candidate
+
+
+def _cd_path_arg(chunk: str) -> str | None:
+    if not chunk:
+        return None
+    try:
+        parts = shlex.split(chunk)
+    except ValueError:
+        parts = chunk.split()
+    if not parts or parts[0] != "cd" or len(parts) < 2:
+        return None
+    path_arg = parts[1].strip()
+    return path_arg if path_arg and path_arg != "-" else None
+
+
+def _resolve_shell_cd_path(path_arg: str, current_dir: Path | None) -> Path:
+    candidate = Path(path_arg).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve()
+    if current_dir is not None:
+        return (current_dir / candidate).resolve()
+    return candidate.resolve()
 
 
 def as_case_dir(path: Path | None, *, checked: set[Path] | None = None) -> Path | None:

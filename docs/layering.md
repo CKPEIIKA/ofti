@@ -71,7 +71,7 @@ empty.
 Large service modules are kept under ~1000 lines by extracting cohesive
 clusters into sibling modules while the original stays the canonical surface
 that re-exports them (e.g. `knife_service` + `knife_process`/`knife_campaign`/
-`knife_runtime`/`knife_analysis`; `runtime_control_service` + `runtime_criteria`;
+`knife_runtime`/`knife_analysis`/`knife_stop`; `runtime_control_service` + `runtime_criteria`;
 `watch_service` + `watch_external`; `cli_tools/run` + `run_smoke`/`run_queue`;
 `cli_adapters/knife` + `knife_parser`). Conventions:
 

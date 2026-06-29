@@ -134,7 +134,8 @@ def test_app_helpers_create_case(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     monkeypatch.setattr(helpers, "Menu", MenuPick)
     monkeypatch.setattr(helpers, "prompt_input", lambda *_a, **_k: "newCase")
     result = helpers._create_case_from_example(_Screen(), current)
-    assert result is not None and result.name == "newCase"
+    assert result == current / "newCase"
+    assert (current / "newCase" / "system" / "controlDict").read_text() == "application simpleFoam;\n"
 
 
 def test_blockmesh_helper_extra(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

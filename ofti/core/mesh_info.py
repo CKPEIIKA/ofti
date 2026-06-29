@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TypedDict
+from typing import TextIO, TypedDict
 
-from ofti.core.boundary import parse_boundary_text
 from ofti.foamlib import adapter as foamlib_integration
 
 
@@ -44,48 +43,68 @@ def _list_count(path: Path) -> int | None:
 def _max_index(path: Path) -> int | None:
     try:
         with path.open("r", errors="ignore") as handle:
-            in_data = False
             max_val: int | None = None
-            for line in handle:
-                stripped = line.strip()
-                if not stripped or stripped.startswith("//"):
-                    continue
-                if not in_data:
-                    if stripped == "(":
-                        in_data = True
-                    continue
+            for stripped in _poly_mesh_data_lines(handle):
                 if stripped == ")":
                     break
-                for token in stripped.replace("(", " ").replace(")", " ").split():
-                    if token.isdigit():
-                        value = int(token)
-                        max_val = value if max_val is None else max(max_val, value)
+                max_val = _max_line_index(stripped, max_val)
             return max_val
     except OSError:
         return None
+
+
+def _poly_mesh_data_lines(handle: TextIO) -> list[str]:
+    in_data = False
+    lines: list[str] = []
+    for line in handle:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("//"):
+            continue
+        if in_data:
+            lines.append(stripped)
+        elif stripped == "(":
+            in_data = True
+    return lines
+
+
+def _max_line_index(line: str, current: int | None) -> int | None:
+    max_val = current
+    for token in line.replace("(", " ").replace(")", " ").split():
+        if token.isdigit():
+            value = int(token)
+            max_val = value if max_val is None else max(max_val, value)
+    return max_val
 
 
 def boundary_summary(case_path: Path) -> BoundarySummary:
     boundary = case_path / "constant" / "polyMesh" / "boundary"
     if not boundary.is_file():
         return {"patches": 0, "types": {}}
-    patches: list[str] = []
-    patch_types: dict[str, str] = {}
-    if foamlib_integration.available():
-        try:
-            patches, patch_types = foamlib_integration.parse_boundary_file(boundary)
-        except Exception:
-            patches = []
-            patch_types = {}
-    if not patches:
-        try:
-            text = boundary.read_text(errors="ignore")
-        except OSError:
-            text = ""
-        if text:
-            patches, patch_types = parse_boundary_text(text)
+    patches, patch_types = _read_boundary_file(boundary)
     type_counts: dict[str, int] = {}
     for patch in patches:
         entry_type = patch_types.get(patch, "unknown")
         type_counts[entry_type] = type_counts.get(entry_type, 0) + 1
     return {"patches": len(patches), "types": type_counts}
+
+
+def _read_boundary_file(boundary: Path) -> tuple[list[str], dict[str, str]]:
+    patches, patch_types = _read_boundary_with_foamlib(boundary)
+    if patches:
+        return patches, patch_types
+    try:
+        text = boundary.read_text(errors="ignore")
+    except OSError:
+        return [], {}
+    from ofti.core.boundary import parse_boundary_text
+
+    return parse_boundary_text(text) if text else ([], {})
+
+
+def _read_boundary_with_foamlib(boundary: Path) -> tuple[list[str], dict[str, str]]:
+    if not foamlib_integration.available():
+        return [], {}
+    try:
+        return foamlib_integration.parse_boundary_file(boundary)
+    except Exception:
+        return [], {}

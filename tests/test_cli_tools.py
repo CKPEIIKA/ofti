@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 from typing import cast
@@ -45,7 +46,23 @@ def test_cli_tools_without_args_prints_short_help(capsys) -> None:
     out = capsys.readouterr().out
     assert code == 0
     assert "Non-interactive OFTI utilities" in out
-    assert "{knife,plot,watch,run,version}" in out
+    assert "{knife,plot,watch,run,bundle,unbundle,version}" in out
+
+
+def test_every_cli_help_page_has_examples() -> None:
+    parsers: list[argparse.ArgumentParser] = []
+
+    def collect(parser: argparse.ArgumentParser) -> None:
+        parsers.append(parser)
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                for subparser in action.choices.values():
+                    collect(subparser)
+
+    collect(cli_tools.build_parser())
+
+    missing = [parser.prog for parser in parsers if "Examples:" not in parser.format_help()]
+    assert missing == []
 
 
 def test_cli_tools_version_flag(capsys) -> None:
@@ -1230,8 +1247,7 @@ def test_run_solver_parallel_clean_processors_calls_prepare(tmp_path, capsys, mo
     )
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
-    prepare = seen["prepare"]
-    assert isinstance(prepare, dict)
+    prepare = cast(dict[str, object], seen["prepare"])
     assert prepare["clean_processors"] is True
     assert payload["clean_processors"] is True
 
@@ -1369,10 +1385,12 @@ def test_knife_physical_profile_forwards_plugin_fields_and_rules(
         def detect(self, case_dir: Path) -> ProfileMatch:
             return ProfileMatch(confidence=1.0, reasons=(str(case_dir),))
 
-        def fields(self, _case_dir: Path) -> list[str]:
+        def fields(self, case_dir: Path) -> list[str]:
+            assert case_dir
             return ["rho", "T"]
 
-        def rules(self, _case_dir: Path) -> list[str]:
+        def rules(self, case_dir: Path) -> list[str]:
+            assert case_dir
             return ["rho:min=0", "T:min=0"]
 
     registry = PluginRegistry(physical_profiles={"fake": FakeProfile()})
