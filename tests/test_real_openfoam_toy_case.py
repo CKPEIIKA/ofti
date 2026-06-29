@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -174,6 +175,37 @@ def test_real_toy_case_tracked_start_status_and_stop(real_case: RealTutorialCase
     wait_until(lambda: running_jobs(case) == 0, description="stopped solver")
 
 
+def test_real_toy_case_adopts_untracked_solver_and_stops_it(real_case: RealTutorialCase) -> None:
+    case = real_case.case
+    display, command = run_ops.solver_command(case)
+    log_path = case / f"log.raw-{display}"
+    with log_path.open("a", encoding="utf-8", errors="ignore") as log:
+        process = subprocess.Popen(  # noqa: S603
+            command,
+            cwd=case,
+            stdout=log,
+            stderr=log,
+            text=True,
+            start_new_session=True,
+        )
+    try:
+        wait_until(lambda: _untracked_solver_count(case) >= 1, description="raw solver discovery")
+
+        adopted = knife_service.adopt_payload(case)
+
+        assert adopted["failed"] == []
+        assert len(adopted["adopted"]) >= 1
+        wait_until(lambda: running_jobs(case) >= 1, description="adopted solver registry")
+        jobs = watch_service.jobs_payload(case, include_all=False, kind="solver")
+        assert jobs["count"] >= 1
+        assert any(int(job.get("pid") or 0) == process.pid for job in jobs["jobs"])
+    finally:
+        stopped = real_case.stop_all_solvers()
+        if stopped["selected"] < 1 and process.poll() is None:
+            process.terminate()
+        wait_until(lambda: running_jobs(case) == 0, description="adopted solver stopped")
+
+
 def test_real_toy_case_runtime_write_now_snapshot_stops_solver(real_case: RealTutorialCase) -> None:
     case = real_case.case
     pid = real_case.start_solver()
@@ -233,6 +265,42 @@ def test_real_toy_case_sequential_queue_reports_terminal_outcomes(
     assert outcomes <= {"time", "criteria", "completed"}
     assert "crashed" not in outcomes
     assert payload["summary"]["outcomes"]
+
+
+def test_real_toy_case_queue_continues_after_crashed_case(
+    real_case: RealTutorialCase,
+    tmp_path: Path,
+) -> None:
+    source = real_case.case
+    solver, _command = run_ops.solver_command(source)
+    bad_case = tmp_path / "queue-bad"
+    good_case = tmp_path / "queue-good"
+    shutil.copytree(source, bad_case)
+    shutil.copytree(source, good_case)
+    (bad_case / "constant" / "transportProperties").unlink()
+    for case in (bad_case, good_case):
+        assert knife_service.set_entry_payload(case, "system/controlDict", "endTime", "0.005")["ok"] is True
+        assert knife_service.set_entry_payload(case, "system/controlDict", "writeInterval", "1")["ok"] is True
+        assert knife_service.set_entry_payload(case, "system/controlDict", "purgeWrite", "2")["ok"] is True
+
+    payload = run_ops.queue_payload(
+        cases=[bad_case, good_case],
+        solver=solver,
+        max_parallel=1,
+        backend="process",
+        poll_interval=0.1,
+        queue_root=tmp_path,
+    )
+
+    assert payload["ok"] is False, payload
+    assert payload["failed_to_start"] == []
+    assert len(payload["started"]) == 2
+    assert len(payload["finished"]) == 2
+    assert payload["finished"][0]["outcome"] == "crashed"
+    assert payload["finished"][0]["returncode"] != 0
+    assert payload["finished"][1]["returncode"] == 0
+    assert payload["finished"][1]["outcome"] in {"time", "criteria", "completed"}
+    assert payload["summary"]["outcomes"]["crashed"] == 1
 
 
 def test_real_toy_case_parallel_prepare_run_stop_resize_plan(
@@ -296,3 +364,8 @@ def test_real_toy_case_parallel_prepare_run_stop_resize_plan(
     stopped = real_case.stop_all_solvers()
     assert stopped["selected"] >= 1
     wait_until(lambda: running_jobs(case) == 0, description="resized stopped solver")
+
+
+def _untracked_solver_count(case: Path) -> int:
+    payload = knife_service.current_payload(case, live=True)
+    return len(payload.get("untracked_processes", []))
