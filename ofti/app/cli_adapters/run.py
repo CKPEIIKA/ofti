@@ -520,9 +520,10 @@ def _run_parametric(args: argparse.Namespace) -> int:
 
 def _run_queue(args: argparse.Namespace) -> int:
     poll_interval = interval_with_cpu_mode(args, float(getattr(args, "poll_interval", 0.25)))
+    explicit_cases = list(getattr(args, "cases", []))
     cases = run_ops.resolve_case_set(
         set_dir=args.set_dir,
-        explicit_cases=list(getattr(args, "cases", [])),
+        explicit_cases=explicit_cases,
         case_glob=str(getattr(args, "glob", "*")),
         summary_csv=getattr(args, "summary_csv", None),
     )
@@ -537,7 +538,7 @@ def _run_queue(args: argparse.Namespace) -> int:
         backend=str(getattr(args, "backend", "process")),
         prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
         clean_processors=bool(getattr(args, "clean_processors", False)),
-        queue_root=args.set_dir,
+        queue_root=None if explicit_cases else args.set_dir,
     )
     if bool(getattr(args, "json", False)):
         emit_json(payload, args)

@@ -225,15 +225,19 @@ def list_dir_entries(path: Path) -> tuple[list[Path], list[Path]]:
     dirs: list[Path] = []
     files: list[Path] = []
     try:
-        for entry in os.scandir(path):
-            if entry.name.startswith("."):
-                continue
+        entries = list(os.scandir(path))
+    except OSError:
+        return [], []
+    for entry in entries:
+        if entry.name.startswith("."):
+            continue
+        try:
             if entry.is_dir():
                 dirs.append(Path(entry.path))
             elif entry.is_file():
                 files.append(Path(entry.path))
-    except OSError:
-        return [], []
+        except OSError:
+            continue
     return sorted(dirs), sorted(files)
 
 

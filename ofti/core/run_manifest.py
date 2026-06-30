@@ -222,6 +222,12 @@ def load_run_manifest(path: Path) -> dict[str, Any]:
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise TypeError(f"invalid manifest payload: {manifest_path}")
+    format_name = payload.get("format")
+    if format_name is not None and format_name != FORMAT:
+        raise ValueError(f"unsupported manifest format: {manifest_path}")
+    format_version = payload.get("format_version")
+    if format_name == FORMAT and format_version != FORMAT_VERSION:
+        raise ValueError(f"unsupported manifest version: {manifest_path}")
     manifest_kind = payload.get("manifest_kind") or payload.get("receipt_kind")
     if manifest_kind not in SUPPORTED_MANIFEST_KINDS:
         raise ValueError(f"unsupported manifest kind: {manifest_path}")

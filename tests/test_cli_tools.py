@@ -197,6 +197,38 @@ def test_run_matrix_queue_status_cli_json(monkeypatch, capsys) -> None:
     assert payload["rows"][0]["state"] == "running"
 
 
+def test_run_queue_explicit_case_does_not_force_set_dir_as_queue_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    case = _make_case(tmp_path / "case")
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(cli_tools.run_ops, "resolve_case_set", lambda **_k: [case])
+
+    def _queue_payload(**kwargs: object) -> dict[str, object]:
+        seen["queue_root"] = kwargs.get("queue_root")
+        return {
+            "max_parallel": 1,
+            "backend": "process",
+            "started": [],
+            "finished": [],
+            "failed_to_start": [],
+            "ok": True,
+            "queue_path": "",
+        }
+
+    monkeypatch.setattr(cli_tools.run_ops, "queue_payload", _queue_payload)
+
+    code = cli_tools.main(["run", "queue", str(case), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["ok"] is True
+    assert seen["queue_root"] is None
+
+
 def test_run_parametric_cli_json(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         cli_tools.run_ops,

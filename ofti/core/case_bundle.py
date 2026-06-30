@@ -209,6 +209,9 @@ def environment_requirements(manifest: BundleManifest) -> dict[str, object]:
 
 
 def manifest_from_payload(payload: dict[str, object]) -> BundleManifest:
+    version = _payload_int(payload.get("format_version", payload.get("version")), default=0)
+    if payload.get("format") == MANIFEST_FORMAT and version != MANIFEST_FORMAT_VERSION:
+        raise ValueError(f"unsupported bundle manifest version: {version}")
     files = tuple(
         BundleFile(**entry)
         for entry in _payload_files(payload.get("files"))
@@ -216,7 +219,7 @@ def manifest_from_payload(payload: dict[str, object]) -> BundleManifest:
     )
     return BundleManifest(
         format=str(payload.get("format", "")),
-        version=_payload_int(payload.get("format_version", payload.get("version")), default=0),
+        version=version,
         case_name=str(payload.get("case_name", "")),
         start_time=str(payload.get("start_time", "0")),
         mesh_policy=_mesh_policy(str(payload.get("mesh_policy", "auto"))),

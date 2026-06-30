@@ -12,7 +12,7 @@ from ofti.foamlib import adapter as foamlib_integration
 
 
 def case_doctor_screen(stdscr: Any, case_path: Path, viewer_cls: Any | None = None) -> None:
-    report = build_case_doctor_report(case_path)
+    report = build_case_doctor_report(case_path, lint=False)
     if not report["errors"] and not report["warnings"]:
         text = "\n".join(report["lines"] + ["", "OK: no issues found."])
         _viewer(viewer_cls)(stdscr, text).display()
@@ -33,7 +33,7 @@ def _viewer(viewer_cls: Any | None) -> Any:
     return import_module("ofti.ui_curses.viewer").Viewer
 
 
-def build_case_doctor_report(case_path: Path) -> dict[str, list[str]]:
+def build_case_doctor_report(case_path: Path, *, lint: bool = True) -> dict[str, list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -44,9 +44,14 @@ def build_case_doctor_report(case_path: Path) -> dict[str, list[str]]:
     _check_initial_conditions(case_path, errors, warnings)
     _check_time_dirs(case_path, warnings)
 
-    lint_errors, lint_warnings = _lint_case_dicts(case_path)
-    errors.extend(lint_errors)
-    warnings.extend(lint_warnings)
+    if lint:
+        lint_errors, lint_warnings = _lint_case_dicts(case_path)
+        errors.extend(lint_errors)
+        warnings.extend(lint_warnings)
+    else:
+        warnings.append(
+            "Syntax lint skipped in TUI; run `ofti knife doctor CASE` for full parser lint.",
+        )
 
     lines = [
         "CASE DOCTOR",

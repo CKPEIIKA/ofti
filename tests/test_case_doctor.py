@@ -77,3 +77,32 @@ def test_lint_case_dicts_suppresses_include_heavy_parser_noise(
     assert not any("parser error" in item for item in warnings)
     assert not any("missing/invalid FoamFile header" in item for item in warnings)
     assert any("parser lint skipped for include-heavy/custom syntax" in item for item in warnings)
+
+
+def test_case_doctor_screen_uses_fast_report_without_parser_lint(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    case_path = tmp_path / "case"
+    (case_path / "system").mkdir(parents=True)
+    (case_path / "system" / "controlDict").write_text("application simpleFoam;\n")
+
+    monkeypatch.setattr(
+        "ofti.tools.case_doctor._lint_case_dicts",
+        lambda _case: (_ for _ in ()).throw(AssertionError("lint should be skipped in TUI")),
+    )
+    shown: list[str] = []
+
+    class FakeViewer:
+        def __init__(self, _stdscr, text: str) -> None:
+            shown.append(text)
+
+        def display(self) -> None:
+            return None
+
+    from ofti.tools.case_doctor import case_doctor_screen
+
+    case_doctor_screen(object(), case_path, viewer_cls=FakeViewer)
+
+    assert shown
+    assert "Syntax lint skipped in TUI" in shown[0]

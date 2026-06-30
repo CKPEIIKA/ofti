@@ -254,3 +254,37 @@ def test_start_case_navigation_keys(monkeypatch: pytest.MonkeyPatch) -> None:
             ["browse"],
             extra_lines=[],
         )
+
+
+def test_list_dir_entries_skips_only_denied_entries(tmp_path: Path, monkeypatch) -> None:
+    class FakeEntry:
+        def __init__(self, name: str, *, kind: str, denied: bool = False) -> None:
+            self.name = name
+            self.path = str(tmp_path / name)
+            self.kind = kind
+            self.denied = denied
+
+        def is_dir(self) -> bool:
+            if self.denied:
+                raise PermissionError("denied")
+            return self.kind == "dir"
+
+        def is_file(self) -> bool:
+            if self.denied:
+                raise PermissionError("denied")
+            return self.kind == "file"
+
+    monkeypatch.setattr(
+        helpers.os,
+        "scandir",
+        lambda _path: [
+            FakeEntry("case", kind="dir"),
+            FakeEntry("crypta", kind="dir", denied=True),
+            FakeEntry("README", kind="file"),
+        ],
+    )
+
+    dirs, files = helpers.list_dir_entries(tmp_path)
+
+    assert dirs == [tmp_path / "case"]
+    assert files == [tmp_path / "README"]

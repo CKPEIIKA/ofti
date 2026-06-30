@@ -10,7 +10,8 @@ from pathlib import Path
 import pytest
 
 from ofti.app.cli_tools import main as cli_main
-from ofti.core import case_bundle
+from ofti.core import case_bundle, run_manifest
+from ofti.foam.times import latest_time
 from ofti.tools import (
     knife_service,
     parallel_resize_service,
@@ -57,7 +58,6 @@ def test_real_toy_case_prelaunch_diagnostics_and_manifest(real_case: RealTutoria
     display, command = run_ops.solver_command(case)
     manifest = run_ops.dry_run_command(command)
     manifest_path = tmp_path / "manifest.json"
-    from ofti.core import run_manifest
 
     written = run_manifest.write_case_run_manifest(
         case,
@@ -75,6 +75,40 @@ def test_real_toy_case_prelaunch_diagnostics_and_manifest(real_case: RealTutoria
     )
     assert written == manifest_path.resolve()
     assert run_manifest.verify_run_manifest(written, case_path=case)["ok"] is True
+
+
+def test_real_toy_case_run_manifest_restore_is_runnable(
+    real_case: RealTutorialCase,
+    tmp_path: Path,
+) -> None:
+    case = real_case.case
+    display, command = run_ops.solver_command(case)
+    manifest_path = tmp_path / "restore-manifest.json"
+    written = run_manifest.write_case_run_manifest(
+        case,
+        name=display,
+        command=run_ops.dry_run_command(command),
+        background=False,
+        detached=False,
+        parallel=0,
+        mpi=None,
+        sync_subdomains=True,
+        prepare_parallel=True,
+        clean_processors=False,
+        output=manifest_path,
+        record_inputs_copy=True,
+    )
+    restored = tmp_path / "manifest-restored"
+
+    payload = run_manifest.restore_run_manifest(written, restored)
+
+    assert payload["ok"] is True
+    assert set(payload["restored"]) >= {"system", "constant", "0"}
+    assert (restored / "system" / "controlDict").is_file()
+    assert knife_service.preflight_payload(restored)["ok"] is True
+    status = knife_service.status_payload(restored, lightweight=True)
+    assert status["case"] == str(restored)
+    assert status["solver"] == display
 
 
 def test_real_toy_case_bundle_unbundle_status(real_case: RealTutorialCase, tmp_path: Path) -> None:
@@ -303,6 +337,73 @@ def test_real_toy_case_queue_continues_after_crashed_case(
     assert payload["summary"]["outcomes"]["crashed"] == 1
 
 
+
+def test_real_toy_case_compare_reconstructed_parallel_to_serial(
+    real_case: RealTutorialCase,
+    tmp_path: Path,
+) -> None:
+    if not real_case.profile.supports_parallel:
+        pytest.skip(f"{real_case.profile.name} does not support parallel scenario")
+    if shutil.which("mpirun") is None and shutil.which("mpiexec") is None:
+        pytest.skip("MPI launcher unavailable")
+
+    source = real_case.case
+    solver, _command = run_ops.solver_command(source)
+    serial_case = tmp_path / "compare-serial"
+    parallel_case = tmp_path / "compare-parallel"
+    shutil.copytree(source, serial_case, ignore=shutil.ignore_patterns(".ofti"))
+    shutil.copytree(source, parallel_case, ignore=shutil.ignore_patterns(".ofti"))
+    _ensure_parallel_dict(parallel_case, 2)
+
+    serial = run_ops.smoke_payload(
+        serial_case,
+        solver=solver,
+        iterations=2,
+        timeout=60,
+        output_root=tmp_path / "serial-smoke",
+        in_place=True,
+        core_only=True,
+    )
+    parallel = run_ops.smoke_payload(
+        parallel_case,
+        solver=solver,
+        iterations=2,
+        timeout=90,
+        parallel=2,
+        output_root=tmp_path / "parallel-smoke",
+        in_place=True,
+        core_only=True,
+        clean_processors=True,
+    )
+    assert serial["ok"] is True, serial
+    assert parallel["ok"] is True, parallel
+
+    reconstructed_time = latest_time(parallel_case)
+    result = run_ops.execute_case_command(
+        parallel_case,
+        "reconstructPar -latestTime",
+        ["reconstructPar", "-latestTime"],
+        background=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert (parallel_case / reconstructed_time).is_dir()
+
+    compared = knife_service.compare_fields_payload(
+        serial_case,
+        parallel_case,
+        reference_time=latest_time(serial_case),
+        candidate_time=reconstructed_time,
+        fields=["p", "U"],
+        out_dir=tmp_path / "serial-vs-parallel-compare",
+    )
+
+    assert compared["ok"] is True, compared
+    assert compared["field_count"] >= 1
+    assert Path(str(compared["outputs"]["csv"])).is_file()
+    for row in compared["fields"]:
+        assert row["count"] > 0
+        assert row["nonfinite_pairs"] == 0
+
 def test_real_toy_case_parallel_prepare_run_stop_resize_plan(
     real_case: RealTutorialCase,
     capsys: pytest.CaptureFixture[str],
@@ -365,6 +466,35 @@ def test_real_toy_case_parallel_prepare_run_stop_resize_plan(
     assert stopped["selected"] >= 1
     wait_until(lambda: running_jobs(case) == 0, description="resized stopped solver")
 
+
+
+def _ensure_parallel_dict(case: Path, ranks: int) -> None:
+    path = case / "system" / "decomposeParDict"
+    if path.is_file():
+        assert knife_service.set_entry_payload(
+            case,
+            "system/decomposeParDict",
+            "numberOfSubdomains",
+            str(ranks),
+        )["ok"] is True
+        return
+    path.write_text(
+        "\n".join(
+            [
+                "FoamFile",
+                "{",
+                "    version 2.0;",
+                "    format ascii;",
+                "    class dictionary;",
+                "    object decomposeParDict;",
+                "}",
+                f"numberOfSubdomains {ranks};",
+                "method scotch;",
+                "",
+            ],
+        ),
+        encoding="utf-8",
+    )
 
 def _untracked_solver_count(case: Path) -> int:
     payload = knife_service.current_payload(case, live=True)

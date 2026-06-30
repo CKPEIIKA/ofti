@@ -44,6 +44,9 @@ def test_detect_openfoam_version_from_foamversion(monkeypatch) -> None:
 
 
 def test_ensure_environment(monkeypatch) -> None:
+    monkeypatch.delenv("WM_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("WM_PROJECT_VERSION", raising=False)
+    monkeypatch.delenv("FOAM_VERSION", raising=False)
     checked: list[str] = []
 
     def fake_which(cmd: str) -> str:

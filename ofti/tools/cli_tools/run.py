@@ -749,7 +749,7 @@ def status_set_payload(
     lightweight: bool = True,
     tail_bytes: int | None = None,
 ) -> dict[str, Any]:
-    root = require_case_dir(set_dir)
+    root = set_dir.expanduser().resolve()
     cases = resolve_case_set(
         set_dir=root,
         explicit_cases=explicit_cases,
@@ -780,7 +780,7 @@ def resolve_case_set(
     case_glob: str,
     summary_csv: Path | None,
 ) -> list[Path]:
-    root = require_case_dir(set_dir)
+    root = set_dir.expanduser().resolve()
     rows: list[Path] = []
     if explicit_cases:
         rows = [require_case_dir(case) for case in explicit_cases]
