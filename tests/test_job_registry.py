@@ -61,6 +61,47 @@ def test_job_registry_loads_legacy_raw_list_and_quarantines_corruption(tmp_path:
     assert registry_warnings(case_path)
 
 
+def test_job_registry_rejects_unknown_wrapped_version(tmp_path: Path) -> None:
+    case_path = tmp_path / "case"
+    jobs_file = case_path / ".ofti" / "jobs.json"
+    jobs_file.parent.mkdir(parents=True)
+    jobs_file.write_text(
+        json.dumps({"format": "ofti.jobs", "format_version": 999, "jobs": []}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unsupported jobs registry version"):
+        load_jobs(case_path)
+
+
+def test_refresh_jobs_rebuilds_registry_after_corruption(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case_path = tmp_path / "case"
+    case_path.mkdir()
+    job_id = register_job(
+        case_path,
+        "solver",
+        12345,
+        "simpleFoam",
+        case_path / "log.simpleFoam",
+        extra={"solver_pids": [23456]},
+    )
+    jobs_file = case_path / ".ofti" / "jobs.json"
+    jobs_file.write_text("{bad json", encoding="utf-8")
+    monkeypatch.setattr(job_registry, "_pid_running", lambda pid: pid == 23456)
+
+    refreshed = refresh_jobs(case_path)
+
+    assert refreshed[0]["id"] == job_id
+    assert refreshed[0]["recovered"] is True
+    rebuilt = json.loads(jobs_file.read_text(encoding="utf-8"))
+    assert rebuilt["format"] == "ofti.jobs"
+    assert rebuilt["jobs"][0]["id"] == job_id
+    assert registry_warnings(case_path)
+
+
 def test_refresh_jobs_marks_dead_pid(tmp_path: Path) -> None:
     case_path = tmp_path / "case"
     case_path.mkdir()

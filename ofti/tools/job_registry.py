@@ -121,10 +121,19 @@ def load_jobs(case_path: Path) -> list[dict[str, object]]:
         _quarantine_corrupt_jobs(path)
         return []
     if isinstance(data, dict):
+        _validate_jobs_payload_version(data, path)
         data = data.get("jobs")
     if not isinstance(data, list):
         return []
     return [job for job in data if isinstance(job, dict)]
+
+
+def _validate_jobs_payload_version(data: Mapping[str, object], path: Path) -> None:
+    if data.get("format") != JOBS_FORMAT:
+        return
+    version = data.get("format_version", 1)
+    if version != JOBS_FORMAT_VERSION:
+        raise ValueError(f"unsupported jobs registry version in {path}: {version}")
 
 
 def registry_warnings(case_path: Path) -> list[str]:

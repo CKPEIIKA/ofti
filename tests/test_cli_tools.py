@@ -41,6 +41,40 @@ def test_run_group_help_lists_new_subcommands(capsys) -> None:
     assert "{tool,solver,smoke,resize-parallel,matrix,parametric,queue,queue-summary,status}" in out
 
 
+def test_run_queue_summary_cli_from_events(tmp_path: Path, capsys) -> None:
+    events = tmp_path / "queue-test.events.jsonl"
+    _write_queue_event(events, "started", {"case": "case-a"})
+    _write_queue_event(events, "finished", {"case": "case-a", "outcome": "end_time"})
+    _write_queue_event(events, "completed", {"planned": 1})
+
+    code = cli_tools.main(["run", "queue-summary", str(events)])
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "planned=1" in out
+    assert "finished=1" in out
+    assert "outcomes=end_time:1" in out
+
+
+def test_run_queue_summary_cli_json_from_record(tmp_path: Path, capsys) -> None:
+    events = tmp_path / "queue-test.events.jsonl"
+    record = tmp_path / "queue-test.json"
+    _write_queue_event(events, "failed_to_start", {"case": "case-a"})
+    record.write_text(json.dumps({"queue_events_path": str(events)}), encoding="utf-8")
+
+    code = cli_tools.main(["run", "queue-summary", str(record), "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["command"] == "run queue-summary"
+    assert payload["summary"]["failed_to_start"] == 1
+
+
+def _write_queue_event(path: Path, event: str, row: dict[str, object]) -> None:
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"event": event, "row": row}) + "\n")
+
+
 def test_cli_tools_without_args_prints_short_help(capsys) -> None:
     code = cli_tools.main([])
     out = capsys.readouterr().out
