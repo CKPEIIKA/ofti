@@ -8,13 +8,13 @@ def runtime_criteria_lines(criteria: list[Mapping[str, Any]]) -> list[str]:
     if not criteria:
         return ["criteria=none"]
     lines = ["criteria:"]
-    for row in criteria:
-        lines.append(
-            f"- {row.get('key')}: status={row.get('status')} "
-            f"value={row.get('live_value')} delta={row.get('live_delta')} "
-            f"tolerance={row.get('tolerance')} eta={row.get('eta_seconds')} "
-            f"unmet_reason={row.get('unmet_reason')}",
-        )
+    lines.extend(
+        f"- {row.get('key')}: status={row.get('status')} "
+        f"value={row.get('live_value')} delta={row.get('live_delta')} "
+        f"tolerance={row.get('tolerance')} eta={row.get('eta_seconds')} "
+        f"unmet_reason={row.get('unmet_reason')}"
+        for row in criteria
+    )
     return lines
 
 

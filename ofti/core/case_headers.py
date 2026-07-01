@@ -24,9 +24,11 @@ def _detected_versions(
     control_version: str | None,
 ) -> list[str]:
     versions = [control_version] if control_version else []
-    for path in case_header_candidates(case_path, max_files=20):
-        if path != control_dict and (version := extract_header_version(path)):
-            versions.append(version)
+    versions.extend(
+        version
+        for path in case_header_candidates(case_path, max_files=20)
+        if path != control_dict and (version := extract_header_version(path))
+    )
     return versions
 
 

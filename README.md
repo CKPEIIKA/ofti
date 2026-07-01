@@ -194,33 +194,24 @@ ofti unbundle case.ofti.tar.gz --to CASE_COPY --table
 ofti unbundle case.ofti.tar.gz --to CASE_COPY --run --background --json
 ```
 
-Bundles include `system/`, `constant/`, the selected start-time directory,
-local dictionary files referenced by `#include "..."`, `Allrun`/`Allclean`
-when present, `ofti.*` metadata, and `constant/polyMesh` when `--mesh include`
-or `--mesh auto` detects an existing mesh. `include-polyMesh` and `none` are
-accepted aliases; manifests keep canonical `auto|include|exclude`. They exclude
-logs, `processor*`, `postProcessing`, and caches by default. OFTI refuses to bundle cases missing
-`system/controlDict`, `constant/`, the selected start time, or a solver
-`application`, and prints warnings when the target host may need mesh generation
-or when a local include cannot be bundled. It also runs a lightweight syntax
-lint on bundled dictionaries and reports likely missing semicolons or unmatched
-braces as warnings.
-The deterministic `.tar.gz` archive embeds `.ofti/bundle.json` with file hashes;
-`unbundle` refuses non-empty destinations unless `--force` and verifies hashes
-after extraction. `.tar.zst` is also supported when the optional Python
-`zstandard` backend is installed; OFTI does not shell out to `zstd` from core.
-Use `--json` for automation or `--table` for a compact human summary.
-The manifest records the controlDict solver application and detected OpenFOAM
-header version when present, so the target host can check it is using a
-compatible solver/runtime.
-Installed plugins may append target-host hints to the manifest; for example the
-hy2Foam plugins warn about required hyStrath/modified-runtime libraries and
-solver-specific model assets.
+Bundles contain the minimal runnable case tree: `system/`, `constant/`, the
+selected start-time directory, local `#include "..."` files, optional
+`Allrun`/`Allclean`, `ofti.*` metadata, and `constant/polyMesh` when requested
+or auto-detected. They exclude logs, `processor*`, `postProcessing`, and caches
+by default. OFTI refuses incomplete cases, warns about missing includes or mesh
+requirements, and runs a lightweight dictionary syntax lint before archiving.
+
+The deterministic `.tar.gz` archive embeds `.ofti/bundle.json` with file hashes,
+solver application, detected OpenFOAM header version, warnings, and plugin
+target-host hints. `unbundle` rejects unsafe archive paths/links, refuses
+non-empty destinations unless `--force`, and verifies hashes after extraction.
+`.tar.zst` is supported when the optional Python `zstandard` backend is
+installed.
+
 Use `bundle --smoke` before copying to prove the archive can be extracted and
-run through a bounded solver smoke test on the current host.
-`unbundle --run` executes the restored case through the same solver service as
-`ofti run solver`; add `--background` to register a watchable job and still
-write a run manifest.
+run through a bounded solver smoke test on the current host. `unbundle --run`
+executes the restored case through the same solver service as `ofti run solver`;
+add `--background` to register a watchable job and still write a run manifest.
 
 The slow real-case suite includes bundle/unbundle coverage for a toy OpenFOAM
 case: it verifies manifest hashes, preflight/status on the restored copy, and a

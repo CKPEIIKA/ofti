@@ -80,7 +80,6 @@ ignore = [
   "S112",
   "PLC0415",
   "ARG001",
-  "PERF401",
   "B023",
   "TRY003",
 ]
@@ -99,7 +98,16 @@ max-statements = 36
 # services/core are cleaned down to the new thresholds.
 "ofti/app/**/*.py" = ["C901", "PLR0912", "PLR0915"]
 "ofti/ui_curses/**/*.py" = ["C901", "PLR0912", "PLR0915"]
-"tests/*" = ["E501", "S101", "PLR2004", "C901", "PLR0912", "PLR0915"]
+"tests/*" = ["E501", "S101", "PLR2004"]
+"tests/test_app_cli_tools_handlers_behavior.py" = ["PLR0915"]
+"tests/test_foamlib_runner.py" = ["C901"]
+"tests/test_parametric_preprocessing.py" = ["C901"]
+"tests/test_real_openfoam_profiles.py" = ["C901", "PLR0912", "PLR0915"]
+"tests/test_real_openfoam_toy_case.py" = ["PLR0915"]
+"tests/test_run_manifest_process_scan_behavior.py" = ["PLR0915"]
+"tests/test_runtime_watch_behavior.py" = ["PLR0915"]
+"tests/test_tool_screen_branches.py" = ["PLR0915"]
+"tests/test_tool_services_behavior.py" = ["PLR0915"]
 "ofti/app/app.py" = ["C901", "PLR0912", "PLR0911", "PLR0915", "S603", "S607", "SIM105"]
 "ofti/app/commands.py" = ["C901", "PLR0911", "PLR0912", "PLR0915"]
 "ofti/app/helpers.py" = ["C901", "PLR0911", "PLR0912", "S608", "PLR0915"]
@@ -115,7 +123,6 @@ max-statements = 36
 "ofti/app/screens/main.py" = ["PLR0911"]
 "ofti/core/entry_io.py" = ["S110"]
 "ofti/foam/subprocess_utils.py" = ["S603"]
-"ofti/tools/case_doctor.py" = ["PERF401"]
 "ofti/app/tool_screens/cleaning_ops.py" = ["C901"]
 "ofti/app/tool_screens/diagnostics.py" = ["PLR0911"]
 "ofti/app/tool_screens/job_control.py" = ["E501"]
@@ -146,8 +153,6 @@ max-statements = 36
 "ofti/app/cli_adapters/knife_parser.py" = ["PLR0915"]
 "ofti/app/cli_adapters/run.py" = ["PLR0915"]
 "ofti/app/cli_adapters/watch.py" = ["PLR0915"]
-"tests/test_app_cli_tools_handlers_behavior.py" = ["PLR0915"]
-"tests/test_real_openfoam_profiles.py" = ["PLR0915"]
 # cli_tools re-exports handlers under TYPE_CHECKING for static visibility.
 "ofti/app/cli_tools.py" = ["F401"]
 

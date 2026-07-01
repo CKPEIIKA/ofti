@@ -28,10 +28,7 @@ def _looks_like_hy2foam(case_dir: Path) -> bool:
 
 
 def _read_tree(path: Path) -> str:
-    chunks: list[str] = []
-    for item in sorted(path.rglob("*")):
-        if item.is_file():
-            chunks.append(_read_file(item))
+    chunks = [_read_file(item) for item in sorted(path.rglob("*")) if item.is_file()]
     return "\n".join(chunks)
 
 

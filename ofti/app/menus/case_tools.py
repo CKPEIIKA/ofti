@@ -55,21 +55,21 @@ def show_current_jobs_screen(stdscr: Any, case_path: Path, *, live: bool = True)
     if jobs:
         lines.append("")
         lines.append("tracked_jobs:")
-        for row in jobs:
-            lines.append(
-                f"- id={row.get('id')} pid={row.get('pid')} "
-                f"name={row.get('name')} status={row.get('status')}",
-            )
+        lines.extend(
+            f"- id={row.get('id')} pid={row.get('pid')} "
+            f"name={row.get('name')} status={row.get('status')}"
+            for row in jobs
+        )
     untracked = list(payload.get("untracked_processes", []))
     if untracked:
         lines.append("")
         lines.append("untracked_processes:")
-        for row in untracked[:40]:
-            lines.append(
-                f"- pid={row.get('pid')} role={row.get('role')} "
-                f"solver={row.get('solver')} launcher_pid={row.get('launcher_pid')} "
-                f"cmd={row.get('command')}",
-            )
+        lines.extend(
+            f"- pid={row.get('pid')} role={row.get('role')} "
+            f"solver={row.get('solver')} launcher_pid={row.get('launcher_pid')} "
+            f"cmd={row.get('command')}"
+            for row in untracked[:40]
+        )
         if len(untracked) > 40:
             lines.append(f"... {len(untracked) - 40} more")
     Viewer(stdscr, "\n".join(lines)).display()
@@ -89,26 +89,28 @@ def adopt_untracked_screen(stdscr: Any, case_path: Path, *, recursive: bool = Fa
         f"selected={payload.get('selected', 0)}",
         f"adopted={len(payload.get('adopted', []))}",
     ]
-    for key in ("jobs_running_before", "jobs_running_after"):
-        if key in payload:
-            lines.append(f"{key}={payload[key]}")
+    lines.extend(
+        f"{key}={payload[key]}"
+        for key in ("jobs_running_before", "jobs_running_after")
+        if key in payload
+    )
     adopted = list(payload.get("adopted", []))
     if adopted:
         lines.append("")
         lines.append("adopted_rows:")
-        for row in adopted:
-            lines.append(
-                f"- id={row.get('id')} pid={row.get('pid')} "
-                f"case={row.get('case')} name={row.get('name')} role={row.get('role')}",
-            )
+        lines.extend(
+            f"- id={row.get('id')} pid={row.get('pid')} "
+            f"case={row.get('case')} name={row.get('name')} role={row.get('role')}"
+            for row in adopted
+        )
     failed = list(payload.get("failed", []))
     if failed:
         lines.append("")
         lines.append("failed:")
-        for row in failed:
-            lines.append(
-                f"- pid={row.get('pid')} case={row.get('case')} error={row.get('error')}",
-            )
+        lines.extend(
+            f"- pid={row.get('pid')} case={row.get('case')} error={row.get('error')}"
+            for row in failed
+        )
     Viewer(stdscr, "\n".join(lines)).display()
 
 
@@ -140,8 +142,10 @@ def compare_lines(payload: dict[str, Any]) -> list[str]:
         if diff.get("missing_in_right"):
             lines.append(f"  missing_in_right: {', '.join(diff['missing_in_right'])}")
         value_diffs = list(diff.get("value_diffs", []))
-        for row in value_diffs[:20]:
-            lines.append(f"  {row['key']}: left={row['left']} right={row['right']}")
+        lines.extend(
+            f"  {row['key']}: left={row['left']} right={row['right']}"
+            for row in value_diffs[:20]
+        )
         if len(value_diffs) > 20:
             lines.append(f"  value_diff_more={len(value_diffs) - 20}")
     return lines
@@ -217,11 +221,11 @@ def show_runtime_criteria_screen(stdscr: Any, case_path: Path) -> None:
             f"fail={payload['failed']} unknown={payload['unknown']}"
         ),
     ]
-    for row in payload.get("criteria", []):
-        lines.append(
-            f"- {row.get('name')}: met={row.get('met')} value={row.get('value')} "
-            f"tol={row.get('tol')} unmet={row.get('unmet')} source={row.get('source')}",
-        )
+    lines.extend(
+        f"- {row.get('name')}: met={row.get('met')} value={row.get('value')} "
+        f"tol={row.get('tol')} unmet={row.get('unmet')} source={row.get('source')}"
+        for row in payload.get("criteria", [])
+    )
     Viewer(stdscr, "\n".join(lines)).display()
 
 

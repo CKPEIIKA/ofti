@@ -171,11 +171,11 @@ def current_scope_payload(
 
 
 def _scope_registry_warnings(case_paths: list[Path]) -> list[str]:
-    warnings: list[str] = []
-    for case_path in case_paths:
-        for warning in registry_warnings(case_path):
-            warnings.append(f"{case_path}: {warning}")
-    return warnings
+    return [
+        f"{case_path}: {warning}"
+        for case_path in case_paths
+        for warning in registry_warnings(case_path)
+    ]
 
 
 def current_live_payload(case_dir: Path) -> case_status_service.CurrentPayload:

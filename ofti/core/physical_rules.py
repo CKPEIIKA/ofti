@@ -76,10 +76,7 @@ def field_sanity_payload(
 
 
 def parse_field_rules(values: list[str] | None) -> list[FieldRule]:
-    rules: list[FieldRule] = []
-    for value in values or []:
-        rules.append(_parse_field_rule(value))
-    return rules
+    return [_parse_field_rule(value) for value in values or []]
 
 
 def _parse_field_rule(value: str) -> FieldRule:

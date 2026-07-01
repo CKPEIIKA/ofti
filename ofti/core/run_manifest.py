@@ -655,11 +655,7 @@ def _ldd_resolved_path(line: str) -> str | None:
 def _iter_files(root: Path) -> list[Path]:
     if root.is_file():
         return [root]
-    rows: list[Path] = []
-    for path in sorted(root.rglob("*")):
-        if path.is_file():
-            rows.append(path)
-    return rows
+    return [path for path in sorted(root.rglob("*")) if path.is_file()]
 
 
 def _sha256_file(path: Path) -> str:

@@ -268,12 +268,8 @@ def campaign_compare_payload(
 
 
 def _campaign_glob_paths(root: Path, case_glob: str) -> list[Path]:
-    candidates: list[Path] = []
     pattern = case_glob.strip() or "*"
-    for path in root.glob(pattern):
-        if path.is_dir():
-            candidates.append(path.resolve())
-    return candidates
+    return [path.resolve() for path in root.glob(pattern) if path.is_dir()]
 
 
 def _campaign_summary_paths(root: Path, summary_csv: Path | None) -> list[Path]:

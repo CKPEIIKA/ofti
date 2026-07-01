@@ -72,9 +72,7 @@ def _required_dicts() -> list[Path]:
 
 
 def _check_required_dicts(case_path: Path, required: list[Path], errors: list[str]) -> None:
-    for rel in required:
-        if not (case_path / rel).is_file():
-            errors.append(f"Missing {rel}.")
+    errors.extend(f"Missing {rel}." for rel in required if not (case_path / rel).is_file())
 
 
 def _check_physics_dicts(case_path: Path, warnings: list[str]) -> None:
@@ -143,8 +141,7 @@ def _lint_case_dicts(case_path: Path) -> tuple[list[str], list[str]]:
                 include_heavy=include_heavy,
             )
             suppressed_noise = suppressed_noise or suppressed
-        for warn in result.warnings:
-            warnings.append(f"{rel}: {warn}")
+        warnings.extend(f"{rel}: {warn}" for warn in result.warnings)
         if include_heavy and suppressed_noise:
             warnings.append(f"{rel}: parser lint skipped for include-heavy/custom syntax.")
     return errors, warnings

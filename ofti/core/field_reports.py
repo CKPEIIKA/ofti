@@ -50,8 +50,7 @@ def _write_markdown_table(path: Path, rows: list[dict[str, Any]], *, title: str)
         "| " + " | ".join(keys) + " |",
         "| " + " | ".join("---" for _ in keys) + " |",
     ]
-    for row in rows:
-        lines.append("| " + " | ".join(_cell(row.get(key)) for key in keys) + " |")
+    lines.extend("| " + " | ".join(_cell(row.get(key)) for key in keys) + " |" for row in rows)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

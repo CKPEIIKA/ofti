@@ -331,8 +331,7 @@ def _build_top_level_index(
             except Exception:
                 skipped_files += 1
                 continue
-            for key in keys:
-                entries.append((rel, key))
+            entries.extend((rel, key) for key in keys)
 
     entries = _dedupe_entries(entries)
     with state.search_index_lock:
@@ -359,8 +358,7 @@ def _start_full_index_build(case_path: Path, state: AppState) -> None:
                     keys = _collect_search_keys(file_path)
                 except Exception:
                     continue
-                for key in keys:
-                    entries.append((rel, key))
+                entries.extend((rel, key) for key in keys)
             entries = _dedupe_entries(entries)
             with state.search_index_lock:
                 if state.search_index_case != case_root:

@@ -357,10 +357,7 @@ def _build_matrix_case_fallback(
 
 def _matrix_combinations(axes: list[dict[str, Any]]) -> list[list[tuple[dict[str, Any], str]]]:
     value_sets = [[str(value) for value in axis.get("values", [])] for axis in axes]
-    combos: list[list[tuple[dict[str, Any], str]]] = []
-    for values in itertools.product(*value_sets):
-        combos.append(list(zip(axes, values, strict=True)))
-    return combos
+    return [list(zip(axes, values, strict=True)) for values in itertools.product(*value_sets)]
 
 
 def _matrix_case_name(template_name: str, combo: list[tuple[dict[str, Any], str]]) -> str:
