@@ -81,7 +81,7 @@ def test_knife_registry_repair_cli_rebuilds_jobs(tmp_path: Path, capsys) -> None
 
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
-    assert payload["command"] == "knife registry"
+    assert payload["command"] == "knife registry repair"
     assert payload["rebuilt"] == 1
     assert load_jobs(case)[0]["id"] == job_id
 

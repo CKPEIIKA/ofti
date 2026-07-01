@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import tarfile
 from pathlib import Path
@@ -166,6 +167,50 @@ def test_case_bundle_rejects_non_empty_destination(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="destination is not empty"):
         case_bundle.extract_bundle(archive, destination)
+
+
+def _add_minimal_bundle_manifest(tar: tarfile.TarFile) -> None:
+    payload = {
+        "format": case_bundle.MANIFEST_FORMAT,
+        "format_version": case_bundle.MANIFEST_FORMAT_VERSION,
+        "case_name": "case",
+        "start_time": "0",
+        "mesh_policy": "auto",
+        "application": "simpleFoam",
+        "header_version": "unknown",
+        "files": [],
+        "warnings": [],
+    }
+    data = json.dumps(payload).encode()
+    info = tarfile.TarInfo(case_bundle.MANIFEST_PATH)
+    info.size = len(data)
+    tar.addfile(info, io.BytesIO(data))
+
+
+def test_case_bundle_rejects_unsafe_archive_members(tmp_path: Path) -> None:
+    archive = tmp_path / "unsafe.ofti.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        _add_minimal_bundle_manifest(tar)
+        info = tarfile.TarInfo("../escape")
+        payload = b"bad"
+        info.size = len(payload)
+        tar.addfile(info, io.BytesIO(payload))
+
+    with pytest.raises(ValueError, match="unsafe bundle path"):
+        case_bundle.extract_bundle(archive, tmp_path / "out")
+
+
+def test_case_bundle_rejects_archive_links(tmp_path: Path) -> None:
+    archive = tmp_path / "link.ofti.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        _add_minimal_bundle_manifest(tar)
+        info = tarfile.TarInfo("system/controlDict")
+        info.type = tarfile.SYMTYPE
+        info.linkname = "/etc/passwd"
+        tar.addfile(info)
+
+    with pytest.raises(ValueError, match="unsafe bundle link entry"):
+        case_bundle.extract_bundle(archive, tmp_path / "out")
 
 
 def test_bundle_cli_json_and_unbundle_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

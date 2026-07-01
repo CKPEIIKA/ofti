@@ -147,20 +147,32 @@ def extract_bundle(archive: Path, destination: Path, *, force: bool = False) -> 
     destination.mkdir(parents=True, exist_ok=True)
     with _open_bundle_tar_for_read(archive) as tar:
         for member in tar:
-            if member.isdir():
-                continue
-            rel = _safe_member_path(member.name)
-            if rel is None or rel.as_posix() == MANIFEST_PATH:
-                continue
-            target = destination / rel
-            target.parent.mkdir(parents=True, exist_ok=True)
-            source = tar.extractfile(member)
-            if source is None:
-                continue
-            target.write_bytes(source.read())
-            target.chmod(member.mode & 0o777)
+            _extract_bundle_member(tar, member, destination)
     verify_bundle_files(destination, manifest)
     return manifest
+
+
+def _extract_bundle_member(
+    tar: tarfile.TarFile,
+    member: tarfile.TarInfo,
+    destination: Path,
+) -> None:
+    if member.isdir():
+        return
+    if member.issym() or member.islnk():
+        raise ValueError(f"unsafe bundle link entry: {member.name}")
+    rel = _safe_member_path(member.name)
+    if rel is None:
+        raise ValueError(f"unsafe bundle path: {member.name}")
+    if rel.as_posix() == MANIFEST_PATH:
+        return
+    target = destination / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    source = tar.extractfile(member)
+    if source is None:
+        return
+    target.write_bytes(source.read())
+    target.chmod(member.mode & 0o777)
 
 
 def verify_bundle_files(case_dir: Path, manifest: BundleManifest) -> list[str]:

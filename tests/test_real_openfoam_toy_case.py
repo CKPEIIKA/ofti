@@ -207,6 +207,23 @@ def test_real_toy_case_tracked_start_status_and_stop(real_case: RealTutorialCase
     stopped = real_case.stop_all_solvers()
     assert stopped["selected"] >= 1
     wait_until(lambda: running_jobs(case) == 0, description="stopped solver")
+    all_jobs = watch_service.jobs_payload(case, include_all=True, kind="solver")
+    assert all(str(job.get("status")) != "running" for job in all_jobs["jobs"])
+
+
+def test_real_toy_case_dead_tracked_process_recovers_to_finished(real_case: RealTutorialCase) -> None:
+    case = real_case.case
+    pid = real_case.start_solver()
+    assert pid > 0
+    wait_until(lambda: running_jobs(case) >= 1, description="tracked solver discovery before kill")
+    try:
+        os.kill(pid, 15)
+        wait_until(lambda: running_jobs(case) == 0, timeout=12.0, description="dead tracked solver recovery")
+        jobs = watch_service.jobs_payload(case, include_all=True, kind="solver")
+        assert jobs["jobs"]
+        assert all(str(job.get("status")) != "running" for job in jobs["jobs"])
+    finally:
+        real_case.stop_all_solvers()
 
 
 def test_real_toy_case_adopts_untracked_solver_and_stops_it(real_case: RealTutorialCase) -> None:
@@ -345,6 +362,11 @@ def test_real_toy_case_sequential_queue_reports_terminal_outcomes(
     assert outcomes <= {"time", "criteria", "completed"}
     assert "crashed" not in outcomes
     assert payload["summary"]["outcomes"]
+    by_events = run_ops.queue_summary_payload(Path(str(payload["queue_events_path"])))
+    by_record = run_ops.queue_summary_payload(Path(str(payload["queue_path"])))
+    assert by_events["summary"]["finished"] == 2
+    assert by_record["summary"]["finished"] == 2
+    assert by_events["summary"]["outcomes"] == payload["summary"]["outcomes"]
 
 
 def test_real_toy_case_queue_continues_after_crashed_case(
@@ -381,6 +403,30 @@ def test_real_toy_case_queue_continues_after_crashed_case(
     assert payload["finished"][1]["returncode"] == 0
     assert payload["finished"][1]["outcome"] in {"time", "criteria", "completed"}
     assert payload["summary"]["outcomes"]["crashed"] == 1
+
+
+def test_real_toy_case_criteria_reads_explicit_runtime_evidence(real_case: RealTutorialCase) -> None:
+    case = real_case.case
+    solver, _command = run_ops.solver_command(case)
+    assert knife_service.set_entry_payload(case, "system/controlDict", "residualTolerance", "1e-1")["ok"] is True
+    smoke = run_ops.smoke_payload(
+        case,
+        solver=solver,
+        iterations=2,
+        timeout=60,
+        output_root=case,
+        in_place=True,
+        core_only=True,
+    )
+    assert smoke["ok"] is True, smoke
+    log_path = Path(str(smoke["log_path"]))
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write("\nrunTimeControl: residualTolerance satisfied\n")
+
+    criteria = knife_service.criteria_payload(case, lightweight=True, tail_bytes=256 * 1024)
+
+    assert criteria["criteria_count"] >= 1
+    assert criteria["passed"] >= 1
 
 
 
@@ -449,6 +495,22 @@ def test_real_toy_case_compare_reconstructed_parallel_to_serial(
     for row in compared["fields"]:
         assert row["count"] > 0
         assert row["nonfinite_pairs"] == 0
+
+
+def test_real_toy_case_prepare_parallel_extra_rank_profile(real_case: RealTutorialCase) -> None:
+    if not real_case.profile.supports_parallel:
+        pytest.skip(f"{real_case.profile.name} does not support parallel scenario")
+    ranks = int(os.environ.get("OFTI_REAL_EXTRA_RANKS", "3"))
+    if ranks < 2:
+        pytest.skip("OFTI_REAL_EXTRA_RANKS must be >= 2")
+
+    case = real_case.case
+    real_case.ensure_parallel_dict(ranks)
+    prepared = run_ops.prepare_parallel_case(case, parallel=ranks, clean_processors=True)
+
+    assert prepared["decompose_returncode"] == 0
+    for rank in range(ranks):
+        assert (case / f"processor{rank}").is_dir()
 
 def test_real_toy_case_parallel_prepare_run_stop_resize_plan(
     real_case: RealTutorialCase,

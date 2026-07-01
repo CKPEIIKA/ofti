@@ -20,6 +20,7 @@ def command_name(args: object) -> str:
         getattr(args, "group", None),
         getattr(args, "command", None),
         getattr(args, "manifest_command", None),
+        getattr(args, "registry_command", None),
         getattr(args, "campaign_command", None),
     ]
     return " ".join(str(part) for part in parts if part)

@@ -32,6 +32,23 @@ CLI JSON is a separate contract because it is command output, not stored state:
 Command-specific keys remain top-level in schema v1 for backwards compatibility.
 Scripts should require `--json` and should not parse table output.
 
+Schema v2 direction is intentionally stricter and should use a stable envelope:
+
+```json
+{
+  "schema_version": 2,
+  "command": "bundle",
+  "ok": true,
+  "warnings": [],
+  "errors": [],
+  "data": {}
+}
+```
+
+OFTI 0.9.x keeps v1 as the default output. New automation should still pin and
+check `schema_version`; v2 will require an explicit compatibility decision before
+becoming default.
+
 ## Common Rules
 
 - Timestamps in new persisted formats are UTC RFC3339 strings like

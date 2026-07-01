@@ -98,6 +98,9 @@ they emit machine output through the shared output contract
   a `schema_version` (currently `1`) and the `command` that produced it, so
   scripts can pin to a stable shape. Persisted JSON files use `format` and
   `format_version`; see `docs/formats.md`.
+- OFTI endorses a future CLI JSON schema v2 with a stable
+  `{ok, warnings, errors, data}` envelope. Schema v1 remains the compatible
+  default until an explicit breaking-output switch is introduced.
 - `--table` is optional aligned human output for structured read-only commands.
 - `--json` and `--table` are mutually exclusive.
 - `--easy-on-cpu` bounds log reads and slows polling to keep watch/status
