@@ -848,6 +848,28 @@ def test_run_queue_writes_durable_queue_record(
     assert record["summary"]["finished"] == 2
     assert record["summary"]["outcomes"]["time"] == 2
     assert record["completed_at"] is not None
+    events_path = Path(record["queue_events_path"])
+    assert events_path.is_file()
+    events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+    assert [row["event"] for row in events] == [
+        "created",
+        "started",
+        "finished",
+        "started",
+        "finished",
+        "completed",
+    ]
+    assert events[-1]["row"]["finished"] == 2
+    assert run.rebuild_queue_summary_from_events(events_path) == {
+        "planned": 2,
+        "started": 2,
+        "finished": 2,
+        "failed_to_start": 0,
+        "running": 0,
+        "outcomes": {"time": 2},
+        "events": 6,
+    }
+    assert run.queue_summary_payload(queue_path)["summary"]["finished"] == 2
 
 
 def test_run_status_set_payload_and_reason_helpers(
@@ -1064,6 +1086,20 @@ def test_run_state_reason_and_create_case_helpers(
     ) == "end_time_reached"
     assert run._stop_reason({"solver_error": None, "run_time_control": {"criteria": []}}, state="failed") == "criteria_failed"
     assert run._stop_reason({"solver_error": None, "run_time_control": {"criteria": []}}, state="stopped") == "stopped"
+
+
+def test_watch_and_current_expose_registry_corruption_warning(tmp_path: Path) -> None:
+    case = _make_case(tmp_path / "case")
+    jobs_path = case / ".ofti" / "jobs.json"
+    jobs_path.parent.mkdir()
+    jobs_path.write_text("{bad json", encoding="utf-8")
+
+    current = knife_service.current_payload(case, live=True)
+    jobs = watch_service.jobs_payload(case, include_all=True)
+
+    assert current["registry_warnings"]
+    assert "quarantined" in current["registry_warnings"][0]
+    assert jobs["registry_warnings"]
 
     combo = run._matrix_combo(
         [

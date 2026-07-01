@@ -1,10 +1,63 @@
 format = "ofti.config"
 format_version = 1
 
-[case]
-name = "cavity"
-default_solver = "icoFoam"
+# Global defaults only: keep case-specific solver/physics in the case files.
+fzf = "auto"
+use_runfunctions = true
+use_cleanfunctions = true
+enable_entry_cache = true
+enable_background_checks = true
+enable_background_entry_crawl = false
+validate_on_save = false
+openfoam_bashrc = "/opt/openfoam/etc/bashrc"
+courant_limit = 1.0
+example_paths = ["~/OpenFOAM", "/data/openfoam-cases"]
+
+[paths]
+case_root = "~/OpenFOAM"
+queue_root = "~/.local/state/ofti/queues"
+bundle_output_dir = "~/ofti-bundles"
+smoke_root = "~/.cache/ofti/smoke"
+manifest_root = "~/.local/state/ofti/manifests"
+snapshot_root = "~/.local/state/ofti/snapshots"
+tmp_root = "~/.cache/ofti/tmp"
 
 [run]
-default_parallel = 2
+default_parallel = 0
+poll_interval = 0.25
 log_tail_bytes = 262144
+
+[queue]
+backend = "process"
+max_parallel = 1
+poll_interval = 0.25
+root = "~/.local/state/ofti/queues"
+
+[bundle]
+mesh = "auto"
+time = "0"
+smoke_iterations = 5
+smoke_timeout = "60s"
+output_dir = "~/ofti-bundles"
+
+[watch]
+poll_interval = 0.25
+tail_bytes = 262144
+
+[colors]
+focus_fg = "black"
+focus_bg = "cyan"
+
+[keys]
+up = ["k"]
+down = ["j"]
+select = ["l", "\n"]
+back = ["h", "ESC"]
+quit = ["q"]
+help = ["?"]
+command = [":"]
+search = ["/"]
+global_search = ["s"]
+top = ["g"]
+bottom = ["G"]
+view = ["v"]

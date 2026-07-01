@@ -127,6 +127,19 @@ def load_jobs(case_path: Path) -> list[dict[str, object]]:
     return [job for job in data if isinstance(job, dict)]
 
 
+def registry_warnings(case_path: Path) -> list[str]:
+    warnings: list[str] = []
+    jobs_path = _jobs_path(case_path)
+    corrupt_files = sorted(jobs_path.parent.glob(f"{jobs_path.name}.corrupt.*"))
+    if corrupt_files:
+        latest = corrupt_files[-1]
+        warnings.append(
+            f"job registry corruption was quarantined as {latest.name}; "
+            "tracked jobs were rebuilt from run identities where possible",
+        )
+    return warnings
+
+
 def save_jobs(case_path: Path, jobs: list[dict[str, object]]) -> None:
     path = _jobs_path(case_path)
     path.parent.mkdir(parents=True, exist_ok=True)

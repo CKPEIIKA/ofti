@@ -1,4 +1,5 @@
 .ofti/parallel-resize/20260629T224504Z/
+  snapshot.json
   case_snapshot.json
   inputs/
     system/controlDict

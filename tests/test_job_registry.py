@@ -14,6 +14,7 @@ from ofti.tools.job_registry import (
     load_run_identities,
     refresh_jobs,
     register_job,
+    registry_warnings,
     save_jobs,
 )
 
@@ -57,6 +58,7 @@ def test_job_registry_loads_legacy_raw_list_and_quarantines_corruption(tmp_path:
     jobs_file.write_text("{bad json", encoding="utf-8")
     assert load_jobs(case_path) == []
     assert any(path.name.startswith("jobs.json.corrupt.") for path in jobs_file.parent.iterdir())
+    assert registry_warnings(case_path)
 
 
 def test_refresh_jobs_marks_dead_pid(tmp_path: Path) -> None:

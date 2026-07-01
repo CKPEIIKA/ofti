@@ -20,6 +20,47 @@ _TOML = _load_toml_module()
 
 
 @dataclass
+class PathDefaults:
+    case_root: str | None = None
+    queue_root: str | None = None
+    bundle_output_dir: str | None = None
+    smoke_root: str | None = None
+    manifest_root: str | None = None
+    snapshot_root: str | None = None
+    tmp_root: str | None = None
+
+
+@dataclass
+class RunDefaults:
+    default_parallel: int = 0
+    poll_interval: float = 0.25
+    log_tail_bytes: int = 262144
+
+
+@dataclass
+class QueueDefaults:
+    backend: str = "process"
+    max_parallel: int = 1
+    poll_interval: float = 0.25
+    root: str | None = None
+
+
+@dataclass
+class BundleDefaults:
+    mesh: str = "auto"
+    time: str = "0"
+    smoke_iterations: int = 5
+    smoke_timeout: str = "60s"
+    output_dir: str | None = None
+
+
+@dataclass
+class WatchDefaults:
+    poll_interval: float = 0.25
+    tail_bytes: int = 262144
+
+
+@dataclass
 class Config:
     fzf: str = "auto"
     use_runfunctions: bool = True
@@ -50,16 +91,29 @@ class Config:
         },
     )
     example_paths: list[str] = field(default_factory=list)
+    paths: PathDefaults = field(default_factory=PathDefaults)
+    run: RunDefaults = field(default_factory=RunDefaults)
+    queue: QueueDefaults = field(default_factory=QueueDefaults)
+    bundle: BundleDefaults = field(default_factory=BundleDefaults)
+    watch: WatchDefaults = field(default_factory=WatchDefaults)
 
 
 _CONFIG: Config | None = None
+_CONFIG_TOKEN: tuple[str, str] | None = None
 
 
 def get_config() -> Config:
-    global _CONFIG
-    if _CONFIG is None:
+    global _CONFIG, _CONFIG_TOKEN
+    token = _config_token()
+    if _CONFIG is None or token != _CONFIG_TOKEN:
         _CONFIG = _load_config()
+        _CONFIG_TOKEN = token
     return _CONFIG
+
+
+def _config_token() -> tuple[str, str]:
+    test_name = os.environ.get("PYTEST_CURRENT_TEST", "")
+    return (str(config_path()), test_name)
 
 
 def config_path() -> Path:
@@ -190,6 +244,12 @@ def _apply_file_config(cfg: Config, raw: dict[str, Any]) -> None:
                     example_paths.append(stripped)
         cfg.example_paths = example_paths
 
+    _apply_path_defaults(cfg.paths, _section(raw, "paths"))
+    _apply_run_defaults(cfg.run, _section(raw, "run"))
+    _apply_queue_defaults(cfg.queue, _section(raw, "queue"))
+    _apply_bundle_defaults(cfg.bundle, _section(raw, "bundle"))
+    _apply_watch_defaults(cfg.watch, _section(raw, "watch"))
+
 
 def _apply_env_overrides(cfg: Config) -> None:
     env_fzf = os.environ.get("OFTI_FZF")
@@ -230,3 +290,128 @@ def _apply_env_overrides(cfg: Config) -> None:
             if item.strip()
         ]
         cfg.example_paths = paths
+    _apply_env_path("OFTI_CASE_ROOT", cfg.paths, "case_root")
+    _apply_env_path("OFTI_QUEUE_ROOT", cfg.paths, "queue_root")
+    _apply_env_path("OFTI_BUNDLE_OUTPUT_DIR", cfg.paths, "bundle_output_dir")
+    _apply_env_path("OFTI_SMOKE_ROOT", cfg.paths, "smoke_root")
+    _apply_env_path("OFTI_MANIFEST_ROOT", cfg.paths, "manifest_root")
+    _apply_env_path("OFTI_SNAPSHOT_ROOT", cfg.paths, "snapshot_root")
+    _apply_env_path("OFTI_TMP_ROOT", cfg.paths, "tmp_root")
+    _apply_env_int("OFTI_DEFAULT_PARALLEL", cfg.run, "default_parallel")
+    _apply_env_float("OFTI_RUN_POLL_INTERVAL", cfg.run, "poll_interval")
+    _apply_env_int("OFTI_LOG_TAIL_BYTES", cfg.run, "log_tail_bytes")
+    _apply_env_int("OFTI_QUEUE_MAX_PARALLEL", cfg.queue, "max_parallel")
+    _apply_env_float("OFTI_QUEUE_POLL_INTERVAL", cfg.queue, "poll_interval")
+    _apply_env_str("OFTI_QUEUE_BACKEND", cfg.queue, "backend")
+    _apply_env_path("OFTI_QUEUE_ROOT", cfg.queue, "root")
+    _apply_env_str("OFTI_BUNDLE_MESH", cfg.bundle, "mesh")
+    _apply_env_str("OFTI_BUNDLE_TIME", cfg.bundle, "time")
+    _apply_env_int("OFTI_BUNDLE_SMOKE_ITERATIONS", cfg.bundle, "smoke_iterations")
+    _apply_env_str("OFTI_BUNDLE_SMOKE_TIMEOUT", cfg.bundle, "smoke_timeout")
+    _apply_env_path("OFTI_BUNDLE_OUTPUT_DIR", cfg.bundle, "output_dir")
+    _apply_env_float("OFTI_WATCH_POLL_INTERVAL", cfg.watch, "poll_interval")
+    _apply_env_int("OFTI_WATCH_TAIL_BYTES", cfg.watch, "tail_bytes")
+
+
+def _section(raw: dict[str, Any], name: str) -> dict[str, Any]:
+    value = raw.get(name)
+    return value if isinstance(value, dict) else {}
+
+
+def _string_value(raw: dict[str, Any], key: str) -> str | None:
+    value = raw.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _int_value(raw: dict[str, Any], key: str) -> int | None:
+    value = raw.get(key)
+    if isinstance(value, int):
+        return value
+    return None
+
+
+def _float_value(raw: dict[str, Any], key: str) -> float | None:
+    value = raw.get(key)
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _apply_path_defaults(cfg: PathDefaults, raw: dict[str, Any]) -> None:
+    for key in (
+        "case_root",
+        "queue_root",
+        "bundle_output_dir",
+        "smoke_root",
+        "manifest_root",
+        "snapshot_root",
+        "tmp_root",
+    ):
+        if value := _string_value(raw, key):
+            setattr(cfg, key, value)
+
+
+def _apply_run_defaults(cfg: RunDefaults, raw: dict[str, Any]) -> None:
+    if (value := _int_value(raw, "default_parallel")) is not None:
+        cfg.default_parallel = max(0, value)
+    if (value := _float_value(raw, "poll_interval")) is not None:
+        cfg.poll_interval = max(0.05, value)
+    if (value := _int_value(raw, "log_tail_bytes")) is not None:
+        cfg.log_tail_bytes = max(0, value)
+
+
+def _apply_queue_defaults(cfg: QueueDefaults, raw: dict[str, Any]) -> None:
+    if value := _string_value(raw, "backend"):
+        cfg.backend = value
+    if (value := _int_value(raw, "max_parallel")) is not None:
+        cfg.max_parallel = max(1, value)
+    if (value := _float_value(raw, "poll_interval")) is not None:
+        cfg.poll_interval = max(0.05, value)
+    if value := _string_value(raw, "root"):
+        cfg.root = value
+
+
+def _apply_bundle_defaults(cfg: BundleDefaults, raw: dict[str, Any]) -> None:
+    if value := _string_value(raw, "mesh"):
+        cfg.mesh = value
+    if value := _string_value(raw, "time"):
+        cfg.time = value
+    if (value := _int_value(raw, "smoke_iterations")) is not None:
+        cfg.smoke_iterations = max(1, value)
+    if value := _string_value(raw, "smoke_timeout"):
+        cfg.smoke_timeout = value
+    if value := _string_value(raw, "output_dir"):
+        cfg.output_dir = value
+
+
+def _apply_watch_defaults(cfg: WatchDefaults, raw: dict[str, Any]) -> None:
+    if (value := _float_value(raw, "poll_interval")) is not None:
+        cfg.poll_interval = max(0.05, value)
+    if (value := _int_value(raw, "tail_bytes")) is not None:
+        cfg.tail_bytes = max(0, value)
+
+
+def _apply_env_str(name: str, target: object, attr: str) -> None:
+    value = os.environ.get(name)
+    if value and value.strip():
+        setattr(target, attr, value.strip())
+
+
+def _apply_env_path(name: str, target: object, attr: str) -> None:
+    _apply_env_str(name, target, attr)
+
+
+def _apply_env_int(name: str, target: object, attr: str) -> None:
+    value = os.environ.get(name)
+    if value:
+        with contextlib.suppress(ValueError):
+            setattr(target, attr, int(value.strip()))
+
+
+def _apply_env_float(name: str, target: object, attr: str) -> None:
+    value = os.environ.get(name)
+    if value:
+        with contextlib.suppress(ValueError):
+            setattr(target, attr, float(value.strip()))

@@ -39,6 +39,8 @@ RunResult = runner_service.RunResult
 parse_duration_seconds = _run_smoke.parse_duration_seconds
 smoke_payload = _run_smoke.smoke_payload
 queue_payload = _run_queue.queue_payload
+rebuild_queue_summary_from_events = _run_queue.rebuild_queue_summary_from_events
+queue_summary_payload = _run_queue.queue_summary_payload
 
 
 class ToolCatalogPayload(TypedDict):

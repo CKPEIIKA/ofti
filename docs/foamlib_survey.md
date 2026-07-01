@@ -50,6 +50,12 @@ local introspection of the package and the current OFTI adapter.
 - `FoamCase.clean()` can clean logs/time/processor/mesh using heuristics or `Allclean`.
 - `FoamCase.TimeDirectory` exposes `cell_centers()` helper (reconstructed cases).
 
+OFTI does not expose `FoamCase.clean()` as a broad user-facing clean command.
+OFTI cleanup flags are deliberately narrow and explicit: processor-directory
+cleanup, log/runtime hygiene around run preparation, and safety snapshots before
+destructive workflows. This keeps foamlib's useful heuristic helper separate
+from OFTI's predictable CLI behavior.
+
 ## Still not covered by foamlib 1.5.7 / remaining TODO
 
 - Mesh stats (cells/faces/points) extraction without `checkMesh`: foamlib 1.5.7

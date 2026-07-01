@@ -23,6 +23,37 @@ openfoam_bashrc = "/opt/openfoam/etc/bashrc"
 courant_limit = 1.0
 example_paths = ["~/OpenFOAM", "/data/openfoam-cases"]
 
+[paths]
+case_root = "~/OpenFOAM"
+queue_root = "~/.local/state/ofti/queues"
+bundle_output_dir = "~/ofti-bundles"
+smoke_root = "~/.cache/ofti/smoke"
+manifest_root = "~/.local/state/ofti/manifests"
+snapshot_root = "~/.local/state/ofti/snapshots"
+tmp_root = "~/.cache/ofti/tmp"
+
+[run]
+default_parallel = 0
+poll_interval = 0.25
+log_tail_bytes = 262144
+
+[queue]
+backend = "process"
+max_parallel = 1
+poll_interval = 0.25
+root = "~/.local/state/ofti/queues"
+
+[bundle]
+mesh = "auto"
+time = "0"
+smoke_iterations = 5
+smoke_timeout = "60s"
+output_dir = "~/ofti-bundles"
+
+[watch]
+poll_interval = 0.25
+tail_bytes = 262144
+
 [colors]
 focus_fg = "black"
 focus_bg = "cyan"
@@ -45,7 +76,15 @@ view = ["v"]
 Environment overrides include `OFTI_FZF`, `OFTI_USE_RUNFUNCTIONS`,
 `OFTI_USE_CLEANFUNCTIONS`, `OFTI_ENABLE_ENTRY_CACHE`,
 `OFTI_ENABLE_BACKGROUND_CHECKS`, `OFTI_ENABLE_BACKGROUND_ENTRY_CRAWL`,
-`OFTI_BASHRC`, `OFTI_COURANT_LIMIT`, and `OFTI_EXAMPLE_PATHS`.
+`OFTI_BASHRC`, `OFTI_COURANT_LIMIT`, `OFTI_EXAMPLE_PATHS`,
+`OFTI_CASE_ROOT`, `OFTI_QUEUE_ROOT`, `OFTI_BUNDLE_OUTPUT_DIR`,
+`OFTI_SMOKE_ROOT`, `OFTI_MANIFEST_ROOT`, `OFTI_SNAPSHOT_ROOT`,
+`OFTI_TMP_ROOT`, `OFTI_DEFAULT_PARALLEL`, `OFTI_RUN_POLL_INTERVAL`,
+`OFTI_LOG_TAIL_BYTES`, `OFTI_QUEUE_MAX_PARALLEL`,
+`OFTI_QUEUE_POLL_INTERVAL`, `OFTI_QUEUE_BACKEND`, `OFTI_BUNDLE_MESH`,
+`OFTI_BUNDLE_TIME`, `OFTI_BUNDLE_SMOKE_ITERATIONS`,
+`OFTI_BUNDLE_SMOKE_TIMEOUT`, `OFTI_WATCH_POLL_INTERVAL`, and
+`OFTI_WATCH_TAIL_BYTES`.
 
 ### Case-local preset files
 
@@ -81,11 +120,14 @@ nu sweep: constant/transportProperties nu 1e-05,2e-05
 - `.ofti/tool_catalog.json`: optional exported tool catalog from
   `ofti run tool --list` helpers.
 - `.ofti/case_snapshot.json`: setup snapshot for reports and safety checks.
-- `.ofti/parallel-resize/*/case_snapshot.json`: snapshot created before
-  resize/restart operations.
+- `.ofti/parallel-resize/*/case_snapshot.json` and `snapshot.json`: setup
+  snapshot plus stable `ofti.snapshot` manifest created before resize/restart
+  operations.
 - `.ofti/queues/queue-*.json`: `ofti.queue-record` v1 durable queue
   plan/progress record with started, finished, failed-to-start, outcome, and
   stop reason rows.
+- `.ofti/queues/queue-*.events.jsonl`: append-only queue event journal; use
+  `ofti run queue-summary PATH` to rebuild counters from the journal.
 - `.ofti/smoke/*/summary.json` or `--out DIR/summary.json`: bounded smoke-test
   result with command, normalized controls, log path, times seen, and optional
   physical-check payload.

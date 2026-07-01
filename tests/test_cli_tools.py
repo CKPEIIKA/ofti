@@ -38,7 +38,7 @@ def test_run_group_help_lists_new_subcommands(capsys) -> None:
     code = cli_tools.main(["run"])
     out = capsys.readouterr().out
     assert code == 0
-    assert "{tool,solver,smoke,resize-parallel,matrix,parametric,queue,status}" in out
+    assert "{tool,solver,smoke,resize-parallel,matrix,parametric,queue,queue-summary,status}" in out
 
 
 def test_cli_tools_without_args_prints_short_help(capsys) -> None:

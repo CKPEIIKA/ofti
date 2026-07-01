@@ -245,6 +245,10 @@ _EXAMPLES_BY_PROG = {
         "ofti run parametric CASE --entry application --values simpleFoam,pisoFoam",
     ),
     "ofti run queue": _examples("ofti run queue CASE_A CASE_B --max-parallel 1 --json"),
+    "ofti run queue-summary": _examples(
+        "ofti run queue-summary .ofti/queues/queue-123.json",
+        "ofti run queue-summary .ofti/queues/queue-123.events.jsonl --json",
+    ),
     "ofti run status": _examples(
         "ofti run status --set CASE_SET --json",
         "ofti run status CASE --table",
@@ -283,16 +287,18 @@ _EXAMPLES_BY_PROG = {
         """\
         Examples:
           ofti bundle CASE --output case.ofti.tar.gz --mesh auto --time 0
-          ofti bundle CASE --output case.ofti.tar.gz --mesh include --table
+          ofti bundle CASE --output case.ofti.tar.gz --mesh include-polyMesh --table
           ofti bundle CASE --output case.ofti.tar.gz --smoke --smoke-timeout 60s
 
         Bundle intent:
           Create the smallest portable archive that can run elsewhere: system/,
           constant/, the selected start-time directory, Allrun/Allclean when
           present, OFTI metadata, and mesh files when --mesh auto/include needs
-          them. Logs, processor* directories, postProcessing, and caches are
-          excluded. Add --smoke to prove the archive can be unbundled and run
-          on the current host before copying it elsewhere.
+          them. The aliases include-polyMesh and none are accepted but v1
+          manifests keep canonical auto/include/exclude values. Logs,
+          processor* directories, postProcessing, and caches are excluded. Add
+          --smoke to prove the archive can be unbundled and run on the current
+          host before copying it elsewhere.
         """,
     ),
     "ofti unbundle": dedent(

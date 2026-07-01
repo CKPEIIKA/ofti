@@ -11,7 +11,19 @@
     "reason": {"type": "string"},
     "case_dir": {"type": "string"},
     "roots": {"type": "array", "items": {"type": "string"}},
-    "files": {"type": "array"}
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "size", "sha256"],
+        "properties": {
+          "path": {"type": "string"},
+          "size": {"type": "integer", "minimum": 0},
+          "sha256": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    }
   },
   "additionalProperties": true
 }

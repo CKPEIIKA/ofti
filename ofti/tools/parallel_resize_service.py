@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.case import read_number_of_subdomains, set_start_from_latest
-from ofti.core.case_snapshot import write_case_snapshot
+from ofti.core.case_snapshot import write_case_snapshot, write_snapshot_manifest
 from ofti.core.tool_dicts_service import apply_assignment_or_write
 from ofti.foam.times import latest_time
 from ofti.tools import case_source_service, knife_service, watch_service
@@ -128,8 +128,15 @@ def _snapshot_resize_inputs(
 ) -> None:
     snapshot_dir = _write_full_input_snapshot(case_path)
     case_snapshot = write_case_snapshot(case_path, snapshot_dir / "case_snapshot.json")
+    snapshot_manifest = write_snapshot_manifest(
+        snapshot_dir,
+        case_path,
+        reason="parallel-resize",
+        roots=_INPUT_ROOTS,
+    )
     payload["input_snapshot_path"] = str(snapshot_dir)
     payload["snapshot_path"] = str(case_snapshot)
+    payload["snapshot_manifest_path"] = str(snapshot_manifest)
     payload["rollback"] = _rollback_guidance(case_path, snapshot_dir)
     _mark_step(steps, "snapshot", "done", output=str(snapshot_dir))
 
@@ -154,6 +161,7 @@ def _parallel_resize_initial_payload(
         "pid": None,
         "log_path": None,
         "snapshot_path": None,
+        "snapshot_manifest_path": None,
         "input_snapshot_path": None,
         "rollback": None,
         "steps": steps,

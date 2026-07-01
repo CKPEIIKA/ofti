@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -68,6 +68,7 @@ def queue_payload(
         clean_processors=clean_processors,
     )
     _queue_write_record(payload)
+    _queue_write_event(payload, "created")
     if dry_run:
         return payload
     _run_queue_backend(
@@ -220,6 +221,7 @@ def _queue_payload_init(
     payload["queue_id"] = queue_record.stem
     payload["queue_root"] = str(queue_record.parent.parent.resolve())
     payload["queue_path"] = str(queue_record.resolve())
+    payload["queue_events_path"] = str(_queue_events_path(queue_record).resolve())
     payload["created_at"] = time.time()
     payload["updated_at"] = payload["created_at"]
     return payload
@@ -261,9 +263,11 @@ def _queue_sequential_process_backend(
                 log_path=Path(f"log.{runner_service.safe_name(name)}"),
             )
         except ValueError as exc:
-            payload["failed_to_start"].append({"case": str(case_path), "error": str(exc)})
+            failed_row = {"case": str(case_path), "error": str(exc)}
+            payload["failed_to_start"].append(failed_row)
             payload["ok"] = False
             _queue_write_record(payload)
+            _queue_write_event(payload, "failed_to_start", row=failed_row)
             continue
         started = {
             "case": str(case_path),
@@ -274,6 +278,7 @@ def _queue_sequential_process_backend(
         }
         payload["started"].append(started)
         _queue_write_record(payload)
+        _queue_write_event(payload, "started", row=started)
         status_row = _run().status_row_payload(case_path, lightweight=False)
         finished = _queue_finished_row(
             status_row,
@@ -283,6 +288,7 @@ def _queue_sequential_process_backend(
         )
         payload["finished"].append(finished)
         _queue_write_record(payload)
+        _queue_write_event(payload, "finished", row=finished)
         if int(result.returncode) != 0:
             payload["ok"] = False
             _queue_write_record(payload)
@@ -386,6 +392,7 @@ def _queue_start_background_row(
     }
     payload["started"].append(started)
     _queue_write_record(payload)
+    _queue_write_event(payload, "started", row=started)
     return started
 
 
@@ -408,9 +415,11 @@ def _prepare_queue_parallel_case(
 
 
 def _queue_failed_to_start(payload: dict[str, Any], case_path: Path, error: str) -> None:
-    payload["failed_to_start"].append({"case": str(case_path), "error": error})
+    row = {"case": str(case_path), "error": error}
+    payload["failed_to_start"].append(row)
     payload["ok"] = False
     _queue_write_record(payload)
+    _queue_write_event(payload, "failed_to_start", row=row)
 
 
 def _queue_poll_active(
@@ -424,10 +433,10 @@ def _queue_poll_active(
             still_active.append(row)
             continue
         status_row = _run().status_row_payload(Path(str(row["case"])))
-        payload["finished"].append(
-            _queue_finished_row(status_row, case=str(row["case"]), pid=pid, returncode=None),
-        )
+        finished = _queue_finished_row(status_row, case=str(row["case"]), pid=pid, returncode=None)
+        payload["finished"].append(finished)
         _queue_write_record(payload)
+        _queue_write_event(payload, "finished", row=finished)
     return still_active
 
 
@@ -458,7 +467,9 @@ def _queue_foamlib_backend(
         )
         if error is not None:
             for case_path in case_group:
-                payload["failed_to_start"].append({"case": str(case_path), "error": str(error)})
+                row = {"case": str(case_path), "error": str(error)}
+                payload["failed_to_start"].append(row)
+                _queue_write_event(payload, "failed_to_start", row=row)
             payload["ok"] = False
             _queue_write_record(payload)
             continue
@@ -481,14 +492,14 @@ def _queue_collect_foamlib_cases(
         case_path = Path(str(row["case"]))
         solver_cmd = str(row.get("solver_cmd") or "").strip()
         if not solver_cmd:
-            payload["failed_to_start"].append(
-                {
-                    "case": str(case_path),
-                    "error": "unable to resolve solver command for foamlib backend",
-                },
-            )
+            failed_row = {
+                "case": str(case_path),
+                "error": "unable to resolve solver command for foamlib backend",
+            }
+            payload["failed_to_start"].append(failed_row)
             payload["ok"] = False
             _queue_write_record(payload)
+            _queue_write_event(payload, "failed_to_start", row=failed_row)
             continue
         if prepare_parallel and parallel > 1:
             try:
@@ -499,22 +510,24 @@ def _queue_collect_foamlib_cases(
                     dry_run=False,
                 )
             except ValueError as exc:
-                payload["failed_to_start"].append({"case": str(case_path), "error": str(exc)})
+                failed_row = {"case": str(case_path), "error": str(exc)}
+                payload["failed_to_start"].append(failed_row)
                 payload["ok"] = False
                 _queue_write_record(payload)
+                _queue_write_event(payload, "failed_to_start", row=failed_row)
                 continue
         by_solver.setdefault(solver_cmd, []).append(case_path)
         ready_cases.append(case_path)
-        payload["started"].append(
-            {
-                "case": str(case_path),
-                "pid": None,
-                "name": str(row.get("name") or solver_cmd),
-                "log_path": "",
-                "started_at": time.time(),
-            },
-        )
+        started = {
+            "case": str(case_path),
+            "pid": None,
+            "name": str(row.get("name") or solver_cmd),
+            "log_path": "",
+            "started_at": time.time(),
+        }
+        payload["started"].append(started)
         _queue_write_record(payload)
+        _queue_write_event(payload, "started", row=started)
     return by_solver, ready_cases
 
 
@@ -556,6 +569,7 @@ def _queue_append_foamlib_finished(
         if str(case_path.resolve()) in failed_map:
             payload["ok"] = False
         _queue_write_record(payload)
+        _queue_write_event(payload, "finished", row=row)
 
 
 def _queue_fill_foamlib_missing_finished(
@@ -568,20 +582,20 @@ def _queue_fill_foamlib_missing_finished(
         key = str(case_path.resolve())
         if key in finished_cases:
             continue
-        payload["finished"].append(
-            {
-                "case": str(case_path),
-                "pid": None,
-                "state": "unknown",
-                "outcome": "unknown",
-                "returncode": None,
-                "stop_reason": "not finished",
-                "end_time": None,
-                "latest_time": None,
-                "eta_seconds": None,
-            },
-        )
+        row = {
+            "case": str(case_path),
+            "pid": None,
+            "state": "unknown",
+            "outcome": "unknown",
+            "returncode": None,
+            "stop_reason": "not finished",
+            "end_time": None,
+            "latest_time": None,
+            "eta_seconds": None,
+        }
+        payload["finished"].append(row)
         _queue_write_record(payload)
+        _queue_write_event(payload, "finished", row=row)
 
 
 def _queue_record_path(cases: list[Path], *, queue_root: Path | None) -> Path:
@@ -604,6 +618,10 @@ def _queue_common_root(cases: list[Path]) -> Path:
     return Path(parents[0]).resolve()
 
 
+def _queue_events_path(queue_record: Path) -> Path:
+    return queue_record.with_name(f"{queue_record.stem}.events.jsonl")
+
+
 def _queue_write_record(payload: dict[str, Any]) -> None:
     queue_path_raw = payload.get("queue_path")
     if not isinstance(queue_path_raw, str) or not queue_path_raw.strip():
@@ -617,10 +635,62 @@ def _queue_write_record(payload: dict[str, Any]) -> None:
     )
 
 
+def _queue_write_event(
+    payload: Mapping[str, Any],
+    event: str,
+    *,
+    row: Mapping[str, Any] | None = None,
+) -> None:
+    path_raw = payload.get("queue_events_path")
+    if not isinstance(path_raw, str) or not path_raw.strip():
+        return
+    path = Path(path_raw)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    event_payload = {
+        "format": "ofti.queue-event",
+        "format_version": 1,
+        "queue_id": payload.get("queue_id"),
+        "event": event,
+        "time": _queue_timestamp(time.time()),
+        "row": dict(row or {}),
+    }
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event_payload, sort_keys=True) + "\n")
+
+
 def _queue_mark_complete(payload: dict[str, Any]) -> None:
     payload["completed_at"] = time.time()
     payload["summary"] = _queue_summary(payload)
     _queue_write_record(payload)
+    _queue_write_event(payload, "completed", row=payload["summary"])
+
+
+def rebuild_queue_summary_from_events(events_path: Path) -> dict[str, Any]:
+    """Rebuild queue counters from the append-only queue event journal."""
+    events = _read_queue_events(events_path)
+    started = _event_rows(events, "started")
+    finished = _event_rows(events, "finished")
+    failed = _event_rows(events, "failed_to_start")
+    planned = _planned_count_from_events(events, started, finished, failed)
+    return {
+        "planned": planned,
+        "started": len(started),
+        "finished": len(finished),
+        "failed_to_start": len(failed),
+        "running": max(0, len(started) - len(finished)),
+        "outcomes": _queue_outcome_counts(finished),
+        "events": len(events),
+    }
+
+
+def queue_summary_payload(path: Path) -> dict[str, Any]:
+    """Return a queue summary rebuilt from a record or event journal path."""
+    events_path = _queue_summary_events_path(path)
+    return {
+        "ok": True,
+        "queue_events_path": str(events_path),
+        "summary": rebuild_queue_summary_from_events(events_path),
+    }
 
 
 def _queue_record_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -633,6 +703,7 @@ def _queue_record_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
         "queue_id": payload.get("queue_id"),
         "queue_root": payload.get("queue_root"),
         "queue_path": payload.get("queue_path"),
+        "queue_events_path": payload.get("queue_events_path"),
         "created_at": _queue_timestamp(payload.get("created_at")),
         "updated_at": _queue_timestamp(payload.get("updated_at")),
         "completed_at": _queue_timestamp(payload.get("completed_at")),
@@ -664,7 +735,7 @@ def _queue_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _queue_outcome_counts(rows: list[object]) -> dict[str, int]:
+def _queue_outcome_counts(rows: Sequence[object]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for row in rows:
         if not isinstance(row, dict):
@@ -673,6 +744,74 @@ def _queue_outcome_counts(rows: list[object]) -> dict[str, int]:
         outcome = str(data.get("outcome") or "unknown")
         counts[outcome] = counts.get(outcome, 0) + 1
     return counts
+
+
+def _read_queue_events(events_path: Path) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for line in events_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            events.append(cast("dict[str, Any]", payload))
+    return events
+
+
+def _queue_summary_events_path(path: Path) -> Path:
+    source = path.expanduser()
+    if source.suffix == ".jsonl":
+        return _existing_queue_events_path(source)
+    payload = _read_queue_record_object(source)
+    events_path = payload.get("queue_events_path")
+    if not isinstance(events_path, str) or not events_path.strip():
+        raise ValueError(f"queue record has no queue_events_path: {source}")
+    return _existing_queue_events_path(Path(events_path).expanduser())
+
+
+def _existing_queue_events_path(path: Path) -> Path:
+    if not path.is_file():
+        raise ValueError(f"queue event journal not found: {path}")
+    return path
+
+
+def _read_queue_record_object(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ValueError(f"queue record not found: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"queue record is not valid JSON: {path}") from exc
+    if isinstance(payload, dict):
+        return cast("dict[str, Any]", payload)
+    raise TypeError(f"queue record is not an object: {path}")
+
+
+def _event_rows(events: list[dict[str, Any]], event_name: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for event in events:
+        if event.get("event") != event_name:
+            continue
+        row = event.get("row")
+        rows.append(cast("dict[str, Any]", row) if isinstance(row, dict) else {})
+    return rows
+
+
+def _planned_count_from_events(
+    events: list[dict[str, Any]],
+    started: list[dict[str, Any]],
+    finished: list[dict[str, Any]],
+    failed: list[dict[str, Any]],
+) -> int:
+    for event in reversed(events):
+        if event.get("event") != "completed":
+            continue
+        row = event.get("row")
+        if isinstance(row, dict) and isinstance(row.get("planned"), int):
+            return int(row["planned"])
+    return max(len(started) + len(failed), len(finished) + len(failed))
 
 
 def _queue_timestamp(value: object) -> str | None:

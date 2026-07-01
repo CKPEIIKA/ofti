@@ -19,6 +19,7 @@ class CurrentPayload(TypedDict):
     jobs_running: int
     jobs_tracked_running: int
     jobs_registry_running: int
+    registry_warnings: list[str]
     runs: list[dict[str, Any]]
     process_visibility: dict[str, Any] | None
     untracked_processes: list[SolverProcessRow]
@@ -44,6 +45,7 @@ class CaseStatusPayload(TypedDict):
     jobs_running: int
     jobs_tracked_running: int
     jobs_registry_running: int
+    registry_warnings: list[str]
     jobs: list[dict[str, Any]]
     runs: list[dict[str, Any]]
     process_visibility: dict[str, Any] | None
@@ -84,6 +86,7 @@ def current_payload(
         "jobs_running": running_count,
         "jobs_tracked_running": len(active_jobs),
         "jobs_registry_running": len(active_jobs),
+        "registry_warnings": [],
         "runs": runs,
         "process_visibility": None,
         "untracked_processes": untracked,
@@ -166,6 +169,7 @@ def status_payload(
         "jobs_running": running_count,
         "jobs_tracked_running": len(active_jobs),
         "jobs_registry_running": len(active_jobs),
+        "registry_warnings": [],
         "jobs": jobs,
         "runs": runs,
         "process_visibility": None,

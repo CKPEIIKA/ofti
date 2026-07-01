@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from ofti.core import case_bundle, run_manifest
+from ofti.core import case_bundle, case_snapshot, run_manifest
 from ofti.tools import job_registry
 from ofti.tools.cli_tools import run_queue
 
@@ -15,6 +15,7 @@ PERSISTED_EXAMPLES = {
     "run-manifest.json": "ofti.run-manifest",
     "jobs.json": "ofti.jobs",
     "queue-record.json": "ofti.queue-record",
+    "snapshot.json": "ofti.snapshot",
 }
 
 EXAMPLE_SCHEMAS = {
@@ -22,6 +23,7 @@ EXAMPLE_SCHEMAS = {
     "run-manifest.json": "ofti.run-manifest.v1.schema.json",
     "jobs.json": "ofti.jobs.v1.schema.json",
     "queue-record.json": "ofti.queue-record.v1.schema.json",
+    "snapshot.json": "ofti.snapshot.v1.schema.json",
     "cli-json.json": "ofti.cli-envelope.v1.schema.json",
 }
 
@@ -117,6 +119,19 @@ def test_actual_persisted_writers_validate_against_published_schemas(tmp_path: P
             },
         ),
         "ofti.queue-record.v1.schema.json",
+    )
+
+    snapshot_dir = tmp_path / "snapshot"
+    (snapshot_dir / "inputs" / "system").mkdir(parents=True)
+    (snapshot_dir / "inputs" / "system" / "controlDict").write_text("application icoFoam;\n")
+    _validate_payload(
+        case_snapshot.build_snapshot_manifest(
+            snapshot_dir,
+            case,
+            reason="format-test",
+            roots=("system",),
+        ),
+        "ofti.snapshot.v1.schema.json",
     )
 
 

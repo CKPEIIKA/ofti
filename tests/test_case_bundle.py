@@ -67,6 +67,16 @@ def test_case_bundle_warns_when_mesh_is_excluded(tmp_path: Path) -> None:
     )
 
 
+def test_case_bundle_accepts_professional_mesh_policy_aliases(tmp_path: Path) -> None:
+    case = _case(tmp_path)
+
+    include_manifest = case_bundle.build_bundle_manifest(case, mesh="include-polyMesh")
+    exclude_manifest = case_bundle.build_bundle_manifest(case, mesh="none")
+
+    assert include_manifest.mesh_policy == "include"
+    assert exclude_manifest.mesh_policy == "exclude"
+
+
 def test_case_bundle_includes_local_referenced_include_files(tmp_path: Path) -> None:
     case = _case(tmp_path)
     (case / "include").mkdir()

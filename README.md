@@ -184,7 +184,7 @@ Portable case bundles:
 
 ```bash
 ofti bundle CASE --output case.ofti.tar.gz --mesh auto --time 0 --json
-ofti bundle CASE --output case.ofti.tar.gz --mesh include --table
+ofti bundle CASE --output case.ofti.tar.gz --mesh include-polyMesh --table
 ofti bundle CASE --output case.ofti.tar.gz --smoke --smoke-timeout 60s --json
 ofti unbundle case.ofti.tar.gz --to CASE_COPY --json
 ofti unbundle case.ofti.tar.gz --to CASE_COPY --table
@@ -194,8 +194,9 @@ ofti unbundle case.ofti.tar.gz --to CASE_COPY --run --background --json
 Bundles include `system/`, `constant/`, the selected start-time directory,
 local dictionary files referenced by `#include "..."`, `Allrun`/`Allclean`
 when present, `ofti.*` metadata, and `constant/polyMesh` when `--mesh include`
-or `--mesh auto` detects an existing mesh. They exclude logs, `processor*`,
-`postProcessing`, and caches by default. OFTI refuses to bundle cases missing
+or `--mesh auto` detects an existing mesh. `include-polyMesh` and `none` are
+accepted aliases; manifests keep canonical `auto|include|exclude`. They exclude
+logs, `processor*`, `postProcessing`, and caches by default. OFTI refuses to bundle cases missing
 `system/controlDict`, `constant/`, the selected start time, or a solver
 `application`, and prints warnings when the target host may need mesh generation
 or when a local include cannot be bundled. It also runs a lightweight syntax
@@ -298,6 +299,11 @@ Queue result rows include `returncode`, `state`, `outcome`, `stop_reason`,
 criterion completion when detectable, crashes, and unknown stopped cases. Use
 bounded parallel queueing only when the per-case final return code is less
 important than throughput:
+
+Generic queue tests cover portable end-time and crash outcomes. Stronger
+criterion-specific outcomes need explicit `runTimeControl` evidence in the case
+or an external real profile, because OpenFOAM solvers do not expose one uniform
+"criterion stopped" signal.
 
 ```bash
 ofti run queue --set CASE_SET --glob 'case_*' --max-parallel 6 --backend foamlib-async
@@ -426,6 +432,10 @@ Post‑Processing notes:
 
 User config TOML, case-local preset files, runtime JSON records, and bundle
 format rules are described in `docs/runtime-files.md` and `docs/formats.md`.
+The global TOML config is for portable defaults only: working roots, queue and
+bundle output roots, polling/tail limits, OpenFOAM bashrc, keybindings, and
+display preferences. Case-specific solver/physics remain in native OpenFOAM
+case files.
 
 ## FILES
 

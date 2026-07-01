@@ -21,7 +21,14 @@ from ofti.tools import (
 )
 from ofti.tools import watch_external as _watch_external
 from ofti.tools.helpers import with_bashrc
-from ofti.tools.job_registry import finish_job, load_jobs, refresh_jobs, register_job, save_jobs
+from ofti.tools.job_registry import (
+    finish_job,
+    load_jobs,
+    refresh_jobs,
+    register_job,
+    registry_warnings,
+    save_jobs,
+)
 
 # Re-export external-watch payloads (extracted to watch_external) so watch_service
 # stays the canonical surface for the CLI facade and tests.
@@ -72,6 +79,7 @@ def jobs_payload(
         "case": str(case_path),
         "count": len(shaped),
         "kind": selected_kind or "any",
+        "registry_warnings": registry_warnings(case_path),
         "jobs": shaped,
         "runs": runs,
     }

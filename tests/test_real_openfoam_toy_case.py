@@ -240,6 +240,52 @@ def test_real_toy_case_adopts_untracked_solver_and_stops_it(real_case: RealTutor
         wait_until(lambda: running_jobs(case) == 0, description="adopted solver stopped")
 
 
+def test_real_toy_case_adopts_raw_parallel_mpirun_as_one_tracked_run(
+    real_case: RealTutorialCase,
+) -> None:
+    if not real_case.profile.supports_parallel:
+        pytest.skip(f"{real_case.profile.name} does not support parallel scenario")
+    if shutil.which("mpirun") is None and shutil.which("mpiexec") is None:
+        pytest.skip("MPI launcher unavailable")
+
+    case = real_case.case
+    real_case.ensure_parallel_dict(2)
+    prepared = run_ops.prepare_parallel_case(case, parallel=2, clean_processors=True)
+    assert prepared["decompose_returncode"] == 0
+    display, command = run_ops.solver_command(case, parallel=2)
+    log_path = case / f"log.raw-{display}"
+    with log_path.open("a", encoding="utf-8", errors="ignore") as log:
+        process = subprocess.Popen(  # noqa: S603
+            command,
+            cwd=case,
+            stdout=log,
+            stderr=log,
+            text=True,
+            start_new_session=True,
+        )
+    try:
+        wait_until(lambda: _untracked_solver_count(case) >= 1, description="raw mpirun discovery")
+
+        adopted = knife_service.adopt_payload(case)
+
+        assert adopted["failed"] == []
+        assert len(adopted["adopted"]) == 1
+        row = adopted["adopted"][0]
+        assert row["role"] == "launcher"
+        assert int(row["pid"]) == process.pid
+        assert row["solver_pids"]
+        wait_until(lambda: running_jobs(case) >= 1, description="adopted mpirun registry")
+        jobs = watch_service.jobs_payload(case, include_all=False, kind="solver")
+        assert jobs["count"] == 1
+        job = jobs["jobs"][0]
+        assert int(job.get("launcher_pid") or 0) == process.pid
+        assert job.get("solver_pids")
+    finally:
+        stopped = real_case.stop_all_solvers()
+        if stopped["selected"] < 1 and process.poll() is None:
+            process.terminate()
+        wait_until(lambda: running_jobs(case) == 0, description="adopted mpirun stopped")
+
 def test_real_toy_case_runtime_write_now_snapshot_stops_solver(real_case: RealTutorialCase) -> None:
     case = real_case.case
     pid = real_case.start_solver()

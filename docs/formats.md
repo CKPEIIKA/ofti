@@ -53,16 +53,38 @@ Recommended header:
 format = "ofti.config"
 format_version = 1
 
-[case]
-name = "cavity"
-default_solver = "icoFoam"
+# Global defaults only. Keep case-specific solver/physics in OpenFOAM files.
+
+[paths]
+case_root = "~/OpenFOAM"
+queue_root = "~/.local/state/ofti/queues"
+bundle_output_dir = "~/ofti-bundles"
+smoke_root = "~/.cache/ofti/smoke"
+manifest_root = "~/.local/state/ofti/manifests"
+snapshot_root = "~/.local/state/ofti/snapshots"
+tmp_root = "~/.cache/ofti/tmp"
 
 [run]
-default_parallel = 2
+default_parallel = 0
+poll_interval = 0.25
 log_tail_bytes = 262144
 
-[plugins.hy2foam]
-enabled = true
+[queue]
+backend = "process"
+max_parallel = 1
+poll_interval = 0.25
+root = "~/.local/state/ofti/queues"
+
+[bundle]
+mesh = "auto"
+time = "0"
+smoke_iterations = 5
+smoke_timeout = "60s"
+output_dir = "~/ofti-bundles"
+
+[watch]
+poll_interval = 0.25
+tail_bytes = 262144
 ```
 
 Precedence is: CLI flags, environment variables, case-local `ofti.toml`, user
@@ -102,13 +124,17 @@ identity files.
 
 `.ofti/queues/queue-*.json` records a queue plan and progress summary. Current
 format: `ofti.queue-record` v1. Rows include stable state/outcome/stop-reason
-fields for automation.
+fields for automation. Each live queue also writes an append-only sibling
+`queue-*.events.jsonl` journal with `created`, `started`, `finished`,
+`failed_to_start`, and `completed` events so long campaign state can be audited
+or rebuilt from events if the summary is interrupted.
 
 ## Snapshots
 
-Snapshots under `.ofti/parallel-resize/` and other safety workflows are internal
-state. Stable external consumers should wait for `ofti.snapshot` manifests before
-relying on snapshot directory layout.
+Snapshots under `.ofti/parallel-resize/` and other safety workflows write a
+stable `ofti.snapshot` v1 manifest next to copied inputs. The directory layout
+remains an implementation detail; external consumers should consume the
+manifest.
 
 ## OpenFOAM Compatibility
 

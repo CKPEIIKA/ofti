@@ -130,6 +130,7 @@ def test_parallel_resize_executes_reconstruct_decompose_and_restart(
     snapshot = Path(str(payload["input_snapshot_path"]))
     assert (snapshot / "inputs" / "system" / "controlDict").is_file()
     assert (snapshot / "inputs" / "constant").is_dir()
+    assert Path(str(payload["snapshot_manifest_path"])).is_file()
     assert commands == [
         ["reconstructPar", "-time", "10"],
         ["decomposePar", "-force", "-latestTime"],

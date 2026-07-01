@@ -12,6 +12,7 @@ from ofti.app.cli_adapters.common import (
     solver_name_for_manifest,
     tail_bytes_with_cpu_mode,
 )
+from ofti.app.cli_adapters.run_queue_summary import build_queue_summary_parser
 from ofti.app.cli_help import (
     _add_easy_on_cpu_flag,
     _add_table_flag,
@@ -20,11 +21,30 @@ from ofti.app.cli_help import (
 )
 from ofti.core import run_manifest as manifest_ops
 from ofti.core.field_diagnostics import split_field_list
+from ofti.foam.config import get_config
 from ofti.tools import parallel_resize_service, table_render_service
 from ofti.tools.cli_tools import run as run_ops
 
 
+def _configured_path(value: str | None) -> Path | None:
+    if value is None or not value.strip():
+        return None
+    return Path(value).expanduser()
+
+
+def _choice_default(value: str, choices: tuple[str, ...], fallback: str) -> str:
+    return value if value in choices else fallback
+
+
 def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    cfg = get_config()
+    default_case_root = _configured_path(cfg.paths.case_root) or Path.cwd()
+    default_parallel = max(0, int(cfg.run.default_parallel))
+    default_queue_backend = _choice_default(
+        cfg.queue.backend,
+        ("process", "foamlib-async", "foamlib-slurm"),
+        "process",
+    )
     run = groups.add_parser(
         "run",
         help="Run solver/tools outside the TUI",
@@ -48,7 +68,7 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     solver = run_sub.add_parser("solver", help="Run the solver from controlDict application")
     solver.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
     solver.add_argument("--solver", default=None)
-    solver.add_argument("--parallel", type=int, default=0)
+    solver.add_argument("--parallel", type=int, default=default_parallel)
     solver.add_argument("--mpi", default=None, help="MPI launcher (default: mpirun/mpiexec)")
     solver.add_argument(
         "--sync-subdomains",
@@ -113,9 +133,14 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         default="300s",
         help="Wall timeout, e.g. 30s, 5m, 1h (default: 300s)",
     )
-    smoke.add_argument("--parallel", type=int, default=0)
+    smoke.add_argument("--parallel", type=int, default=default_parallel)
     smoke.add_argument("--mpi", default=None)
-    smoke.add_argument("--out", dest="output_root", type=Path, default=None)
+    smoke.add_argument(
+        "--out",
+        dest="output_root",
+        type=Path,
+        default=_configured_path(cfg.paths.smoke_root),
+    )
     smoke.add_argument("--in-place", action="store_true", help="Run in the source case")
     smoke.add_argument("--deltaT", dest="delta_t", type=float, default=None)
     smoke.add_argument(
@@ -234,10 +259,10 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     )
     matrix.add_argument("--output-root", type=Path, default=None)
     matrix.add_argument("--solver", default=None)
-    matrix.add_argument("--parallel", type=int, default=0)
+    matrix.add_argument("--parallel", type=int, default=default_parallel)
     matrix.add_argument("--mpi", default=None)
-    matrix.add_argument("--max-parallel", type=int, default=1)
-    matrix.add_argument("--poll-interval", type=float, default=0.25)
+    matrix.add_argument("--max-parallel", type=int, default=max(1, int(cfg.queue.max_parallel)))
+    matrix.add_argument("--poll-interval", type=float, default=float(cfg.queue.poll_interval))
     _add_easy_on_cpu_flag(matrix)
     matrix.add_argument(
         "--backend",
@@ -307,10 +332,10 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         help="Run solver queue for generated cases",
     )
     parametric.add_argument("--solver", default=None)
-    parametric.add_argument("--parallel", type=int, default=0)
+    parametric.add_argument("--parallel", type=int, default=default_parallel)
     parametric.add_argument("--mpi", default=None)
-    parametric.add_argument("--max-parallel", type=int, default=1)
-    parametric.add_argument("--poll-interval", type=float, default=0.25)
+    parametric.add_argument("--max-parallel", type=int, default=max(1, int(cfg.queue.max_parallel)))
+    parametric.add_argument("--poll-interval", type=float, default=float(cfg.queue.poll_interval))
     _add_easy_on_cpu_flag(parametric)
     parametric.add_argument(
         "--backend",
@@ -337,25 +362,31 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         help="Run a case set in batches with bounded parallelism",
     )
     queue.add_argument("cases", nargs="*", type=Path)
-    queue.add_argument("--set", dest="set_dir", default=Path.cwd(), type=Path)
+    queue.add_argument("--set", dest="set_dir", default=default_case_root, type=Path)
     queue.add_argument("--glob", default="*")
     queue.add_argument("--summary-csv", default=None, type=Path)
     queue.add_argument("--solver", default=None)
-    queue.add_argument("--parallel", type=int, default=0)
+    queue.add_argument("--parallel", type=int, default=default_parallel)
     queue.add_argument("--mpi", default=None)
     queue.add_argument(
         "--backend",
         choices=["process", "foamlib-async", "foamlib-slurm"],
-        default="process",
+        default=default_queue_backend,
         help="Queue backend for case launches",
     )
     queue.add_argument(
         "--max-parallel",
         type=int,
-        default=1,
-        help="Maximum cases running at once (default: 1, sequential queue)",
+        default=max(1, int(cfg.queue.max_parallel)),
+        help="Maximum cases running at once (default: config or 1, sequential queue)",
     )
-    queue.add_argument("--poll-interval", type=float, default=0.25)
+    queue.add_argument("--poll-interval", type=float, default=float(cfg.queue.poll_interval))
+    queue.add_argument(
+        "--queue-root",
+        default=_configured_path(cfg.queue.root or cfg.paths.queue_root),
+        type=Path,
+        help="Directory where .ofti/queues is written (default: common case root)",
+    )
     _add_easy_on_cpu_flag(queue)
     queue.add_argument(
         "--prepare-parallel",
@@ -371,6 +402,8 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     queue.add_argument("--dry-run", action="store_true")
     queue.add_argument("--json", action="store_true", help="Print result as JSON")
     queue.set_defaults(func=_run_queue)
+
+    build_queue_summary_parser(run_sub)
 
     status = run_sub.add_parser(
         "status",
@@ -538,7 +571,7 @@ def _run_queue(args: argparse.Namespace) -> int:
         backend=str(getattr(args, "backend", "process")),
         prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
         clean_processors=bool(getattr(args, "clean_processors", False)),
-        queue_root=None if explicit_cases else args.set_dir,
+        queue_root=_queue_root_for_args(args, explicit_cases=bool(explicit_cases)),
     )
     if bool(getattr(args, "json", False)):
         emit_json(payload, args)
@@ -563,6 +596,13 @@ def _run_queue(args: argparse.Namespace) -> int:
         for row in payload["failed_to_start"]:
             print(f"failed {row['case']}: {row['error']}")
     return 0 if bool(payload.get("ok", True)) else 1
+
+
+def _queue_root_for_args(args: argparse.Namespace, *, explicit_cases: bool) -> Path | None:
+    queue_root = getattr(args, "queue_root", None)
+    if queue_root is not None:
+        return cast("Path", queue_root)
+    return None if explicit_cases else cast("Path", args.set_dir)
 
 
 def _run_smoke(args: argparse.Namespace) -> int:

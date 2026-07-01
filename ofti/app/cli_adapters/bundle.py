@@ -8,12 +8,14 @@ from typing import cast
 from ofti.app.cli_help import emit_json
 from ofti.core import case_bundle
 from ofti.core import run_manifest as manifest_ops
+from ofti.foam.config import get_config
 from ofti.plugins import discover_plugins
 from ofti.tools import table_render_service
 from ofti.tools.cli_tools import run as run_ops
 
 
 def _build_bundle_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    cfg = get_config()
     bundle = groups.add_parser(
         "bundle",
         help="Create a portable case archive",
@@ -38,14 +40,19 @@ def _build_bundle_parser(groups: argparse._SubParsersAction[argparse.ArgumentPar
     )
     bundle.add_argument(
         "--mesh",
-        choices=("auto", "include", "exclude"),
-        default="auto",
+        choices=("auto", "include", "exclude", "include-polyMesh", "none"),
+        default=cfg.bundle.mesh,
         help=(
-            "Mesh handling: auto includes constant/polyMesh when present, "
-            "include requires carrying mesh files, exclude leaves mesh generation to target host"
+            "Mesh handling: auto includes constant/polyMesh when present; "
+            "include/include-polyMesh carries mesh files; exclude/none leaves "
+            "mesh generation to target host"
         ),
     )
-    bundle.add_argument("--time", default="0", help="Start time directory to include, or 'latest'")
+    bundle.add_argument(
+        "--time",
+        default=cfg.bundle.time,
+        help="Start time directory to include, or 'latest'",
+    )
     bundle.add_argument(
         "--smoke",
         action="store_true",
@@ -54,13 +61,13 @@ def _build_bundle_parser(groups: argparse._SubParsersAction[argparse.ArgumentPar
     bundle.add_argument(
         "--smoke-iterations",
         type=int,
-        default=5,
-        help="Iterations for --smoke validation (default: 5)",
+        default=cfg.bundle.smoke_iterations,
+        help="Iterations for --smoke validation (default: config or 5)",
     )
     bundle.add_argument(
         "--smoke-timeout",
-        default="60s",
-        help="Wall timeout for --smoke, e.g. 30s, 2m (default: 60s)",
+        default=cfg.bundle.smoke_timeout,
+        help="Wall timeout for --smoke, e.g. 30s, 2m (default: config or 60s)",
     )
     bundle.add_argument(
         "--smoke-solver",
@@ -110,11 +117,11 @@ def _build_bundle_parser(groups: argparse._SubParsersAction[argparse.ArgumentPar
 
 
 def _bundle_case(args: argparse.Namespace) -> int:
-    output = Path(args.output)
+    output = _configured_bundle_path(Path(args.output))
     manifest = case_bundle.create_bundle(
         Path(args.case_dir),
         output,
-        mesh=args.mesh,
+        mesh=str(args.mesh),
         time=args.time,
         extra_warnings=_plugin_bundle_hints(Path(args.case_dir)),
     )
@@ -137,7 +144,7 @@ def _bundle_case(args: argparse.Namespace) -> int:
     elif args.table:
         print("\n".join(table_render_service.bundle_table_lines(payload)))
     else:
-        print(f"Bundle written: {args.output}")
+        print(f"Bundle written: {output}")
         print(f"Files: {len(manifest.files)}")
         print(f"Start time: {manifest.start_time}")
         print(f"Solver: {manifest.application}")
@@ -150,7 +157,7 @@ def _bundle_case(args: argparse.Namespace) -> int:
 
 
 def _unbundle_case(args: argparse.Namespace) -> int:
-    destination = Path(args.destination)
+    destination = _configured_case_destination(Path(args.destination))
     manifest = case_bundle.extract_bundle(
         Path(args.archive),
         destination,
@@ -254,7 +261,25 @@ def _smoke_bundle_archive(args: argparse.Namespace, archive: Path) -> dict[str, 
 
 def _bundle_smoke_root(archive: Path) -> Path:
     safe_name = archive.name.replace("/", "_").replace(".tar.gz", "")
+    smoke_root = get_config().paths.smoke_root
+    if smoke_root:
+        return Path(smoke_root).expanduser() / f"{safe_name}-{time.time_ns()}"
     return archive.resolve().parent / ".ofti" / "bundle-smoke" / f"{safe_name}-{time.time_ns()}"
+
+
+def _configured_bundle_path(output: Path) -> Path:
+    cfg = get_config()
+    root = cfg.bundle.output_dir or cfg.paths.bundle_output_dir
+    if root and not output.is_absolute():
+        return Path(root).expanduser() / output
+    return output
+
+
+def _configured_case_destination(destination: Path) -> Path:
+    root = get_config().paths.case_root
+    if root and not destination.is_absolute():
+        return Path(root).expanduser() / destination
+    return destination
 
 
 def _print_bundle_smoke(payload: dict[str, object]) -> None:

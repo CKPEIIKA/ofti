@@ -60,15 +60,16 @@ class BundleManifest:
 def build_bundle_manifest(
     case_dir: Path,
     *,
-    mesh: MeshPolicy = "auto",
+    mesh: str = "auto",
     time: str = "0",
     extra_warnings: Iterable[str] = (),
 ) -> BundleManifest:
     """Return the deterministic manifest for files selected from ``case_dir``."""
+    mesh_policy = _mesh_policy(mesh)
     root = case_dir.resolve()
     selected_time = _selected_time(root, time)
-    selected_files = select_bundle_files(root, mesh=mesh, time=selected_time)
-    warnings = _validate_bundle_case(root, selected_time, mesh=mesh)
+    selected_files = select_bundle_files(root, mesh=mesh_policy, time=selected_time)
+    warnings = _validate_bundle_case(root, selected_time, mesh=mesh_policy)
     warnings += _include_warnings(root, selected_files)
     warnings += _syntax_warnings(root, selected_files)
     warnings += tuple(extra_warnings)
@@ -79,7 +80,7 @@ def build_bundle_manifest(
         version=MANIFEST_FORMAT_VERSION,
         case_name=root.name,
         start_time=selected_time,
-        mesh_policy=mesh,
+        mesh_policy=mesh_policy,
         application=application,
         header_version=detect_case_header_version(root),
         files=files,
@@ -90,20 +91,21 @@ def build_bundle_manifest(
 def select_bundle_files(
     case_dir: Path,
     *,
-    mesh: MeshPolicy = "auto",
+    mesh: str = "auto",
     time: str = "0",
 ) -> list[Path]:
     """Select relative case files for a portable minimal archive."""
+    mesh_policy = _mesh_policy(mesh)
     root = case_dir.resolve()
     if not root.is_dir():
         raise ValueError(f"case does not exist: {case_dir}")
     rels: set[Path] = set()
     for dirname in ("system", "constant", time):
-        _add_tree(rels, root, Path(dirname), mesh=mesh)
+        _add_tree(rels, root, Path(dirname), mesh=mesh_policy)
     _add_root_files(rels, root)
     _add_ofti_metadata(rels, root)
-    _add_mesh_tree(rels, root, mesh)
-    _add_referenced_include_files(rels, root, mesh=mesh)
+    _add_mesh_tree(rels, root, mesh_policy)
+    _add_referenced_include_files(rels, root, mesh=mesh_policy)
     return sorted(rels, key=lambda rel: rel.as_posix())
 
 
@@ -111,7 +113,7 @@ def create_bundle(
     case_dir: Path,
     output: Path,
     *,
-    mesh: MeshPolicy = "auto",
+    mesh: str = "auto",
     time: str = "0",
     extra_warnings: Iterable[str] = (),
 ) -> BundleManifest:
@@ -393,8 +395,16 @@ def _missing_required_paths(case_dir: Path, time: str) -> list[str]:
 
 
 def _mesh_policy(value: str) -> MeshPolicy:
-    if value in {"auto", "include", "exclude"}:
-        return cast(MeshPolicy, value)
+    normalized = {
+        "auto": "auto",
+        "include": "include",
+        "include-polymesh": "include",
+        "include-polyMesh": "include",
+        "exclude": "exclude",
+        "none": "exclude",
+    }.get(value.strip())
+    if normalized in {"auto", "include", "exclude"}:
+        return cast(MeshPolicy, normalized)
     return "auto"
 
 

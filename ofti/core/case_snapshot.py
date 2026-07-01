@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,9 @@ from ofti.core.mesh_info import boundary_summary, mesh_counts
 from ofti.core.times import latest_time
 from ofti.foam.openfoam_env import detect_openfoam_version
 from ofti.foamlib import adapter as foamlib_integration
+
+SNAPSHOT_FORMAT = "ofti.snapshot"
+SNAPSHOT_FORMAT_VERSION = 1
 
 
 def build_case_snapshot(case_path: Path) -> dict[str, Any]:
@@ -61,6 +66,42 @@ def write_case_snapshot(case_path: Path, output: Path | None = None) -> Path:
     return output
 
 
+def build_snapshot_manifest(
+    snapshot_dir: Path,
+    case_path: Path,
+    *,
+    reason: str,
+    roots: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Build a stable manifest for an OFTI safety snapshot directory."""
+    root = snapshot_dir.resolve()
+    return {
+        "format": SNAPSHOT_FORMAT,
+        "format_version": SNAPSHOT_FORMAT_VERSION,
+        "created_at": _snapshot_timestamp(),
+        "reason": reason,
+        "case_dir": str(case_path),
+        "roots": list(roots),
+        "files": _snapshot_files(root),
+    }
+
+
+def write_snapshot_manifest(
+    snapshot_dir: Path,
+    case_path: Path,
+    *,
+    reason: str,
+    roots: tuple[str, ...] = (),
+    output: Path | None = None,
+) -> Path:
+    if output is None:
+        output = snapshot_dir / "snapshot.json"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    payload = build_snapshot_manifest(snapshot_dir, case_path, reason=reason, roots=roots)
+    output.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return output
+
+
 def _field_snapshot(case_path: Path) -> dict[str, dict[str, str]]:
     fields: dict[str, dict[str, str]] = {}
     for name in list_field_files(case_path):
@@ -102,3 +143,27 @@ def _dictionary_snapshot(case_path: Path) -> dict[str, dict[str, object]]:
         if data:
             snapshot[relative.as_posix()] = data
     return snapshot
+
+
+def _snapshot_files(snapshot_dir: Path) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    if not snapshot_dir.exists():
+        return rows
+    for path in sorted(snapshot_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(snapshot_dir).as_posix()
+        rows.append({"path": rel, "size": path.stat().st_size, "sha256": _sha256(path)})
+    return rows
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _snapshot_timestamp() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")

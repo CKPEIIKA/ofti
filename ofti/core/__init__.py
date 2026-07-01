@@ -16,7 +16,12 @@ from .case_headers import (
     parse_foamfile_block_version,
     parse_header_comment_version,
 )
-from .case_snapshot import build_case_snapshot, write_case_snapshot
+from .case_snapshot import (
+    build_case_snapshot,
+    build_snapshot_manifest,
+    write_case_snapshot,
+    write_snapshot_manifest,
+)
 from .dict_compare import compare_case_dicts
 from .entries import Entry, autoformat_value
 from .mesh_info import mesh_counts
@@ -47,6 +52,7 @@ __all__ = [
     "autoformat_value",
     "build_case_snapshot",
     "build_run_manifest",
+    "build_snapshot_manifest",
     "case_fingerprint",
     "case_header_candidates",
     "collect_case_inputs",
@@ -79,6 +85,7 @@ __all__ = [
     "write_case_run_manifest",
     "write_case_snapshot",
     "write_run_manifest",
+    "write_snapshot_manifest",
 ]
 
 # Compatibility aliases for callers that imported the old receipt API.

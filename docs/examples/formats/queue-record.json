@@ -26,7 +26,9 @@
   "planned": [
     {
       "case": "/work/cavity",
-      "command": ["icoFoam"]
+      "command": [
+        "icoFoam"
+      ]
     }
   ],
   "started": [],
@@ -40,5 +42,6 @@
       "stop_reason": "end_time_reached"
     }
   ],
-  "failed_to_start": []
+  "failed_to_start": [],
+  "queue_events_path": "/work/.ofti/queues/queue-1779624400.events.jsonl"
 }

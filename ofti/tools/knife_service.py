@@ -32,7 +32,7 @@ from ofti.tools import (
 from ofti.tools import knife_runtime as _runtime
 from ofti.tools import knife_stop as _stop
 from ofti.tools.case_doctor import build_case_doctor_report
-from ofti.tools.job_registry import refresh_jobs, register_job
+from ofti.tools.job_registry import refresh_jobs, register_job, registry_warnings
 from ofti.tools.knife_process import (
     _path_within,
     _running_job_pids,
@@ -85,6 +85,7 @@ def current_payload(case_dir: Path, *, live: bool = False) -> case_status_servic
     )
     warning = process_scan_service.proc_access_warning()
     case_status_service.attach_process_visibility(cast("dict[str, Any]", payload), warning)
+    cast("dict[str, Any]", payload)["registry_warnings"] = registry_warnings(case_path)
     return payload
 
 
@@ -149,6 +150,7 @@ def current_scope_payload(
         "jobs_registry_running": len(active_jobs),
         "runs": case_status_service.canonical_run_rows(scope_root, active_jobs, untracked),
         "process_visibility": None,
+        "registry_warnings": _scope_registry_warnings(case_paths),
         "untracked_processes": untracked,
     }
     case_status_service.attach_process_visibility(
@@ -156,6 +158,14 @@ def current_scope_payload(
         process_scan_service.proc_access_warning(),
     )
     return payload
+
+
+def _scope_registry_warnings(case_paths: list[Path]) -> list[str]:
+    warnings: list[str] = []
+    for case_path in case_paths:
+        for warning in registry_warnings(case_path):
+            warnings.append(f"{case_path}: {warning}")
+    return warnings
 
 
 def current_live_payload(case_dir: Path) -> case_status_service.CurrentPayload:
@@ -649,6 +659,7 @@ def status_payload(
     )
     warning = process_scan_service.proc_access_warning()
     case_status_service.attach_process_visibility(cast("dict[str, Any]", payload), warning)
+    cast("dict[str, Any]", payload)["registry_warnings"] = registry_warnings(case_path)
     return payload
 
 

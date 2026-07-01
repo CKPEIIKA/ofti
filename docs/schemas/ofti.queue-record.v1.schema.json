@@ -8,6 +8,7 @@
     "format": {"const": "ofti.queue-record"},
     "format_version": {"const": 1},
     "queue_id": {"type": ["string", "null"]},
+    "queue_events_path": {"type": ["string", "null"]},
     "backend": {"type": ["string", "null"]},
     "ok": {"type": "boolean"},
     "planned": {"type": "array"},

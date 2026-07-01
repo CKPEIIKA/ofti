@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from ofti.core.case_snapshot import build_case_snapshot, write_case_snapshot
+from ofti.core.case_snapshot import (
+    build_case_snapshot,
+    build_snapshot_manifest,
+    write_case_snapshot,
+    write_snapshot_manifest,
+)
 
 
 def _write_boundary(path: Path) -> None:
@@ -88,3 +94,28 @@ def test_write_case_snapshot(tmp_path: Path) -> None:
     output = write_case_snapshot(case_dir)
     assert output.is_file()
     assert "case_snapshot.json" in output.name
+
+
+def test_write_snapshot_manifest(tmp_path: Path) -> None:
+    case_dir = tmp_path / "case"
+    snapshot_dir = tmp_path / "snap"
+    inputs = snapshot_dir / "inputs"
+    (inputs / "system").mkdir(parents=True)
+    (inputs / "system" / "controlDict").write_text("application simpleFoam;\n")
+
+    manifest = build_snapshot_manifest(
+        snapshot_dir,
+        case_dir,
+        reason="parallel-resize",
+        roots=("system",),
+    )
+    assert manifest["format"] == "ofti.snapshot"
+    assert manifest["format_version"] == 1
+    assert manifest["reason"] == "parallel-resize"
+    assert manifest["roots"] == ["system"]
+    assert manifest["files"][0]["path"] == "inputs/system/controlDict"
+
+    output = write_snapshot_manifest(snapshot_dir, case_dir, reason="parallel-resize", roots=("system",))
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["format"] == "ofti.snapshot"
+    assert output.name == "snapshot.json"
