@@ -8,11 +8,13 @@ from typing import cast
 import pytest
 
 from ofti.app import cli_tools
+from ofti.app.cli_adapters import knife as knife_adapter
 from ofti.core.command_spec import CommandSpec
 from ofti.plugins import PluginRegistry, ProfileMatch, SpecCommandProvider
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import watch as watch_ops
 from ofti.tools.cli_tools.run import RunResult
+from ofti.tools.job_registry import load_jobs, register_job, save_jobs
 
 
 def _make_case(path: Path, solver: str = "simpleFoam") -> Path:
@@ -68,6 +70,41 @@ def test_run_queue_summary_cli_json_from_record(tmp_path: Path, capsys) -> None:
     assert code == 0
     assert payload["command"] == "run queue-summary"
     assert payload["summary"]["failed_to_start"] == 1
+
+
+def test_knife_registry_repair_cli_rebuilds_jobs(tmp_path: Path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+    job_id = register_job(case, "solver", 99999, "simpleFoam", case / "log.simpleFoam")
+    save_jobs(case, [])
+
+    code = cli_tools.main(["knife", "registry", "repair", str(case), "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["command"] == "knife registry"
+    assert payload["rebuilt"] == 1
+    assert load_jobs(case)[0]["id"] == job_id
+
+
+def test_knife_current_uses_tree_scope_for_non_case_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "cases"
+    root.mkdir()
+    calls: list[tuple[Path, bool, bool]] = []
+
+    def _scope(case_dir: Path, *, live: bool, recursive: bool) -> dict[str, object]:
+        calls.append((case_dir, live, recursive))
+        return {"case": str(case_dir), "scope": "tree", "solver_error": None, "solver": None, "jobs": []}
+
+    monkeypatch.setattr(knife_adapter.knife_ops, "current_scope_payload", _scope)
+
+    args = argparse.Namespace(case_dir=Path.cwd(), root=root, recursive=False, live=False)
+    payload = knife_adapter._knife_current_payload(args)
+
+    assert payload["scope"] == "tree"
+    assert calls == [(root, False, False)]
 
 
 def _write_queue_event(path: Path, event: str, row: dict[str, object]) -> None:

@@ -139,6 +139,33 @@ def test_restore_manifest_copies_case_inputs(
     assert payload["selected_roots"] == ["system", "constant", "0"]
 
 
+def test_restore_manifest_rejects_unsafe_inputs_copy_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    monkeypatch.chdir(tmp_path)
+    manifest_path = write_case_run_manifest(
+        case,
+        name="simpleFoam",
+        command="simpleFoam",
+        background=False,
+        detached=False,
+        parallel=0,
+        mpi=None,
+        sync_subdomains=True,
+        prepare_parallel=True,
+        clean_processors=False,
+        record_inputs_copy=True,
+    )
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["inputs"]["inputs_copy_path"] = "../inputs"
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsafe recorded inputs directory path"):
+        restore_run_manifest(manifest_path, tmp_path / "restored-unsafe")
+
+
 def test_restore_manifest_only_selected_roots(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

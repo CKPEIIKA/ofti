@@ -262,6 +262,13 @@ Adopted runs are normalized into the same run registry used by `watch jobs`,
 that live process discovery may be incomplete instead of silently treating the
 registry as empty.
 
+If `.ofti/jobs.json` is lost or quarantined, rebuild it from durable run
+identity files:
+
+```bash
+ofti knife registry repair CASE --json
+```
+
 Safe parallel launcher defaults (can be disabled explicitly):
 
 ```bash

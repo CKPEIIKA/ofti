@@ -15,6 +15,7 @@ from ofti.tools.job_registry import (
     refresh_jobs,
     register_job,
     registry_warnings,
+    repair_jobs_registry,
     save_jobs,
 )
 
@@ -100,6 +101,25 @@ def test_refresh_jobs_rebuilds_registry_after_corruption(
     assert rebuilt["format"] == "ofti.jobs"
     assert rebuilt["jobs"][0]["id"] == job_id
     assert registry_warnings(case_path)
+
+
+def test_repair_jobs_registry_recovers_non_live_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case_path = tmp_path / "case"
+    case_path.mkdir()
+    job_id = register_job(case_path, "solver", 12345, "simpleFoam", case_path / "log.simpleFoam")
+    save_jobs(case_path, [])
+    monkeypatch.setattr(job_registry, "_pid_running", lambda _pid: False)
+
+    payload = repair_jobs_registry(case_path)
+
+    assert payload["rebuilt"] == 1
+    repaired = load_jobs(case_path)
+    assert repaired[0]["id"] == job_id
+    assert repaired[0]["status"] == "finished"
+    assert repaired[0]["recovered_stale"] is True
 
 
 def test_refresh_jobs_marks_dead_pid(tmp_path: Path) -> None:

@@ -116,6 +116,8 @@ nu sweep: constant/transportProperties nu 1e-05,2e-05
   reads the legacy raw-list layout.
 - `.ofti/runs/*.json` and `.ofti/current_run.json`: normalized run identities;
   OFTI uses them to collapse launcher/wrapper/rank processes into one run view.
+  Use `ofti knife registry repair CASE` to rebuild `.ofti/jobs.json` from these
+  identities after manual edits, file loss, or corruption quarantine.
 - `.ofti/watch.json`: persisted watch output profile and external watcher state.
 - `.ofti/tool_catalog.json`: optional exported tool catalog from
   `ofti run tool --list` helpers.

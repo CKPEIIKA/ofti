@@ -14,6 +14,7 @@ doctor_exit_code = service.doctor_exit_code
 current_payload = service.current_payload
 current_scope_payload = service.current_scope_payload
 current_live_payload = service.current_live_payload
+registry_repair_payload = service.registry_repair_payload
 adopt_payload = service.adopt_payload
 compare_payload = service.compare_payload
 physical_payload = service.physical_payload

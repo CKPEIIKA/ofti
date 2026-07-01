@@ -79,6 +79,21 @@ def refresh_jobs(case_path: Path) -> list[dict[str, object]]:
     return jobs
 
 
+def repair_jobs_registry(case_path: Path) -> dict[str, object]:
+    identities = load_run_identities(case_path)
+    jobs = [_historical_job_from_run_identity(identity) for identity in identities]
+    jobs = sorted(jobs, key=_job_sort_key)
+    save_jobs(case_path, jobs)
+    return {
+        "case": str(case_path.expanduser().resolve()),
+        "jobs_path": str(_jobs_path(case_path).resolve()),
+        "identities": len(identities),
+        "jobs": jobs,
+        "rebuilt": len(jobs),
+        "ok": True,
+    }
+
+
 def _recover_running_identities(case_path: Path, jobs: list[dict[str, object]]) -> bool:
     updated = False
     known_ids = {str(job.get("id")) for job in jobs}
@@ -272,6 +287,20 @@ def _job_from_run_identity(identity: dict[str, object]) -> dict[str, object]:
         if key in identity:
             job[key] = identity[key]
     return job
+
+
+def _historical_job_from_run_identity(identity: dict[str, object]) -> dict[str, object]:
+    job = _job_from_run_identity(identity)
+    if job.get("status") in {"running", "paused"} and not _identity_running(identity):
+        job["status"] = "finished"
+        job["ended_at"] = job.get("ended_at") or job.get("started_at")
+        job["recovered_stale"] = True
+    return job
+
+
+def _job_sort_key(job: Mapping[str, object]) -> tuple[float, str]:
+    started = _float_or_none(job.get("started_at")) or 0.0
+    return (started, str(job.get("id") or ""))
 
 
 def _identity_running(identity: dict[str, object]) -> bool:

@@ -32,6 +32,7 @@ from ofti.app.cli_adapters.knife import (
     _knife_manifest_write,
     _knife_physical,
     _knife_preflight,
+    _knife_registry_repair,
     _knife_report,
     _knife_set,
     _knife_stability,
@@ -270,6 +271,17 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     )
     manifest_restore.add_argument("--json", action="store_true")
     manifest_restore.set_defaults(func=_knife_manifest_restore)
+
+    registry = knife_sub.add_parser("registry", help="Inspect and repair OFTI runtime registries")
+    registry.set_defaults(func=_help_handler(registry))
+    registry_sub = registry.add_subparsers(dest="registry_command", required=False)
+    registry_repair = registry_sub.add_parser(
+        "repair",
+        help="Rebuild .ofti/jobs.json from .ofti/runs/*.json identities",
+    )
+    registry_repair.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    registry_repair.add_argument("--json", action="store_true")
+    registry_repair.set_defaults(func=_knife_registry_repair)
 
     initials = knife_sub.add_parser(
         "initials",

@@ -405,6 +405,18 @@ def _knife_manifest_restore(args: argparse.Namespace) -> int:
             print(f"- {item}")
     return 0 if bool(payload.get("ok")) else 1
 
+
+def _knife_registry_repair(args: argparse.Namespace) -> int:
+    payload = knife_ops.registry_repair_payload(args.case_dir)
+    if args.json:
+        emit_json(payload, args)
+        return 0
+    print(f"case={payload['case']}")
+    print(f"jobs_path={payload['jobs_path']}")
+    print(f"identities={payload['identities']}")
+    print(f"rebuilt={payload['rebuilt']}")
+    return 0
+
 def _knife_initials(args: argparse.Namespace) -> int:
     payload = knife_ops.initials_payload(args.case_dir)
     if args.json:
@@ -516,6 +528,11 @@ def _print_knife_current(payload: Mapping[str, object]) -> None:
         print("solver=<mixed>")
     if payload.get("proc_access_warning"):
         print(f"proc_access_warning={payload['proc_access_warning']}")
+    registry_warnings = _object_sequence(payload.get("registry_warnings"))
+    if registry_warnings:
+        print("registry_warnings:")
+        for warning in registry_warnings:
+            print(f"- {warning}")
     visibility = _object_mapping(payload.get("process_visibility"))
     if visibility.get("message"):
         print(f"process_visibility={visibility['message']}")

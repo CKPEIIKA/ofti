@@ -1101,6 +1101,30 @@ def test_watch_and_current_expose_registry_corruption_warning(tmp_path: Path) ->
     assert "quarantined" in current["registry_warnings"][0]
     assert jobs["registry_warnings"]
 
+
+def test_watch_jobs_payload_aggregates_non_case_scope_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    case_a = _make_case(root / "caseA")
+    case_b = _make_case(root / "nested" / "caseB")
+
+    def _refresh(case_path: Path) -> list[dict[str, object]]:
+        if case_path == case_a.resolve():
+            return [{"id": "a", "name": "simpleFoam", "kind": "solver", "status": "running", "pid": 1}]
+        if case_path == case_b.resolve():
+            return [{"id": "b", "name": "simpleFoam", "kind": "solver", "status": "finished", "pid": 2}]
+        return []
+
+    monkeypatch.setattr(watch_service, "refresh_jobs", _refresh)
+
+    payload = watch_service.jobs_payload(root, include_all=True)
+
+    assert payload["scope"] == "tree"
+    assert payload["cases_total"] == 2
+    assert {row["case"] for row in payload["jobs"]} == {str(case_a.resolve()), str(case_b.resolve())}
+
     combo = run._matrix_combo(
         [
             (

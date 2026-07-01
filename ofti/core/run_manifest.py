@@ -320,10 +320,25 @@ def _manifest_inputs_path(resolved_manifest: Path) -> Path:
     relative_inputs = manifest.get("inputs", {}).get("inputs_copy_path")
     if not relative_inputs:
         raise ValueError("manifest does not include recorded inputs; restore is not possible")
-    inputs_path = resolved_manifest.parent / str(relative_inputs)
+    inputs_path = _resolve_manifest_relative_path(
+        resolved_manifest.parent,
+        str(relative_inputs),
+        label="recorded inputs directory",
+    )
     if not inputs_path.is_dir():
         raise ValueError(f"recorded inputs directory not found: {inputs_path}")
     return inputs_path
+
+
+def _resolve_manifest_relative_path(base: Path, raw: str, *, label: str) -> Path:
+    candidate = Path(raw)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise ValueError(f"unsafe {label} path in manifest: {raw}")
+    resolved_base = base.resolve()
+    resolved = (resolved_base / candidate).resolve()
+    if not resolved.is_relative_to(resolved_base):
+        raise ValueError(f"unsafe {label} path in manifest: {raw}")
+    return resolved
 
 
 def _prepare_restore_destination(destination: Path) -> Path:

@@ -32,7 +32,12 @@ from ofti.tools import (
 from ofti.tools import knife_runtime as _runtime
 from ofti.tools import knife_stop as _stop
 from ofti.tools.case_doctor import build_case_doctor_report
-from ofti.tools.job_registry import refresh_jobs, register_job, registry_warnings
+from ofti.tools.job_registry import (
+    refresh_jobs,
+    register_job,
+    registry_warnings,
+    repair_jobs_registry,
+)
 from ofti.tools.knife_process import (
     _path_within,
     _running_job_pids,
@@ -87,6 +92,11 @@ def current_payload(case_dir: Path, *, live: bool = False) -> case_status_servic
     case_status_service.attach_process_visibility(cast("dict[str, Any]", payload), warning)
     cast("dict[str, Any]", payload)["registry_warnings"] = registry_warnings(case_path)
     return payload
+
+
+def registry_repair_payload(case_dir: Path) -> dict[str, object]:
+    case_path = case_source_service.require_case_dir(case_dir)
+    return repair_jobs_registry(case_path)
 
 
 def current_scope_payload(

@@ -67,6 +67,19 @@ def jobs_payload(
     kind: str | None = None,
 ) -> dict[str, Any]:
     case_path = case_source_service.require_case_dir(case_dir)
+    has_registry = (case_path / ".ofti" / "jobs.json").is_file()
+    has_log = any(case_path.glob("log.*"))
+    if not process_scan_service.is_case_dir(case_path) and not has_registry and not has_log:
+        return _jobs_scope_payload(case_path, include_all=include_all, kind=kind)
+    return _case_jobs_payload(case_path, include_all=include_all, kind=kind)
+
+
+def _case_jobs_payload(
+    case_path: Path,
+    *,
+    include_all: bool,
+    kind: str | None = None,
+) -> dict[str, Any]:
     jobs = refresh_jobs(case_path)
     selected_kind = _normalize_kind_filter(kind)
     if not include_all:
@@ -83,6 +96,61 @@ def jobs_payload(
         "jobs": shaped,
         "runs": runs,
     }
+
+
+def _jobs_scope_payload(
+    scope_root: Path,
+    *,
+    include_all: bool,
+    kind: str | None = None,
+) -> dict[str, Any]:
+    selected_kind = _normalize_kind_filter(kind)
+    jobs: list[dict[str, Any]] = []
+    runs: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    case_paths = _discover_case_dirs(scope_root)
+    for case_path in case_paths:
+        payload = _case_jobs_payload(case_path, include_all=include_all, kind=selected_kind)
+        for job in payload["jobs"]:
+            row = dict(job)
+            row["case"] = str(case_path)
+            jobs.append(row)
+        for run in payload["runs"]:
+            row = dict(run)
+            row["case"] = str(case_path)
+            runs.append(row)
+        warnings.extend(f"{case_path}: {warning}" for warning in payload["registry_warnings"])
+    return {
+        "case": str(scope_root),
+        "scope": "tree",
+        "cases_total": len(case_paths),
+        "count": len(jobs),
+        "kind": selected_kind or "any",
+        "registry_warnings": warnings,
+        "jobs": jobs,
+        "runs": runs,
+    }
+
+
+def _discover_case_dirs(scope_root: Path) -> list[Path]:
+    cases: set[Path] = set()
+    for dir_path, dir_names, _file_names in os.walk(scope_root):
+        _prune_case_walk(dir_names)
+        path = Path(dir_path)
+        if process_scan_service.is_case_dir(path):
+            cases.add(path.resolve())
+    return sorted(cases, key=str)
+
+
+def _prune_case_walk(dir_names: list[str]) -> None:
+    dir_names[:] = [
+        name
+        for name in dir_names
+        if not (
+            name.startswith("processor")
+            or name in {".git", ".venv", "__pycache__", "postProcessing", ".mypy_cache"}
+        )
+    ]
 
 
 def start_payload(
