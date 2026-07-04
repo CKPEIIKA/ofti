@@ -95,7 +95,6 @@ def _prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:
             render()
 
 
-
 def _fzf_pick_option(stdscr: Any, options: list[str]) -> int | None:
     """Use fzf to pick an option from the given list.
 
@@ -287,7 +286,6 @@ class Menu:
             lines = ["This option is currently unavailable."]
         _show_help(self.stdscr, "Option unavailable", lines)
 
-
     def _run_terminal_fallback(self) -> None:
         case_path = os.environ.get("OFTI_CASE_PATH") or str(Path.cwd())
         curses.def_prog_mode()
@@ -304,7 +302,6 @@ class Menu:
             curses.reset_prog_mode()
             self.stdscr.clear()
             self.stdscr.refresh()
-
 
     def _help_lines(self) -> list[str]:
         lines = [

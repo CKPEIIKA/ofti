@@ -207,6 +207,7 @@ def _parametric_form(
             "Create cases",
             "Back",
         ]
+
         def hint_for(idx: int) -> str:
             hints = [
                 "Path inside case, e.g. system/controlDict or constant/thermophysicalProperties",

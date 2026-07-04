@@ -77,6 +77,28 @@ def test_real_toy_case_prelaunch_diagnostics_and_manifest(real_case: RealTutoria
     assert run_manifest.verify_run_manifest(written, case_path=case)["ok"] is True
 
 
+def test_real_toy_case_cli_manifest_write_is_case_local_and_verifiable(
+    real_case: RealTutorialCase,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    case = real_case.case
+
+    code = cli_main(["knife", "manifest", "write", str(case), "--json"])
+    written = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    manifest_path = Path(str(written["manifest"]))
+    assert manifest_path.is_relative_to(case / "runs")
+    assert manifest_path.is_file()
+
+    code = cli_main(["knife", "manifest", "verify", str(case), "--json"])
+    verified = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert verified["ok"] is True
+    assert verified["manifest"] == str(manifest_path)
+
+
 def test_real_toy_case_run_manifest_restore_is_runnable(
     real_case: RealTutorialCase,
     tmp_path: Path,
@@ -303,6 +325,7 @@ def test_real_toy_case_adopts_raw_parallel_mpirun_as_one_tracked_run(
             process.terminate()
         wait_until(lambda: running_jobs(case) == 0, description="adopted mpirun stopped")
 
+
 def test_real_toy_case_runtime_write_now_snapshot_stops_solver(real_case: RealTutorialCase) -> None:
     case = real_case.case
     pid = real_case.start_solver()
@@ -429,7 +452,6 @@ def test_real_toy_case_criteria_reads_explicit_runtime_evidence(real_case: RealT
     assert criteria["passed"] >= 1
 
 
-
 def test_real_toy_case_compare_reconstructed_parallel_to_serial(
     real_case: RealTutorialCase,
     tmp_path: Path,
@@ -512,6 +534,7 @@ def test_real_toy_case_prepare_parallel_extra_rank_profile(real_case: RealTutori
     for rank in range(ranks):
         assert (case / f"processor{rank}").is_dir()
 
+
 def test_real_toy_case_parallel_prepare_run_stop_resize_plan(
     real_case: RealTutorialCase,
     capsys: pytest.CaptureFixture[str],
@@ -522,40 +545,9 @@ def test_real_toy_case_parallel_prepare_run_stop_resize_plan(
         pytest.skip("MPI launcher unavailable")
 
     case = real_case.case
-    real_case.ensure_parallel_dict(2)
-    dry_plan = parallel_resize_service.parallel_resize_payload(case, from_ranks=2, to_ranks=3, dry_run=True)
-    assert dry_plan["ok"] is True
-    assert any(row["step"] == "decompose" for row in dry_plan["steps"])
+    _prepare_parallel_resize_source(real_case)
 
-    prepared = run_ops.prepare_parallel_case(case, parallel=2, clean_processors=True)
-    assert prepared["decompose_returncode"] == 0
-    assert (case / "processor0").is_dir()
-
-    pid = real_case.start_solver(parallel=2)
-    assert pid > 0
-    wait_until(lambda: running_jobs(case) >= 1, description="parallel solver discovery")
-    stopped = real_case.stop_all_solvers()
-    assert stopped["selected"] >= 1
-    wait_until(lambda: running_jobs(case) == 0, description="parallel stopped solver")
-    for processor in ("processor0", "processor1"):
-        shutil.copytree(case / processor / "0", case / processor / "1", dirs_exist_ok=True)
-    (case / "processor0" / "999").mkdir(parents=True)
-    (case / "processor0" / "999" / "U").write_text("partial incomplete time\n")
-    to_ranks = int(os.environ.get("OFTI_REAL_RESIZE_TO", "3"))
-
-    code = cli_main(
-        [
-            "run",
-            "resize-parallel",
-            str(case),
-            "--from",
-            "2",
-            "--to",
-            str(to_ranks),
-            "--force-stop",
-            "--json",
-        ],
-    )
+    code = cli_main(_resize_parallel_args(case))
     payload = json.loads(capsys.readouterr().out)
     steps = {str(row.get("step")): row for row in payload["steps"]}
 
@@ -574,6 +566,40 @@ def test_real_toy_case_parallel_prepare_run_stop_resize_plan(
     assert stopped["selected"] >= 1
     wait_until(lambda: running_jobs(case) == 0, description="resized stopped solver")
 
+
+def _prepare_parallel_resize_source(real_case: RealTutorialCase) -> None:
+    case = real_case.case
+    real_case.ensure_parallel_dict(2)
+    dry_plan = parallel_resize_service.parallel_resize_payload(case, from_ranks=2, to_ranks=3, dry_run=True)
+    assert dry_plan["ok"] is True
+    assert any(row["step"] == "decompose" for row in dry_plan["steps"])
+    prepared = run_ops.prepare_parallel_case(case, parallel=2, clean_processors=True)
+    assert prepared["decompose_returncode"] == 0
+    assert (case / "processor0").is_dir()
+    pid = real_case.start_solver(parallel=2)
+    assert pid > 0
+    wait_until(lambda: running_jobs(case) >= 1, description="parallel solver discovery")
+    stopped = real_case.stop_all_solvers()
+    assert stopped["selected"] >= 1
+    wait_until(lambda: running_jobs(case) == 0, description="parallel stopped solver")
+    for processor in ("processor0", "processor1"):
+        shutil.copytree(case / processor / "0", case / processor / "1", dirs_exist_ok=True)
+    (case / "processor0" / "999").mkdir(parents=True)
+    (case / "processor0" / "999" / "U").write_text("partial incomplete time\n")
+
+
+def _resize_parallel_args(case: Path) -> list[str]:
+    return [
+        "run",
+        "resize-parallel",
+        str(case),
+        "--from",
+        "2",
+        "--to",
+        os.environ.get("OFTI_REAL_RESIZE_TO", "3"),
+        "--force-stop",
+        "--json",
+    ]
 
 
 def _ensure_parallel_dict(case: Path, ranks: int) -> None:
@@ -603,6 +629,7 @@ def _ensure_parallel_dict(case: Path, ranks: int) -> None:
         ),
         encoding="utf-8",
     )
+
 
 def _untracked_solver_count(case: Path) -> int:
     payload = knife_service.current_payload(case, live=True)

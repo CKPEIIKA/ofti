@@ -572,7 +572,7 @@ def dedupe_criteria(rows: list[CriterionRow]) -> list[CriterionRow]:
         value = str(row.get("value", "")).strip()
         if not key:
             continue
-        unique[(key, value)] = row
+        unique[key, value] = row
     return list(unique.values())
 
 

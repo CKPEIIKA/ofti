@@ -32,7 +32,7 @@ def format_checkmesh_summary(output: str) -> str:
             "Cells",
             match_first(
                 output,
-                [r"(?i)number of cells\s*:\s*(\d+)", r"(?i)cells\s*:\s*(\d+)"] ,
+                [r"(?i)number of cells\s*:\s*(\d+)", r"(?i)cells\s*:\s*(\d+)"],
             )
             or "n/a",
         ),
@@ -40,7 +40,7 @@ def format_checkmesh_summary(output: str) -> str:
             "Faces",
             match_first(
                 output,
-                [r"(?i)number of faces\s*:\s*(\d+)", r"(?i)faces\s*:\s*(\d+)"] ,
+                [r"(?i)number of faces\s*:\s*(\d+)", r"(?i)faces\s*:\s*(\d+)"],
             )
             or "n/a",
         ),
@@ -48,7 +48,7 @@ def format_checkmesh_summary(output: str) -> str:
             "Points",
             match_first(
                 output,
-                [r"(?i)number of points\s*:\s*(\d+)", r"(?i)points\s*:\s*(\d+)"] ,
+                [r"(?i)number of points\s*:\s*(\d+)", r"(?i)points\s*:\s*(\d+)"],
             )
             or "n/a",
         ),

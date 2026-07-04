@@ -69,4 +69,3 @@ def clean_time_directories(
             continue
     if not silent:
         _show_message(stdscr, f"Removed {removed} time directories.")
-

@@ -71,6 +71,7 @@ def test_build_parametric_cases_from_csv(monkeypatch, tmp_path: Path) -> None:
             assert study_base_folder == self.output_folder
 
     monkeypatch.setattr(param, "FOAMLIB_PREPROCESSING", True)
+
     def _csv_generator(**kwargs):
         return DummyStudy(kwargs["output_folder"])
 
@@ -117,6 +118,7 @@ def test_build_parametric_cases_from_grid(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(param, "FoamDictInstruction", DummyInstruction)
     monkeypatch.setattr(param, "GridCaseParameter", DummyGridCaseParameter)
     monkeypatch.setattr(param, "GridParameter", DummyGridParameter)
+
     def _grid_generator(**kwargs):
         return DummyStudy(kwargs["output_folder"])
 

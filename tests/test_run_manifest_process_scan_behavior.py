@@ -161,7 +161,7 @@ def test_run_manifest_binary_library_and_git_branches(
     def _run_git(cmd: list[str], **_kwargs: object) -> SimpleNamespace:
         key = tuple(cmd[3:])
         assert len(key) == 2
-        return dirty[(key[0], key[1])]
+        return dirty[key[0], key[1]]
 
     monkeypatch.setattr(run_manifest, "run_trusted", _run_git)
     info = run_manifest._git_info(tmp_path)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from collections.abc import Callable
 from textwrap import dedent
 from typing import TextIO
@@ -11,6 +12,8 @@ from ofti.core.output_contract import command_name, stamp_payload
 Handler = Callable[[argparse.Namespace], int]
 _EASY_ON_CPU_TAIL_BYTES = 256 * 1024
 _EASY_ON_CPU_MIN_POLL_INTERVAL = 1.0
+_JSON_VERSION_ENV = "OFTI_JSON_VERSION"
+
 
 def emit_json(payload: object, args: argparse.Namespace, *, file: TextIO | None = None) -> None:
     """Print a JSON payload through the shared output contract.
@@ -19,8 +22,83 @@ def emit_json(payload: object, args: argparse.Namespace, *, file: TextIO | None 
     ``ofti.core.output_contract``). Pass ``file=sys.stderr`` for machine-readable
     error output.
     """
-    stamped = stamp_payload(payload, command_name(args))
+    version = json_version(args)
+    stamped = (
+        stamp_payload(payload, command_name(args))
+        if version == 1
+        else _stamp_payload_v2(payload, args)
+    )
     print(json.dumps(stamped, indent=2, sort_keys=True), file=file)
+
+
+def json_version(args: argparse.Namespace) -> int:
+    value = getattr(args, "json_version", None) or os.environ.get(_JSON_VERSION_ENV) or "1"
+    try:
+        version = int(str(value))
+    except ValueError:
+        return 1
+    return 2 if version == 2 else 1
+
+
+def strip_json_version_args(argv: list[str]) -> tuple[list[str], int | None]:
+    cleaned: list[str] = []
+    version: int | None = None
+    index = 0
+    while index < len(argv):
+        item = argv[index]
+        if item == "--":
+            cleaned.extend(argv[index:])
+            break
+        if item == "--json-version" and index + 1 < len(argv):
+            version = _parse_json_version(argv[index + 1])
+            index += 2
+            continue
+        if item.startswith("--json-version="):
+            version = _parse_json_version(item.split("=", 1)[1])
+            index += 1
+            continue
+        cleaned.append(item)
+        index += 1
+    return cleaned, version
+
+
+def _parse_json_version(value: str) -> int:
+    if value.strip() not in {"1", "2"}:
+        raise ValueError("--json-version must be 1 or 2")
+    return int(value)
+
+
+def _stamp_payload_v2(payload: object, args: argparse.Namespace) -> dict[str, object]:
+    command = command_name(args)
+    if not isinstance(payload, dict):
+        return {
+            "schema_version": 2,
+            "command": command,
+            "ok": True,
+            "warnings": [],
+            "errors": [],
+            "data": payload,
+        }
+    payload_copy = dict(payload)
+    payload_copy.pop("schema_version", None)
+    payload_copy.pop("command", None)
+    ok = bool(payload_copy.pop("ok", True))
+    warnings = _string_list(payload_copy.pop("warnings", []))
+    errors = _string_list(payload_copy.pop("errors", []))
+    return {
+        "schema_version": 2,
+        "command": command,
+        "ok": ok,
+        "warnings": warnings,
+        "errors": errors,
+        "data": payload_copy,
+    }
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value]
 
 
 def _help_handler(parser: argparse.ArgumentParser) -> Handler:

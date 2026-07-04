@@ -278,13 +278,13 @@ def test_shell_tools_job_status_and_back_choice(monkeypatch: pytest.MonkeyPatch,
         lambda _c: [{"name": "solver", "pid": 1, "status": "running", "log": "log.simpleFoam", "started_at": 1.0}],
     )
     monkeypatch.setattr(shell_tools, "key_in", lambda _k, keys: bool(keys))
-    monkeypatch.setattr(shell_tools, "get_config", lambda: types.SimpleNamespace(keys={"quit": [ord("x")], "back": [ord("b")] }))
+    monkeypatch.setattr(shell_tools, "get_config", lambda: types.SimpleNamespace(keys={"quit": [ord("x")], "back": [ord("b")]}))
     shell_tools.job_status_poll_screen(screen, case)
     assert screen.timeout_value == -1
 
     back_screen = _Screen(keys=[ord("b")])
     monkeypatch.setattr(shell_tools, "key_in", lambda key, keys: key in set(keys))
-    monkeypatch.setattr(shell_tools, "get_config", lambda: types.SimpleNamespace(keys={"quit": [], "back": [ord("b")] }))
+    monkeypatch.setattr(shell_tools, "get_config", lambda: types.SimpleNamespace(keys={"quit": [], "back": [ord("b")]}))
     shell_tools.job_status_poll_screen(back_screen, case)
 
     script = case / "run.sh"

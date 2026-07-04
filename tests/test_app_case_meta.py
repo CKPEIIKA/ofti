@@ -68,6 +68,7 @@ def test_scan_zero_dirs(tmp_path: Path) -> None:
 def test_menu_scroll_wrapper(tmp_path: Path) -> None:
     _ = tmp_path
     # Use a stub screen with fixed size.
+
     class Screen:
         def getmaxyx(self):
             return (10, 80)

@@ -234,6 +234,3 @@ def _render_pipeline_editor(
         except curses.error:
             pass
     stdscr.refresh()
-
-
-

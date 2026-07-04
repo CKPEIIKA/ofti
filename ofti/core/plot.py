@@ -70,7 +70,7 @@ def braille_line_plot(
         y_dot = y_span - y_dot_from_bottom
         cell_x, dot_col = divmod(x_dot, 2)
         cell_y, dot_row = divmod(y_dot, 4)
-        cells[cell_y][cell_x] |= _BRAILLE_DOTS[(dot_col, dot_row)]
+        cells[cell_y][cell_x] |= _BRAILLE_DOTS[dot_col, dot_row]
     return ["".join(chr(_BRAILLE_BASE + cell) for cell in row).rstrip() for row in cells]
 
 

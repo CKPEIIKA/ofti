@@ -398,7 +398,6 @@ def _require_decomposed_case(processor_dirs: list[Path]) -> None:
     )
 
 
-
 def _processor_time_health(case_path: Path, processor_dirs: list[Path]) -> dict[str, Any]:
     per_processor = {path.name: _processor_times(path) for path in processor_dirs}
     complete_times = _complete_processor_times(case_path, per_processor)
@@ -487,13 +486,13 @@ def _reconstruct_command(time_name: str) -> list[str]:
     return ["reconstructPar", "-time", time_name]
 
 
-
 def _is_time_name(value: str) -> bool:
     try:
         float(value)
     except ValueError:
         return False
     return True
+
 
 def _time_sort_key(value: str) -> tuple[float, str]:
     try:

@@ -442,6 +442,7 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     status.add_argument("--json", action="store_true", help="Print result as JSON")
     status.set_defaults(func=_run_status)
 
+
 def _run_matrix(args: argparse.Namespace) -> int:
     axes = run_ops.parse_matrix_axes(
         list(getattr(args, "param", [])),
@@ -501,6 +502,7 @@ def _run_matrix(args: argparse.Namespace) -> int:
         return 1
     return 0
 
+
 def _run_parametric(args: argparse.Namespace) -> int:
     poll_interval = interval_with_cpu_mode(args, float(getattr(args, "poll_interval", 0.25)))
     values = run_ops.parse_sweep_values(list(getattr(args, "values", [])))
@@ -550,6 +552,7 @@ def _run_parametric(args: argparse.Namespace) -> int:
         if queue.get("ok") is False:
             return 1
     return 0
+
 
 def _run_queue(args: argparse.Namespace) -> int:
     poll_interval = interval_with_cpu_mode(args, float(getattr(args, "poll_interval", 0.25)))
@@ -670,6 +673,7 @@ def _run_status(args: argparse.Namespace) -> int:
         print(f"{state:<7} {latest_text:<12} {eta_text:<8} {reason:<12} {case}")
     return 0
 
+
 def _run_resize_parallel(args: argparse.Namespace) -> int:
     payload = parallel_resize_service.parallel_resize_payload(
         args.case_dir,
@@ -703,6 +707,7 @@ def _run_resize_parallel(args: argparse.Namespace) -> int:
         print(f"error={payload['error']}", file=sys.stderr)
     return 0 if bool(payload.get("ok", False)) else 1
 
+
 def _print_resize_table(payload: dict[str, object]) -> None:
     print("STEP               STATUS    DETAILS")
     for row in cast("list[dict[str, object]]", payload.get("steps", [])):
@@ -713,6 +718,7 @@ def _print_resize_table(payload: dict[str, object]) -> None:
         )
     if payload.get("rollback"):
         print(f"\nRollback: {payload['rollback']}")
+
 
 def _resize_step_details(row: dict[str, object]) -> str:
     parts: list[str] = []
@@ -734,6 +740,7 @@ def _resize_step_details(row: dict[str, object]) -> str:
     if row.get("forced_stop"):
         parts.append(f"forced_stop={row['forced_stop']}")
     return " ".join(parts) or str(row.get("label", ""))
+
 
 def _run_tool(args: argparse.Namespace) -> int:
     if args.list:
@@ -773,6 +780,7 @@ def _run_tool(args: argparse.Namespace) -> int:
         print(result.stderr, file=sys.stderr, end="")
     return result.returncode
 
+
 def _run_tool_list(args: argparse.Namespace) -> int:
     payload = run_ops.tool_catalog_payload(args.case_dir)
     if args.json:
@@ -781,6 +789,7 @@ def _run_tool_list(args: argparse.Namespace) -> int:
         for name in payload["tools"]:
             print(name)
     return 0
+
 
 def _run_tool_unknown(args: argparse.Namespace) -> int:
     names = run_ops.tool_catalog_names(args.case_dir)
@@ -801,8 +810,10 @@ def _run_tool_unknown(args: argparse.Namespace) -> int:
         print(f"Available tools: {available}", file=sys.stderr)
     return 1
 
+
 def _run_solver(args: argparse.Namespace) -> int:
     return _run_solver_with_mode(args, background=bool(args.background))
+
 
 def _run_solver_with_mode(args: argparse.Namespace, *, background: bool) -> int:
     sync_subdomains = bool(getattr(args, "sync_subdomains", True))
@@ -836,6 +847,7 @@ def _run_solver_with_mode(args: argparse.Namespace, *, background: bool) -> int:
         clean_processors=clean_processors,
         prepare_parallel=prepare_parallel,
     )
+
 
 def _run_solver_dry_run(
     args: argparse.Namespace,
@@ -892,6 +904,7 @@ def _run_solver_dry_run(
     if manifest_path is not None:
         print(f"# manifest: {manifest_path}")
     return 0
+
 
 def _run_solver_execute(
     args: argparse.Namespace,
@@ -997,6 +1010,7 @@ def _run_solver_execute(
         print(f"Manifest: {written_manifest}")
     return result.returncode
 
+
 def _parallel_setup_payload(
     case_dir: Path,
     *,
@@ -1019,6 +1033,7 @@ def _parallel_setup_payload(
             dry_run=dry_run,
         ),
     )
+
 
 def _write_manifest_enabled(args: argparse.Namespace) -> bool:
     return bool(

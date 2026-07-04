@@ -1593,6 +1593,20 @@ def test_json_output_carries_schema_version_and_command(tmp_path, capsys) -> Non
     assert payload["command"] == "knife preflight"
 
 
+def test_json_output_v2_uses_stable_envelope(tmp_path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+
+    code = cli_tools.main(["knife", "preflight", str(case), "--json", "--json-version", "2"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code in (0, 1)
+    assert payload["schema_version"] == 2
+    assert payload["command"] == "knife preflight"
+    assert set(payload) == {"schema_version", "command", "ok", "warnings", "errors", "data"}
+    assert isinstance(payload["data"], dict)
+    assert payload["data"]["case"] == str(case.resolve())
+
+
 def test_json_command_name_includes_nested_subcommand(tmp_path, capsys) -> None:
     # campaign list is a nested knife subcommand (dest=campaign_command).
     code = cli_tools.main(["knife", "campaign", "list", str(tmp_path), "--json"])

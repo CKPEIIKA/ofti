@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ofti.dev/schemas/ofti.cli-envelope.v2.schema.json",
+  "title": "OFTI CLI JSON Envelope v2",
+  "type": "object",
+  "required": ["schema_version", "command", "ok", "warnings", "errors", "data"],
+  "properties": {
+    "schema_version": {"const": 2},
+    "command": {"type": "string", "minLength": 1},
+    "ok": {"type": "boolean"},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "errors": {"type": "array", "items": {"type": "string"}},
+    "data": {}
+  },
+  "additionalProperties": false
+}

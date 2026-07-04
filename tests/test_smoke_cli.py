@@ -62,6 +62,7 @@ def test_no_foam_smoke_runs_without_terminal(monkeypatch, tmp_path: Path) -> Non
 
     monkeypatch.setattr(app.curses, "wrapper", fake_wrapper)
     monkeypatch.setattr(app.curses, "start_color", lambda: None)
+
     def fake_init_pair(*_args, **_kwargs):
         return None
 

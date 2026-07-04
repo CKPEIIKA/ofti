@@ -811,7 +811,7 @@ def _job_with_schema(case_path: Path, job: dict[str, Any]) -> dict[str, Any]:
     row["kind"] = kind
     row["case_dir"] = str(case_path)
     row["running"] = status in {"running", "paused"}
-    row["detached"] = bool(job.get("detached", False))
+    row["detached"] = bool(job.get("detached"))
     row["log_path"] = _job_log_path(case_path, job)
     return row
 

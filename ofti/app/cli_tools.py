@@ -11,7 +11,7 @@ from ofti.app.cli_adapters import main as _main_adapter
 from ofti.app.cli_adapters import plot as _plot_adapter
 from ofti.app.cli_adapters import run as _run_adapter
 from ofti.app.cli_adapters import watch as _watch_adapter
-from ofti.app.cli_help import _output_mode_conflict
+from ofti.app.cli_help import _output_mode_conflict, strip_json_version_args
 from ofti.core import run_manifest as manifest_ops
 from ofti.tools import parallel_resize_service, status_render_service, table_render_service
 from ofti.tools.cli_tools import knife as knife_ops
@@ -115,7 +115,15 @@ def _print_watch_external_attach(args, payload: Mapping[str, object]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw_argv = sys.argv[1:] if argv is None else list(argv)
+    try:
+        parsed_argv, json_version = strip_json_version_args(raw_argv)
+    except ValueError as exc:
+        print(f"ofti: {exc}", file=sys.stderr)
+        return 2
+    args = build_parser().parse_args(parsed_argv)
+    if json_version is not None:
+        args.json_version = json_version
     if bool(getattr(args, "version", False)):
         print(f"ofti {ofti_version()}")
         return 0
@@ -123,14 +131,18 @@ def main(argv: list[str] | None = None) -> int:
         print("ofti: --json and --table cannot be used together", file=sys.stderr)
         return 2
     try:
-        if args.func is _ORIG_WATCH_LOG:
-            return int(globals()["_watch_log"](args))
-        if args.func is _ORIG_WATCH_ATTACH:
-            return int(globals()["_watch_attach"](args))
-        return int(args.func(args))
+        return _dispatch_args(args)
     except ValueError as exc:
         print(f"ofti: {exc}", file=sys.stderr)
         return 2
+
+
+def _dispatch_args(args) -> int:
+    if args.func is _ORIG_WATCH_LOG:
+        return int(globals()["_watch_log"](args))
+    if args.func is _ORIG_WATCH_ATTACH:
+        return int(globals()["_watch_attach"](args))
+    return int(args.func(args))
 
 
 __all__ = [

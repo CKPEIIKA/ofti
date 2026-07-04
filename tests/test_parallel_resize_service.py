@@ -163,6 +163,7 @@ def test_parallel_resize_discards_incomplete_latest_processor_time(
         "current_payload",
         lambda *_a, **_k: {"jobs_running": 0},
     )
+
     def _execute_case_command(_case, _name, command, **_kwargs):
         commands.append(list(command))
         if command[0] == "reconstructPar":

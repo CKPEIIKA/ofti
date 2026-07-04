@@ -45,6 +45,7 @@ def _build_plot_parser(groups: argparse._SubParsersAction[argparse.ArgumentParse
     residuals.add_argument("--json", action="store_true")
     residuals.set_defaults(func=_plot_residuals)
 
+
 def _plot_metrics(args: argparse.Namespace) -> int:
     try:
         payload = plot_ops.metrics_payload(args.source)
@@ -70,6 +71,7 @@ def _plot_metrics(args: argparse.Namespace) -> int:
         )
     print(f"residual_fields={','.join(payload['residual_fields'])}")
     return 0
+
 
 def _plot_residuals(args: argparse.Namespace) -> int:
     try:
@@ -97,4 +99,3 @@ def _plot_residuals(args: argparse.Namespace) -> int:
             f"min={row['min']:.6g} max={row['max']:.6g}",
         )
     return 0
-

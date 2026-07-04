@@ -103,7 +103,6 @@ max-statements = 36
 "tests/test_foamlib_runner.py" = ["C901"]
 "tests/test_parametric_preprocessing.py" = ["C901"]
 "tests/test_real_openfoam_profiles.py" = ["C901", "PLR0912", "PLR0915"]
-"tests/test_real_openfoam_toy_case.py" = ["PLR0915"]
 "tests/test_run_manifest_process_scan_behavior.py" = ["PLR0915"]
 "tests/test_runtime_watch_behavior.py" = ["PLR0915"]
 "tests/test_tool_screen_branches.py" = ["PLR0915"]

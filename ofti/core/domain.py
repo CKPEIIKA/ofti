@@ -33,4 +33,3 @@ class Case:
     """
 
     root: Path
-

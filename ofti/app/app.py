@@ -283,7 +283,6 @@ def _run_terminal(stdscr: Any, case_path: Path, command: str | None) -> None:
         show_message(stdscr, "Returned from terminal.")
 
 
-
 def _command_callbacks() -> CommandCallbacks:
     def editor_screen_wrapper(stdscr: Any, path: Path, app_state: AppState) -> None:
         editor_screen.editor_screen(

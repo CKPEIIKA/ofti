@@ -73,6 +73,7 @@ def main_menu_screen(
         status_line=root_status_line(state),
         help_lines=main_menu_help(),
     )
+
     def menu_command(cmd: str) -> str | None:
         return handle_command(stdscr, case_path, state, cmd, command_callbacks)
 

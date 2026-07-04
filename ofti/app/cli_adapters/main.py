@@ -15,6 +15,7 @@ from ofti.app.cli_help import (
     _fill_missing_help,
     _help_handler,
     _output_mode_conflict,
+    strip_json_version_args,
 )
 
 
@@ -46,6 +47,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show version and exit",
     )
+    parser.add_argument(
+        "--json-version",
+        choices=("1", "2"),
+        default=None,
+        help="Machine JSON schema version for --json output (1 default, 2 stable envelope)",
+    )
     parser.set_defaults(func=_help_handler(parser))
     groups = parser.add_subparsers(dest="group", required=False)
 
@@ -59,8 +66,17 @@ def build_parser() -> argparse.ArgumentParser:
     _fill_missing_help(parser)
     return parser
 
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw_argv = sys.argv[1:] if argv is None else list(argv)
+    try:
+        parsed_argv, json_version = strip_json_version_args(raw_argv)
+    except ValueError as exc:
+        print(f"ofti: {exc}", file=sys.stderr)
+        return 2
+    args = build_parser().parse_args(parsed_argv)
+    if json_version is not None:
+        args.json_version = json_version
     if bool(getattr(args, "version", False)):
         print(f"ofti {ofti_version()}")
         return 0
@@ -73,13 +89,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ofti: {exc}", file=sys.stderr)
         return 2
 
+
 def ofti_version() -> str:
     try:
         return package_version("ofti")
     except PackageNotFoundError:
         return "dev"
 
+
 def _version_command(_args: argparse.Namespace) -> int:
     print(f"ofti {ofti_version()}")
     return 0
-

@@ -101,7 +101,7 @@ def test_runner_load_presets_parsing_and_read_errors(
 def test_runner_show_message_raises_on_quit_key(monkeypatch: pytest.MonkeyPatch) -> None:
     screen = _Screen(keys=[ord("q")])
     monkeypatch.setattr(runner, "key_in", lambda key, _keys: key == ord("q"))
-    monkeypatch.setattr(runner, "get_config", lambda: types.SimpleNamespace(keys={"quit": [ord("q")] }))
+    monkeypatch.setattr(runner, "get_config", lambda: types.SimpleNamespace(keys={"quit": [ord("q")]}))
     with pytest.raises(QuitAppError):
         runner._show_message(screen, "bye")
 

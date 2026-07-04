@@ -42,11 +42,24 @@ def test_cli_json_example_uses_cli_envelope() -> None:
     assert payload["command"] == "bundle"
 
 
+def test_cli_json_v2_schema_accepts_stable_envelope() -> None:
+    payload: dict[str, object] = {
+        "schema_version": 2,
+        "command": "knife preflight",
+        "ok": True,
+        "warnings": [],
+        "errors": [],
+        "data": {"case": "case"},
+    }
+    _validate_payload(payload, "ofti.cli-envelope.v2.schema.json")
+
+
 def test_format_schema_files_are_valid_json() -> None:
     schema_root = Path("docs/schemas")
     names = {path.name for path in schema_root.glob("*.schema.json")}
     assert {
         "ofti.cli-envelope.v1.schema.json",
+        "ofti.cli-envelope.v2.schema.json",
         "ofti.case-bundle.v1.schema.json",
         "ofti.run-manifest.v1.schema.json",
         "ofti.jobs.v1.schema.json",

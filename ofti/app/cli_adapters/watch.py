@@ -357,6 +357,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     )
     external.set_defaults(func=_watch_external)
 
+
 def _watch_jobs(args: argparse.Namespace) -> int:
     payload = watch_ops.jobs_payload(
         args.case_dir,
@@ -390,6 +391,7 @@ def _watch_jobs(args: argparse.Namespace) -> int:
             f"source={job.get('source', 'registry')}",
         )
     return 0
+
 
 def _watch_log(args: argparse.Namespace) -> int:
     if args.follow and args.json:
@@ -425,6 +427,7 @@ def _watch_log(args: argparse.Namespace) -> int:
     interval = interval_with_cpu_mode(args, base_interval)
     return _follow_log_path(Path(payload["log"]), interval=interval)
 
+
 def _watch_attach(args: argparse.Namespace) -> int:
     watcher_raw = getattr(args, "watcher", None)
     if watcher_raw is not None:
@@ -451,6 +454,7 @@ def _watch_attach(args: argparse.Namespace) -> int:
     )
     return _watch_log(attached_args)
 
+
 def _watch_attach_watcher(args: argparse.Namespace, watcher_raw: list[str]) -> int:
     if getattr(args, "adopt", None):
         print("ofti: --adopt cannot be used with --watcher", file=sys.stderr)
@@ -474,6 +478,7 @@ def _watch_attach_watcher(args: argparse.Namespace, watcher_raw: list[str]) -> i
         return 0 if bool(payload.get("ok", True)) else 1
     return _print_watch_external_attach(args, payload)
 
+
 def _watch_adopt_payload(args: argparse.Namespace) -> dict[str, object] | None:
     try:
         return watch_ops.adopt_job_payload(
@@ -483,6 +488,7 @@ def _watch_adopt_payload(args: argparse.Namespace) -> dict[str, object] | None:
     except ValueError as exc:
         print(f"ofti: {exc}", file=sys.stderr)
         return None
+
 
 def _watch_start(args: argparse.Namespace) -> int:
     watcher_raw = getattr(args, "watcher", None)
@@ -529,8 +535,10 @@ def _watch_start(args: argparse.Namespace) -> int:
         return 0 if bool(payload.get("ok", True)) else 1
     return _run_solver_with_mode(args, background=True)
 
+
 def _watch_run(args: argparse.Namespace) -> int:
     return _run_solver_with_mode(args, background=False)
+
 
 def _watch_stop(args: argparse.Namespace) -> int:
     signal_name = str(getattr(args, "signal", "TERM")).upper()
@@ -560,6 +568,7 @@ def _watch_stop(args: argparse.Namespace) -> int:
             print(f"- id={row.get('id')} pid={row.get('pid')} error={row['error']}")
     return 0 if not payload["failed"] else 1
 
+
 def _watch_pause(args: argparse.Namespace) -> int:
     payload = watch_ops.pause_payload(
         args.case_dir,
@@ -582,6 +591,7 @@ def _watch_pause(args: argparse.Namespace) -> int:
         for row in payload["failed"]:
             print(f"- id={row.get('id')} pid={row.get('pid')} error={row['error']}")
     return 0 if not payload["failed"] else 1
+
 
 def _watch_resume(args: argparse.Namespace) -> int:
     payload = watch_ops.resume_payload(
@@ -606,6 +616,7 @@ def _watch_resume(args: argparse.Namespace) -> int:
             print(f"- id={row.get('id')} pid={row.get('pid')} error={row['error']}")
     return 0 if not payload["failed"] else 1
 
+
 def _watch_interval(args: argparse.Namespace) -> int:
     payload = watch_ops.interval_payload(args.case_dir, seconds=args.seconds)
     if args.json:
@@ -618,6 +629,7 @@ def _watch_interval(args: argparse.Namespace) -> int:
         print(f"requested={payload['requested']}")
     print(f"settings={payload['settings_path']}")
     return 0
+
 
 def _watch_output(args: argparse.Namespace) -> int:
     brief = bool(getattr(args, "brief", False))
@@ -637,6 +649,7 @@ def _watch_output(args: argparse.Namespace) -> int:
         print(f"requested={payload['requested']}")
     print(f"settings={payload['settings_path']}")
     return 0
+
 
 def _watch_external(args: argparse.Namespace) -> int:
     mode = watch_ops.external_watch_mode(
@@ -668,6 +681,7 @@ def _watch_external(args: argparse.Namespace) -> int:
     )
     return _watch_external_render(args, mode, payload)
 
+
 def _watch_external_render(
     args: argparse.Namespace,
     mode: str,
@@ -686,6 +700,7 @@ def _watch_external_render(
     handler = handlers.get(mode, _print_watch_external_run)
     return handler(payload)
 
+
 def _watch_external_json_exit(mode: str, payload: dict[str, object]) -> int:
     if mode == "stop":
         failed = payload.get("failed")
@@ -693,6 +708,7 @@ def _watch_external_json_exit(mode: str, payload: dict[str, object]) -> int:
     if mode in {"status", "attach"}:
         return 0
     return 0 if bool(payload.get("ok", True)) else 1
+
 
 def _print_watch_external_status(payload: dict[str, object]) -> int:
     print(f"case={payload['case']}")
@@ -705,6 +721,7 @@ def _print_watch_external_status(payload: dict[str, object]) -> int:
             f"status={job.get('status')}",
         )
     return 0
+
 
 def _print_watch_external_attach(args: argparse.Namespace, payload: dict[str, object]) -> int:
     profile = _watch_profile(args.case_dir, getattr(args, "output", None))
@@ -721,6 +738,7 @@ def _print_watch_external_attach(args: argparse.Namespace, payload: dict[str, ob
         interval = watch_ops.effective_interval(args.case_dir)
     interval = interval_with_cpu_mode(args, interval)
     return _follow_log_path(Path(str(payload["log"])), interval=interval)
+
 
 def _print_watch_external_stop(payload: dict[str, object]) -> int:
     print(f"case={payload['case']}")
@@ -739,6 +757,7 @@ def _print_watch_external_stop(payload: dict[str, object]) -> int:
             print(f"- id={row.get('id')} pid={row.get('pid')} error={row.get('error')}")
     return 0 if not failed else 1
 
+
 def _print_watch_external_start(payload: dict[str, object]) -> int:
     print(f"case={payload['case']}")
     print(f"name={payload['name']}")
@@ -751,6 +770,7 @@ def _print_watch_external_start(payload: dict[str, object]) -> int:
     print(f"job_id={payload.get('job_id')}")
     return 0 if bool(payload.get("ok", True)) else 1
 
+
 def _print_watch_external_run(payload: dict[str, object]) -> int:
     print(f"case={payload['case']}")
     print(f"command={payload['command']}")
@@ -761,6 +781,7 @@ def _print_watch_external_run(payload: dict[str, object]) -> int:
     print(f"returncode={payload.get('returncode')}")
     return 0 if bool(payload.get("ok", True)) else 1
 
+
 def _watch_profile(case_dir: Path, explicit: str | None) -> str:
     if explicit in {"brief", "detailed"}:
         return explicit
@@ -768,6 +789,7 @@ def _watch_profile(case_dir: Path, explicit: str | None) -> str:
         return str(watch_ops.effective_output_profile(case_dir))
     except Exception:
         return "detailed"
+
 
 def _watch_json_payload(
     command: str,
@@ -793,6 +815,7 @@ def _watch_json_payload(
     )
     return base
 
+
 def _add_watch_json_jobs(base: dict[str, object], payload: dict[str, object]) -> None:
     if "jobs" not in payload:
         return
@@ -812,6 +835,7 @@ def _add_watch_json_jobs(base: dict[str, object], payload: dict[str, object]) ->
         for job in jobs
     ]
 
+
 def _add_watch_json_log(base: dict[str, object], payload: dict[str, object]) -> None:
     if "log" not in payload:
         return
@@ -819,6 +843,7 @@ def _add_watch_json_log(base: dict[str, object], payload: dict[str, object]) -> 
     base["log"] = payload.get("log")
     base["line_count"] = len(lines)
     base["lines"] = lines
+
 
 def _copy_watch_json_scalars(
     base: dict[str, object],
@@ -828,6 +853,7 @@ def _copy_watch_json_scalars(
     for key in keys:
         if key in payload:
             base[key] = payload.get(key)
+
 
 def _follow_log_path(log_path: Path, *, interval: float) -> int:
     sleep_interval = max(0.05, float(interval))

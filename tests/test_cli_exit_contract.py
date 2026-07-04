@@ -54,3 +54,4 @@ def test_invalid_usage_returns_two() -> None:
     assert _run(["knife", "compare"]) == 2  # missing required arguments
     assert _run(["knife", "bogus"]) == 2  # invalid subcommand
     assert _run(["knife", "doctor", "--bogus"]) == 2  # unrecognized flag
+    assert _run(["knife", "preflight", "--json", "--json-version", "9"]) == 2

@@ -42,6 +42,7 @@ def _knife_doctor(args: argparse.Namespace) -> int:
         print("\nOK: no issues found.")
     return knife_ops.doctor_exit_code(payload)
 
+
 def _knife_preflight(args: argparse.Namespace) -> int:
     payload = knife_ops.preflight_payload(args.case_dir)
     if args.json:
@@ -57,6 +58,7 @@ def _knife_preflight(args: argparse.Namespace) -> int:
         print(f"solver_error={payload['solver_error']}")
     print(f"ok={payload['ok']}")
     return 0 if payload["ok"] else 1
+
 
 def _knife_compare(args: argparse.Namespace) -> int:
     try:
@@ -202,9 +204,9 @@ def _print_physical_diagnostics(payload: dict[str, object]) -> None:
 
 
 def _physical_exit_code(payload: dict[str, object], *, fail_on_bad: bool) -> int:
-    if not bool(payload.get("ok", False)):
+    if not bool(payload.get("ok")):
         return 1
-    if fail_on_bad and not bool(payload.get("physical_ok", False)):
+    if fail_on_bad and not bool(payload.get("physical_ok")):
         return 1
     return 0
 
@@ -270,6 +272,7 @@ def _print_compare_diff(diff: dict[str, object], *, flat: bool) -> None:
         print(f"  left_hash={diff.get('left_hash')}")
         print(f"  right_hash={diff.get('right_hash')}")
 
+
 def _print_compare_values(diff: dict[str, object], *, flat: bool) -> None:
     if flat:
         values = cast("list[str]", diff.get("value_diffs_flat", []))
@@ -286,6 +289,7 @@ def _print_compare_values(diff: dict[str, object], *, flat: bool) -> None:
         )
     if len(values) > 40:
         print(f"  value_diff_more={len(values) - 40}")
+
 
 def _knife_copy(args: argparse.Namespace) -> int:
     try:
@@ -307,6 +311,7 @@ def _knife_copy(args: argparse.Namespace) -> int:
     print(f"drop_mesh={payload['drop_mesh']}")
     print(f"ok={payload['ok']}")
     return 0
+
 
 def _knife_manifest_write(args: argparse.Namespace) -> int:
     sync_subdomains = bool(getattr(args, "sync_subdomains", True))
@@ -355,6 +360,7 @@ def _knife_manifest_write(args: argparse.Namespace) -> int:
     print(f"recorded_inputs_copy={payload['recorded_inputs_copy']}")
     return 0
 
+
 def _knife_manifest_verify(args: argparse.Namespace) -> int:
     payload = manifest_ops.verify_run_manifest(
         Path(args.manifest),
@@ -384,6 +390,7 @@ def _knife_manifest_verify(args: argparse.Namespace) -> int:
         for path in payload["extra_files"]:
             print(f"- {path}")
     return 0 if bool(payload.get("ok")) else 1
+
 
 def _knife_manifest_restore(args: argparse.Namespace) -> int:
     payload = manifest_ops.restore_run_manifest(
@@ -417,6 +424,7 @@ def _knife_registry_repair(args: argparse.Namespace) -> int:
     print(f"rebuilt={payload['rebuilt']}")
     return 0
 
+
 def _knife_initials(args: argparse.Namespace) -> int:
     payload = knife_ops.initials_payload(args.case_dir)
     if args.json:
@@ -443,8 +451,10 @@ def _knife_initials(args: argparse.Namespace) -> int:
             )
     return 0
 
+
 def _knife_use_lightweight_mode(args: argparse.Namespace) -> bool:
     return not bool(getattr(args, "full", False))
+
 
 def tail_bytes_with_cpu_mode(args: argparse.Namespace) -> int | None:
     explicit = getattr(args, "tail_bytes", None)
@@ -454,6 +464,7 @@ def tail_bytes_with_cpu_mode(args: argparse.Namespace) -> int | None:
         return _EASY_ON_CPU_TAIL_BYTES
     return None
 
+
 def interval_with_cpu_mode(args: argparse.Namespace, interval: float) -> float:
     value = float(interval)
     if value <= 0:
@@ -461,6 +472,7 @@ def interval_with_cpu_mode(args: argparse.Namespace, interval: float) -> float:
     if bool(getattr(args, "easy_on_cpu", False)):
         value = max(value, _EASY_ON_CPU_MIN_POLL_INTERVAL)
     return value
+
 
 def _knife_status(args: argparse.Namespace) -> int:
     try:
@@ -481,6 +493,7 @@ def _knife_status(args: argparse.Namespace) -> int:
         print(line)
     return 0
 
+
 def _knife_current(args: argparse.Namespace) -> int:
     payload = _knife_current_payload(args)
     if args.json:
@@ -491,6 +504,7 @@ def _knife_current(args: argparse.Namespace) -> int:
         return 0
     _print_knife_current(payload)
     return 0
+
 
 def _knife_current_payload(args: argparse.Namespace) -> Mapping[str, object]:
     scope_root = cast("Path", getattr(args, "root", None) or args.case_dir)
@@ -513,6 +527,7 @@ def _knife_current_payload(args: argparse.Namespace) -> Mapping[str, object]:
         )
     except TypeError:
         return knife_ops.current_payload(scope_root)
+
 
 def _print_knife_current(payload: Mapping[str, object]) -> None:
     print(f"case={payload['case']}")
@@ -545,6 +560,7 @@ def _print_knife_current(payload: Mapping[str, object]) -> None:
         _print_current_jobs(_object_sequence(payload.get("jobs")))
     _print_current_untracked(_object_sequence(payload.get("untracked_processes")))
 
+
 def _print_current_runs(runs: Sequence[object]) -> None:
     print("runs:")
     for run_obj in runs:
@@ -555,6 +571,7 @@ def _print_current_runs(runs: Sequence[object]) -> None:
             f"launcher_pid={run.get('launcher_pid')} solvers={run.get('solver_pids', [])}",
         )
 
+
 def _print_current_jobs(jobs: Sequence[object]) -> None:
     print("tracked_jobs:")
     for job_obj in jobs:
@@ -563,6 +580,7 @@ def _print_current_jobs(jobs: Sequence[object]) -> None:
             f"- {job.get('name', 'job')} pid={job.get('pid', '?')} "
             f"status={job.get('status', 'unknown')}",
         )
+
 
 def _print_current_untracked(processes: Sequence[object]) -> None:
     if not processes:
@@ -576,6 +594,7 @@ def _print_current_untracked(processes: Sequence[object]) -> None:
             f"role={process.get('role')} case={process.get('case')} "
             f"launcher_pid={process.get('launcher_pid')} cmd={process['command']}",
         )
+
 
 def _knife_current_scope_payload(
     case_dir: Path,
@@ -591,6 +610,7 @@ def _knife_current_scope_payload(
         except TypeError:
             return knife_ops.current_payload(case_dir)
 
+
 def _knife_adopt(args: argparse.Namespace) -> int:
     scope_root = cast("Path", getattr(args, "root", None) or args.case_dir)
     payload = _knife_adopt_payload(
@@ -603,6 +623,7 @@ def _knife_adopt(args: argparse.Namespace) -> int:
         return 0 if not payload["failed"] else 1
     _print_knife_adopt(payload)
     return 0 if not payload["failed"] else 1
+
 
 def _knife_adopt_payload(
     case_dir: Path,
@@ -621,6 +642,7 @@ def _knife_adopt_payload(
             return knife_ops.adopt_payload(case_dir, recursive=(recursive or all_untracked))
         except TypeError:
             return knife_ops.adopt_payload(case_dir)
+
 
 def _print_knife_adopt(payload: dict[str, object]) -> None:
     print(f"case={payload['case']}")
@@ -668,6 +690,7 @@ def _object_mapping(value: object) -> dict[str, object]:
         return {}
     return {str(key): item for key, item in value.items()}
 
+
 def _knife_stop(args: argparse.Namespace) -> int:
     case_dir = getattr(args, "case_override", None) or args.case_dir
     payload = knife_ops.stop_payload(
@@ -700,6 +723,7 @@ def _knife_stop(args: argparse.Namespace) -> int:
                 f"error={row['error']}",
             )
     return 0 if not payload["failed"] else 1
+
 
 def _knife_converge(args: argparse.Namespace) -> int:
     try:
@@ -745,6 +769,7 @@ def _knife_converge(args: argparse.Namespace) -> int:
     print(f"ok={payload['ok']}")
     return 0 if payload["ok"] else 1
 
+
 def _knife_stability(args: argparse.Namespace) -> int:
     try:
         payload = knife_ops.stability_payload(
@@ -776,6 +801,7 @@ def _knife_stability(args: argparse.Namespace) -> int:
     print(f"eta_seconds={payload['eta_seconds']}")
     return 0 if payload["status"] == "pass" else 1
 
+
 def _knife_criteria(args: argparse.Namespace) -> int:
     payload = knife_ops.criteria_payload(
         args.case_dir,
@@ -800,6 +826,7 @@ def _knife_criteria(args: argparse.Namespace) -> int:
         )
     return 0
 
+
 def _knife_eta(args: argparse.Namespace) -> int:
     payload = knife_ops.eta_payload(
         args.case_dir,
@@ -823,6 +850,7 @@ def _knife_eta(args: argparse.Namespace) -> int:
     print(f"eta_end_time_seconds={payload['eta_end_time_seconds']}")
     return 0
 
+
 def _knife_report(args: argparse.Namespace) -> int:
     fmt = "json" if bool(getattr(args, "json", False)) else str(getattr(args, "format", "json"))
     payload = knife_ops.report_payload(
@@ -842,6 +870,7 @@ def _knife_report(args: argparse.Namespace) -> int:
     emit_json(payload, args)
     return 0
 
+
 def _knife_campaign_list(args: argparse.Namespace) -> int:
     payload = knife_ops.campaign_list_payload(
         args.case_dir,
@@ -859,6 +888,7 @@ def _knife_campaign_list(args: argparse.Namespace) -> int:
     for case in payload["cases"]:
         print(f"- {case}")
     return 0
+
 
 def _knife_campaign_status(args: argparse.Namespace) -> int:
     payload = knife_ops.campaign_status_payload(
@@ -883,6 +913,7 @@ def _knife_campaign_status(args: argparse.Namespace) -> int:
         )
     return 0
 
+
 def _knife_campaign_rank(args: argparse.Namespace) -> int:
     payload = knife_ops.campaign_rank_payload(
         args.case_dir,
@@ -906,6 +937,7 @@ def _knife_campaign_rank(args: argparse.Namespace) -> int:
         )
     return 0
 
+
 def _knife_campaign_stop(args: argparse.Namespace) -> int:
     payload = knife_ops.campaign_stop_worst_payload(
         args.case_dir,
@@ -926,6 +958,7 @@ def _knife_campaign_stop(args: argparse.Namespace) -> int:
         print(f"- {target}")
     failed = [item for item in payload["actions"] if item.get("failed")]
     return 0 if not failed else 1
+
 
 def _knife_campaign_keep(args: argparse.Namespace) -> int:
     payload = knife_ops.campaign_keep_best_payload(
@@ -948,6 +981,7 @@ def _knife_campaign_keep(args: argparse.Namespace) -> int:
     failed = [item for item in payload["actions"] if item.get("failed")]
     return 0 if not failed else 1
 
+
 def _knife_campaign_compare(args: argparse.Namespace) -> int:
     payload = knife_ops.campaign_compare_payload(
         args.case_dir,
@@ -967,6 +1001,7 @@ def _knife_campaign_compare(args: argparse.Namespace) -> int:
         print(f"- {key}: {len(values)} case(s)")
     print(f"comparisons={len(payload['comparisons'])}")
     return 0
+
 
 def _knife_set(args: argparse.Namespace) -> int:
     value = " ".join(args.value).strip()
