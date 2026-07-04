@@ -130,6 +130,11 @@ def test_run_manifest_binary_library_and_git_branches(
     monkeypatch.setattr(run_manifest, "run_trusted", lambda *_a, **_k: fail_result)
     assert run_manifest._linked_library_rows(solver)["files"] == []
 
+
+def test_run_manifest_ldd_and_git_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    solver = tmp_path / "simpleFoam"
+    solver.write_text("#!/bin/sh\n", encoding="utf-8")
+
     lib = tmp_path / "libA.so"
     lib.write_text("lib\n", encoding="utf-8")
     ldd = SimpleNamespace(
@@ -267,6 +272,21 @@ def test_process_scan_scope_role_cache_and_case_helpers(
         3: scan.ProcEntry(pid=3, ppid=0, args=["mpirun"], cwd=other),
         4: scan.ProcEntry(pid=4, ppid=4, args=["simpleFoam"], cwd=None),
     }
+    _assert_process_scope_helpers(case, tmp_path, table)
+    _assert_discovery_cache_helpers(case, tmp_path)
+
+    original_is_file = Path.is_file
+
+    def _raise_is_file(self: Path) -> bool:
+        if self.name == "controlDict":
+            raise OSError("blocked")
+        return original_is_file(self)
+
+    monkeypatch.setattr(Path, "is_file", _raise_is_file)
+    assert scan.is_case_dir(case) is False
+
+
+def _assert_process_scope_helpers(case: Path, tmp_path: Path, table: dict[int, scan.ProcEntry]) -> None:
     assert scan.launcher_pids_for_case(table, None, case) == {1}
     assert scan.solver_descendant_pids(1, table, None) == [2]
     assert scan.has_ancestor(4, {1}, table) is False
@@ -289,6 +309,8 @@ def test_process_scan_scope_role_cache_and_case_helpers(
     assert scan._case_to_text(None) == ""
     assert scan._in_scope_case(case, tmp_path, case_root_is_case=False) is True
 
+
+def _assert_discovery_cache_helpers(case: Path, tmp_path: Path) -> None:
     entry = scan.ProcEntry(pid=20, ppid=1, args=["simpleFoam"], cwd=case)
     scan._cache_discovery(entry, case, "procfs", proc_root=tmp_path)
     assert scan._cache_lookup(entry, proc_root=tmp_path) is not None
@@ -297,16 +319,6 @@ def test_process_scan_scope_role_cache_and_case_helpers(
     scan._DISCOVERY_CACHE[30] = old
     scan._cleanup_discovery_cache()
     assert 30 not in scan._DISCOVERY_CACHE
-
-    original_is_file = Path.is_file
-
-    def _raise_is_file(self: Path) -> bool:
-        if self.name == "controlDict":
-            raise OSError("blocked")
-        return original_is_file(self)
-
-    monkeypatch.setattr(Path, "is_file", _raise_is_file)
-    assert scan.is_case_dir(case) is False
 
 
 def test_process_scan_remaining_branch_helpers(tmp_path: Path) -> None:

@@ -233,6 +233,41 @@ def test_real_toy_case_tracked_start_status_and_stop(real_case: RealTutorialCase
     assert all(str(job.get("status")) != "running" for job in all_jobs["jobs"])
 
 
+def test_real_toy_case_start_pause_resume_restart_and_jobs(real_case: RealTutorialCase) -> None:
+    case = real_case.case
+    pid = real_case.start_solver()
+    assert pid > 0
+    try:
+        wait_until(lambda: running_jobs(case) >= 1, description="initial tracked solver")
+        jobs = watch_service.jobs_payload(case, include_all=False, kind="solver")
+        assert jobs["count"] >= 1
+        assert all(str(job.get("kind")) == "solver" for job in jobs["jobs"])
+
+        paused = watch_service.pause_payload(case, all_jobs=True, kind="solver")
+        assert paused["selected"] >= 1
+        assert paused["failed"] == []
+        assert paused["paused"]
+
+        resumed = watch_service.resume_payload(case, all_jobs=True, kind="solver")
+        assert resumed["selected"] >= 1
+        assert resumed["failed"] == []
+        assert resumed["resumed"]
+    finally:
+        real_case.stop_all_solvers()
+    wait_until(lambda: running_jobs(case) == 0, description="stopped before restart")
+
+    restarted_pid = real_case.start_solver()
+    assert restarted_pid > 0
+    try:
+        wait_until(lambda: running_jobs(case) >= 1, description="restarted tracked solver")
+        restarted = watch_service.jobs_payload(case, include_all=False, kind="solver")
+        assert restarted["count"] >= 1
+        assert int(knife_service.current_payload(case, live=True)["jobs_running"]) >= 1
+    finally:
+        real_case.stop_all_solvers()
+    wait_until(lambda: running_jobs(case) == 0, description="stopped restarted solver")
+
+
 def test_real_toy_case_dead_tracked_process_recovers_to_finished(real_case: RealTutorialCase) -> None:
     case = real_case.case
     pid = real_case.start_solver()
@@ -292,6 +327,7 @@ def test_real_toy_case_adopts_raw_parallel_mpirun_as_one_tracked_run(
     prepared = run_ops.prepare_parallel_case(case, parallel=2, clean_processors=True)
     assert prepared["decompose_returncode"] == 0
     display, command = run_ops.solver_command(case, parallel=2)
+    _require_working_parallel_launcher(command)
     log_path = case / f"log.raw-{display}"
     with log_path.open("a", encoding="utf-8", errors="ignore") as log:
         process = subprocess.Popen(  # noqa: S603
@@ -468,6 +504,7 @@ def test_real_toy_case_compare_reconstructed_parallel_to_serial(
     shutil.copytree(source, serial_case, ignore=shutil.ignore_patterns(".ofti"))
     shutil.copytree(source, parallel_case, ignore=shutil.ignore_patterns(".ofti"))
     _ensure_parallel_dict(parallel_case, 2)
+    _require_working_parallel_launcher(run_ops.solver_command(parallel_case, parallel=2)[1])
 
     serial = run_ops.smoke_payload(
         serial_case,
@@ -570,6 +607,7 @@ def test_real_toy_case_parallel_prepare_run_stop_resize_plan(
 def _prepare_parallel_resize_source(real_case: RealTutorialCase) -> None:
     case = real_case.case
     real_case.ensure_parallel_dict(2)
+    _require_working_parallel_launcher(run_ops.solver_command(case, parallel=2)[1])
     dry_plan = parallel_resize_service.parallel_resize_payload(case, from_ranks=2, to_ranks=3, dry_run=True)
     assert dry_plan["ok"] is True
     assert any(row["step"] == "decompose" for row in dry_plan["steps"])
@@ -600,6 +638,20 @@ def _resize_parallel_args(case: Path) -> list[str]:
         "--force-stop",
         "--json",
     ]
+
+
+def _require_working_parallel_launcher(command: list[str]) -> None:
+    if not command:
+        pytest.skip("MPI launcher unavailable")
+    probe = subprocess.run(  # noqa: S603
+        [command[0], "-np", "1", "true"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode != 0:
+        detail = (probe.stderr or probe.stdout).strip().splitlines()[:1]
+        pytest.skip(f"MPI launcher unusable in this environment: {' '.join(detail)}")
 
 
 def _ensure_parallel_dict(case: Path, ranks: int) -> None:
