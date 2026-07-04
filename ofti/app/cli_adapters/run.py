@@ -97,7 +97,7 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         "--write-receipt",
         dest="write_manifest",
         action="store_true",
-        help="Write immutable launch manifest under ./runs/",
+        help="Write immutable launch manifest under CASE/runs/ (or paths.manifest_root)",
     )
     solver.add_argument(
         "--record-inputs-copy",

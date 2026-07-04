@@ -345,13 +345,17 @@ Manifests capture reproducible-run provenance:
 ofti run solver CASE --write-manifest --json
 ofti run solver CASE --write-manifest --record-inputs-copy --json
 ofti knife manifest write CASE --record-inputs-copy --json
-ofti knife manifest verify runs/.../manifest.json --json
-ofti knife manifest restore runs/.../manifest.json --to RESTORED_CASE --json
-ofti knife manifest restore runs/.../manifest.json --to CASE_COPY --only system,constant --json
+ofti knife manifest verify CASE --json
+ofti knife manifest verify CASE/runs/.../manifest.json --json
+ofti knife manifest restore CASE/runs/.../manifest.json --to RESTORED_CASE --json
+ofti knife manifest restore CASE/runs/.../manifest.json --to CASE_COPY --only system,constant --json
 ```
 
-- `--write-manifest` writes an immutable manifest JSON under `./runs/` in the
-  directory where you launch the command.
+- By default `--write-manifest` writes an immutable manifest JSON under
+  `CASE/runs/<timestamp>_<case>/manifest.json`, so `knife manifest verify CASE`
+  can find the latest case-local manifest.
+- Set `[paths].manifest_root` or `OFTI_MANIFEST_ROOT` to write CLI-created
+  manifests under a central external root instead.
 - Hash-only manifests are verification-grade: they let you detect drift.
 - `--record-inputs-copy` upgrades the manifest to restore-grade by copying
   `system/`, `constant/`, and `0/` next to the manifest.

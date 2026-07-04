@@ -403,9 +403,8 @@ def collect_case_inputs(
 def resolve_manifest_output(case_path: Path, output: Path | None) -> Path:
     if output is None:
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        launch_dir = Path.cwd().resolve()
         case_dir = case_path.expanduser().resolve()
-        return launch_dir / "runs" / f"{stamp}_{_slug(case_dir.name)}" / "manifest.json"
+        return case_dir / "runs" / f"{stamp}_{_slug(case_dir.name)}" / "manifest.json"
     destination = output.expanduser()
     if not destination.is_absolute():
         destination = Path.cwd() / destination

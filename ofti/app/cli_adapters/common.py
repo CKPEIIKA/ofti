@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ofti.app.cli_help import _EASY_ON_CPU_MIN_POLL_INTERVAL, _EASY_ON_CPU_TAIL_BYTES
 from ofti.core import run_manifest as manifest_ops
+from ofti.foam.config import get_config
 from ofti.tools.cli_tools import run as run_ops
 
 
@@ -27,8 +28,15 @@ def interval_with_cpu_mode(args: argparse.Namespace, interval: float) -> float:
 
 
 def planned_manifest_path(case_dir: Path, manifest_file: object) -> Path:
-    output = manifest_file if isinstance(manifest_file, Path) else None
+    output = manifest_file if isinstance(manifest_file, Path) else _configured_manifest_root()
     return manifest_ops.resolve_manifest_output(Path(case_dir), output)
+
+
+def _configured_manifest_root() -> Path | None:
+    root = get_config().paths.manifest_root
+    if root is None or not root.strip():
+        return None
+    return Path(root).expanduser()
 
 
 def solver_name_for_manifest(cmd: list[str], *, parallel: int) -> str | None:

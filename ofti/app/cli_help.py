@@ -192,19 +192,20 @@ _EXAMPLES_BY_PROG = {
         """\
         Examples:
           ofti knife manifest write CASE --json
-          ofti knife manifest verify runs/manifest.json --json
-          ofti knife manifest restore runs/manifest.json --to restored-case
+          ofti knife manifest verify CASE --json
+          ofti knife manifest restore CASE/runs/.../manifest.json --to restored-case
         """,
     ),
     "ofti knife manifest write": _examples("ofti knife manifest write CASE --json"),
     "ofti knife manifest verify": _examples(
-        "ofti knife manifest verify runs/manifest.json --json",
+        "ofti knife manifest verify CASE --json",
+        "ofti knife manifest verify CASE/runs/.../manifest.json --json",
     ),
     "ofti knife manifest restore": dedent(
         """\
         Examples:
-          ofti knife manifest restore runs/manifest.json --to restored-case
-          ofti knife manifest restore runs/manifest.json --to restored-case --force
+          ofti knife manifest restore CASE/runs/.../manifest.json --to restored-case
+          ofti knife manifest restore CASE/runs/.../manifest.json --to restored-case --force
         """,
     ),
     "ofti knife current": _examples("ofti knife current --root . --recursive --table"),

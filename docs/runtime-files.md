@@ -133,9 +133,11 @@ nu sweep: constant/transportProperties nu 1e-05,2e-05
 - `.ofti/smoke/*/summary.json` or `--out DIR/summary.json`: bounded smoke-test
   result with command, normalized controls, log path, times seen, and optional
   physical-check payload.
-- `runs/*/manifest.json` or `--manifest-file PATH`: `ofti.run-manifest` v1
-  reproducibility manifest containing launch settings, OpenFOAM/build
-  provenance, selected setup hashes, and optional copied inputs under `inputs/`.
+- `CASE/runs/*/manifest.json`, `[paths].manifest_root/*/manifest.json`, or
+  `--manifest-file PATH`: `ofti.run-manifest` v1 reproducibility manifest
+  containing launch settings, OpenFOAM/build provenance, selected setup hashes,
+  and optional copied inputs under `inputs/`. The default is case-local so
+  `ofti knife manifest verify CASE` can find the latest manifest.
 
 Legacy receipt names are accepted for compatibility, but new output and docs use
 `manifest`.

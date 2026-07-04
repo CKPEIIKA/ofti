@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from ofti.app.cli_adapters.common import planned_manifest_path
 from ofti.core import run_manifest, run_receipt
 from ofti.core.run_manifest import (
     build_run_manifest,
@@ -49,7 +50,7 @@ def test_write_manifest_with_recorded_inputs_copy(
     )
 
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest_path.is_relative_to(tmp_path / "runs")
+    assert manifest_path.is_relative_to(case / "runs")
     assert payload["format"] == "ofti.run-manifest"
     assert payload["format_version"] == 1
     assert payload["manifest_kind"] == "ofti_run_manifest"
@@ -444,10 +445,8 @@ def test_relative_manifest_output_resolves_from_launch_directory(
 
 def test_verify_manifest_accepts_case_directory(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
-    monkeypatch.chdir(case)  # default output -> case/runs/<stamp>/manifest.json
 
     manifest_path = write_case_run_manifest(
         case,
@@ -468,6 +467,22 @@ def test_verify_manifest_accepts_case_directory(
     payload = verify_run_manifest(case)
     assert payload["manifest"] == str(manifest_path)
     assert payload["ok"] is True
+
+
+def test_cli_manifest_plan_uses_configured_manifest_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    root = tmp_path / "external-manifests"
+    cfg = tmp_path / "ofti.toml"
+    cfg.write_text(f"[paths]\nmanifest_root = {str(root)!r}\n", encoding="utf-8")
+    monkeypatch.setenv("OFTI_CONFIG", str(cfg))
+
+    manifest_path = planned_manifest_path(case, None)
+
+    assert manifest_path.is_relative_to(root)
+    assert manifest_path.name == "manifest.json"
 
 
 def test_resolve_manifest_file_errors_when_directory_has_no_manifest(tmp_path: Path) -> None:

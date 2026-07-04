@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
-from ofti.app.cli_adapters.common import solver_name_for_manifest
+from ofti.app.cli_adapters.common import planned_manifest_path, solver_name_for_manifest
 from ofti.app.cli_help import (
     _EASY_ON_CPU_MIN_POLL_INTERVAL,
     _EASY_ON_CPU_TAIL_BYTES,
@@ -332,7 +332,7 @@ def _knife_manifest_write(args: argparse.Namespace) -> int:
         sync_subdomains=sync_subdomains,
         prepare_parallel=prepare_parallel,
         clean_processors=clean_processors,
-        output=getattr(args, "manifest_file", None),
+        output=planned_manifest_path(args.case_dir, getattr(args, "manifest_file", None)),
         record_inputs_copy=bool(getattr(args, "record_inputs_copy", False)),
         solver_name=solver_name_for_manifest(cmd, parallel=parallel),
     )

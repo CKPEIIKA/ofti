@@ -174,7 +174,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         "--write-receipt",
         dest="write_manifest",
         action="store_true",
-        help="Write immutable launch manifest under ./runs/",
+        help="Write immutable launch manifest under CASE/runs/ (or paths.manifest_root)",
     )
     start.add_argument(
         "--record-inputs-copy",
@@ -257,7 +257,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         "--write-receipt",
         dest="write_manifest",
         action="store_true",
-        help="Write immutable launch manifest under ./runs/",
+        help="Write immutable launch manifest under CASE/runs/ (or paths.manifest_root)",
     )
     run.add_argument(
         "--record-inputs-copy",
