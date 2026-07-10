@@ -63,13 +63,33 @@ def _knife_preflight(args: argparse.Namespace) -> int:
 def _knife_checkpoint(args: argparse.Namespace) -> int:
     raw_np = str(getattr(args, "processors", "auto"))
     expected = None if raw_np == "auto" else int(raw_np)
-    payload = checkpoint_service.checkpoint_payload(
-        args.case_dir,
-        expected_processors=expected,
-    )
+    quarantine = bool(getattr(args, "quarantine_partial", False))
+    apply = bool(getattr(args, "apply", False))
+    if apply and not quarantine:
+        print("ofti: --apply requires --quarantine-partial", file=sys.stderr)
+        return 2
+    if quarantine:
+        payload = checkpoint_service.quarantine_partial_payload(
+            args.case_dir,
+            expected_processors=expected,
+            apply=apply,
+        )
+    else:
+        payload = checkpoint_service.checkpoint_payload(
+            args.case_dir,
+            expected_processors=expected,
+        )
     if args.json:
         emit_json(payload, args)
         return 0 if payload["ok"] else 1
+    if quarantine:
+        print(
+            f"case={payload['case']} applied={payload['applied']} "
+            f"safe_to_apply={payload['safe_to_apply']}",
+        )
+        for row in payload["moves"]:
+            print(f"- {row['source']} -> {row['destination']}")
+        return 0
     print(f"case={payload['case']} processors={payload['processor_count']}")
     print(
         f"latest_complete={payload['latest_complete_time']} "

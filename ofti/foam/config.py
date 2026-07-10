@@ -58,6 +58,7 @@ class BundleDefaults:
 class WatchDefaults:
     poll_interval: float = 0.25
     tail_bytes: int = 262144
+    stale_after_seconds: float = 120.0
 
 
 @dataclass
@@ -311,6 +312,8 @@ def _apply_env_overrides(cfg: Config) -> None:
     _apply_env_path("OFTI_BUNDLE_OUTPUT_DIR", cfg.bundle, "output_dir")
     _apply_env_float("OFTI_WATCH_POLL_INTERVAL", cfg.watch, "poll_interval")
     _apply_env_int("OFTI_WATCH_TAIL_BYTES", cfg.watch, "tail_bytes")
+    _apply_env_float("OFTI_WATCH_STALE_AFTER_SECONDS", cfg.watch, "stale_after_seconds")
+    cfg.watch.stale_after_seconds = max(1.0, cfg.watch.stale_after_seconds)
 
 
 def _section(raw: dict[str, Any], name: str) -> dict[str, Any]:
@@ -391,6 +394,8 @@ def _apply_watch_defaults(cfg: WatchDefaults, raw: dict[str, Any]) -> None:
         cfg.poll_interval = max(0.05, value)
     if (value := _int_value(raw, "tail_bytes")) is not None:
         cfg.tail_bytes = max(0, value)
+    if (value := _float_value(raw, "stale_after_seconds")) is not None:
+        cfg.stale_after_seconds = max(1.0, value)
 
 
 def _apply_env_str(name: str, target: object, attr: str) -> None:

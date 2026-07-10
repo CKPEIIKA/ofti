@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import signal
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -153,6 +154,28 @@ def write_simple_decompose_dict(case: Path, *, ranks: int) -> None:
     )
 
 
+def write_scotch_decompose_dict(case: Path, *, ranks: int) -> None:
+    system = case / "system"
+    system.mkdir(exist_ok=True)
+    (system / "decomposeParDict").write_text(
+        "\n".join(
+            [
+                "FoamFile",
+                "{",
+                "    version 2.0;",
+                "    format ascii;",
+                "    class dictionary;",
+                "    object decomposeParDict;",
+                "}",
+                f"numberOfSubdomains {ranks};",
+                "method scotch;",
+                "",
+            ],
+        ),
+        encoding="utf-8",
+    )
+
+
 def pid_running(pid: int) -> bool:
     try:
         stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="ignore")
@@ -190,6 +213,24 @@ def kill_leftovers(pids: list[int]) -> None:
     for process_id in sorted(set(pids)):
         if pid_running(process_id):
             os.kill(process_id, signal.SIGKILL)
+
+
+def mpi_launcher_issue(command: list[str]) -> str | None:
+    if not command:
+        return "parallel solver command is empty"
+    launcher = command[0]
+    if shutil.which(launcher) is None:
+        return f"MPI launcher is unavailable: {launcher}"
+    probe = subprocess.run(  # noqa: S603
+        [launcher, "-np", "1", "true"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode == 0:
+        return None
+    detail = (probe.stderr or probe.stdout).strip().splitlines()
+    return detail[0] if detail else f"{launcher} probe returned {probe.returncode}"
 
 
 def _parse_options(parts: list[str]) -> dict[str, str]:

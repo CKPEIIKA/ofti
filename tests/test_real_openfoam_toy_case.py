@@ -22,6 +22,7 @@ from ofti.tools import (
     watch_service,
 )
 from ofti.tools.cli_tools import run as run_ops
+from ofti.tools.cli_tools import run_queue
 from tests.real_openfoam_tutorials import (
     RealTutorialCase,
     TutorialProfile,
@@ -323,6 +324,35 @@ def test_real_toy_case_start_pause_resume_restart_and_jobs(real_case: RealTutori
     wait_until(lambda: running_jobs(case) == 0, description="stopped restarted solver")
 
 
+def test_real_toy_case_progress_tracks_live_pause_and_resume(real_case: RealTutorialCase) -> None:
+    case = real_case.case
+    pid = real_case.start_solver()
+    assert pid > 0
+    try:
+        wait_until(lambda: running_jobs(case) >= 1, description="progress-state solver")
+        live = watch_service.jobs_payload(case, include_all=False, kind="solver")["progress"]
+        assert live["process_live"] is True
+        assert live["paused"] is False
+        assert "IDLE" not in live["reason_codes"]
+
+        paused = watch_service.pause_payload(case, all_jobs=True, kind="solver")
+        assert paused["failed"] == []
+        progress = watch_service.jobs_payload(case, include_all=False, kind="solver")["progress"]
+        assert progress["process_live"] is False
+        assert progress["paused"] is True
+        assert progress["reason_codes"] == ["PAUSED"]
+
+        resumed = watch_service.resume_payload(case, all_jobs=True, kind="solver")
+        assert resumed["failed"] == []
+        progress = watch_service.jobs_payload(case, include_all=False, kind="solver")["progress"]
+        assert progress["process_live"] is True
+        assert progress["paused"] is False
+        assert "PAUSED" not in progress["reason_codes"]
+    finally:
+        real_case.stop_all_solvers()
+    wait_until(lambda: running_jobs(case) == 0, description="progress-state solver stopped")
+
+
 def test_real_toy_case_dead_tracked_process_recovers_to_finished(real_case: RealTutorialCase) -> None:
     case = real_case.case
     pid = real_case.start_solver()
@@ -517,6 +547,50 @@ def test_real_toy_case_queue_continues_after_crashed_case(
     assert payload["finished"][1]["returncode"] == 0
     assert payload["finished"][1]["outcome"] in {"time", "criteria", "completed"}
     assert payload["summary"]["outcomes"]["crashed"] == 1
+    assert watch_service.jobs_payload(bad_case, include_all=False, kind="solver")["count"] == 0
+    assert watch_service.jobs_payload(good_case, include_all=False, kind="solver")["count"] == 0
+    assert running_jobs(bad_case) == 0
+    assert running_jobs(good_case) == 0
+
+
+def test_real_toy_case_queue_classifier_uses_explicit_criterion_evidence(
+    real_case: RealTutorialCase,
+    tmp_path: Path,
+) -> None:
+    case = real_case.case
+    solver, _command = run_ops.solver_command(case)
+    assert knife_service.set_entry_payload(case, "system/controlDict", "endTime", "0.005")["ok"]
+    queued = run_ops.queue_payload(
+        cases=[case],
+        solver=solver,
+        max_parallel=1,
+        backend="process",
+        poll_interval=0.1,
+        queue_root=tmp_path,
+    )
+    assert queued["finished"][0]["returncode"] == 0
+    assert knife_service.set_entry_payload(case, "system/controlDict", "endTime", "1000")["ok"]
+    assert knife_service.set_entry_payload(
+        case,
+        "system/controlDict",
+        "residualTolerance",
+        "1e9",
+    )["ok"]
+    log_path = max(case.glob("log.*"), key=lambda path: path.stat().st_mtime)
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write("\nrunTimeControl: residualTolerance satisfied\n")
+
+    status = run_ops.status_row_payload(case, lightweight=True, tail_bytes=256 * 1024)
+    classified = run_queue.queue_finished_row(
+        status,
+        case=str(case),
+        pid=None,
+        returncode=0,
+    )
+
+    assert status["criteria_passed"] >= 1
+    assert classified["outcome"] == "criteria"
+    assert classified["stop_reason"] == "criteria_met"
 
 
 def test_real_toy_case_criteria_reads_explicit_runtime_evidence(real_case: RealTutorialCase) -> None:
@@ -638,6 +712,22 @@ def test_real_toy_case_prepare_parallel_extra_rank_profile(real_case: RealTutori
     checkpoint = checkpoint_service.checkpoint_payload(case, expected_processors=ranks)
     assert checkpoint["ok"] is True
     assert checkpoint["latest_complete_time"] == "0"
+    partial = case / "processor0" / "999"
+    shutil.copytree(case / "processor0" / "0", partial)
+    preview = checkpoint_service.quarantine_partial_payload(
+        case,
+        expected_processors=ranks,
+    )
+    assert preview["applied"] is False
+    assert preview["safe_to_apply"] is True
+    quarantined = checkpoint_service.quarantine_partial_payload(
+        case,
+        expected_processors=ranks,
+        apply=True,
+    )
+    assert quarantined["applied"] is True
+    assert not partial.exists()
+    assert Path(quarantined["moves"][0]["destination"]).is_dir()
 
 
 def test_real_toy_case_parallel_prepare_run_stop_resize_plan(

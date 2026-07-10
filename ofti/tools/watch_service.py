@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ofti.core.progress import progress_evidence
+from ofti.foam.config import get_config
 from ofti.foam.subprocess_utils import run_trusted
 from ofti.foamlib.logs import read_log_tail_lines
 from ofti.tools import (
@@ -88,6 +89,7 @@ def _case_jobs_payload(
         process_live=any(job.get("status") == "running" for job in active),
         log_path=_latest_job_log(active),
         paused=bool(active) and all(job.get("status") == "paused" for job in active),
+        stale_after=get_config().watch.stale_after_seconds,
     )
     selected_kind = _normalize_kind_filter(kind)
     if not include_all:

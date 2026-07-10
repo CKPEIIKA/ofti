@@ -84,6 +84,16 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         default="auto",
         help="Expected processor count or 'auto' (default: auto)",
     )
+    checkpoint.add_argument(
+        "--quarantine-partial",
+        action="store_true",
+        help="Preview moving partial processor times into case-local quarantine",
+    )
+    checkpoint.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply --quarantine-partial moves; complete checkpoints are preserved",
+    )
     checkpoint.add_argument("--json", action="store_true")
     checkpoint.set_defaults(func=_knife_checkpoint)
 

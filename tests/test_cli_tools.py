@@ -102,6 +102,14 @@ def test_knife_checkpoint_cli_reports_partial_times(tmp_path: Path, capsys) -> N
     assert payload["latest_complete_time"] == "1"
     assert payload["quarantinable_times"] == ["2"]
 
+    code = cli_tools.main(
+        ["knife", "checkpoint", str(case), "--quarantine-partial", "--apply", "--json"],
+    )
+    quarantined = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert quarantined["applied"] is True
+    assert not (case / "processor0" / "2").exists()
+
 
 def test_result_pack_and_unpack_cli(tmp_path: Path, capsys) -> None:
     case = _make_case(tmp_path / "case")

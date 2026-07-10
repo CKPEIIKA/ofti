@@ -45,7 +45,7 @@ Schema v2 direction is intentionally stricter and should use a stable envelope:
 }
 ```
 
-OFTI 0.9.x keeps v1 as the default output. New automation can opt into v2 with
+OFTI 0.9.1 keeps v1 as the default output. New automation can opt into v2 with
 `--json-version 2` or `OFTI_JSON_VERSION=2`, but should still pin and check
 `schema_version`.
 
@@ -102,6 +102,7 @@ output_dir = "~/ofti-bundles"
 [watch]
 poll_interval = 0.25
 tail_bytes = 262144
+stale_after_seconds = 120
 ```
 
 Precedence is: CLI flags, environment variables, case-local `ofti.toml`, user

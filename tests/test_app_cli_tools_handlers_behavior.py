@@ -28,7 +28,7 @@ def test_knife_doctor_json_and_ok_message(
     assert "OK: no issues found." in capsys.readouterr().out
 
 
-def test_knife_plain_and_json_branches(
+def test_knife_preflight_and_compare_plain_json_branches(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -77,6 +77,12 @@ def test_knife_plain_and_json_branches(
     assert "value_diff_more=1" in out
     assert "left_hash=abc" in out
     assert "right_hash=def" in out
+
+
+def test_knife_status_current_and_adopt_plain_json_branches(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
 
     monkeypatch.setattr(
         cli_tools.knife_ops,

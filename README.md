@@ -158,6 +158,8 @@ ofti knife physical CASE --time latest --fields p,U,rho,T --json
 ofti knife physical CASE --field rho:min=0 --field T:min=0 --out checks
 ofti knife compare-fields --reference SERIAL_CASE --candidate PARALLEL_CASE --preset flow --out compare
 ofti knife checkpoint CASE --common --np auto --json
+ofti knife checkpoint CASE --quarantine-partial --json
+ofti knife checkpoint CASE --quarantine-partial --apply --json
 ofti knife set CASE --edit system/controlDict:endTime=100 \
   --edit system/controlDict:writeInterval=10 --dry-run --json
 ofti knife copy CASE_COPY --case CASE
@@ -274,6 +276,10 @@ Adopted runs are normalized into the same run registry used by `watch jobs`,
 `knife current`, and `knife status`. When procfs access is limited, OFTI reports
 that live process discovery may be incomplete instead of silently treating the
 registry as empty.
+
+`watch status` reports log/time-write ages and stable `STALE_LOG`,
+`NO_PROGRESS`, `PAUSED`, or `IDLE` reason codes. Configure the warning window
+with `[watch].stale_after_seconds` or `OFTI_WATCH_STALE_AFTER_SECONDS`.
 
 If `.ofti/jobs.json` is lost or quarantined, rebuild it from durable run
 identity files:
@@ -509,9 +515,19 @@ OFTI_REAL_SCENARIOS='smoke,queue,diagnostics' \
   uv run pytest --runslow -m real_openfoam tests/test_real_openfoam_profiles.py
 ```
 
+When `OFTI_REAL_PROFILES` is unset and `OFTI_ENABLE_REAL_CASE_TESTS=1`, the
+profile suite generates fresh canonical tutorial cases through the same adapter.
+This keeps the broad service matrix runnable on a normal OpenFOAM installation
+while still allowing heavier external cases to be supplied explicitly.
+
+The 0.9.1 matrix also exercises live progress-state transitions, decomposed
+checkpoint/result archives, queue outcomes, process cleanup, and stopped-case
+parallel resize against generated or supplied OpenFOAM cases.
+
 `OFTI_REAL_SCENARIOS` limits expensive checks by name. Current scenario names
 include `runtime`, `smoke`, `diagnostics`, `start-stop`, `parallel-stop`,
-`queue`, `queue-failure`, `foamlib-ops`, `core-services`, `parallel-resize`,
+`parallel-adopt`, `parallel-compare`, `queue`, `queue-failure`,
+`queue-criteria`, `foamlib-ops`, `core-services`, `parallel-resize`,
 `parallel-resize-exec`, and `hpc`.
 
 Canonical tutorial smoke coverage is also opt-in. It clones an OpenFOAM tutorial

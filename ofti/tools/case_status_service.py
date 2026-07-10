@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, TypeAlias, TypedDict
 
 from ofti.core.progress import progress_evidence
+from ofti.foam.config import get_config
 from ofti.tools import process_scan_service
 
 SolverProcessRow: TypeAlias = process_scan_service.ProcRow
@@ -154,6 +155,7 @@ def status_payload(
         process_live=running_heuristic,
         log_path=Path(runtime["log_path"]) if runtime["log_path"] else None,
         paused=bool(active_jobs) and all(job.get("status") == "paused" for job in active_jobs),
+        stale_after=get_config().watch.stale_after_seconds,
     )
     return {
         "case": str(case_path),

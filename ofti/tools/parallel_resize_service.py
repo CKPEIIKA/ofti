@@ -400,6 +400,8 @@ def _require_decomposed_case(processor_dirs: list[Path]) -> None:
 
 
 def _reconstruct_command(time_name: str) -> list[str]:
+    if float(time_name) == 0.0:
+        return ["reconstructPar", "-withZero", "-time", time_name]
     return ["reconstructPar", "-time", time_name]
 
 

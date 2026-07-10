@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from ofti.core.checkpoint import checkpoint_health, safe_reconstruct_time
-from ofti.tools.checkpoint_service import checkpoint_payload
+from ofti.tools.checkpoint_service import checkpoint_payload, quarantine_partial_payload
 
 
 def _field(path: Path) -> None:
@@ -46,3 +46,31 @@ def test_checkpoint_validates_expected_processor_count(tmp_path: Path) -> None:
 def test_safe_reconstruct_time_requires_complete_checkpoint() -> None:
     with pytest.raises(ValueError, match="no complete decomposed processor time"):
         safe_reconstruct_time({"latest_complete_time": None})
+
+
+def test_checkpoint_quarantine_previews_then_moves_only_partial_times(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    _field(case / "system" / "controlDict")
+    for processor in ("processor0", "processor1"):
+        _field(case / processor / "1" / "U")
+    _field(case / "processor0" / "2" / "U")
+
+    preview = quarantine_partial_payload(case)
+    applied = quarantine_partial_payload(case, apply=True)
+
+    assert preview["applied"] is False
+    assert len(preview["moves"]) == 1
+    assert (case / "processor0" / "2" / "U").exists() is False
+    assert (case / "processor0" / "1" / "U").is_file()
+    assert Path(applied["moves"][0]["destination"]).joinpath("U").is_file()
+    assert applied["checkpoint_after"]["quarantinable_times"] == []
+
+
+def test_checkpoint_quarantine_refuses_to_move_only_partial_state(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    _field(case / "system" / "controlDict")
+    _field(case / "processor0" / "2" / "U")
+    (case / "processor1").mkdir()
+
+    with pytest.raises(ValueError, match="without a complete checkpoint"):
+        quarantine_partial_payload(case, apply=True)

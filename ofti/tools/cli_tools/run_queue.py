@@ -280,7 +280,7 @@ def _queue_sequential_process_backend(
         _queue_write_record(payload)
         _queue_write_event(payload, "started", row=started)
         status_row = _run().status_row_payload(case_path, lightweight=False)
-        finished = _queue_finished_row(
+        finished = queue_finished_row(
             status_row,
             case=str(case_path),
             pid=None,
@@ -433,7 +433,7 @@ def _queue_poll_active(
             still_active.append(row)
             continue
         status_row = _run().status_row_payload(Path(str(row["case"])))
-        finished = _queue_finished_row(status_row, case=str(row["case"]), pid=pid, returncode=None)
+        finished = queue_finished_row(status_row, case=str(row["case"]), pid=pid, returncode=None)
         payload["finished"].append(finished)
         _queue_write_record(payload)
         _queue_write_event(payload, "finished", row=finished)
@@ -564,7 +564,7 @@ def _queue_append_foamlib_finished(
 ) -> None:
     for case_path in case_group:
         status_row = _run().status_row_payload(case_path)
-        row = _queue_finished_row(status_row, case=str(case_path), pid=None, returncode=None)
+        row = queue_finished_row(status_row, case=str(case_path), pid=None, returncode=None)
         payload["finished"].append(row)
         if str(case_path.resolve()) in failed_map:
             payload["ok"] = False
@@ -823,7 +823,7 @@ def _queue_timestamp(value: object) -> str | None:
     return None
 
 
-def _queue_finished_row(
+def queue_finished_row(
     status_row: Mapping[str, Any],
     *,
     case: str,

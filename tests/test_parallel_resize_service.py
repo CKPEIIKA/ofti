@@ -8,6 +8,15 @@ from ofti.core.case import read_number_of_subdomains
 from ofti.tools import parallel_resize_service
 
 
+def test_reconstruct_zero_time_requests_with_zero() -> None:
+    assert parallel_resize_service._reconstruct_command("0") == [
+        "reconstructPar",
+        "-withZero",
+        "-time",
+        "0",
+    ]
+
+
 def _case(tmp_path: Path) -> Path:
     case = tmp_path / "case"
     (case / "system").mkdir(parents=True)

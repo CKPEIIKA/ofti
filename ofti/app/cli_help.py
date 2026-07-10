@@ -243,7 +243,8 @@ _EXAMPLES_BY_PROG = {
     ),
     "ofti knife checkpoint": _examples(
         "ofti knife checkpoint CASE --common --np auto",
-        "ofti knife checkpoint CASE --json",
+        "ofti knife checkpoint CASE --quarantine-partial --json",
+        "ofti knife checkpoint CASE --quarantine-partial --apply --json",
     ),
     "ofti knife compare": dedent(
         """\

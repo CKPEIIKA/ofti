@@ -43,6 +43,7 @@ output_dir = "~/ofti-bundles"
 [watch]
 poll_interval = 0.25
 tail_bytes = 262144
+stale_after_seconds = 120
 
 [colors]
 focus_fg = "black"

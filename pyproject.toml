@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ofti"
-version = "0.9.0"
+version = "0.9.1"
 description = "CLI-first OpenFOAM case utilities with a curses TUI"
 readme = "README.md"
 authors = [{name = "OpenFOAM Terminal Interface maintainers"}]
@@ -99,8 +99,6 @@ max-statements = 36
 "ofti/app/**/*.py" = ["C901", "PLR0912", "PLR0915"]
 "ofti/ui_curses/**/*.py" = ["C901", "PLR0912", "PLR0915"]
 "tests/*" = ["E501", "S101", "PLR2004"]
-"tests/test_app_cli_tools_handlers_behavior.py" = ["PLR0915"]
-"tests/test_real_openfoam_profiles.py" = ["C901", "PLR0912", "PLR0915"]
 "tests/test_runtime_watch_behavior.py" = ["PLR0915"]
 "tests/test_tool_screen_branches.py" = ["PLR0915"]
 "tests/test_tool_services_behavior.py" = ["PLR0915"]
@@ -146,9 +144,6 @@ max-statements = 36
 "tests/test_smoke_cli.py" = ["PLC0415"]
 "tests/test_times_behavior.py" = ["TRY003"]
 "tests/test_foamlib_integration_helpers.py" = ["ARG001"]
-"ofti/app/cli_adapters/knife_parser.py" = ["PLR0915"]
-"ofti/app/cli_adapters/run.py" = ["PLR0915"]
-"ofti/app/cli_adapters/watch.py" = ["PLR0915"]
 # cli_tools re-exports handlers under TYPE_CHECKING for static visibility.
 "ofti/app/cli_tools.py" = ["F401"]
 

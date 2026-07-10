@@ -81,6 +81,7 @@ def test_load_config_from_file_and_env(tmp_path: Path, monkeypatch) -> None:
                 "[watch]",
                 "poll_interval = 1.25",
                 "tail_bytes = 8192",
+                "stale_after_seconds = 45",
                 "",
                 "[keys]",
                 'up = ["w"]',
@@ -120,6 +121,7 @@ def test_load_config_from_file_and_env(tmp_path: Path, monkeypatch) -> None:
     assert cfg_obj.bundle.output_dir == "/scratch/bundle-output"
     assert cfg_obj.watch.poll_interval == 1.25
     assert cfg_obj.watch.tail_bytes == 8192
+    assert cfg_obj.watch.stale_after_seconds == 45
 
 
 def test_global_config_env_overrides(tmp_path: Path, monkeypatch) -> None:
@@ -131,6 +133,7 @@ def test_global_config_env_overrides(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OFTI_DEFAULT_PARALLEL", "8")
     monkeypatch.setenv("OFTI_QUEUE_MAX_PARALLEL", "4")
     monkeypatch.setenv("OFTI_BUNDLE_MESH", "exclude")
+    monkeypatch.setenv("OFTI_WATCH_STALE_AFTER_SECONDS", "30")
     _reset_config()
 
     cfg_obj = config.get_config()
@@ -140,3 +143,4 @@ def test_global_config_env_overrides(tmp_path: Path, monkeypatch) -> None:
     assert cfg_obj.run.default_parallel == 8
     assert cfg_obj.queue.max_parallel == 4
     assert cfg_obj.bundle.mesh == "exclude"
+    assert cfg_obj.watch.stale_after_seconds == 30
