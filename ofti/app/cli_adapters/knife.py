@@ -15,7 +15,7 @@ from ofti.app.cli_help import (
 from ofti.core import run_manifest as manifest_ops
 from ofti.core.field_diagnostics import split_field_list
 from ofti.plugins import discover_plugins
-from ofti.tools import status_render_service, table_render_service
+from ofti.tools import checkpoint_service, status_render_service, table_render_service
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import run as run_ops
 
@@ -57,6 +57,27 @@ def _knife_preflight(args: argparse.Namespace) -> int:
     if payload["solver_error"]:
         print(f"solver_error={payload['solver_error']}")
     print(f"ok={payload['ok']}")
+    return 0 if payload["ok"] else 1
+
+
+def _knife_checkpoint(args: argparse.Namespace) -> int:
+    raw_np = str(getattr(args, "processors", "auto"))
+    expected = None if raw_np == "auto" else int(raw_np)
+    payload = checkpoint_service.checkpoint_payload(
+        args.case_dir,
+        expected_processors=expected,
+    )
+    if args.json:
+        emit_json(payload, args)
+        return 0 if payload["ok"] else 1
+    print(f"case={payload['case']} processors={payload['processor_count']}")
+    print(
+        f"latest_complete={payload['latest_complete_time']} "
+        f"latest_any={payload['latest_processor_time']}",
+    )
+    print(f"complete={','.join(payload['complete_times']) or '-'}")
+    print(f"partial={','.join(payload['quarantinable_times']) or '-'}")
+    print(f"reconstructed={','.join(payload['reconstructed_times']) or '-'}")
     return 0 if payload["ok"] else 1
 
 
@@ -239,6 +260,8 @@ def _knife_compare_fields(args: argparse.Namespace) -> int:
     print(f"left_case={payload['left_case']}")
     print(f"right_case={payload['right_case']}")
     print(f"time={payload['time']} fields={payload['field_count']} same={payload['same']}")
+    mesh = cast("dict[str, object]", payload.get("mesh", {}))
+    print(f"time_policy={payload.get('time_policy')} mesh_same={mesh.get('same')}")
     if payload.get("outputs"):
         print(f"outputs={payload['outputs']}")
     for row in cast("list[dict[str, object]]", payload["fields"]):
@@ -1004,6 +1027,29 @@ def _knife_campaign_compare(args: argparse.Namespace) -> int:
 
 
 def _knife_set(args: argparse.Namespace) -> int:
+    edit_specs = list(getattr(args, "edit", []))
+    if edit_specs:
+        if args.file or args.key or args.value:
+            print("ofti: positional edit and --edit cannot be combined", file=sys.stderr)
+            return 2
+        edits = knife_ops.parse_edit_specs(edit_specs)
+        payload = knife_ops.set_entries_payload(
+            args.case_dir,
+            edits,
+            apply=not bool(getattr(args, "dry_run", False)),
+        )
+        if args.json:
+            emit_json(payload, args)
+        else:
+            print(f"case={payload['case']} applied={payload['applied']} ok={payload['ok']}")
+            for row in payload["edits"]:
+                print(f"- {row['file']}:{row['key']} {row['before']} -> {row['after']}")
+            if payload.get("snapshot"):
+                print(f"snapshot={payload['snapshot']}")
+        return 0 if payload["ok"] else 1
+    if not args.file or not args.key or not args.value:
+        print("ofti: provide FILE KEY VALUE or repeat --edit FILE:KEY=VALUE", file=sys.stderr)
+        return 2
     value = " ".join(args.value).strip()
     payload = knife_ops.set_entry_payload(args.case_dir, args.file, args.key, value)
     if args.json:

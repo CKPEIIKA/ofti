@@ -170,6 +170,25 @@ def test_compare_fields_reports_count_mismatch(tmp_path: Path, monkeypatch) -> N
     assert "field count mismatch" in payload["errors"][0]
 
 
+def test_compare_fields_latest_common_matches_numeric_time_names(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(diag.foamlib_integration, "available", lambda: False)
+    left = _make_case(tmp_path / "left")
+    right = _make_case(tmp_path / "right")
+    (left / "1").mkdir()
+    (right / "1.0").mkdir()
+    _write_scalar(left / "1" / "p", [1.0])
+    _write_scalar(right / "1.0" / "p", [1.0])
+
+    payload = diag.compare_fields_payload(left, right, fields=["p"])
+
+    assert payload["time_policy"] == "latest-common"
+    assert payload["reference_time"] == "1"
+    assert payload["candidate_time"] == "1.0"
+
+
 def test_compare_fields_reports_component_mismatch_and_nonfinite_pairs(
     tmp_path: Path,
     monkeypatch,
@@ -253,6 +272,17 @@ def test_resolve_and_read_decomposed_time_directories(tmp_path: Path, monkeypatc
     assert payload["fields"][0]["count"] == 4
     assert payload["fields"][0]["nonfinite_count"] == 1
     assert payload["hard_errors"] == ["p: nonfinite values=1"]
+
+
+def test_decomposed_field_rejects_missing_processor_value(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(diag.foamlib_integration, "available", lambda: False)
+    case = _make_case(tmp_path / "case")
+    (case / "processor0" / "1").mkdir(parents=True)
+    _write_scalar(case / "processor0" / "1" / "p", [1.0])
+    (case / "processor1" / "1").mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="incomplete decomposed field p"):
+        diag.read_field_values(case / "processor0" / "1" / "p")
 
 
 def test_latest_time_uses_decomposed_times(tmp_path: Path) -> None:

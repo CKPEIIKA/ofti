@@ -99,6 +99,12 @@ def _decomposed_field_paths(path: Path) -> list[Path] | None:
     field_rel = path.name
     matches = [proc / time_name / field_rel for proc in processor_dirs(case_root)]
     existing = [candidate for candidate in matches if candidate.is_file()]
+    if existing and len(existing) != len(matches):
+        missing = [candidate.parent.parent.name for candidate in matches if not candidate.is_file()]
+        raise ValueError(
+            f"incomplete decomposed field {field_rel} at {time_name}; "
+            f"missing in {', '.join(missing)}",
+        )
     return existing if len(existing) > 1 else None
 
 

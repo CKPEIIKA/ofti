@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ofti.local/schemas/ofti.result-pack.v1.schema.json",
+  "type": "object",
+  "required": ["format", "format_version", "created_at", "case_name", "selected_time", "include_processors", "files"],
+  "properties": {
+    "format": {"const": "ofti.result-pack"},
+    "format_version": {"const": 1},
+    "created_at": {"type": "string"},
+    "case_name": {"type": "string"},
+    "selected_time": {"type": "string"},
+    "include_processors": {"type": "boolean"},
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "size", "sha256"],
+        "properties": {
+          "path": {"type": "string"},
+          "size": {"type": "integer", "minimum": 0},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

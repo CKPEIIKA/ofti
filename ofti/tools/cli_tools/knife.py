@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ofti.tools import dictionary_transaction_service as transactions
 from ofti.tools import knife_analysis as analysis
 from ofti.tools import knife_campaign as campaign
 from ofti.tools import knife_process as processes
@@ -38,6 +39,8 @@ converge_payload = service.converge_payload
 stability_payload = service.stability_payload
 preflight_payload = service.preflight_payload
 set_entry_payload = service.set_entry_payload
+parse_edit_specs = transactions.parse_edit_specs
+set_entries_payload = transactions.set_entries_payload
 
 _fallback_solver = service._fallback_solver
 _running_job_pids = processes._running_job_pids

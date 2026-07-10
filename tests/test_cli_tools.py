@@ -86,6 +86,45 @@ def test_knife_registry_repair_cli_rebuilds_jobs(tmp_path: Path, capsys) -> None
     assert load_jobs(case)[0]["id"] == job_id
 
 
+def test_knife_checkpoint_cli_reports_partial_times(tmp_path: Path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+    for processor in ("processor0", "processor1"):
+        time_dir = case / processor / "1"
+        time_dir.mkdir(parents=True)
+        (time_dir / "U").write_text("field\n")
+    (case / "processor0" / "2").mkdir()
+    (case / "processor0" / "2" / "U").write_text("partial\n")
+
+    code = cli_tools.main(["knife", "checkpoint", str(case), "--common", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["latest_complete_time"] == "1"
+    assert payload["quarantinable_times"] == ["2"]
+
+
+def test_result_pack_and_unpack_cli(tmp_path: Path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+    (case / "log.simpleFoam").write_text("End\n")
+    archive = tmp_path / "results.tar.gz"
+
+    code = cli_tools.main(
+        ["result", "pack", str(case), "--output", str(archive), "--json"],
+    )
+    packed = json.loads(capsys.readouterr().out)
+    restored = tmp_path / "restored-results"
+    unpack_code = cli_tools.main(
+        ["result", "unpack", str(archive), "--to", str(restored), "--json"],
+    )
+    unpacked = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert unpack_code == 0
+    assert packed["command"] == "result pack"
+    assert unpacked["command"] == "result unpack"
+    assert (restored / "0" / "U").is_file()
+
+
 def test_knife_current_uses_tree_scope_for_non_case_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -117,7 +156,7 @@ def test_cli_tools_without_args_prints_short_help(capsys) -> None:
     out = capsys.readouterr().out
     assert code == 0
     assert "Non-interactive OFTI utilities" in out
-    assert "{knife,plot,watch,run,bundle,unbundle,version}" in out
+    assert "{knife,plot,watch,run,bundle,unbundle,result,version}" in out
 
 
 def test_every_cli_help_page_has_examples() -> None:
@@ -1311,6 +1350,29 @@ def test_knife_set_json_output(tmp_path, capsys, monkeypatch) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
     assert payload["ok"] is True
+
+
+def test_knife_set_transaction_preview_json(tmp_path: Path, capsys) -> None:
+    case = _make_case(tmp_path / "case")
+
+    code = cli_tools.main(
+        [
+            "knife",
+            "set",
+            str(case),
+            "--edit",
+            "system/controlDict:endTime=20",
+            "--edit",
+            "system/controlDict:writeInterval=2",
+            "--dry-run",
+            "--json",
+        ],
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["applied"] is False
+    assert [row["key"] for row in payload["edits"]] == ["endTime", "writeInterval"]
 
 
 def test_run_tool_help_mentions_presets(capsys) -> None:

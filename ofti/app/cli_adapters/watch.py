@@ -381,6 +381,13 @@ def _watch_jobs(args: argparse.Namespace) -> int:
         return 0
     print(f"case={payload['case']}")
     print(f"kind={payload.get('kind', 'any')}")
+    progress = payload.get("progress")
+    if isinstance(progress, dict) and "reason_codes" in progress:
+        reasons = ",".join(str(item) for item in progress["reason_codes"]) or "HEALTHY"
+        print(
+            f"progress={reasons} log_age={progress.get('log_age_seconds')} "
+            f"write_age={progress.get('latest_filesystem_write_age_seconds')}",
+        )
     if not payload["jobs"]:
         print("No tracked jobs.")
         return 0

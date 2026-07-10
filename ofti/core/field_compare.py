@@ -4,6 +4,8 @@ import math
 from pathlib import Path
 from typing import Any
 
+from ofti.core.case_fingerprint import case_fingerprint
+from ofti.core.checkpoint import checkpoint_health
 from ofti.core.field_io import (
     FieldData,
     flat_values,
@@ -11,6 +13,7 @@ from ofti.core.field_io import (
     resolve_field_names,
     resolve_time_dir,
 )
+from ofti.core.times import processor_dirs, time_directories
 
 
 def compare_fields_payload(
@@ -26,8 +29,16 @@ def compare_fields_payload(
     abs_tol: float = 1e-300,
     rel_tol: float = 1e-12,
 ) -> dict[str, Any]:
-    left_time = resolve_time_dir(left_case, reference_time or time_name)
-    right_time = resolve_time_dir(right_case, candidate_time or time_name)
+    selected_left, selected_right, time_policy = _comparison_times(
+        left_case,
+        right_case,
+        time_name=time_name,
+        reference_time=reference_time,
+        candidate_time=candidate_time,
+    )
+    left_time = resolve_time_dir(left_case, selected_left)
+    right_time = resolve_time_dir(right_case, selected_right)
+    mesh = _mesh_identity(left_case, right_case)
     names = resolve_field_names(left_time, fields, preset=preset)
     rows: list[dict[str, Any]] = []
     errors: list[str] = []
@@ -40,6 +51,8 @@ def compare_fields_payload(
             row = {"field": name, "ok": False, "error": str(exc)}
             errors.append(f"{name}: {exc}")
         rows.append(row)
+    if mesh["comparable"] and not mesh["same"]:
+        errors.append("constant/polyMesh differs between cases")
     return {
         "left_case": str(left_case),
         "right_case": str(right_case),
@@ -47,6 +60,8 @@ def compare_fields_payload(
         "reference_time": left_time.name,
         "right_time": right_time.name,
         "candidate_time": right_time.name,
+        "time_policy": time_policy,
+        "mesh": mesh,
         "preset": preset,
         "patch": patch,
         "fields_requested": names,
@@ -55,6 +70,53 @@ def compare_fields_payload(
         "same": not errors and all(float(row.get("max_abs", 0.0) or 0.0) == 0.0 for row in rows),
         "errors": errors,
         "fields": rows,
+    }
+
+
+def _comparison_times(
+    left_case: Path,
+    right_case: Path,
+    *,
+    time_name: str,
+    reference_time: str | None,
+    candidate_time: str | None,
+) -> tuple[str, str, str]:
+    if reference_time is not None or candidate_time is not None:
+        return reference_time or time_name, candidate_time or time_name, "explicit"
+    if time_name != "latest":
+        return time_name, time_name, "same-explicit"
+    left_times = {float(value): value for value in _comparable_times(left_case)}
+    right_times = {float(value): value for value in _comparable_times(right_case)}
+    common = sorted(set(left_times) & set(right_times))
+    if not common:
+        raise ValueError("cases have no common complete time directory")
+    selected = common[-1]
+    return left_times[selected], right_times[selected], "latest-common"
+
+
+def _comparable_times(case_dir: Path) -> list[str]:
+    if processor_dirs(case_dir):
+        return list(checkpoint_health(case_dir)["complete_times"])
+    return [path.name for path in time_directories(case_dir) if any(path.iterdir())]
+
+
+def _mesh_identity(left_case: Path, right_case: Path) -> dict[str, Any]:
+    left = case_fingerprint(
+        left_case,
+        roots=("constant/polyMesh",),
+        max_file_bytes=1 << 62,
+    )
+    right = case_fingerprint(
+        right_case,
+        roots=("constant/polyMesh",),
+        max_file_bytes=1 << 62,
+    )
+    comparable = bool(left["files"] and right["files"])
+    return {
+        "comparable": comparable,
+        "same": bool(comparable and left["hash"] == right["hash"]),
+        "left": left,
+        "right": right,
     }
 
 

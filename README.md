@@ -128,6 +128,7 @@ ofti run -h
 ofti watch log -h
 ofti bundle -h
 ofti unbundle -h
+ofti result -h
 ```
 
 - **`bundle` / `unbundle`** — portable case archives with an embedded manifest
@@ -139,6 +140,7 @@ ofti unbundle -h
   studies. See *RUN QUEUES* and *PARAMETRIC STUDIES*.
 - **`watch`** — live monitoring of jobs, processes, and logs.
 - **`plot`** — metric and criteria plotting.
+- **`result`** — verified result/provenance archives, separate from runnable bundles.
 
 External watcher integration (for example `scripts/oftools/ofwatch`) is expected
 to run through tool presets in `ofti.tools` and can be executed with
@@ -155,6 +157,9 @@ ofti knife initials CASE --json
 ofti knife physical CASE --time latest --fields p,U,rho,T --json
 ofti knife physical CASE --field rho:min=0 --field T:min=0 --out checks
 ofti knife compare-fields --reference SERIAL_CASE --candidate PARALLEL_CASE --preset flow --out compare
+ofti knife checkpoint CASE --common --np auto --json
+ofti knife set CASE --edit system/controlDict:endTime=100 \
+  --edit system/controlDict:writeInterval=10 --dry-run --json
 ofti knife copy CASE_COPY --case CASE
 ofti knife current --root REPO --recursive --live --table
 ofti knife adopt --root REPO --all-untracked --json
@@ -217,10 +222,24 @@ The slow real-case suite includes bundle/unbundle coverage for a toy OpenFOAM
 case: it verifies manifest hashes, preflight/status on the restored copy, and a
 bounded solver smoke run from the unbundled case.
 
+Result packs preserve completed output without pretending to be runnable case
+bundles:
+
+```bash
+ofti result pack CASE --output results.ofti.tar.gz --json
+ofti result pack CASE --output restart-state.tar.gz --include-processors --json
+ofti result unpack results.ofti.tar.gz --to RESULTS --json
+```
+
+They include the selected reconstructed time, `log.*`, `postProcessing`, and
+case-local run manifests. `--include-processors` additionally keeps the selected
+complete processor time and processor meshes. Extraction verifies every hash.
+
 Monitoring (`watch`) and plotting (`plot`):
 
 ```bash
 ofti watch jobs CASE --table
+ofti watch status CASE --json
 ofti watch pause CASE --all
 ofti watch resume CASE --all
 ofti watch stop CASE --signal TERM

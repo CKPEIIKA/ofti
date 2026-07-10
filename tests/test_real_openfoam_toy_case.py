@@ -13,8 +13,11 @@ from ofti.app.cli_tools import main as cli_main
 from ofti.core import case_bundle, run_manifest
 from ofti.foam.times import latest_time
 from ofti.tools import (
+    checkpoint_service,
+    dictionary_transaction_service,
     knife_service,
     parallel_resize_service,
+    result_service,
     runtime_control_service,
     watch_service,
 )
@@ -75,6 +78,31 @@ def test_real_toy_case_prelaunch_diagnostics_and_manifest(real_case: RealTutoria
     )
     assert written == manifest_path.resolve()
     assert run_manifest.verify_run_manifest(written, case_path=case)["ok"] is True
+
+
+def test_real_toy_case_transactional_dictionary_edit(real_case: RealTutorialCase) -> None:
+    case = real_case.case
+
+    preview = dictionary_transaction_service.set_entries_payload(
+        case,
+        [
+            ("system/controlDict", "endTime", "0.01"),
+            ("system/controlDict", "writeInterval", "1"),
+        ],
+        apply=False,
+    )
+    applied = dictionary_transaction_service.set_entries_payload(
+        case,
+        [
+            ("system/controlDict", "endTime", "0.01"),
+            ("system/controlDict", "writeInterval", "1"),
+        ],
+    )
+
+    assert preview["applied"] is False
+    assert applied["ok"] is True, applied
+    assert applied["applied"] is True
+    assert Path(str(applied["snapshot"]), "snapshot.json").is_file()
 
 
 def test_real_toy_case_cli_manifest_write_is_case_local_and_verifiable(
@@ -173,6 +201,33 @@ def test_real_toy_case_unbundled_smoke_run_is_watchable(
     assert status["case"] == str(restored)
     assert status["log_path"] == smoke["log_path"]
     assert status["latest_time"] is not None
+    assert "reason_codes" in status["progress"]
+
+
+def test_real_toy_case_smoke_result_pack_round_trip(
+    real_case: RealTutorialCase,
+    tmp_path: Path,
+) -> None:
+    case = real_case.case
+    smoke = run_ops.smoke_payload(
+        case,
+        iterations=2,
+        timeout=60,
+        output_root=case,
+        in_place=True,
+        core_only=True,
+    )
+    assert smoke["ok"] is True, smoke
+    archive = tmp_path / "real-results.tar.gz"
+
+    packed = result_service.pack_payload(case, archive)
+    restored = tmp_path / "real-results"
+    unpacked = result_service.unpack_payload(archive, restored)
+
+    selected = str(packed["manifest"]["selected_time"])
+    assert unpacked["manifest"] == packed["manifest"]
+    assert (restored / selected).is_dir()
+    assert any(restored.glob("log.*"))
 
 
 def test_real_toy_case_bundle_cli_smoke_is_portable(
@@ -529,6 +584,16 @@ def test_real_toy_case_compare_reconstructed_parallel_to_serial(
     assert serial["ok"] is True, serial
     assert parallel["ok"] is True, parallel
 
+    direct = knife_service.compare_fields_payload(
+        serial_case,
+        parallel_case,
+        fields=["p", "U"],
+    )
+    assert direct["ok"] is True, direct
+    assert direct["time_policy"] == "latest-common"
+    assert direct["mesh"]["same"] is True
+    assert all(row["count"] > 0 for row in direct["fields"])
+
     reconstructed_time = latest_time(parallel_case)
     result = run_ops.execute_case_command(
         parallel_case,
@@ -570,6 +635,9 @@ def test_real_toy_case_prepare_parallel_extra_rank_profile(real_case: RealTutori
     assert prepared["decompose_returncode"] == 0
     for rank in range(ranks):
         assert (case / f"processor{rank}").is_dir()
+    checkpoint = checkpoint_service.checkpoint_payload(case, expected_processors=ranks)
+    assert checkpoint["ok"] is True
+    assert checkpoint["latest_complete_time"] == "0"
 
 
 def test_real_toy_case_parallel_prepare_run_stop_resize_plan(

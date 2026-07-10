@@ -4,6 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeAlias, TypedDict
 
+from ofti.core.progress import progress_evidence
 from ofti.tools import process_scan_service
 
 SolverProcessRow: TypeAlias = process_scan_service.ProcRow
@@ -51,6 +52,7 @@ class CaseStatusPayload(TypedDict):
     process_visibility: dict[str, Any] | None
     tracked_solver_processes: list[SolverProcessRow]
     untracked_solver_processes: list[SolverProcessRow]
+    progress: dict[str, Any]
 
 
 def current_payload(
@@ -147,6 +149,12 @@ def status_payload(
     untracked_count = untracked_running_count(untracked_live)
     running_count = len(active_jobs) + untracked_count
     runs = canonical_run_rows(case_path, active_jobs, untracked_live)
+    progress = progress_evidence(
+        case_path,
+        process_live=running_heuristic,
+        log_path=Path(runtime["log_path"]) if runtime["log_path"] else None,
+        paused=bool(active_jobs) and all(job.get("status") == "paused" for job in active_jobs),
+    )
     return {
         "case": str(case_path),
         "solver": solver,
@@ -175,6 +183,7 @@ def status_payload(
         "process_visibility": None,
         "tracked_solver_processes": tracked_live,
         "untracked_solver_processes": untracked_live,
+        "progress": progress,
     }
 
 

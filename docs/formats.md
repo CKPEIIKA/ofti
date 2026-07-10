@@ -153,6 +153,15 @@ stable `ofti.snapshot` v1 manifest next to copied inputs. The directory layout
 remains an implementation detail; external consumers should consume the
 manifest.
 
+## Result Pack
+
+`ofti result pack` writes `ofti.result-pack` v1 archives. A result pack is not a
+runnable bundle: it carries a selected result time, logs, `postProcessing`, and
+run manifests. Optional processor state contains the selected complete processor
+time plus processor meshes. `.ofti/result-pack.json` is authoritative and lists
+relative POSIX paths, sizes, and SHA-256 hashes. `result unpack` rejects unsafe
+paths and verifies each file before writing it.
+
 ## OpenFOAM Compatibility
 
 Supported:

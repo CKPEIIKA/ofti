@@ -865,6 +865,8 @@ def _fallback_solver(control_dict_path: Path) -> str | None:
 def set_entry_payload(case_dir: Path, rel_file: str, key: str, value: str) -> dict[str, Any]:
     case_path = case_source_service.require_case_dir(case_dir)
     file_path = (case_path / rel_file).resolve()
+    if not file_path.is_relative_to(case_path):
+        raise ValueError(f"dictionary path escapes case: {rel_file}")
     if not file_path.is_file():
         raise ValueError(f"dictionary not found: {file_path}")
     ok = write_entry(file_path, key, value)

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from ofti.core import case_bundle, case_snapshot, run_manifest
+from ofti.core import case_bundle, case_snapshot, result_archive, run_manifest
 from ofti.tools import job_registry
 from ofti.tools.cli_tools import run_queue
 
@@ -16,6 +16,7 @@ PERSISTED_EXAMPLES = {
     "jobs.json": "ofti.jobs",
     "queue-record.json": "ofti.queue-record",
     "snapshot.json": "ofti.snapshot",
+    "result-pack.json": "ofti.result-pack",
 }
 
 EXAMPLE_SCHEMAS = {
@@ -25,6 +26,7 @@ EXAMPLE_SCHEMAS = {
     "queue-record.json": "ofti.queue-record.v1.schema.json",
     "snapshot.json": "ofti.snapshot.v1.schema.json",
     "cli-json.json": "ofti.cli-envelope.v1.schema.json",
+    "result-pack.json": "ofti.result-pack.v1.schema.json",
 }
 
 
@@ -65,6 +67,7 @@ def test_format_schema_files_are_valid_json() -> None:
         "ofti.jobs.v1.schema.json",
         "ofti.queue-record.v1.schema.json",
         "ofti.snapshot.v1.schema.json",
+        "ofti.result-pack.v1.schema.json",
     } <= names
     for path in schema_root.glob("*.schema.json"):
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -145,6 +148,11 @@ def test_actual_persisted_writers_validate_against_published_schemas(tmp_path: P
             roots=("system",),
         ),
         "ofti.snapshot.v1.schema.json",
+    )
+    archive = tmp_path / "results.tar.gz"
+    _validate_payload(
+        result_archive.create_result_pack(case, archive, time_name="0"),
+        "ofti.result-pack.v1.schema.json",
     )
 
 

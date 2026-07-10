@@ -18,6 +18,7 @@ from ofti.app.cli_adapters.knife import (
     _knife_campaign_rank,
     _knife_campaign_status,
     _knife_campaign_stop,
+    _knife_checkpoint,
     _knife_compare,
     _knife_compare_fields,
     _knife_converge,
@@ -65,6 +66,26 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     _add_table_flag(preflight)
     preflight.add_argument("--json", action="store_true")
     preflight.set_defaults(func=_knife_preflight)
+
+    checkpoint = knife_sub.add_parser(
+        "checkpoint",
+        help="Inspect complete and partial decomposed checkpoints",
+        description="Inspect processor time directories without changing or deleting them.",
+    )
+    checkpoint.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
+    checkpoint.add_argument(
+        "--common",
+        action="store_true",
+        help="Report times common to every processor (the default behavior)",
+    )
+    checkpoint.add_argument(
+        "--np",
+        dest="processors",
+        default="auto",
+        help="Expected processor count or 'auto' (default: auto)",
+    )
+    checkpoint.add_argument("--json", action="store_true")
+    checkpoint.set_defaults(func=_knife_checkpoint)
 
     compare = knife_sub.add_parser("compare", help="Compare dictionary keys between two cases")
     compare.add_argument("left_case", type=Path)
@@ -388,9 +409,17 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
 
     set_cmd = knife_sub.add_parser("set", help="Set dictionary entry value")
     set_cmd.add_argument("case_dir", type=Path)
-    set_cmd.add_argument("file", help="Dictionary path relative to case, e.g. system/controlDict")
-    set_cmd.add_argument("key", help="Entry key, e.g. application")
-    set_cmd.add_argument("value", nargs="+", help="Entry value text")
+    set_cmd.add_argument("file", nargs="?", help="Dictionary path relative to case")
+    set_cmd.add_argument("key", nargs="?", help="Entry key, e.g. application")
+    set_cmd.add_argument("value", nargs="*", help="Entry value text")
+    set_cmd.add_argument(
+        "--edit",
+        action="append",
+        default=[],
+        metavar="FILE:KEY=VALUE",
+        help="Transactional edit; repeat to change several entries together",
+    )
+    set_cmd.add_argument("--dry-run", action="store_true", help="Preview changes without writing")
     set_cmd.add_argument("--json", action="store_true", help="Print result as JSON")
     set_cmd.set_defaults(func=_knife_set)
 

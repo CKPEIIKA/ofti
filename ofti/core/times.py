@@ -12,7 +12,7 @@ from pathlib import Path
 PROCESSOR_RE = re.compile(r"^processor\d+$")
 
 
-def _numeric_subdirs(directory: Path) -> list[Path]:
+def numeric_time_directories(directory: Path) -> list[Path]:
     times: list[Path] = []
     if not directory.is_dir():
         return times
@@ -41,10 +41,10 @@ def processor_dirs(case_path: Path) -> list[Path]:
 def time_directories(case_path: Path) -> list[Path]:
     # Merge root times with the first processor's times so decomposed cases
     # (where new times exist only under processor*/) are still discovered.
-    by_name = {entry.name: entry for entry in _numeric_subdirs(case_path)}
+    by_name = {entry.name: entry for entry in numeric_time_directories(case_path)}
     procs = processor_dirs(case_path)
     if procs:
-        for entry in _numeric_subdirs(procs[0]):
+        for entry in numeric_time_directories(procs[0]):
             by_name.setdefault(entry.name, entry)
     return sorted(by_name.values(), key=lambda p: float(p.name))
 

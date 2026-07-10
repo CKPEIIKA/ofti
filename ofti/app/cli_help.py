@@ -241,6 +241,10 @@ _EXAMPLES_BY_PROG = {
         "ofti knife preflight CASE",
         "ofti knife preflight CASE --json",
     ),
+    "ofti knife checkpoint": _examples(
+        "ofti knife checkpoint CASE --common --np auto",
+        "ofti knife checkpoint CASE --json",
+    ),
     "ofti knife compare": dedent(
         """\
         Examples:
@@ -288,7 +292,22 @@ _EXAMPLES_BY_PROG = {
     ),
     "ofti knife current": _examples("ofti knife current --root . --recursive --table"),
     "ofti knife adopt": _examples("ofti knife adopt --root . --all-untracked --json"),
-    "ofti knife set": _examples("ofti knife set CASE system/controlDict endTime 10"),
+    "ofti knife set": _examples(
+        "ofti knife set CASE system/controlDict endTime 10",
+        "ofti knife set CASE --edit system/controlDict:endTime=10 "
+        "--edit system/controlDict:writeInterval=2 --dry-run --json",
+    ),
+    "ofti result": _examples(
+        "ofti result pack CASE --output results.tar.gz",
+        "ofti result unpack results.tar.gz --to RESULTS",
+    ),
+    "ofti result pack": _examples(
+        "ofti result pack CASE --output results.tar.gz --json",
+        "ofti result pack CASE --output state.tar.gz --include-processors",
+    ),
+    "ofti result unpack": _examples(
+        "ofti result unpack results.tar.gz --to RESULTS --json",
+    ),
     "ofti knife stop": _examples(
         "ofti knife stop CASE --all",
         "ofti knife stop CASE --signal TERM",

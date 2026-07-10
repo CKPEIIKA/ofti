@@ -1,0 +1,15 @@
+{
+  "format": "ofti.result-pack",
+  "format_version": 1,
+  "created_at": "2026-07-10T00:00:00Z",
+  "case_name": "cavity",
+  "selected_time": "1",
+  "include_processors": false,
+  "files": [
+    {
+      "path": "1/U",
+      "size": 12,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}

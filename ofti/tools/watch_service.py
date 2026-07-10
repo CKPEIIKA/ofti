@@ -10,6 +10,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any, Literal
 
+from ofti.core.progress import progress_evidence
 from ofti.foam.subprocess_utils import run_trusted
 from ofti.foamlib.logs import read_log_tail_lines
 from ofti.tools import (
@@ -81,6 +82,13 @@ def _case_jobs_payload(
     kind: str | None = None,
 ) -> dict[str, Any]:
     jobs = refresh_jobs(case_path)
+    active = [job for job in jobs if job.get("status") in {"running", "paused"}]
+    progress = progress_evidence(
+        case_path,
+        process_live=any(job.get("status") == "running" for job in active),
+        log_path=_latest_job_log(active),
+        paused=bool(active) and all(job.get("status") == "paused" for job in active),
+    )
     selected_kind = _normalize_kind_filter(kind)
     if not include_all:
         jobs = [job for job in jobs if job.get("status") in {"running", "paused"}]
@@ -95,7 +103,18 @@ def _case_jobs_payload(
         "registry_warnings": registry_warnings(case_path),
         "jobs": shaped,
         "runs": runs,
+        "progress": progress,
     }
+
+
+def _latest_job_log(jobs: list[dict[str, Any]]) -> Path | None:
+    paths = [
+        Path(str(raw))
+        for job in jobs
+        if (raw := job.get("log") or job.get("log_path"))
+    ]
+    existing = [path for path in paths if path.is_file()]
+    return max(existing, key=lambda path: path.stat().st_mtime, default=None)
 
 
 def _jobs_scope_payload(
@@ -108,6 +127,7 @@ def _jobs_scope_payload(
     jobs: list[dict[str, Any]] = []
     runs: list[dict[str, Any]] = []
     warnings: list[str] = []
+    progress: dict[str, Any] = {}
     case_paths = _discover_case_dirs(scope_root)
     for case_path in case_paths:
         payload = _case_jobs_payload(case_path, include_all=include_all, kind=selected_kind)
@@ -119,6 +139,7 @@ def _jobs_scope_payload(
             row = dict(run)
             row["case"] = str(case_path)
             runs.append(row)
+        progress[str(case_path)] = payload["progress"]
         warnings.extend(f"{case_path}: {warning}" for warning in payload["registry_warnings"])
     return {
         "case": str(scope_root),
@@ -129,6 +150,7 @@ def _jobs_scope_payload(
         "registry_warnings": warnings,
         "jobs": jobs,
         "runs": runs,
+        "progress": progress,
     }
 
 

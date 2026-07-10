@@ -9,6 +9,7 @@ from ofti.app.cli_adapters import bundle as _bundle_adapter
 from ofti.app.cli_adapters import knife as _knife_adapter
 from ofti.app.cli_adapters import main as _main_adapter
 from ofti.app.cli_adapters import plot as _plot_adapter
+from ofti.app.cli_adapters import result as _result_adapter
 from ofti.app.cli_adapters import run as _run_adapter
 from ofti.app.cli_adapters import watch as _watch_adapter
 from ofti.app.cli_help import _output_mode_conflict, strip_json_version_args
@@ -74,6 +75,7 @@ for _module in (
     _bundle_adapter,
     _knife_adapter,
     _plot_adapter,
+    _result_adapter,
     _watch_adapter,
     _run_adapter,
     _main_adapter,
