@@ -46,6 +46,8 @@ safe CLI diagnostics such as case status, live jobs/processes, runtime criteria,
 ETA, log metrics, and residual summaries. It uses the same table rendering as the
 CLI instead of raw key/value dumps.
 
+Documentation map: [docs/README.md](docs/README.md).
+
 ## INSTALLATION
 
 From the repository root:
