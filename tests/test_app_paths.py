@@ -19,5 +19,4 @@ def test_run_tui_resolves_case_dir(tmp_path: Path) -> None:
     assert wrapper.call_count == 1
     _, args, _ = wrapper.mock_calls[0]
     resolved_path = args[1]
-    assert isinstance(resolved_path, Path)
-    assert resolved_path.is_absolute()
+    assert resolved_path == (Path.cwd() / "case").resolve()

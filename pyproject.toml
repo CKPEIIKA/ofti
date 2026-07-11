@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ofti"
-version = "0.9.1"
+version = "0.9.2"
 description = "CLI-first OpenFOAM case utilities with a curses TUI"
 readme = "README.md"
 authors = [{name = "OpenFOAM Terminal Interface maintainers"}]

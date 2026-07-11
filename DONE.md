@@ -4,6 +4,8 @@ Completed work only. Record meaningful outcomes and validation evidence, newest 
 
 ## 2026-07-11
 
+- Released 0.9.2 test hardening: CI installs the explicit dev group, schema-contract collection works, and tests contain no type-only `assert isinstance(...)` assertions.
+- Added real OpenFOAM behavior for executing a manifest-restored case and for the public CLI start/jobs/stop lifecycle; both pass against sourced OpenFOAM 2512.
 - Added a generated and source-controlled `ofti(1)` manual, reproducible scdoc build, user-local installer, contract tests, and successful `man -l` rendering.
 - Ran real OpenFOAM MPI scenarios on the host: tracked launcher stop, raw launcher adoption/grouping, processor result comparison, reconstruction, and stopped 2-to-3-rank resize.
 - Removed the broad app complexity exemption and all broad-test PLR0915 exemptions; remaining debt is attached to named legacy adapter files.

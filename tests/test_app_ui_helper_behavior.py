@@ -150,7 +150,9 @@ def test_blockmesh_helper_extra(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     )
     vertices, blocks, boundaries, edges = bmh._load_blockmesh_details_text(path)
     assert edges >= 1
-    assert isinstance(vertices, list) and isinstance(blocks, list) and isinstance(boundaries, list)
+    assert vertices == [(0.0, 0.0, 0.0)]
+    assert blocks == []
+    assert boundaries == []
 
     monkeypatch.setattr(
         bmh,

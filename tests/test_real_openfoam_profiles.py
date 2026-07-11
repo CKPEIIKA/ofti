@@ -100,7 +100,8 @@ def test_real_profiles_runtime_reread_cleanup_and_replay_artifacts(
         replay_artifacts = [case / f"log.{solver}", case / ".ofti" / "edits.log"]
         assert any(path.exists() for path in replay_artifacts)
         jobs = watch.jobs_payload(case, include_all=True)
-        assert isinstance(jobs["jobs"], list)
+        assert jobs["count"] == len(jobs["jobs"])
+        assert all(str(job.get("status")) != "running" for job in jobs["jobs"])
 
 
 @pytest.mark.slow
@@ -144,7 +145,7 @@ def test_real_physical_and_compare_fields_use_real_time_dirs(
         case_b = copy_case_directory(source_case, tmp_path / f"{profile.name}-diag-b")
         physical = knife_service.physical_payload(case_a, time_name="latest")
         assert physical["case"] == str(case_a)
-        assert isinstance(physical["fields"], list)
+        assert physical["field_count"] == len(physical["fields"])
         if not physical["fields"]:
             continue
         field_names = [str(row["field"]) for row in physical["fields"][:3]]
@@ -183,9 +184,10 @@ def test_real_background_solver_start_stop_cleans_processes(
             detached=True,
             log_file=f"log.ofti-stop-{solver}",
         )
-        pid = payload.get("pid")
+        pid_raw = payload.get("pid")
+        pid = int(pid_raw) if pid_raw is not None else 0
         try:
-            assert isinstance(pid, int), f"{profile.name}: missing started pid"
+            assert pid > 0, f"{profile.name}: missing started pid"
             if not wait_pid_running(pid, timeout=5.0):
                 continue
             stopped = watch.stop_payload(case, job_id=str(payload.get("job_id")), signal_name="TERM")
@@ -195,7 +197,7 @@ def test_real_background_solver_start_stop_cleans_processes(
             assert wait_pids_gone([pid], timeout=5.0), f"{profile.name}: pid still running after stop"
             exercised = True
         finally:
-            if isinstance(pid, int) and pid_running(pid):
+            if pid > 0 and pid_running(pid):
                 kill_leftovers([pid])
     if not exercised:
         pytest.skip("No real profile stayed alive long enough for background stop.")
@@ -462,13 +464,15 @@ def test_real_profiles_core_services_are_fixture_free(
         assert "fields" in snapshot
 
         doctor = build_case_doctor_report(case)
-        assert doctor["lines"]
-        assert isinstance(doctor["errors"], list)
-        assert isinstance(doctor["warnings"], list)
+        assert doctor["lines"][0] == "CASE DOCTOR"
+        assert f"Path: {case}" in doctor["lines"]
+        assert all(str(message).strip() for message in [*doctor["errors"], *doctor["warnings"]])
 
         preflight = knife_service.preflight_payload(case)
         assert preflight["case"] == str(case)
-        assert isinstance(preflight["checks"], dict)
+        assert preflight["checks"]
+        assert preflight["checks"]["system/controlDict"] is True
+        assert preflight["checks"]["solver_entry"] is True
 
         copied = copy_case_directory(case, tmp_path / f"{profile.name}-clean-copy")
         assert (copied / "system" / "controlDict").is_file()

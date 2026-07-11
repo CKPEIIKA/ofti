@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import curses
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -138,8 +139,9 @@ def test_boundary_matrix_actions_and_screen(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setattr(bm, "rename_boundary_patch", lambda *_a, **_k: (True, ""))
     state = bm._MatrixState()
     action = bm._handle_boundary_action_key(screen, case, matrix, matrix.patches, ord("f"), state)
-    assert isinstance(action, bm._MatrixState)
-    assert action.hide_special
+    action_state = cast("bm._MatrixState", action)
+    assert action_state.hide_special
+    assert (action_state.row, action_state.col, action_state.row_scroll, action_state.col_scroll) == (0, 0, 0, 0)
     assert bm._handle_boundary_action_key(screen, case, matrix, matrix.patches, ord("t"), state) == "reload"
     assert bm._handle_boundary_action_key(screen, case, matrix, matrix.patches, ord("r"), state) == "reload"
 
@@ -188,7 +190,7 @@ def test_boundary_matrix_draw_and_key_paths(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setattr(bm, "_edit_boundary_cell", lambda *_a, **_k: edited.append("edit"))
     state = bm._MatrixState()
     result = bm._handle_boundary_key(screen, tmp_path, matrix, matrix.patches, 10, state)
-    assert isinstance(result, bm._MatrixState)
+    assert result == state
     assert edited == ["edit"]
 
 

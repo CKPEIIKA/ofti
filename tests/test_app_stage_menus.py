@@ -278,8 +278,7 @@ def test_simulation_menu_disables_parametric_without_preprocessing_extras(
     monkeypatch.setattr("ofti.app.menus.simulation.solver_job_running", lambda _case: False)
     monkeypatch.setattr("ofti.app.menus.simulation.solver_status_line", lambda _case: "idle")
     assert simulation_menu(object(), case, AppState()) == Screen.MAIN_MENU
-    disabled = captured["disabled"]
-    assert isinstance(disabled, set)
+    disabled = cast(set[int], captured["disabled"])
     assert 18 in disabled
     reasons = cast(dict[int, object], captured["reasons"])
     assert "preprocessing extras" in str(reasons[18])
@@ -301,8 +300,7 @@ def test_postprocessing_menu_disables_tables_without_postprocessing_extras(
     monkeypatch.setattr("ofti.app.menus.postprocessing.postprocessing_tables_available", lambda: False)
     monkeypatch.setattr("ofti.app.menus.postprocessing.menu_choice", _menu_choice)
     assert postprocessing_menu(object(), case, AppState()) == Screen.MAIN_MENU
-    disabled = captured["disabled"]
-    assert isinstance(disabled, set)
+    disabled = cast(set[int], captured["disabled"])
     assert 5 in disabled
     reasons = cast(dict[int, object], captured["reasons"])
     assert "postprocessing extras" in str(reasons[5])

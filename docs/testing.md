@@ -7,6 +7,7 @@ adapter, and optional plugins.
 Run the normal gate before publishing changes:
 
 ```bash
+uv sync --locked --group dev
 uv run ruff check .
 uv run ruff format --check .
 uv run ty check
@@ -24,6 +25,10 @@ contracts:
 - process/job state
 - rendered line for UI adapters
 - expected exception for invalid input
+
+Type checks such as `assert isinstance(...)` are not behavior tests. Use typing
+casts where static narrowing is needed, then assert the value, state transition,
+artifact, or protocol contract that matters.
 
 Smoke tests are allowed when the value is "this terminal path does not crash",
 but keep them explicit and few.

@@ -182,8 +182,7 @@ def test_run_execute_case_command_foreground_unsets_shell_env(
 
     assert result.returncode == 0
     assert result.stdout == "ok\n"
-    env = captured["env"]
-    assert isinstance(env, dict)
+    env = cast("dict[str, str]", captured["env"])
     assert "BASH_ENV" not in env
     assert "ENV" not in env
 
@@ -582,8 +581,8 @@ def test_watch_start_payload_uses_runner_service(tmp_path: Path, monkeypatch: py
             "Callable[[Path, str, int, str, Path | None], str]",
             kwargs["register_job_fn"],
         )
-        log_path = kwargs["log_path"]
-        assert isinstance(log_path, Path)
+        log_path = cast("Path", kwargs["log_path"])
+        assert log_path == case / "log.watcher"
         register_job_fn(case_path, name, 321, " ".join(cmd), log_path)
         return watch_service.runner_service.RunResult(0, "", "", pid=321, log_path=log_path)
 

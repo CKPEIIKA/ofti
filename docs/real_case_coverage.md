@@ -13,7 +13,11 @@ source /usr/lib/openfoam/openfoam2512/etc/bashrc
 OFTI_ENABLE_REAL_CASE_TESTS=1 uv run pytest --runslow tests/test_real_openfoam_toy_case.py
 ```
 
-Last local real-toy run with OpenFOAM 2512 sourced: `18 passed, 3 skipped`.
+The real-toy module now collects 24 service tests for the default cavity profile.
+The 0.9.2 additions prove that a manifest-restored case executes its solver and
+that the public CLI can start, list, and stop a tracked real solver. Both new
+paths pass with OpenFOAM 2512 sourced; the six-test queue/runtime/parallel-prepare
+subset also passes.
 The generated-profile matrix reports `11 passed, 4 skipped`; three skips are
 host-capability paths (MPI/foamlib parallel execution) and one is optional HPC.
 (MPI launcher present but unusable in the sandbox network namespace).
@@ -31,8 +35,8 @@ Optional knobs:
 | Service / behavior | Unit coverage | Toy real coverage | External profile coverage | Next gap |
 | --- | --- | --- | --- | --- |
 | Preflight / initials / physical scan | yes | yes | planned | Add more solver families via `OFTI_REAL_CASES=all`. |
-| Run manifest write / verify / restore | yes | yes | planned | Toy path restores recorded inputs into a new case and verifies status/preflight. |
-| Solver start / tracked status / stop | yes | yes | yes | MPI launcher/rank normalization is exercised when the launcher probe succeeds. |
+| Run manifest write / verify / restore | yes | yes | planned | Toy path restores recorded inputs and executes the solver from the restored case. |
+| Solver start / tracked status / stop | yes | yes | yes | Service and public CLI lifecycle are real-tested; MPI normalization runs when the launcher probe succeeds. |
 | Parallel prepare / decompose | yes | yes | planned | Add reconstruct/decompose latest-time restart proof. |
 | Parallel resize/resume | yes | yes | yes | Generated profile proves stopped 2->3 resize; live MPI restart remains launcher-dependent. |
 | Queue execution and final status | yes | yes | yes | Real solver logs cover success, crash continuation/cleanup, and explicit criterion classification. |

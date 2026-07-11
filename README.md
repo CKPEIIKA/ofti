@@ -532,7 +532,7 @@ profile suite generates fresh canonical tutorial cases through the same adapter.
 This keeps the broad service matrix runnable on a normal OpenFOAM installation
 while still allowing heavier external cases to be supplied explicitly.
 
-The 0.9.1 matrix also exercises live progress-state transitions, decomposed
+The 0.9.2 matrix also exercises live progress-state transitions, decomposed
 checkpoint/result archives, queue outcomes, process cleanup, and stopped-case
 parallel resize against generated or supplied OpenFOAM cases.
 

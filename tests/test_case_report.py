@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ofti.core.case_report import CaseReport, collect_case_report
+from ofti.core.case_report import collect_case_report
 
 
 def _write_poly_mesh(base: Path, cells: int, faces: int, points: int) -> None:
@@ -33,7 +33,6 @@ def test_collect_case_report(tmp_path: Path) -> None:
 
     report = collect_case_report(tmp_path)
 
-    assert isinstance(report, CaseReport)
     assert report.cells == 3
     assert report.faces == 3
     assert report.points == 4

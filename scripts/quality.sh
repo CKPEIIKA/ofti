@@ -22,9 +22,9 @@ run_check() {
   echo
 }
 
-run_check "Ruff" uv run --locked ruff check .
-run_check "Ruff format" uv run --locked ruff format --check .
-run_check "Ty" uv run --locked ty check
-run_check "Pytest + coverage" uv run --locked pytest
+run_check "Ruff" uv run --locked --group dev ruff check .
+run_check "Ruff format" uv run --locked --group dev ruff format --check .
+run_check "Ty" uv run --locked --group dev ty check
+run_check "Pytest + coverage" uv run --locked --group dev pytest
 
 exit "$STATUS"

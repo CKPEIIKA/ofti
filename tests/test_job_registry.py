@@ -27,7 +27,7 @@ def test_job_registry_roundtrip(tmp_path: Path) -> None:
     registry_payload = json.loads((case_path / ".ofti" / "jobs.json").read_text())
     assert registry_payload["format"] == "ofti.jobs"
     assert registry_payload["format_version"] == 1
-    assert isinstance(registry_payload["jobs"], list)
+    assert registry_payload["jobs"][0]["id"] == job_id
     jobs = load_jobs(case_path)
     assert jobs
     assert jobs[0]["id"] == job_id

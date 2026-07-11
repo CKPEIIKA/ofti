@@ -45,7 +45,7 @@ Schema v2 direction is intentionally stricter and should use a stable envelope:
 }
 ```
 
-OFTI 0.9.1 keeps v1 as the default output. New automation can opt into v2 with
+OFTI 0.9.2 keeps v1 as the default output. New automation can opt into v2 with
 `--json-version 2` or `OFTI_JSON_VERSION=2`, but should still pin and check
 `schema_version`.
 

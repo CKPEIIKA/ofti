@@ -162,6 +162,44 @@ def test_real_toy_case_run_manifest_restore_is_runnable(
     assert status["solver"] == display
 
 
+def test_real_toy_case_manifest_restore_executes_solver(
+    real_case: RealTutorialCase,
+    tmp_path: Path,
+) -> None:
+    case = real_case.case
+    display, command = run_ops.solver_command(case)
+    manifest_path = run_manifest.write_case_run_manifest(
+        case,
+        name=display,
+        command=run_ops.dry_run_command(command),
+        background=False,
+        detached=False,
+        parallel=0,
+        mpi=None,
+        sync_subdomains=True,
+        prepare_parallel=True,
+        clean_processors=False,
+        output=tmp_path / "executable-restore-manifest.json",
+        record_inputs_copy=True,
+    )
+    restored = tmp_path / "executable-manifest-restore"
+    run_manifest.restore_run_manifest(manifest_path, restored)
+
+    smoke = run_ops.smoke_payload(
+        restored,
+        solver=display,
+        iterations=2,
+        timeout=60,
+        output_root=restored,
+        in_place=True,
+        core_only=True,
+    )
+
+    assert smoke["ok"] is True, smoke
+    assert Path(str(smoke["log_path"])).is_file()
+    assert latest_time(restored) != "0"
+
+
 def test_real_toy_case_bundle_unbundle_status(real_case: RealTutorialCase, tmp_path: Path) -> None:
     case = real_case.case
     archive = tmp_path / "real-case.ofti.tar.gz"
@@ -287,6 +325,40 @@ def test_real_toy_case_tracked_start_status_and_stop(real_case: RealTutorialCase
     wait_until(lambda: running_jobs(case) == 0, description="stopped solver")
     all_jobs = watch_service.jobs_payload(case, include_all=True, kind="solver")
     assert all(str(job.get("status")) != "running" for job in all_jobs["jobs"])
+
+
+def test_real_toy_case_cli_watch_start_jobs_stop_contract(
+    real_case: RealTutorialCase,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    case = real_case.case
+    solver, _command = run_ops.solver_command(case)
+    assert knife_service.set_entry_payload(case, "system/controlDict", "endTime", "1e30")["ok"] is True
+
+    started_code = cli_main(["watch", "start", str(case), "--solver", solver, "--json"])
+    started = json.loads(capsys.readouterr().out)
+    pid = int(started["pid"])
+    try:
+        assert started_code == 0
+        assert pid > 0
+        assert Path(str(started["log_path"])).is_file()
+        wait_until(lambda: running_jobs(case) == 1, description="CLI-started solver registry")
+
+        jobs_code = cli_main(["watch", "jobs", str(case), "--kind", "solver", "--json"])
+        jobs = json.loads(capsys.readouterr().out)
+        assert jobs_code == 0
+        assert jobs["count"] == 1
+        assert int(jobs["jobs"][0]["pid"]) == pid
+        assert jobs["jobs"][0]["status"] == "running"
+
+        stop_code = cli_main(["watch", "stop", str(case), "--all", "--kind", "solver", "--json"])
+        stopped = json.loads(capsys.readouterr().out)
+        assert stop_code == 0
+        assert stopped["selected"] == 1
+        assert stopped["failed"] == []
+        wait_until(lambda: running_jobs(case) == 0, description="CLI-stopped solver registry")
+    finally:
+        real_case.stop_all_solvers()
 
 
 def test_real_toy_case_start_pause_resume_restart_and_jobs(real_case: RealTutorialCase) -> None:

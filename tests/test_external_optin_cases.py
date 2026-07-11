@@ -42,13 +42,15 @@ def test_external_knife_status(external_cases: list[Path]) -> None:
 def test_external_watch_jobs(external_cases: list[Path]) -> None:
     payload = watch.jobs_payload(external_cases[0], include_all=True)
     assert payload["case"] == str(external_cases[0])
-    assert isinstance(payload["jobs"], list)
+    assert payload["count"] == len(payload["jobs"])
+    assert all("status" in job and "kind" in job for job in payload["jobs"])
 
 
 def test_external_run_tool_catalog(external_cases: list[Path]) -> None:
     payload = run.tool_catalog_payload(external_cases[0])
     assert payload["case"] == str(external_cases[0])
-    assert isinstance(payload["tools"], list)
+    assert payload["tools"]
+    assert all(str(name).strip() for name in payload["tools"])
 
 
 def test_external_knife_compare_when_two_cases(external_cases: list[Path]) -> None:

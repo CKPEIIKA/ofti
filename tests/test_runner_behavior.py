@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import types
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -189,8 +190,7 @@ def test_run_shell_tool_and_capture_commands(monkeypatch: pytest.MonkeyPatch, tm
     monkeypatch.setattr(runner, "run_trusted", _ok)
     runner._run_shell_tool(screen, case, "echo", "echo hi")
     assert captured["argv"] == ["bash", "--noprofile", "--norc", "-c", "echo hi"]
-    env = captured["env"]
-    assert isinstance(env, dict)
+    env = cast("dict[str, str]", captured["env"])
     assert "BASH_ENV" not in env and "ENV" not in env
     assert viewed
 

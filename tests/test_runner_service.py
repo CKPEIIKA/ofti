@@ -41,8 +41,7 @@ def test_runner_service_foreground_env_and_output(tmp_path: Path, monkeypatch) -
 
     assert result.returncode == 0
     assert result.stdout == "ok\n"
-    env = seen["env"]
-    assert isinstance(env, dict)
+    env = cast("dict[str, str]", seen["env"])
     assert "BASH_ENV" not in env
     assert "ENV" not in env
 

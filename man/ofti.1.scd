@@ -1,4 +1,4 @@
-ofti(1) "OFTI 0.9.1" "User Commands"
+ofti(1) "OFTI 0.9.2" "User Commands"
 
 # NAME
 
@@ -96,7 +96,7 @@ supported. *--json* emits a machine envelope with *schema_version*, *command*,
 	Path to the user TOML configuration.
 
 *OFTI_JSON_VERSION*
-	Default JSON envelope version. Version 1 remains the default in OFTI 0.9.1.
+	Default JSON envelope version. Version 1 remains the default in OFTI 0.9.2.
 
 *OFTI_WATCH_STALE_AFTER_SECONDS*
 	Age threshold for STALE_LOG and NO_PROGRESS evidence.

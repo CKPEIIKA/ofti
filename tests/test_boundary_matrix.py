@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ofti.core.boundary import BoundaryCell, build_boundary_matrix
+from ofti.core.boundary import build_boundary_matrix
 from ofti.foamlib import adapter as foamlib_integration
 
 
@@ -21,8 +21,8 @@ def test_build_boundary_matrix_pitzdaily() -> None:
     assert matrix.fields
 
     cell = matrix.data["fixedWalls"]["p"]
-    assert isinstance(cell, BoundaryCell)
     assert cell.status in {"OK", "WILDCARD", "MISSING"}
+    assert cell.bc_type == "empty"
 
 
 @pytest.mark.skipif(

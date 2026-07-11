@@ -19,6 +19,6 @@ jobs:
           python-version: "3.11"
           enable-cache: true
       - name: Install project and development dependencies
-        run: uv sync --locked
+        run: uv sync --locked --group dev
       - name: Quality gate
         run: ./scripts/quality.sh

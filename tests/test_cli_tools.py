@@ -1677,8 +1677,8 @@ def test_json_output_v2_uses_stable_envelope(tmp_path, capsys) -> None:
     assert payload["schema_version"] == 2
     assert payload["command"] == "knife preflight"
     assert set(payload) == {"schema_version", "command", "ok", "warnings", "errors", "data"}
-    assert isinstance(payload["data"], dict)
     assert payload["data"]["case"] == str(case.resolve())
+    assert "checks" in payload["data"]
 
 
 def test_json_command_name_includes_nested_subcommand(tmp_path, capsys) -> None:
