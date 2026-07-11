@@ -14,8 +14,7 @@ class OpenFOAMError(RuntimeError):
     @classmethod
     def missing_openfoam_tools(cls) -> OpenFOAMError:
         return cls(
-            "OpenFOAM tools not found on PATH. "
-            "Please source your OpenFOAM bashrc before running ofti.",
+            "OpenFOAM tools not found on PATH. Please source your OpenFOAM bashrc before running ofti.",
         )
 
     @classmethod
@@ -36,8 +35,7 @@ def _foamlib_candidate(file_path: Path) -> bool:
 
 
 def list_keywords(file_path: Path) -> list[str]:
-    """List top-level keywords for a dictionary file.
-    """
+    """List top-level keywords for a dictionary file."""
     parse_error: Exception | None = None
     if _foamlib_candidate(file_path):
         try:
@@ -61,8 +59,7 @@ def list_keywords(file_path: Path) -> list[str]:
 
 
 def list_subkeys(file_path: Path, entry: str) -> list[str]:
-    """List sub-keys for a dictionary entry, if it is itself a dictionary.
-    """
+    """List sub-keys for a dictionary entry, if it is itself a dictionary."""
     if _foamlib_candidate(file_path):
         try:
             return foamlib_integration.list_subkeys(file_path, entry)
@@ -207,8 +204,7 @@ def normalize_scalar_token(value: str) -> str:
 
 
 def is_scalar_value(value: str) -> bool:
-    """Return True if the value looks like a single scalar token.
-    """
+    """Return True if the value looks like a single scalar token."""
     if not value:
         return False
     cleaned = value.replace(";", " ").strip()
@@ -478,11 +474,7 @@ def _mesh_boundary_patches(
 ) -> list[str]:
     if not patches or ".*" in boundary_keys:
         return []
-    return [
-        patch
-        for patch in patches
-        if not patch.startswith("processor") and patch_types.get(patch) != "processor"
-    ]
+    return [patch for patch in patches if not patch.startswith("processor") and patch_types.get(patch) != "processor"]
 
 
 def _foamlib_quick_lint(file_path: Path, keys: Sequence[str]) -> list[str]:

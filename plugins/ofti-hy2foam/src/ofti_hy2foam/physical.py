@@ -71,11 +71,7 @@ def hy2foam_default_fields(case_dir: Path, *, time_name: str = "latest") -> list
     present = {path.name for path in time_dir.iterdir() if path.is_file()}
     wanted = [*CORE_FIELDS]
     wanted.extend(name for name in AIR11_SPECIES if name in present)
-    wanted.extend(
-        name
-        for name in sorted(present)
-        if name in TRANSPORT_FIELDS or name.startswith(TRANSPORT_PREFIXES)
-    )
+    wanted.extend(name for name in sorted(present) if name in TRANSPORT_FIELDS or name.startswith(TRANSPORT_PREFIXES))
     return _unique(wanted)
 
 
@@ -204,10 +200,7 @@ def species_sum_diagnostic(time_dir: Path, species: tuple[str, ...]) -> dict[str
     counts = {len(values) for values in values_by_name.values()}
     if len(counts) != 1:
         return {"checked": False, "reason": "species field counts differ", "fields": list(species)}
-    totals = [
-        sum(values[index] for values in values_by_name.values())
-        for index in range(counts.pop())
-    ]
+    totals = [sum(values[index] for values in values_by_name.values()) for index in range(counts.pop())]
     deviations = [abs(value - 1.0) for value in totals if math.isfinite(value)]
     return {
         "checked": True,

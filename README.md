@@ -68,6 +68,16 @@ python -m pip install -e .
 pipx install .
 ```
 
+Install the committed `ofti(1)` manual page without root privileges:
+
+```bash
+./scripts/install_manpage.sh
+man ofti
+```
+
+The readable source is `man/ofti.1.scd`; maintainers regenerate `man/ofti.1`
+with `./scripts/build_manpage.sh` when `scdoc` is installed.
+
 `ofti` depends on `foamlib[preprocessing,postprocessing]` by default. If your
 environment is missing optional OpenFOAM commands, CLI checks report the missing
 capability and the TUI disables related actions with hints.

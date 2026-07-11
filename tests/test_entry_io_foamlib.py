@@ -40,8 +40,7 @@ def test_entry_io_write_logs_changes(tmp_path: Path) -> None:
     field = case_dir / "0" / "p"
     field.parent.mkdir(parents=True)
     field.write_text(
-        'FoamFile{version 2.0;format ascii;class volScalarField;location "0";object p;}\n'
-        "p 1;\n",
+        'FoamFile{version 2.0;format ascii;class volScalarField;location "0";object p;}\np 1;\n',
     )
 
     assert entry_io.write_entry(field, "p", "2")

@@ -37,8 +37,7 @@ def load_example_template(rel_path: Path) -> str | None:
 
 
 def write_example_template(dest: Path, rel_path: Path) -> bool:
-    """Write example content to dest if available. Returns True on success.
-    """
+    """Write example content to dest if available. Returns True on success."""
     content = load_example_template(rel_path)
     if content is None:
         return False

@@ -279,12 +279,7 @@ def _campaign_summary_paths(root: Path, summary_csv: Path | None) -> list[Path]:
     candidates: list[Path] = []
     for row in rows:
         raw = (
-            row.get("case")
-            or row.get("case_dir")
-            or row.get("path")
-            or row.get("dir")
-            or row.get("case_path")
-            or ""
+            row.get("case") or row.get("case_dir") or row.get("path") or row.get("dir") or row.get("case_path") or ""
         ).strip()
         if not raw:
             continue

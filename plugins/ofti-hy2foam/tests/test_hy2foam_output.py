@@ -21,7 +21,9 @@ from ofti.app.cli_adapters.command_builder import build_spec_parser  # noqa: E40
 
 def test_emit_payload_rejects_json_and_table(capsys) -> None:
     code = emit_payload(
-        SimpleNamespace(json=True, table=True), {"ok": True}, text_lines=lambda _p: ["x"],
+        SimpleNamespace(json=True, table=True),
+        {"ok": True},
+        text_lines=lambda _p: ["x"],
     )
     assert code == 2
     assert "mutually exclusive" in capsys.readouterr().err
@@ -42,7 +44,9 @@ def test_emit_payload_table_mode_renders(capsys) -> None:
 
 def test_emit_payload_text_default_and_exit_code(capsys) -> None:
     code = emit_payload(
-        SimpleNamespace(json=False, table=False), {"ok": False}, text_lines=lambda _p: ["plain"],
+        SimpleNamespace(json=False, table=False),
+        {"ok": False},
+        text_lines=lambda _p: ["plain"],
     )
     assert code == 1
     assert "plain" in capsys.readouterr().out

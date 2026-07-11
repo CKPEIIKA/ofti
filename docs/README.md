@@ -15,6 +15,11 @@
 - [Schemas](schemas/)
 - [Format examples](examples/formats/)
 
+## Command reference
+
+- [`ofti(1)` source](../man/ofti.1.scd)
+- [`ofti(1)` generated manual](../man/ofti.1)
+
 ## Testing and evidence
 
 - [Testing](testing.md)

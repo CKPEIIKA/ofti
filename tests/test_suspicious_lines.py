@@ -35,26 +35,12 @@ def test_find_suspicious_lines_ignores_header_banner() -> None:
 
 
 def test_find_suspicious_lines_ignore_line_comments() -> None:
-    content = (
-        "FoamFile\n"
-        "{\n"
-        "    // comment explaining version\n"
-        "    version     2.0;\n"
-        "}\n"
-    )
+    content = "FoamFile\n{\n    // comment explaining version\n    version     2.0;\n}\n"
     warnings = find_suspicious_lines(content)
     assert warnings == []
 
 
 def test_find_suspicious_lines_ignore_block_comments() -> None:
-    content = (
-        "FoamFile\n"
-        "{\n"
-        "    /*\n"
-        "       comment block\n"
-        "    */\n"
-        "    version     2.0;\n"
-        "}\n"
-    )
+    content = "FoamFile\n{\n    /*\n       comment block\n    */\n    version     2.0;\n}\n"
     warnings = find_suspicious_lines(content)
     assert warnings == []

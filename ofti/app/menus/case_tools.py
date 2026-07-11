@@ -56,8 +56,7 @@ def show_current_jobs_screen(stdscr: Any, case_path: Path, *, live: bool = True)
         lines.append("")
         lines.append("tracked_jobs:")
         lines.extend(
-            f"- id={row.get('id')} pid={row.get('pid')} "
-            f"name={row.get('name')} status={row.get('status')}"
+            f"- id={row.get('id')} pid={row.get('pid')} name={row.get('name')} status={row.get('status')}"
             for row in jobs
         )
     untracked = list(payload.get("untracked_processes", []))
@@ -89,11 +88,7 @@ def adopt_untracked_screen(stdscr: Any, case_path: Path, *, recursive: bool = Fa
         f"selected={payload.get('selected', 0)}",
         f"adopted={len(payload.get('adopted', []))}",
     ]
-    lines.extend(
-        f"{key}={payload[key]}"
-        for key in ("jobs_running_before", "jobs_running_after")
-        if key in payload
-    )
+    lines.extend(f"{key}={payload[key]}" for key in ("jobs_running_before", "jobs_running_after") if key in payload)
     adopted = list(payload.get("adopted", []))
     if adopted:
         lines.append("")
@@ -107,10 +102,7 @@ def adopt_untracked_screen(stdscr: Any, case_path: Path, *, recursive: bool = Fa
     if failed:
         lines.append("")
         lines.append("failed:")
-        lines.extend(
-            f"- pid={row.get('pid')} case={row.get('case')} error={row.get('error')}"
-            for row in failed
-        )
+        lines.extend(f"- pid={row.get('pid')} case={row.get('case')} error={row.get('error')}" for row in failed)
     Viewer(stdscr, "\n".join(lines)).display()
 
 
@@ -142,10 +134,7 @@ def compare_lines(payload: dict[str, Any]) -> list[str]:
         if diff.get("missing_in_right"):
             lines.append(f"  missing_in_right: {', '.join(diff['missing_in_right'])}")
         value_diffs = list(diff.get("value_diffs", []))
-        lines.extend(
-            f"  {row['key']}: left={row['left']} right={row['right']}"
-            for row in value_diffs[:20]
-        )
+        lines.extend(f"  {row['key']}: left={row['left']} right={row['right']}" for row in value_diffs[:20])
         if len(value_diffs) > 20:
             lines.append(f"  value_diff_more={len(value_diffs) - 20}")
     return lines
@@ -276,14 +265,8 @@ def run_convergence_check_screen(stdscr: Any, case_path: Path) -> None:
         return
     lines = [
         f"log={payload['log']}",
-        (
-            f"shock drift={payload['shock']['drift']} limit={payload['shock']['limit']} "
-            f"ok={payload['shock']['ok']}"
-        ),
-        (
-            f"drag band={payload['drag']['band']} limit={payload['drag']['limit']} "
-            f"ok={payload['drag']['ok']}"
-        ),
+        (f"shock drift={payload['shock']['drift']} limit={payload['shock']['limit']} ok={payload['shock']['ok']}"),
+        (f"drag band={payload['drag']['band']} limit={payload['drag']['limit']} ok={payload['drag']['ok']}"),
         (
             "mass "
             f"last_abs_global={payload['mass']['last_abs_global']} "
@@ -293,10 +276,7 @@ def run_convergence_check_screen(stdscr: Any, case_path: Path) -> None:
             f"residuals flatline={payload['residuals']['flatline']} "
             f"fields={','.join(payload['residuals']['flatline_fields'])}"
         ),
-        (
-            f"thermo out_of_range_count={payload['thermo']['out_of_range_count']} "
-            f"ok={payload['thermo']['ok']}"
-        ),
+        (f"thermo out_of_range_count={payload['thermo']['out_of_range_count']} ok={payload['thermo']['ok']}"),
         f"strict={payload['strict']} strict_ok={payload['strict_ok']}",
         f"ok={payload['ok']}",
     ]

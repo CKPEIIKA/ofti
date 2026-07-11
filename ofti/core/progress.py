@@ -25,9 +25,11 @@ def progress_evidence(
     selected_time = latest_time(case_dir)
     time_paths = _selected_time_paths(case_dir, selected_time)
     time_mtime = _latest_mtime(time_paths)
-    latest_write = max(value for value in (log_mtime, time_mtime) if value is not None) if (
-        log_mtime is not None or time_mtime is not None
-    ) else None
+    latest_write = (
+        max(value for value in (log_mtime, time_mtime) if value is not None)
+        if (log_mtime is not None or time_mtime is not None)
+        else None
+    )
     log_age = _age(timestamp, log_mtime)
     time_age = _age(timestamp, time_mtime)
     write_age = _age(timestamp, latest_write)
@@ -73,11 +75,7 @@ def _latest_mtime(paths: list[Path]) -> float | None:
         if root_mtime is not None:
             values.append(root_mtime)
         try:
-            values.extend(
-                stat.st_mtime
-                for path in root.iterdir()
-                if path.is_file() and (stat := path.stat())
-            )
+            values.extend(stat.st_mtime for path in root.iterdir() if path.is_file() and (stat := path.stat()))
         except OSError:
             continue
     return max(values, default=None)

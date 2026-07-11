@@ -403,7 +403,16 @@ def test_initials_converge_stability_support_table_output(
             "eta_seconds": 0,
         },
     )
-    args = _ns(source=Path(), pattern="Cd", tolerance=0.02, window=8, startup_samples=0, comparator="le", json=False, table=True)
+    args = _ns(
+        source=Path(),
+        pattern="Cd",
+        tolerance=0.02,
+        window=8,
+        startup_samples=0,
+        comparator="le",
+        json=False,
+        table=True,
+    )
     assert cli_tools._knife_stability(args) == 0
     out = capsys.readouterr().out
     assert "status" in out
@@ -415,7 +424,9 @@ def test_plot_handlers_error_and_empty_residuals(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli_tools.plot_ops, "metrics_payload", lambda _source: (_ for _ in ()).throw(ValueError("bad log")))
+    monkeypatch.setattr(
+        cli_tools.plot_ops, "metrics_payload", lambda _source: (_ for _ in ()).throw(ValueError("bad log"))
+    )
     code = cli_tools._plot_metrics(_ns(source=Path(), json=False))
     assert code == 1
     assert "ofti: bad log" in capsys.readouterr().err
@@ -461,7 +472,9 @@ def test_plot_handlers_success_and_json(
     assert cli_tools._plot_residuals(_ns(source=Path(), field=[], limit=0, json=True)) == 0
     assert json.loads(capsys.readouterr().out)["fields"][0]["field"] == "U"
 
-    monkeypatch.setattr(cli_tools.plot_ops, "residuals_payload", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad residuals")))
+    monkeypatch.setattr(
+        cli_tools.plot_ops, "residuals_payload", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad residuals"))
+    )
     assert cli_tools._plot_residuals(_ns(source=Path(), field=[], limit=0, json=False)) == 1
     assert "ofti: bad residuals" in capsys.readouterr().err
 

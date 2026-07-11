@@ -229,9 +229,12 @@ def test_manifest_handlers_and_run_solver_recording(
             "ok": True,
         },
     )
-    assert cli_tools._knife_manifest_restore(
-        _ns(manifest=manifest_path, destination=restored_dir, only=["system"], skip=["0"], json=True),
-    ) == 0
+    assert (
+        cli_tools._knife_manifest_restore(
+            _ns(manifest=manifest_path, destination=restored_dir, only=["system"], skip=["0"], json=True),
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["destination"] == str(restored_dir)
     assert payload["selected_roots"] == ["system", "constant"]
@@ -248,27 +251,30 @@ def test_manifest_handlers_and_run_solver_recording(
             log_path=Path("/case/log.simpleFoam"),
         ),
     )
-    assert cli_tools._run_solver_execute(
-        _ns(
-            case_dir=Path("/case"),
-            mpi=None,
-            no_detach=False,
-            log_file=None,
-            pid_file=None,
-            env=[],
-            json=True,
-            write_manifest=True,
-            record_inputs_copy=False,
-            manifest_file=None,
-        ),
-        background=True,
-        display="simpleFoam",
-        cmd=["simpleFoam"],
-        parallel=0,
-        sync_subdomains=True,
-        clean_processors=False,
-        prepare_parallel=True,
-    ) == 0
+    assert (
+        cli_tools._run_solver_execute(
+            _ns(
+                case_dir=Path("/case"),
+                mpi=None,
+                no_detach=False,
+                log_file=None,
+                pid_file=None,
+                env=[],
+                json=True,
+                write_manifest=True,
+                record_inputs_copy=False,
+                manifest_file=None,
+            ),
+            background=True,
+            display="simpleFoam",
+            cmd=["simpleFoam"],
+            parallel=0,
+            sync_subdomains=True,
+            clean_processors=False,
+            prepare_parallel=True,
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["manifest_path"] == str(manifest_path)
     assert payload["write_manifest"] is True
@@ -278,7 +284,9 @@ def test_converge_plot_residuals_and_watch_external(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli_tools.knife_ops, "converge_payload", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad converge")))
+    monkeypatch.setattr(
+        cli_tools.knife_ops, "converge_payload", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad converge"))
+    )
     args = _ns(
         source=Path("log"),
         strict=False,
@@ -311,7 +319,12 @@ def test_converge_plot_residuals_and_watch_external(
             "ok": True,
         },
     )
-    assert cli_tools._watch_external(_ns(case_dir=Path("/case"), command=["python", "watcher.py"], dry_run=True, json=False)) == 0
+    assert (
+        cli_tools._watch_external(
+            _ns(case_dir=Path("/case"), command=["python", "watcher.py"], dry_run=True, json=False)
+        )
+        == 0
+    )
     out = capsys.readouterr().out
     assert "command=['python', 'watcher.py']" in out
     assert "dry_run=True" in out
@@ -490,22 +503,28 @@ def test_knife_current_scope_and_adopt_all_untracked_handlers(
     monkeypatch.setattr(
         cli_tools.knife_ops,
         "current_scope_payload",
-        lambda case_dir, **kwargs: seen_current.update({"case_dir": case_dir, **kwargs}) or {
-            "case": str(case_dir),
-            "scope": "tree",
-            "cases_total": 1,
-            "cases": [str(case_dir)],
-            "solver": None,
-            "solver_error": None,
-            "jobs": [],
-            "jobs_total": 0,
-            "jobs_running": 0,
-            "jobs_tracked_running": 0,
-            "jobs_registry_running": 0,
-            "untracked_processes": [],
-        },
+        lambda case_dir, **kwargs: (
+            seen_current.update({"case_dir": case_dir, **kwargs})
+            or {
+                "case": str(case_dir),
+                "scope": "tree",
+                "cases_total": 1,
+                "cases": [str(case_dir)],
+                "solver": None,
+                "solver_error": None,
+                "jobs": [],
+                "jobs_total": 0,
+                "jobs_running": 0,
+                "jobs_tracked_running": 0,
+                "jobs_registry_running": 0,
+                "untracked_processes": [],
+            }
+        ),
     )
-    assert cli_tools._knife_current(_ns(case_dir=Path("/x"), root=Path("/repo"), recursive=True, live=True, json=True)) == 0
+    assert (
+        cli_tools._knife_current(_ns(case_dir=Path("/x"), root=Path("/repo"), recursive=True, live=True, json=True))
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["scope"] == "tree"
     assert seen_current["recursive"] is True
@@ -514,22 +533,30 @@ def test_knife_current_scope_and_adopt_all_untracked_handlers(
     monkeypatch.setattr(
         cli_tools.knife_ops,
         "adopt_payload",
-        lambda case_dir, **kwargs: seen_adopt.update({"case_dir": case_dir, **kwargs}) or {
-            "case": str(case_dir),
-            "scope": "tree",
-            "recursive": True,
-            "all_untracked": True,
-            "cases_total": 0,
-            "cases": [],
-            "selected": 0,
-            "adopted": [],
-            "failed": [],
-            "skipped": [],
-            "jobs_running_before": 0,
-            "jobs_running_after": 0,
-        },
+        lambda case_dir, **kwargs: (
+            seen_adopt.update({"case_dir": case_dir, **kwargs})
+            or {
+                "case": str(case_dir),
+                "scope": "tree",
+                "recursive": True,
+                "all_untracked": True,
+                "cases_total": 0,
+                "cases": [],
+                "selected": 0,
+                "adopted": [],
+                "failed": [],
+                "skipped": [],
+                "jobs_running_before": 0,
+                "jobs_running_after": 0,
+            }
+        ),
     )
-    assert cli_tools._knife_adopt(_ns(case_dir=Path("/x"), root=Path("/repo"), recursive=False, all_untracked=True, json=True)) == 0
+    assert (
+        cli_tools._knife_adopt(
+            _ns(case_dir=Path("/x"), root=Path("/repo"), recursive=False, all_untracked=True, json=True)
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["all_untracked"] is True
     assert seen_adopt["all_untracked"] is True

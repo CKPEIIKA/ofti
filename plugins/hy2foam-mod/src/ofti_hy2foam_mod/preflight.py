@@ -13,7 +13,17 @@ NN_SPECIES_ORDER_KEYS = ("stateInputOrder", "inputOrder", "outputOrder")
 # Air-11 species recognised inside an ordering tuple (state variables such as
 # p/Tt/Tv are ignored so the comparison is over the species subsequence).
 _AIR_SPECIES = (
-    "N2", "O2", "NO", "N", "O", "N2+", "O2+", "NO+", "N+", "O+", "e-",
+    "N2",
+    "O2",
+    "NO",
+    "N",
+    "O",
+    "N2+",
+    "O2+",
+    "NO+",
+    "N+",
+    "O+",
+    "e-",
 )
 
 

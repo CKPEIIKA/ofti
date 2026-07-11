@@ -8,6 +8,7 @@ Run the normal gate before publishing changes:
 
 ```bash
 uv run ruff check .
+uv run ruff format --check .
 uv run ty check
 uv run pytest
 ```
@@ -55,12 +56,12 @@ profiles, it generates fresh canonical tutorial cases instead. MPI scenarios
 probe the launcher first and skip with its concrete failure reason when the
 host or sandbox cannot launch ranks.
 
-## Coverage Omit Policy
+## Full-project coverage policy
 
-The coverage omit list is limited to terminal adapter modules:
+Coverage includes `ofti/app/screens/` and `ofti/ui_curses/`; there is no UI
+omit list. Terminal behavior is tested with deterministic fake screens and
+key sequences. These tests assert rendered text, dispatched actions, saved
+values, and error handling rather than merely executing lines.
 
-- `ofti/app/screens/*`
-- `ofti/ui_curses/*`
-
-Reusable logic must not hide there. If a screen needs behavior shared with CLI
+Reusable logic still must not hide there. If a screen needs behavior shared with CLI
 or another TUI, move it to `ofti/tools` or `ofti/core` and test it there.

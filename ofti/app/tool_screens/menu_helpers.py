@@ -22,6 +22,7 @@ def build_menu(
     help_lines: list[str] | None = None,
 ) -> Menu:
     if hint_provider is None:
+
         def hint(idx: int) -> str:
             if not (0 <= idx < len(options)):
                 return ""

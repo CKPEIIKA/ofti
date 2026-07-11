@@ -77,15 +77,9 @@ class Viewer:
                 start_line = 0
             if key_in(key, get_config().keys.get("bottom", [])):
                 start_line = max(0, len(lines) - (height - 3))
-            if (
-                key in (curses.KEY_DOWN,)
-                or key_in(key, get_config().keys.get("down", []))
-            ) and end_line < len(lines):
+            if (key in (curses.KEY_DOWN,) or key_in(key, get_config().keys.get("down", []))) and end_line < len(lines):
                 start_line += 1
-            if (
-                key in (curses.KEY_UP,)
-                or key_in(key, get_config().keys.get("up", []))
-            ) and start_line > 0:
+            if (key in (curses.KEY_UP,) or key_in(key, get_config().keys.get("up", []))) and start_line > 0:
                 start_line -= 1
 
     def _show_help(self) -> None:

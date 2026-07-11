@@ -9,6 +9,7 @@ load_tables: Any = None
 
 try:  # pragma: no cover - optional postprocessing extras
     from foamlib.postprocessing.load_tables import list_function_objects, load_tables
+
     FOAMLIB_POSTPROCESSING = True
 except Exception as exc:  # pragma: no cover - optional fallback
     FOAMLIB_POSTPROCESSING = False
@@ -82,7 +83,6 @@ def load_table_source(
 def _require_postprocessing() -> None:
     if not FOAMLIB_POSTPROCESSING:
         hint = POSTPROCESSING_IMPORT_ERROR or (
-            "foamlib postprocessing extras are unavailable. "
-            "Install 'foamlib[postprocessing]'."
+            "foamlib postprocessing extras are unavailable. Install 'foamlib[postprocessing]'."
         )
         raise RuntimeError(hint)

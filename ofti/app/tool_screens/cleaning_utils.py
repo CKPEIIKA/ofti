@@ -47,7 +47,5 @@ def _ascii_kv_table(title: str, rows: list[tuple[str, str]]) -> str:
     top = "+" + "-" * (left_width + 2) + "+" + "-" * (right_width + 2) + "+"
     title_line = f"| {title:<{left_width + right_width + 1}} |"
     sep = "+" + "-" * (left_width + 2) + "+" + "-" * (right_width + 2) + "+"
-    body = [
-        f"| {label:<{left_width}} | {value:<{right_width}} |" for label, value in rows
-    ]
+    body = [f"| {label:<{left_width}} | {value:<{right_width}} |" for label, value in rows]
     return "\n".join([top, title_line, sep, *body, top])

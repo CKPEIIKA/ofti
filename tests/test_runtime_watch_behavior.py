@@ -56,39 +56,76 @@ def test_runtime_control_eta_and_reason_helpers() -> None:
     assert rc.reason_from_evidence("window too wide") == "window"
     assert rc.reason_from_evidence("other") is None
 
-    assert rtc.criterion_unmet_reason(
-        status="pass",
-        evidence=None,
-        criteria_start=None,
-        latest_time=None,
-        samples=0,
-    ) is None
-    assert rtc.criterion_unmet_reason(
-        status="fail",
-        evidence=None,
-        criteria_start=2.0,
-        latest_time=1.0,
-        samples=10,
-    ) == "startup"
-    assert rtc.criterion_unmet_reason(
-        status="unknown",
-        evidence=None,
-        criteria_start=None,
-        latest_time=None,
-        samples=1,
-    ) == "not_enough_samples"
-    assert rtc.criterion_unmet_reason(
-        status="unknown",
-        evidence=None,
-        criteria_start=None,
-        latest_time=None,
-        samples=8,
-    ) == "window"
+    assert (
+        rtc.criterion_unmet_reason(
+            status="pass",
+            evidence=None,
+            criteria_start=None,
+            latest_time=None,
+            samples=0,
+        )
+        is None
+    )
+    assert (
+        rtc.criterion_unmet_reason(
+            status="fail",
+            evidence=None,
+            criteria_start=2.0,
+            latest_time=1.0,
+            samples=10,
+        )
+        == "startup"
+    )
+    assert (
+        rtc.criterion_unmet_reason(
+            status="unknown",
+            evidence=None,
+            criteria_start=None,
+            latest_time=None,
+            samples=1,
+        )
+        == "not_enough_samples"
+    )
+    assert (
+        rtc.criterion_unmet_reason(
+            status="unknown",
+            evidence=None,
+            criteria_start=None,
+            latest_time=None,
+            samples=8,
+        )
+        == "window"
+    )
 
-    assert rtc.criterion_eta_seconds([], tolerance=None, comparator="le", execution_times=[], use_delta=False, status="fail") is None
-    assert rtc.criterion_eta_seconds([1, 2], tolerance=0.1, comparator="le", execution_times=[1, 2], use_delta=False, status="fail") is None
-    assert rtc.criterion_eta_seconds([1, 2, 3], tolerance=0.1, comparator="le", execution_times=[1], use_delta=False, status="fail") is None
-    assert rtc.criterion_eta_seconds([3.0, 2.0, 1.0, 0.5], tolerance=0.1, comparator="le", execution_times=[1, 2, 3, 4], use_delta=False, status="pass") == 0.0
+    assert (
+        rtc.criterion_eta_seconds(
+            [], tolerance=None, comparator="le", execution_times=[], use_delta=False, status="fail"
+        )
+        is None
+    )
+    assert (
+        rtc.criterion_eta_seconds(
+            [1, 2], tolerance=0.1, comparator="le", execution_times=[1, 2], use_delta=False, status="fail"
+        )
+        is None
+    )
+    assert (
+        rtc.criterion_eta_seconds(
+            [1, 2, 3], tolerance=0.1, comparator="le", execution_times=[1], use_delta=False, status="fail"
+        )
+        is None
+    )
+    assert (
+        rtc.criterion_eta_seconds(
+            [3.0, 2.0, 1.0, 0.5],
+            tolerance=0.1,
+            comparator="le",
+            execution_times=[1, 2, 3, 4],
+            use_delta=False,
+            status="pass",
+        )
+        == 0.0
+    )
 
     assert rc.criterion_eta_samples_needed(1.0, tolerance=1.0, comparator="le", slope=-1.0) == 0.0
     assert rc.criterion_eta_samples_needed(2.0, tolerance=1.0, comparator="le", slope=0.1) < 0
@@ -128,7 +165,9 @@ def test_watch_service_branch_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert dry_run["ok"] is True
 
     called: list[str] = []
-    monkeypatch.setattr(watch_service, "watcher_start_payload", lambda *_a, **_k: called.append("start") or {"ok": True})
+    monkeypatch.setattr(
+        watch_service, "watcher_start_payload", lambda *_a, **_k: called.append("start") or {"ok": True}
+    )
     monkeypatch.setattr(watch_service, "watcher_run_payload", lambda *_a, **_k: called.append("run") or {"ok": True})
     watch_service.watcher_attach_payload(case, command=["echo"], background=True)
     watch_service.watcher_attach_payload(case, command=["echo"], background=False)
@@ -145,6 +184,7 @@ def test_watch_service_branch_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert watch_service.external_watch_start_payload(case, command=[], dry_run=True)["ok"] is True
 
     for mode in ("start", "status", "attach", "stop"):
+
         def _payload(*_a: object, _mode: str = mode, **_k: object) -> dict[str, str]:
             return {"mode": _mode}
 
@@ -153,7 +193,7 @@ def test_watch_service_branch_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path:
         assert payload["mode"] == mode
 
 
-def test_watch_service_adopt_and_misc_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_watch_service_adopt_resolution_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     case = tmp_path / "case"
     case.mkdir()
     (case / "log.simpleFoam").write_text("solver\n")
@@ -190,12 +230,19 @@ def test_watch_service_adopt_and_misc_paths(monkeypatch: pytest.MonkeyPatch, tmp
     empty_case.mkdir()
     assert watch_service._adopt_log_path(empty_case, None).name == "log.solver"
 
+
+def test_watch_service_external_job_misc_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
     rel = watch_service._external_log_path(case, name="watch.external", raw="logs/watch.log")
     assert rel == (case / "logs/watch.log").resolve()
-    assert watch_service._external_jobs(
-        [{"name": "watch.custom", "kind": "watcher"}, {"name": "simpleFoam", "kind": "solver"}],
-        name="",
-    ) == []
+    assert (
+        watch_service._external_jobs(
+            [{"name": "watch.custom", "kind": "watcher"}, {"name": "simpleFoam", "kind": "solver"}],
+            name="",
+        )
+        == []
+    )
 
     rows = [{"id": "1", "name": "watch.external", "kind": "watcher", "status": "finished"}]
     monkeypatch.setattr(watch_service, "refresh_jobs", lambda _c: rows)
@@ -208,6 +255,10 @@ def test_watch_service_adopt_and_misc_paths(monkeypatch: pytest.MonkeyPatch, tmp
     assert watch_service._resolve_watcher_command(case, ["--", "python", "w.py"])[0] == ["python", "w.py"]
     assert watch_service._signal_by_name("TERM") == int(watch_service.signal.SIGTERM)
 
+
+def test_watch_service_settings_and_log_fallback_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
     bad_json = case / ".ofti" / "watch.json"
     bad_json.parent.mkdir(parents=True, exist_ok=True)
     bad_json.write_text(json.dumps(["bad"]))
@@ -231,7 +282,11 @@ def test_watch_service_adopt_and_misc_paths(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setattr(Path, "resolve", _resolve_fail)
     assert watch_service._job_log_path(case, {"log": "bad.log"}) == str(case / "bad.log")
 
-    monkeypatch.setattr(watch_service, "refresh_jobs", lambda _c: [{"id": "x", "name": "watch.external", "kind": "watcher", "status": "running"}])
+    monkeypatch.setattr(
+        watch_service,
+        "refresh_jobs",
+        lambda _c: [{"id": "x", "name": "watch.external", "kind": "watcher", "status": "running"}],
+    )
     status = watch_service.external_watch_status_payload(case, job_id="x", name="watch.external", include_all=True)
     assert status["count"] == 1
 

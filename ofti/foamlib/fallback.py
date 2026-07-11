@@ -587,7 +587,7 @@ def _set_scalar_entry(
         segment = text
         base = 0
     else:
-        segment = text[parent_span[0]:parent_span[1]]
+        segment = text[parent_span[0] : parent_span[1]]
         base = parent_span[0]
     pattern = re.compile(rf'(?m)^(\s*)"?{re.escape(key)}"?\s+([^;{{}}]+);')
     match = pattern.search(segment)

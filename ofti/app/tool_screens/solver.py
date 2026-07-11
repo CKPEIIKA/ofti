@@ -321,10 +321,7 @@ def _tail_process_log(
             if last_time is not None:
                 summary = f"Time = {last_time}"
             if last_courant is not None:
-                if summary:
-                    summary = f"{summary} | Courant: {last_courant:g}"
-                else:
-                    summary = f"Courant: {last_courant:g}"
+                summary = f"{summary} | Courant: {last_courant:g}" if summary else f"Courant: {last_courant:g}"
             if summary:
                 with suppress(curses.error):
                     stdscr.addstr(summary[: max(1, width - 1)] + "\n")

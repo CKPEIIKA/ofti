@@ -49,10 +49,7 @@ def mesh_menu(
 
     if not blockmesh_dict.is_file():
         disabled.add(0)
-        disabled_reasons[0] = (
-            "blockMesh requires system/blockMeshDict; "
-            "create it via Config Manager."
-        )
+        disabled_reasons[0] = "blockMesh requires system/blockMeshDict; create it via Config Manager."
         disabled_helpers[0] = "config"
     if not blockmesh_dict.is_file():
         disabled.add(1)

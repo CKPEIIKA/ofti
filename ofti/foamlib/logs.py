@@ -325,11 +325,7 @@ def _filter_lines(text: str, terms: list[str]) -> str:
     if not terms:
         return text
     needles = [term.lower() for term in terms]
-    lines = [
-        line
-        for line in text.splitlines()
-        if any(needle in line.lower() for needle in needles)
-    ]
+    lines = [line for line in text.splitlines() if any(needle in line.lower() for needle in needles)]
     return "\n".join(lines)
 
 

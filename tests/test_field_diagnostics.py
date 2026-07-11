@@ -68,8 +68,7 @@ def test_read_internal_field_error_branches(tmp_path: Path, monkeypatch) -> None
         encoding="utf-8",
     )
     (case / "0" / "mismatch").write_text(
-        "FoamFile{ class volScalarField; }\n"
-        "internalField nonuniform List<scalar>\n2\n(\n1\n);\n",
+        "FoamFile{ class volScalarField; }\ninternalField nonuniform List<scalar>\n2\n(\n1\n);\n",
         encoding="utf-8",
     )
     (case / "0" / "missingInternal").write_text("FoamFile{ class volScalarField; }\n")
@@ -198,9 +197,7 @@ def test_compare_fields_reports_component_mismatch_and_nonfinite_pairs(
     right = _make_case(tmp_path / "right")
     _write_vector(left / "0" / "U", [(1.0, float("inf"), 0.0)])
     (right / "0" / "U").write_text(
-        "FoamFile{ class volVectorField; }\n"
-        "internalField nonuniform List<vector>\n1\n(\n(1 2)\n);\n"
-        "boundaryField{}\n",
+        "FoamFile{ class volVectorField; }\ninternalField nonuniform List<vector>\n1\n(\n(1 2)\n);\nboundaryField{}\n",
         encoding="utf-8",
     )
     _write_vector(left / "0" / "V", [(1.0, float("inf"), 0.0)])

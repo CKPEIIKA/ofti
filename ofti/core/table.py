@@ -20,10 +20,7 @@ def render_table(
     text_rows: list[list[str]] = []
     for row in rows:
         rendered = [_cell(row.get(key)) for key, _label in columns]
-        widths = [
-            max(width, len(value))
-            for width, value in zip(widths, rendered, strict=True)
-        ]
+        widths = [max(width, len(value)) for width, value in zip(widths, rendered, strict=True)]
         text_rows.append(rendered)
 
     lines = [_row(headers, widths), _separator(widths)]
@@ -37,10 +34,7 @@ def render_kv(rows: Sequence[tuple[str, Any]], *, empty: str = "(none)") -> list
 
 
 def _row(values: Sequence[str], widths: Sequence[int]) -> str:
-    return "  ".join(
-        value.ljust(width)
-        for value, width in zip(values, widths, strict=True)
-    ).rstrip()
+    return "  ".join(value.ljust(width) for value, width in zip(values, widths, strict=True)).rstrip()
 
 
 def _separator(widths: Sequence[int]) -> str:

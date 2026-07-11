@@ -309,30 +309,29 @@ def tools_screen(
     """
     base_tools: list[tuple[str, list[str]]] = []
     extra_tools = load_tool_presets(case_path)
-    post_tools = [
-        (f"[post] {name}", cmd) for name, cmd in load_postprocessing_presets(case_path)
-    ]
+    post_tools = [(f"[post] {name}", cmd) for name, cmd in load_postprocessing_presets(case_path)]
 
     simple_tools = base_tools + extra_tools + post_tools
 
-    labels = ["Re-run last tool"] + [name for name, _ in simple_tools] + [
-        "Diagnostics",
-        "Case doctor",
-        "Case operations",
-        "Run shell script",
-        "Clone case",
-        "Job status",
-        "Stop job",
-        "Physics helpers",
-    ]
+    labels = (
+        ["Re-run last tool"]
+        + [name for name, _ in simple_tools]
+        + [
+            "Diagnostics",
+            "Case doctor",
+            "Case operations",
+            "Run shell script",
+            "Clone case",
+            "Job status",
+            "Stop job",
+            "Physics helpers",
+        ]
+    )
 
     def hint_for(idx: int) -> str:
         if idx == 0:
             last = get_last_tool_run()
-            if last is None:
-                base = "Re-run last tool (none yet)"
-            else:
-                base = f"Re-run last tool: {last.name}"
+            base = "Re-run last tool (none yet)" if last is None else f"Re-run last tool: {last.name}"
             return f"{base} | {tool_status_mode()}"
         simple_index = idx - 1
         if 0 <= simple_index < len(simple_tools):
@@ -349,19 +348,11 @@ def tools_screen(
         return menu_hint("menu:tools", label)
 
     disabled = set(range(len(labels))) if _no_foam_active() else None
-    status_line = (
-        "Limited mode: OpenFOAM env not found (simple editor only)"
-        if _no_foam_active()
-        else None
-    )
+    status_line = "Limited mode: OpenFOAM env not found (simple editor only)" if _no_foam_active() else None
 
     while True:
         last_status = last_tool_status_line()
-        status = (
-            f"{status_line} | {last_status}"
-            if status_line and last_status
-            else last_status or status_line
-        )
+        status = f"{status_line} | {last_status}" if status_line and last_status else last_status or status_line
         menu = build_menu(
             stdscr,
             "Tools",

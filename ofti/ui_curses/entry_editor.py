@@ -39,10 +39,7 @@ class EntryEditor:
         self.case_label = case_label
 
     def edit(self) -> None:
-        use_textbox = (
-            os.environ.get("OFTI_USE_TEXTBOX") == "1"
-            and hasattr(self.stdscr, "derwin")
-        )
+        use_textbox = os.environ.get("OFTI_USE_TEXTBOX") == "1" and hasattr(self.stdscr, "derwin")
         if use_textbox:
             self._edit_with_textbox()
             return
@@ -103,9 +100,7 @@ class EntryEditor:
 
             if 32 <= key <= 126:
                 ch = chr(key)
-                self._buffer = (
-                    self._buffer[: self._cursor] + ch + self._buffer[self._cursor :]
-                )
+                self._buffer = self._buffer[: self._cursor] + ch + self._buffer[self._cursor :]
                 self._cursor += 1
                 continue
 
@@ -154,7 +149,7 @@ class EntryEditor:
             return
 
         win.erase()
-        win.addstr(0, 0, self._buffer[: input_width])
+        win.addstr(0, 0, self._buffer[:input_width])
 
         tb = textpad.Textbox(win, insert_mode=True)
         curses.curs_set(1)

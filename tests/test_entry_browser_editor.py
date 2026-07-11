@@ -1,4 +1,3 @@
-
 from ofti.ui_curses import entry_browser
 from ofti.ui_curses.entry_browser import BrowserCallbacks
 

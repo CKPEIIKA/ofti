@@ -27,10 +27,7 @@ CONTEXT_HELP: dict[str, list[str]] = {
         "Run solver (custom log) lets you choose a log path inside the case.",
         "Run solver (parallel) uses mpirun with safe prep defaults.",
         "Safe prep includes sync-subdomains and decomposePar prelaunch.",
-        (
-            "CLI runs can write immutable manifests; "
-            "add --record-inputs-copy for restore-grade snapshots."
-        ),
+        ("CLI runs can write immutable manifests; add --record-inputs-copy for restore-grade snapshots."),
         "Case status/current jobs and runtime checks reuse knife shared services.",
         "Current jobs can scan repo root recursively for campaign-wide live status.",
         "Runtime criteria/ETA/report are read-only diagnostics from logs/control.",
@@ -123,8 +120,7 @@ MENU_HINTS: dict[str, dict[str, str]] = {
         "Run solver parallel": "mpirun with sync-subdomains + optional prelaunch decomposePar.",
         "Case status": "Show solver/time/control summary for this case.",
         "Current jobs (live)": (
-            "Show tracked jobs plus live untracked processes "
-            "(supports repo-root recursive scope)."
+            "Show tracked jobs plus live untracked processes (supports repo-root recursive scope)."
         ),
         "Runtime criteria": "List normalized runtime criteria rows and status.",
         "ETA forecast": "Estimate ETA from criteria/endTime trends.",
@@ -132,8 +128,7 @@ MENU_HINTS: dict[str, dict[str, str]] = {
         "Convergence check": "Run log-based convergence quality checks.",
         "Stability check": "Run windowed signal stability check on solver log.",
         "Adopt untracked processes": (
-            "Register discovered solver processes in jobs.json "
-            "(including bulk campaign adoption)."
+            "Register discovered solver processes in jobs.json (including bulk campaign adoption)."
         ),
         "Stop tracked job": "Stop one tracked running job.",
         "Pause tracked job": "Pause one tracked running job.",

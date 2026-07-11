@@ -45,9 +45,7 @@ class Hy2FoamPreflightCommand:
 
 def _preflight_text_lines(payload: dict[str, Any]) -> list[str]:
     lines = [f"case={payload['case']}", f"ok={payload['ok']}"]
-    lines.extend(
-        f"{check['name']}={check['status']} {check['detail']}" for check in payload["checks"]
-    )
+    lines.extend(f"{check['name']}={check['status']} {check['detail']}" for check in payload["checks"])
     return lines
 
 
@@ -145,11 +143,7 @@ def _species_order_consistency_check(case_dir: Path) -> dict[str, str]:
     if len(orders) < 2:
         return _check("species_order_consistency", "WARN", "fewer than two species-order sources")
     reference = orders[0][2]
-    mismatches = [
-        f"{path}:{key}"
-        for path, key, values in orders[1:]
-        if values != reference
-    ]
+    mismatches = [f"{path}:{key}" for path, key, values in orders[1:] if values != reference]
     if mismatches:
         first_path, first_key, _values = orders[0]
         return _check(

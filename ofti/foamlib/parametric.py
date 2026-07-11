@@ -26,6 +26,7 @@ try:  # pragma: no cover - optional preprocessing extras
     from foamlib.preprocessing.grid_parameter_sweep import GridParameter
     from foamlib.preprocessing.of_dict import FoamDictAssignment, FoamDictInstruction
     from foamlib.preprocessing.parameter_study import csv_generator, grid_generator
+
     FOAMLIB_PREPROCESSING = True
 except Exception:  # pragma: no cover - optional fallback
     FOAMLIB_PREPROCESSING = False
@@ -130,12 +131,7 @@ def _build_parametric_cases_preprocessing(
 ) -> list[Path]:
     if not FOAMLIB_PREPROCESSING:
         return []
-    if (
-        CaseModifier is None
-        or FoamDictAssignment is None
-        or FoamDictInstruction is None
-        or CaseParameter is None
-    ):
+    if CaseModifier is None or FoamDictAssignment is None or FoamDictInstruction is None or CaseParameter is None:
         return []
     output_root = output_root or case_path.parent
     created: list[Path] = []
@@ -222,10 +218,7 @@ def build_parametric_cases_from_grid(
             file_name=Path(dict_path),
             keys=[part for part in entry.split(".") if part],
         )
-        case_parameters = [
-            GridCaseParameter(name=_sanitize_value(value), values=[value])
-            for value in values
-        ]
+        case_parameters = [GridCaseParameter(name=_sanitize_value(value), values=[value]) for value in values]
         parameters.append(
             GridParameter(
                 parameter_name=entry.replace(".", "_"),
@@ -256,11 +249,7 @@ def build_matrix_cases(
     combos = _matrix_combinations(axes)
     destinations: list[tuple[Path, list[tuple[dict[str, Any], str]]]] = []
     for combo in combos:
-        case_name = (
-            case_name_fn(combo)
-            if case_name_fn is not None
-            else _matrix_case_name(case_path.name, combo)
-        )
+        case_name = case_name_fn(combo) if case_name_fn is not None else _matrix_case_name(case_path.name, combo)
         destination = output_root / case_name
         if destination.exists():
             raise FileExistsError(destination)

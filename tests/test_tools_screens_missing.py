@@ -287,6 +287,7 @@ def test_parametric_study_screen(monkeypatch, tmp_path: Path) -> None:
     viewed = _capture_viewer(monkeypatch)
     monkeypatch.setattr("ofti.ui_curses.menus.fzf_enabled", lambda: False)
     from ofti.app.tool_screens.parametric import foamlib_parametric_study_screen
+
     screen = FakeScreen(inputs=["system/controlDict", "application", "simpleFoam", "n"])
     foamlib_parametric_study_screen(screen, case_dir)
     assert viewed or screen.lines
@@ -300,7 +301,10 @@ def test_reconstruct_and_parallel_screens(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr("ofti.ui_curses.menus.Menu.navigate", lambda *_: 0)
     reconstruct.reconstruct_manager_screen(FakeScreen(), case_dir)
 
-    monkeypatch.setattr("ofti.app.tool_screens.reconstruct.run_trusted", lambda *_a, **_k: types.SimpleNamespace(returncode=0, stdout="", stderr=""))
+    monkeypatch.setattr(
+        "ofti.app.tool_screens.reconstruct.run_trusted",
+        lambda *_a, **_k: types.SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
     ok, _ = reconstruct.reconstruct_latest_once(case_dir)
     assert ok
 

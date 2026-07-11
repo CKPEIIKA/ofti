@@ -1,0 +1,158 @@
+.TH OFTI 1 "2026-07-11" "OFTI 0.9.1" "User Commands"
+.SH NAME
+ofti \- scriptable OpenFOAM case utilities and terminal interface
+.SH SYNOPSIS
+.B ofti
+[\-h] [\-\-debug] [\-V] [CASE]
+.br
+.B ofti knife
+COMMAND [options]
+.br
+.B ofti run
+COMMAND [options]
+.br
+.B ofti watch
+COMMAND [options]
+.br
+.B ofti plot
+COMMAND [options]
+.br
+.B ofti bundle
+CASE \-\-output ARCHIVE [options]
+.br
+.B ofti unbundle
+ARCHIVE \-\-to CASE [options]
+.br
+.B ofti result
+COMMAND [options]
+.SH DESCRIPTION
+OFTI is a CLI-first convenience layer over foamlib and native OpenFOAM tools.
+Without a non-interactive command it opens the curses interface for CASE, or
+the current directory. The CLI and TUI call the same services.
+.PP
+Commands do not silently overwrite case data. Mutating operations expose an
+explicit apply, output, snapshot, or destination option. Machine consumers
+should request
+.B \-\-json
+and check both the process exit status and the returned schema_version.
+.SH GLOBAL OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Show command help. Every command and subcommand provides its own help.
+.TP
+.B \-\-debug
+Enable debug logging and verbose error reports.
+.TP
+.BR \-V ", " \-\-version
+Print the OFTI version.
+.SH COMMANDS
+.TP
+.B knife
+Inspect, validate, compare, edit, adopt, stop, and report on cases. Important
+subcommands include doctor, preflight, checkpoint, physical, compare-fields,
+manifest, registry, status, current, adopt, set, criteria, eta, report, and
+campaign.
+.TP
+.B run
+Run solvers and tools, smoke-test portable case copies, resize parallel runs,
+generate parameter matrices, and execute queues. Subcommands are tool, solver,
+smoke, resize-parallel, matrix, parametric, queue, queue-summary, and status.
+.TP
+.B watch
+Inspect logs and control tracked jobs. Subcommands are jobs, status, log,
+attach, start, pause, resume, interval, output, run, stop, and external.
+.TP
+.B plot
+Render terminal plots from solver logs and criteria data.
+.TP
+.BR bundle ", " unbundle
+Create or extract a portable minimal case archive. A bundle retains native
+OpenFOAM layout and includes a checksummed .ofti/bundle.json manifest.
+Unbundle can optionally smoke-test or start the restored case.
+.TP
+.B result
+Pack and unpack result or restart state. Processor state is included only when
+the selected time is complete across every processor directory.
+.SH OUTPUT AND EXIT STATUS
+Human-readable output is concise. \-\-table selects stable tabular output where
+supported. \-\-json emits a machine envelope with schema_version, command, ok,
+warnings, errors, and command data. Diagnostics go to standard error.
+.TP
+.B 0
+Success, or a report-only diagnostic completed.
+.TP
+.B 1
+Operational failure, failed check when requested, or solver failure.
+.TP
+.B 2
+Invalid arguments, unknown preset/profile, or usage validation failure.
+.SH ENVIRONMENT
+.TP
+.B OFTI_CONFIG
+Path to the user TOML configuration.
+.TP
+.B OFTI_JSON_VERSION
+Default JSON envelope version. Version 1 remains the default in OFTI 0.9.1.
+.TP
+.B OFTI_WATCH_STALE_AFTER_SECONDS
+Age threshold for STALE_LOG and NO_PROGRESS evidence.
+.TP
+.B OFTI_ENABLE_REAL_CASE_TESTS
+Enable opt-in tests that launch real OpenFOAM commands.
+.TP
+.BR WM_PROJECT_DIR ", " WM_PROJECT_VERSION ", " FOAM_RUN
+OpenFOAM environment hints used for tool and tutorial discovery.
+.SH FILES
+.TP
+.I CASE/ofti.toml
+Case-local configuration. CLI flags and environment variables take priority.
+.TP
+.I ~/.config/ofti/config.toml
+Default user configuration when OFTI_CONFIG is unset.
+.TP
+.I CASE/.ofti/jobs.json
+Atomic tracked-job registry. Repair it from durable run identities with
+"ofti knife registry repair CASE".
+.TP
+.I CASE/.ofti/runs/*.json
+Durable run identity records used for process ownership recovery.
+.TP
+.I CASE/runs/
+Case-local immutable run manifests and optional input snapshots.
+.TP
+.I CASE/.ofti/queues/
+Queue summaries and append-only event journals.
+.SH EXAMPLES
+.nf
+ofti knife preflight CASE \-\-json
+ofti knife status CASE \-\-table
+
+ofti watch start CASE \-\-background
+ofti watch jobs CASE \-\-table
+ofti watch stop CASE \-\-signal TERM
+
+ofti knife checkpoint CASE \-\-common \-\-np auto \-\-json
+ofti run resize-parallel CASE \-\-to 8 \-\-json
+
+ofti bundle CASE \-\-output case.ofti.tar.gz \-\-smoke \-\-json
+ofti unbundle case.ofti.tar.gz \-\-to CASE_COPY \-\-run \-\-background \-\-json
+
+ofti run queue CASE_A CASE_B \-\-max-parallel 1 \-\-json
+.fi
+.SH DIAGNOSTICS
+Use "ofti knife doctor CASE" for case-structure diagnostics and "ofti knife
+preflight CASE" for launch prerequisites. "ofti watch status CASE" reports
+PAUSED, IDLE, STALE_LOG, and NO_PROGRESS reason codes. Destructive recovery is
+never inferred: checkpoint quarantine previews by default and requires
+\-\-apply.
+.SH LIMITATIONS
+OpenFOAM directives and code streams that foamlib cannot evaluate remain
+best-effort. Real MPI lifecycle validation depends on a host that permits MPI
+launcher sockets. Scheduler integration is not a supported generic interface.
+.SH SEE ALSO
+.BR foamDictionary (1),
+.BR decomposePar (1),
+.BR reconstructPar (1),
+.BR mpirun (1)
+.PP
+Project documentation: docs/README.md and docs/formats.md.

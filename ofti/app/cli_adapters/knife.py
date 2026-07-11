@@ -84,16 +84,14 @@ def _knife_checkpoint(args: argparse.Namespace) -> int:
         return 0 if payload["ok"] else 1
     if quarantine:
         print(
-            f"case={payload['case']} applied={payload['applied']} "
-            f"safe_to_apply={payload['safe_to_apply']}",
+            f"case={payload['case']} applied={payload['applied']} safe_to_apply={payload['safe_to_apply']}",
         )
         for row in payload["moves"]:
             print(f"- {row['source']} -> {row['destination']}")
         return 0
     print(f"case={payload['case']} processors={payload['processor_count']}")
     print(
-        f"latest_complete={payload['latest_complete_time']} "
-        f"latest_any={payload['latest_processor_time']}",
+        f"latest_complete={payload['latest_complete_time']} latest_any={payload['latest_processor_time']}",
     )
     print(f"complete={','.join(payload['complete_times']) or '-'}")
     print(f"partial={','.join(payload['quarantinable_times']) or '-'}")
@@ -177,9 +175,7 @@ def _merge_profile_diagnostics(
     if not isinstance(diagnostics, dict):
         return
     extra = [item for item in diagnostics.get("violations", []) if isinstance(item, dict)]
-    payload["diagnostics"] = {
-        key: value for key, value in diagnostics.items() if key != "violations"
-    }
+    payload["diagnostics"] = {key: value for key, value in diagnostics.items() if key != "violations"}
     if extra:
         violations = list(cast("list[object]", payload.get("violations", [])))
         violations.extend(extra)
@@ -327,8 +323,7 @@ def _print_compare_values(diff: dict[str, object], *, flat: bool) -> None:
     values = cast("list[dict[str, object]]", diff.get("value_diffs", []))
     for value in values[:40]:
         print(
-            f"  value_diff {value['key']}: left={value['left']} "
-            f"right={value['right']}",
+            f"  value_diff {value['key']}: left={value['left']} right={value['right']}",
         )
     if len(values) > 40:
         print(f"  value_diff_more={len(values) - 40}")
@@ -489,8 +484,7 @@ def _knife_initials(args: argparse.Namespace) -> int:
         for patch in sorted(boundary):
             row = boundary[patch]
             print(
-                f"- {patch}: type={row.get('type') or 'missing'} "
-                f"value={row.get('value') or ''}",
+                f"- {patch}: type={row.get('type') or 'missing'} value={row.get('value') or ''}",
             )
     return 0
 
@@ -620,8 +614,7 @@ def _print_current_jobs(jobs: Sequence[object]) -> None:
     for job_obj in jobs:
         job = cast("dict[str, object]", job_obj)
         print(
-            f"- {job.get('name', 'job')} pid={job.get('pid', '?')} "
-            f"status={job.get('status', 'unknown')}",
+            f"- {job.get('name', 'job')} pid={job.get('pid', '?')} status={job.get('status', 'unknown')}",
         )
 
 
@@ -762,8 +755,7 @@ def _knife_stop(args: argparse.Namespace) -> int:
         print("failed:")
         for row in payload["failed"]:
             print(
-                f"- pid={row.get('pid')} kind={row.get('kind', 'solver')} "
-                f"error={row['error']}",
+                f"- pid={row.get('pid')} kind={row.get('kind', 'solver')} error={row['error']}",
             )
     return 0 if not payload["failed"] else 1
 
@@ -788,12 +780,10 @@ def _knife_converge(args: argparse.Namespace) -> int:
         return 0 if payload["ok"] else 1
     print(f"log={payload['log']}")
     print(
-        f"shock drift={payload['shock']['drift']} limit={payload['shock']['limit']} "
-        f"ok={payload['shock']['ok']}",
+        f"shock drift={payload['shock']['drift']} limit={payload['shock']['limit']} ok={payload['shock']['ok']}",
     )
     print(
-        f"drag band={payload['drag']['band']} limit={payload['drag']['limit']} "
-        f"ok={payload['drag']['ok']}",
+        f"drag band={payload['drag']['band']} limit={payload['drag']['limit']} ok={payload['drag']['ok']}",
     )
     print(
         "mass "
@@ -805,8 +795,7 @@ def _knife_converge(args: argparse.Namespace) -> int:
         f"fields={','.join(payload['residuals']['flatline_fields'])}",
     )
     print(
-        f"thermo out_of_range_count={payload['thermo']['out_of_range_count']} "
-        f"ok={payload['thermo']['ok']}",
+        f"thermo out_of_range_count={payload['thermo']['out_of_range_count']} ok={payload['thermo']['ok']}",
     )
     print(f"strict={payload['strict']} strict_ok={payload['strict_ok']}")
     print(f"ok={payload['ok']}")

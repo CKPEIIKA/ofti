@@ -63,10 +63,7 @@ def braille_line_plot(
     cells = [[0 for _ in range(width)] for _ in range(height)]
     for index, value in enumerate(samples):
         x_dot = round(index * x_span / max(1, len(samples) - 1))
-        if high == low:
-            y_dot_from_bottom = y_span // 2
-        else:
-            y_dot_from_bottom = round((value - low) * y_span / (high - low))
+        y_dot_from_bottom = y_span // 2 if high == low else round((value - low) * y_span / (high - low))
         y_dot = y_span - y_dot_from_bottom
         cell_x, dot_col = divmod(x_dot, 2)
         cell_y, dot_row = divmod(y_dot, 4)

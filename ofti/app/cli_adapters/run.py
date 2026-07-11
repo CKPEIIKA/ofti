@@ -49,8 +49,7 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         "run",
         help="Run solver/tools outside the TUI",
         description=(
-            "Run solver/tools outside the TUI.\n"
-            "Tool names come from built-ins plus case-local presets from ofti.tools."
+            "Run solver/tools outside the TUI.\nTool names come from built-ins plus case-local presets from ofti.tools."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -409,8 +408,7 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         "status",
         help="Show compact status table for a case set",
         description=(
-            "Show a compact read-only status table for explicit cases or for "
-            "cases discovered under --set/--glob."
+            "Show a compact read-only status table for explicit cases or for cases discovered under --set/--glob."
         ),
     )
     status.add_argument("cases", nargs="*", type=Path, help="Explicit case directories")
@@ -483,8 +481,7 @@ def _run_matrix(args: argparse.Namespace) -> int:
         return 0
     print(f"template_case={payload['template_case']}")
     print(
-        f"case_count={payload['case_count']} launch={payload['launch']} "
-        f"dry_run={payload['dry_run']}",
+        f"case_count={payload['case_count']} launch={payload['launch']} dry_run={payload['dry_run']}",
     )
     for row in generated["cases"]:
         print(f"- {row['case']}")
@@ -536,8 +533,7 @@ def _run_parametric(args: argparse.Namespace) -> int:
         return 0
     print(f"case={payload['case']}")
     print(
-        f"mode={payload['mode']} created={payload['created_count']} "
-        f"run_solver={payload['run_solver']}",
+        f"mode={payload['mode']} created={payload['created_count']} run_solver={payload['run_solver']}",
     )
     for path in cast("list[str]", payload["created"]):
         print(f"- {path}")
@@ -637,8 +633,7 @@ def _run_smoke(args: argparse.Namespace) -> int:
     print(f"case={payload['case']}")
     print(f"solver={payload['solver']} ok={payload['ok']} returncode={payload['returncode']}")
     print(
-        f"times_seen={len(cast('list[object]', payload['times_seen']))} "
-        f"end_seen={payload['end_seen']}",
+        f"times_seen={len(cast('list[object]', payload['times_seen']))} end_seen={payload['end_seen']}",
     )
     print(f"log={payload['log_path']}")
     print(f"summary={Path(str(payload['output_root'])) / 'summary.json'}")
@@ -712,9 +707,7 @@ def _print_resize_table(payload: dict[str, object]) -> None:
     print("STEP               STATUS    DETAILS")
     for row in cast("list[dict[str, object]]", payload.get("steps", [])):
         print(
-            f"{row.get('step', '-')!s:<18} "
-            f"{row.get('status', '-')!s:<8} "
-            f"{_resize_step_details(row)}",
+            f"{row.get('step', '-')!s:<18} {row.get('status', '-')!s:<8} {_resize_step_details(row)}",
         )
     if payload.get("rollback"):
         print(f"\nRollback: {payload['rollback']}")
@@ -761,7 +754,7 @@ def _run_tool(args: argparse.Namespace) -> int:
         payload: dict[str, object] = {
             "case": str(Path(args.case_dir).resolve()),
             "name": display_name,
-            "command": run_ops.dry_run_command(cmd),
+            "invocation": run_ops.dry_run_command(cmd),
             "background": bool(args.background),
             "returncode": result.returncode,
             "pid": result.pid,
@@ -871,16 +864,14 @@ def _run_solver_dry_run(
     cmd_text = run_ops.dry_run_command(cmd)
     write_manifest = _write_manifest_enabled(args)
     manifest_path = (
-        planned_manifest_path(args.case_dir, getattr(args, "manifest_file", None))
-        if write_manifest
-        else None
+        planned_manifest_path(args.case_dir, getattr(args, "manifest_file", None)) if write_manifest else None
     )
     if getattr(args, "json", False):
         emit_json(
             {
                 "case": str(Path(args.case_dir).resolve()),
                 "name": display,
-                "command": cmd_text,
+                "invocation": cmd_text,
                 "dry_run": True,
                 "sync_subdomains": sync_subdomains,
                 "clean_processors": clean_processors,
@@ -896,8 +887,7 @@ def _run_solver_dry_run(
     print(cmd_text)
     if parallel_setup is not None:
         print(
-            f"# pre: decompose={parallel_setup.get('decompose_command')} "
-            f"clean_processors={clean_processors}",
+            f"# pre: decompose={parallel_setup.get('decompose_command')} clean_processors={clean_processors}",
         )
     elif parallel > 1 and "-parallel" in cmd:
         print("# pre: skipped (--no-prepare-parallel)")
@@ -925,9 +915,7 @@ def _run_solver_execute(
     extra_env = parse_env_assignments(getattr(args, "env", []))
     write_manifest = _write_manifest_enabled(args)
     manifest_output = (
-        planned_manifest_path(args.case_dir, getattr(args, "manifest_file", None))
-        if write_manifest
-        else None
+        planned_manifest_path(args.case_dir, getattr(args, "manifest_file", None)) if write_manifest else None
     )
     parallel_setup = _parallel_setup_payload(
         args.case_dir,
@@ -975,7 +963,7 @@ def _run_solver_execute(
         payload: dict[str, object] = {
             "case": str(Path(args.case_dir).resolve()),
             "name": display,
-            "command": run_ops.dry_run_command(cmd),
+            "invocation": run_ops.dry_run_command(cmd),
             "background": background,
             "detached": detached if background else False,
             "log_file": str(log_path) if log_path is not None else None,

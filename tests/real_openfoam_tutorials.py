@@ -71,8 +71,7 @@ def require_tutorial_template(profile: TutorialProfile) -> Path:
     template = _tutorial_template(profile)
     if template is None:
         pytest.skip(
-            "Set OFTI_TOY_CASE_TEMPLATE, OFTI_REAL_CASE_ROOT, or FOAM_TUTORIALS "
-            f"for profile {profile.name}.",
+            f"Set OFTI_TOY_CASE_TEMPLATE, OFTI_REAL_CASE_ROOT, or FOAM_TUTORIALS for profile {profile.name}.",
         )
     solver = detect_solver(template)
     if solver and solver != "unknown" and shutil.which(solver) is None:
@@ -138,12 +137,15 @@ class RealTutorialCase:
     def ensure_parallel_dict(self, ranks: int) -> None:
         path = self.case / "system" / "decomposeParDict"
         if path.is_file():
-            assert knife_service.set_entry_payload(
-                self.case,
-                "system/decomposeParDict",
-                "numberOfSubdomains",
-                str(ranks),
-            )["ok"] is True
+            assert (
+                knife_service.set_entry_payload(
+                    self.case,
+                    "system/decomposeParDict",
+                    "numberOfSubdomains",
+                    str(ranks),
+                )["ok"]
+                is True
+            )
             return
         path.write_text(
             "\n".join(

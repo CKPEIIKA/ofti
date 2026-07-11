@@ -345,8 +345,7 @@ def _sync_parallel_subdomains(case_path: Path, *, requested: int) -> None:
     decompose_dict = case_path / "system" / "decomposeParDict"
     if not decompose_dict.is_file():
         raise ValueError(
-            "Missing system/decomposeParDict for parallel run. "
-            "Create it first or run without --parallel.",
+            "Missing system/decomposeParDict for parallel run. Create it first or run without --parallel.",
         )
     initial = _read_subdomains_value(decompose_dict)
     if initial == requested:
@@ -367,8 +366,7 @@ def _require_parallel_subdomains(case_path: Path, *, requested: int) -> None:
     decompose_dict = case_path / "system" / "decomposeParDict"
     if not decompose_dict.is_file():
         raise ValueError(
-            "Missing system/decomposeParDict for parallel run. "
-            "Create it first or run without --parallel.",
+            "Missing system/decomposeParDict for parallel run. Create it first or run without --parallel.",
         )
     configured = _read_subdomains_value(decompose_dict)
     if configured == requested:
@@ -456,11 +454,7 @@ def _write_subdomains_fallback(decompose_dict: Path, *, requested: int) -> bool:
 
 
 def _list_processor_dirs(case_path: Path) -> list[Path]:
-    return sorted(
-        path
-        for path in case_path.iterdir()
-        if path.is_dir() and path.name.startswith("processor")
-    )
+    return sorted(path for path in case_path.iterdir() if path.is_dir() and path.name.startswith("processor"))
 
 
 def _remove_processor_dirs(paths: list[Path]) -> None:
@@ -511,11 +505,7 @@ def _requires_solver_subprocess(
     solver: str | None,
 ) -> bool:
     return bool(
-        background
-        or extra_env
-        or bool(os.environ.get("OFTI_BASHRC"))
-        or (parallel > 1 and mpi)
-        or not solver,
+        background or extra_env or bool(os.environ.get("OFTI_BASHRC")) or (parallel > 1 and mpi) or not solver,
     )
 
 
@@ -917,11 +907,7 @@ def _case_state(payload: Mapping[str, Any]) -> str:
         return "failed"
     latest_time = payload.get("latest_time")
     end_time = rtc.get("end_time")
-    if (
-        isinstance(latest_time, (int, float))
-        and isinstance(end_time, (int, float))
-        and latest_time >= end_time
-    ):
+    if isinstance(latest_time, (int, float)) and isinstance(end_time, (int, float)) and latest_time >= end_time:
         return "done"
     if bool(payload.get("log_fresh")):
         return "recent"
@@ -967,8 +953,4 @@ def _end_time_reached(payload: Mapping[str, Any], rtc: Any) -> bool:
         return False
     latest_time = payload.get("latest_time")
     end_time = rtc.get("end_time")
-    return (
-        isinstance(latest_time, (int, float))
-        and isinstance(end_time, (int, float))
-        and latest_time >= end_time
-    )
+    return isinstance(latest_time, (int, float)) and isinstance(end_time, (int, float)) and latest_time >= end_time

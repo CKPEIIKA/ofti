@@ -11,8 +11,7 @@ class Hy2FoamModBundleHints:
             return ()
         return (
             "plugin hy2foam-mod: target host needs the same modified hy2Foam/NNcompiled runtime",
-            "plugin hy2foam-mod: verify precompiledModel files and NN input/output "
-            "order assets are present",
+            "plugin hy2foam-mod: verify precompiledModel files and NN input/output order assets are present",
         )
 
 

@@ -1,13 +1,14 @@
 # Test Suite Audit
 
-Date: 2026-06-30
+Date: 2026-07-11
 
 ## Snapshot
 
-- Test files scanned: 176 (`tests/test*.py` plus plugin test packages).
-- Test functions found by AST: 922.
-- Assertions by text count: 3249.
-- Last full quality record after cleanup pass: `898 passed, 30 skipped`, coverage `85.74%`.
+- Test files scanned: core tests plus both plugin test packages.
+- The full suite includes terminal adapters, plugins, and opt-in real-case test definitions.
+- The current quality gate requires at least 85% full-project coverage.
+- Latest canonical gate: `999 passed, 48 skipped`, coverage `85.08%`.
+- Real OpenFOAM MPI adoption, grouped stop, reconstruction, and stopped resize were validated on a host that permits launcher sockets.
 
 ## Signals
 
@@ -71,7 +72,7 @@ Current biggest complexity-debt buckets:
 - UI/curses and CLI adapter functions with interactive loops or parser builders.
 - Core parsers for OpenFOAM dictionaries/fields/logs.
 - Run/watch process ownership and queue handling.
-- Coverage-gap tests that combine many unrelated branches in one function.
+- Named legacy adapter files; the broad `ofti/app/**/*.py` exception has been removed.
 
 ## Cleanup policy
 
@@ -85,17 +86,14 @@ Current biggest complexity-debt buckets:
 5. When changing a function on the complexity allowlist, either simplify it below
    the threshold or leave a concrete follow-up in TODO.
 
-## Coverage omit review
+## Coverage scope review
 
-Current omitted paths are limited to terminal adapter surfaces:
+No application or curses paths are omitted. `ofti/app/screens/*` and
+`ofti/ui_curses/*` are measured by the same 85% project gate. Their behavior
+tests use fake terminal screens and deterministic key sequences.
 
-- `ofti/app/screens/*`
-- `ofti/ui_curses/*`
-
-This is acceptable only because reusable logic has been pushed into
-`ofti/core`, `ofti/tools`, and the foamlib adapter, with architecture tests
-guarding the boundaries. New shared behavior must not be added under omitted
-screen packages. If it is useful to CLI, plugins, or multiple screens, move it
-to a service/core module and test it there.
+Reusable logic remains in `ofti/core`, `ofti/tools`, and the foamlib adapter,
+with architecture tests guarding those boundaries. New shared behavior must
+not be added to terminal adapters merely because they now have direct coverage.
 
 The contributor-facing policy now lives in `docs/testing.md`.

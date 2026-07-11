@@ -30,11 +30,7 @@ def numeric_time_directories(directory: Path) -> list[Path]:
 def processor_dirs(case_path: Path) -> list[Path]:
     if not case_path.is_dir():
         return []
-    procs = [
-        entry
-        for entry in case_path.iterdir()
-        if entry.is_dir() and PROCESSOR_RE.match(entry.name)
-    ]
+    procs = [entry for entry in case_path.iterdir() if entry.is_dir() and PROCESSOR_RE.match(entry.name)]
     return sorted(procs, key=lambda p: int(p.name[len("processor") :]))
 
 

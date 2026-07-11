@@ -394,8 +394,7 @@ def _require_decomposed_case(processor_dirs: list[Path]) -> None:
     if processor_dirs:
         return
     raise ValueError(
-        "parallel resize requires existing processor* directories; "
-        "decompose the case first",
+        "parallel resize requires existing processor* directories; decompose the case first",
     )
 
 

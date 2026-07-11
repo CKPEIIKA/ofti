@@ -63,9 +63,7 @@ def test_case_bundle_warns_when_mesh_is_excluded(tmp_path: Path) -> None:
     case = _case(tmp_path)
     manifest = case_bundle.build_bundle_manifest(case, mesh="exclude")
 
-    assert manifest.warnings == (
-        "mesh excluded; target host must reconstruct or generate mesh before solver run",
-    )
+    assert manifest.warnings == ("mesh excluded; target host must reconstruct or generate mesh before solver run",)
 
 
 def test_case_bundle_accepts_professional_mesh_policy_aliases(tmp_path: Path) -> None:
@@ -101,9 +99,7 @@ def test_case_bundle_warns_about_missing_referenced_include(tmp_path: Path) -> N
 
     manifest = case_bundle.build_bundle_manifest(case, mesh="auto")
 
-    assert manifest.warnings == (
-        "referenced include not bundled: system/controlDict -> ../include/missing.inc",
-    )
+    assert manifest.warnings == ("referenced include not bundled: system/controlDict -> ../include/missing.inc",)
 
 
 def test_case_bundle_warns_about_likely_dictionary_syntax_errors(tmp_path: Path) -> None:

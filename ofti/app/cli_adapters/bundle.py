@@ -19,10 +19,7 @@ def _build_bundle_parser(groups: argparse._SubParsersAction[argparse.ArgumentPar
     bundle = groups.add_parser(
         "bundle",
         help="Create a portable case archive",
-        description=(
-            "Bundle the minimal files needed to move and run an OpenFOAM case "
-            "on another host."
-        ),
+        description=("Bundle the minimal files needed to move and run an OpenFOAM case on another host."),
     )
     bundle.add_argument(
         "case_dir",

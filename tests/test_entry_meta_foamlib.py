@@ -12,20 +12,26 @@ def test_entry_metadata_foamlib_type_labels() -> None:
     field_path = Path("examples/of_example/0/U")
 
     value, type_label, subkeys, _comments, _info_lines, _validator = get_entry_metadata(
-        cache, field_path, "boundaryField",
+        cache,
+        field_path,
+        "boundaryField",
     )
     assert value
     assert type_label == "dict"
     assert "inlet" in subkeys
 
     _value, type_label, _subkeys, _comments, _info_lines, _validator = get_entry_metadata(
-        cache, field_path, "dimensions",
+        cache,
+        field_path,
+        "dimensions",
     )
     assert type_label == "dimensions"
     assert any(line.startswith("foamlib type: dimensions") for line in _info_lines)
 
     _value, type_label, _subkeys, _comments, info_lines, _validator = get_entry_metadata(
-        cache, field_path, "boundaryField.inlet.value",
+        cache,
+        field_path,
+        "boundaryField.inlet.value",
     )
     assert type_label == "vector"
     # shape:/dtype: lines depend on foamlib returning a numpy array; assert the

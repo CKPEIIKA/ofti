@@ -21,19 +21,14 @@ def _scalar(path: Path, values: Sequence[float], *, boundary: str = "boundaryFie
     body = "\n".join(f"{value:g}" for value in values)
     path.write_text(
         "FoamFile{ version 2.0; format ascii; class volScalarField; }\n"
-        f"internalField nonuniform List<scalar>\n{len(values)}\n(\n{body}\n);\n"
-        + boundary,
+        f"internalField nonuniform List<scalar>\n{len(values)}\n(\n{body}\n);\n" + boundary,
         encoding="utf-8",
     )
 
 
 def test_charge_payload_reports_electron_and_ion_observability(tmp_path: Path) -> None:
     case = _case(tmp_path / "case")
-    boundary = (
-        "boundaryField\n{\n"
-        "  wall\n  {\n    type zeroGradient;\n  }\n"
-        "}\n"
-    )
+    boundary = "boundaryField\n{\n  wall\n  {\n    type zeroGradient;\n  }\n}\n"
     (case / "constant" / "polyMesh").mkdir(parents=True)
     (case / "constant" / "polyMesh" / "boundary").write_text(
         "1\n(\nwall\n{\n type wall;\n nFaces 1;\n startFace 0;\n}\n)\n",

@@ -43,10 +43,7 @@ THERMO_SLOT_TEMPLATES: dict[str, list[tuple[str, str]]] = {
 def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:
     keys = ["type", "mixture", "transport", "equationOfState"]
     paths = {key: _dict_path_for(case_path) for key in keys}
-    values = {
-        key: _read_value(paths[key], _entry_path_for(key)) if paths[key].is_file() else ""
-        for key in keys
-    }
+    values = {key: _read_value(paths[key], _entry_path_for(key)) if paths[key].is_file() else "" for key in keys}
 
     while True:
         labels = [_label_for(key, values[key]) for key in keys] + ["Back"]
@@ -92,10 +89,7 @@ def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:
             if not dict_path.is_file():
                 _show_message(
                     stdscr,
-                    (
-                        f"Missing {dict_path.relative_to(case_path)}; "
-                        "use Config Manager -> Config Editor to create it."
-                    ),
+                    (f"Missing {dict_path.relative_to(case_path)}; use Config Manager -> Config Editor to create it."),
                 )
                 continue
             entry = Entry(key=key, value=values[key])
@@ -171,10 +165,7 @@ def _wizard_help_lines() -> list[str]:
     return [
         "Thermo wizard edits thermoType slots in thermophysicalProperties.",
         "Use templates to set common scalar tokens quickly.",
-        (
-            "Manual edits delegate to Config Manager when files are absent "
-            "or require broader context."
-        ),
+        ("Manual edits delegate to Config Manager when files are absent or require broader context."),
     ]
 
 

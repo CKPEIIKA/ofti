@@ -18,6 +18,7 @@ FoamFieldFile: Any = None
 
 try:  # pragma: no cover - exercised in tests when installed
     from foamlib import FoamCase, FoamFieldFile, FoamFile
+
     FOAMLIB_AVAILABLE = True
 except Exception:  # pragma: no cover - optional fallback
     FOAMLIB_AVAILABLE = False
@@ -29,6 +30,7 @@ foamlib_system: Any = None
 try:  # pragma: no cover - optional preprocessing extras
     from foamlib.preprocessing import system as foamlib_system
     from foamlib.preprocessing.of_dict import FoamDictAssignment, FoamDictInstruction
+
     FOAMLIB_PREPROCESSING = True
     FOAMLIB_SYSTEM = True
 except Exception:  # pragma: no cover - optional fallback
@@ -278,9 +280,7 @@ def _case_relative_foam_file(path: Path) -> Any | None:
 def _case_root_for_file(path: Path) -> Path | None:
     for parent in path.parents:
         if (parent / "system").is_dir() and (
-            (parent / "constant").is_dir()
-            or (parent / "0").is_dir()
-            or (parent / "0.orig").is_dir()
+            (parent / "constant").is_dir() or (parent / "0").is_dir() or (parent / "0.orig").is_dir()
         ):
             return parent
     return None

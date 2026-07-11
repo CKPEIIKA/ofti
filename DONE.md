@@ -4,5 +4,10 @@ Completed work only. Record meaningful outcomes and validation evidence, newest 
 
 ## 2026-07-11
 
+- Added a generated and source-controlled `ofti(1)` manual, reproducible scdoc build, user-local installer, contract tests, and successful `man -l` rendering.
+- Ran real OpenFOAM MPI scenarios on the host: tracked launcher stop, raw launcher adoption/grouping, processor result comparison, reconstruction, and stopped 2-to-3-rank resize.
+- Removed the broad app complexity exemption and all broad-test PLR0915 exemptions; remaining debt is attached to named legacy adapter files.
+- Included curses and screen adapters in the coverage gate and added behavior-focused terminal tests without omit rules; canonical gate: `999 passed, 48 skipped`, `85.08%` coverage.
+- Restored `uv.lock`, added Ruff formatting to the documented gate, and normalized the repository once with the configured formatter.
 - Synchronized repository contracts, ignores, work logs, documentation, quality entrypoint, and CI with the shared Python project pattern.
 - Made JSON envelope metadata framework-owned so plugins cannot omit or replace command and schema metadata.

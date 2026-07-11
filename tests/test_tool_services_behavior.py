@@ -246,7 +246,7 @@ def test_yplus_screen_and_capture_branches(monkeypatch: pytest.MonkeyPatch, tmp_
     assert "Failed to run yPlus" in err
 
 
-def test_shell_and_reconstruct_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_shell_tool_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     case = tmp_path / "case"
     case.mkdir()
     screen = _Screen(keys=[ord("h"), ord("q")])
@@ -304,6 +304,12 @@ def test_shell_and_reconstruct_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     shell_tools.rerun_last_tool(screen, case)
     assert called_simple[-1] == ["echo", "1"]
 
+
+def test_reconstruct_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    screen = _Screen()
+    shown: list[str] = []
     monkeypatch.setattr(reconstruct, "_show_message", lambda _s, text: shown.append(text))
     reconstruct.reconstruct_manager_screen(screen, case)
     assert "Case is not decomposed" in shown[-1]

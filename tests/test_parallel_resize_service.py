@@ -217,8 +217,7 @@ def test_parallel_resize_keeps_processors_when_reconstruct_output_is_missing(
         parallel_resize_service.run_ops,
         "execute_case_command",
         lambda _case, _name, command, **_kwargs: (
-            commands.append(list(command))
-            or SimpleNamespace(returncode=0, stdout="", stderr="", log_path=None)
+            commands.append(list(command)) or SimpleNamespace(returncode=0, stdout="", stderr="", log_path=None)
         ),
     )
 

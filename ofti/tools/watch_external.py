@@ -260,9 +260,7 @@ def _external_log_path(case_path: Path, *, name: str, raw: str | None) -> Path:
         if not candidate.is_absolute():
             candidate = case_path / candidate
         return candidate.resolve()
-    safe_name = "".join(
-        ch for ch in name if ch.isalnum() or ch in {"-", "_", "."}
-    ) or "watch.external"
+    safe_name = "".join(ch for ch in name if ch.isalnum() or ch in {"-", "_", "."}) or "watch.external"
     return (case_path / f"log.{safe_name}").resolve()
 
 

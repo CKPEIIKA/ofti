@@ -443,10 +443,7 @@ def _draw_boundary_status(
         if value:
             detail = f"{detail} = {value}"
     filter_label = "hide processor/empty" if hide_special else "all patches"
-    status = (
-        f"Patch {row + 1}/{len(patches)} | Field {col + 1}/{len(matrix.fields)}"
-        f" | {filter_label}{detail}"
-    )
+    status = f"Patch {row + 1}/{len(patches)} | Field {col + 1}/{len(matrix.fields)} | {filter_label}{detail}"
     with suppress(curses.error):
         stdscr.attron(curses.A_REVERSE)
         stdscr.addstr(height - 1, 0, status[: max(1, width - 1)].ljust(width - 1))
@@ -632,12 +629,15 @@ def _apply_patch_group(
         return
     bc_value = ""
     if _type_requires_value(bc_type):
-        bc_value = _prompt_value(
-            stdscr,
-            f"{field} value",
-            "",
-            default=_default_value(field, bc_type, ""),
-        ) or ""
+        bc_value = (
+            _prompt_value(
+                stdscr,
+                f"{field} value",
+                "",
+                default=_default_value(field, bc_type, ""),
+            )
+            or ""
+        )
     for patch in patches:
         if not _apply_boundary_cell(stdscr, case_path, matrix, patch, field, bc_type, bc_value):
             break
@@ -654,12 +654,15 @@ def _apply_field_all(
         return
     bc_value = ""
     if _type_requires_value(bc_type):
-        bc_value = _prompt_value(
-            stdscr,
-            f"{field} value",
-            "",
-            default=_default_value(field, bc_type, ""),
-        ) or ""
+        bc_value = (
+            _prompt_value(
+                stdscr,
+                f"{field} value",
+                "",
+                default=_default_value(field, bc_type, ""),
+            )
+            or ""
+        )
     for patch in matrix.patches:
         if not _apply_boundary_cell(stdscr, case_path, matrix, patch, field, bc_type, bc_value):
             break

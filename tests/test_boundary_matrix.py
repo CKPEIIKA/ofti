@@ -135,7 +135,9 @@ def test_boundary_matrix_writeback(tmp_path: Path) -> None:
     assert cell.bc_type == "fixedValue"
 
     assert foamlib_integration.write_entry(
-        u_path, "boundaryField.inlet.type", "zeroGradient",
+        u_path,
+        "boundaryField.inlet.type",
+        "zeroGradient",
     )
 
     matrix = build_boundary_matrix(case_path)

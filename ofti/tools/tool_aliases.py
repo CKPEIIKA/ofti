@@ -54,6 +54,4 @@ STATIC_TOOL_ALIAS_GROUPS: tuple[tuple[str, ...], ...] = (
     ("cfmesh",),
 )
 
-STATIC_TOOL_ALIAS_NAMES: tuple[str, ...] = tuple(
-    name for group in STATIC_TOOL_ALIAS_GROUPS for name in group
-)
+STATIC_TOOL_ALIAS_NAMES: tuple[str, ...] = tuple(name for group in STATIC_TOOL_ALIAS_GROUPS for name in group)

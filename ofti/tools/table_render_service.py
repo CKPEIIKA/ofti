@@ -21,10 +21,7 @@ def preflight_table_lines(payload: Mapping[str, Any]) -> list[str]:
                 "",
                 "Checks",
                 *render_table(
-                    [
-                        {"check": key, "status": "ok" if value else "missing"}
-                        for key, value in checks.items()
-                    ],
+                    [{"check": key, "status": "ok" if value else "missing"} for key, value in checks.items()],
                     [("check", "Check"), ("status", "Status")],
                 ),
             ],
@@ -42,12 +39,8 @@ def doctor_table_lines(payload: Mapping[str, Any]) -> list[str]:
             ("warnings", len(warnings)),
         ],
     )
-    issue_rows = [
-        {"level": "error", "message": item}
-        for item in errors[:20]
-    ] + [
-        {"level": "warning", "message": item}
-        for item in warnings[:20]
+    issue_rows = [{"level": "error", "message": item} for item in errors[:20]] + [
+        {"level": "warning", "message": item} for item in warnings[:20]
     ]
     if issue_rows:
         lines.extend(
@@ -350,10 +343,7 @@ def converge_table_lines(payload: Mapping[str, Any]) -> list[str]:
         {
             "check": "residuals",
             "value": "flatline" if _dict(payload.get("residuals")).get("flatline") else "ok",
-            "limit": ",".join(
-                str(item)
-                for item in _list(_dict(payload.get("residuals")).get("flatline_fields"))
-            ),
+            "limit": ",".join(str(item) for item in _list(_dict(payload.get("residuals")).get("flatline_fields"))),
             "ok": not _dict(payload.get("residuals")).get("flatline"),
         },
         {
@@ -395,14 +385,17 @@ def stability_table_lines(payload: Mapping[str, Any]) -> list[str]:
 
 
 def compare_diff_rows_table(rows: Sequence[object]) -> list[str]:
-    return render_table([_compare_diff_row(row) for row in rows], [
-        ("file", "File"),
-        ("kind", "Kind"),
-        ("missing_left", "Missing left"),
-        ("missing_right", "Missing right"),
-        ("value_diffs", "Value diffs"),
-        ("error", "Error"),
-    ])
+    return render_table(
+        [_compare_diff_row(row) for row in rows],
+        [
+            ("file", "File"),
+            ("kind", "Kind"),
+            ("missing_left", "Missing left"),
+            ("missing_right", "Missing right"),
+            ("value_diffs", "Value diffs"),
+            ("error", "Error"),
+        ],
+    )
 
 
 def initial_field_rows_table(rows: Sequence[object]) -> list[str]:
@@ -478,10 +471,7 @@ def campaign_rank_table_lines(payload: Mapping[str, Any]) -> list[str]:
             ("count", payload.get("count")),
         ],
     )
-    rows = [
-        {"rank": idx, **_dict(row)}
-        for idx, row in enumerate(_list(payload.get("ranked")), start=1)
-    ]
+    rows = [{"rank": idx, **_dict(row)} for idx, row in enumerate(_list(payload.get("ranked")), start=1)]
     if rows:
         lines.extend(["", "Ranked cases", *campaign_case_rows_table(rows, rank=True)])
     return lines
@@ -496,10 +486,7 @@ def campaign_compare_table_lines(payload: Mapping[str, Any]) -> list[str]:
             ("comparisons", len(_list(payload.get("comparisons")))),
         ],
     )
-    groups = [
-        {"group": key, "cases": len(_list(values))}
-        for key, values in _dict(payload.get("groups")).items()
-    ]
+    groups = [{"group": key, "cases": len(_list(values))} for key, values in _dict(payload.get("groups")).items()]
     if groups:
         lines.extend(
             ["", "Groups", *render_table(groups, [("group", "Group"), ("cases", "Cases")])],
@@ -713,11 +700,7 @@ def _criteria_row(row: object) -> dict[str, object]:
 
 def _compare_diff_row(row: object) -> dict[str, object]:
     data = _dict(row)
-    value_diffs = (
-        data.get("value_diffs_flat")
-        if data.get("value_diffs_flat")
-        else data.get("value_diffs")
-    )
+    value_diffs = data.get("value_diffs_flat") if data.get("value_diffs_flat") else data.get("value_diffs")
     return {
         "file": data.get("rel_path"),
         "kind": data.get("kind", "dict"),

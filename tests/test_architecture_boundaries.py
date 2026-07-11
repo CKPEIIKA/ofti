@@ -64,11 +64,7 @@ def test_upstream_foamlib_imports_are_confined_or_declared() -> None:
     roots = _py_files("ofti/core") + _py_files("ofti/foam") + _py_files("ofti/tools")
     for path in roots:
         imports = _imports(path)
-        bad = [
-            name
-            for name in imports
-            if name == UPSTREAM_FOAMLIB or name.startswith(f"{UPSTREAM_FOAMLIB}.")
-        ]
+        bad = [name for name in imports if name == UPSTREAM_FOAMLIB or name.startswith(f"{UPSTREAM_FOAMLIB}.")]
         if bad and path not in KNOWN_DIRECT_FOAMLIB:
             offenders[path] = bad
     assert offenders == {}
@@ -134,7 +130,6 @@ def test_oversized_module_allowlist_matches_current_tree() -> None:
     current = {
         path
         for path in _py_files("ofti") + _py_files("plugins")
-        if _sloc(path) > MAX_PRODUCTION_MODULE_SLOC
-        and "tests" not in path.parts
+        if _sloc(path) > MAX_PRODUCTION_MODULE_SLOC and "tests" not in path.parts
     }
     assert current == set(KNOWN_OVERSIZED_MODULES)

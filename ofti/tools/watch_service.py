@@ -110,11 +110,7 @@ def _case_jobs_payload(
 
 
 def _latest_job_log(jobs: list[dict[str, Any]]) -> Path | None:
-    paths = [
-        Path(str(raw))
-        for job in jobs
-        if (raw := job.get("log") or job.get("log_path"))
-    ]
+    paths = [Path(str(raw)) for job in jobs if (raw := job.get("log") or job.get("log_path"))]
     existing = [path for path in paths if path.is_file()]
     return max(existing, key=lambda path: path.stat().st_mtime, default=None)
 
@@ -171,8 +167,7 @@ def _prune_case_walk(dir_names: list[str]) -> None:
         name
         for name in dir_names
         if not (
-            name.startswith("processor")
-            or name in {".git", ".venv", "__pycache__", "postProcessing", ".mypy_cache"}
+            name.startswith("processor") or name in {".git", ".venv", "__pycache__", "postProcessing", ".mypy_cache"}
         )
     ]
 
@@ -339,10 +334,7 @@ def watcher_start_payload(
         if preset_path is None:
             raise ValueError("watcher command is required or define preset in ofti.watcher")
         raise ValueError(f"watcher command not found in preset: {preset_path}")
-    watcher_id = (
-        str((env or {}).get("WATCHER_ID") or "")
-        or f"watcher-{int(time.time())}"
-    )
+    watcher_id = str((env or {}).get("WATCHER_ID") or "") or f"watcher-{int(time.time())}"
     merged_env = _watcher_env(
         case_path,
         watcher_id=watcher_id,
@@ -411,10 +403,7 @@ def watcher_run_payload(
         if preset_path is None:
             raise ValueError("watcher command is required or define preset in ofti.watcher")
         raise ValueError(f"watcher command not found in preset: {preset_path}")
-    watcher_id = (
-        str((env or {}).get("WATCHER_ID") or "")
-        or f"watcher-{int(time.time())}"
-    )
+    watcher_id = str((env or {}).get("WATCHER_ID") or "") or f"watcher-{int(time.time())}"
     merged_env = _watcher_env(
         case_path,
         watcher_id=watcher_id,

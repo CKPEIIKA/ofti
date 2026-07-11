@@ -86,11 +86,19 @@ def test_simulation_menu_stage_actions(monkeypatch: pytest.MonkeyPatch, tmp_path
     monkeypatch.setattr("ofti.app.menus.simulation.solver_status_line", lambda _case: "idle")
     monkeypatch.setattr("ofti.app.menus.simulation.show_case_status_screen", lambda *_a, **_k: calls.append("status"))
     monkeypatch.setattr("ofti.app.menus.simulation.show_current_jobs_screen", lambda *_a, **_k: calls.append("current"))
-    monkeypatch.setattr("ofti.app.menus.simulation.show_runtime_criteria_screen", lambda *_a, **_k: calls.append("criteria"))
+    monkeypatch.setattr(
+        "ofti.app.menus.simulation.show_runtime_criteria_screen", lambda *_a, **_k: calls.append("criteria")
+    )
     monkeypatch.setattr("ofti.app.menus.simulation.show_eta_forecast_screen", lambda *_a, **_k: calls.append("eta"))
-    monkeypatch.setattr("ofti.app.menus.simulation.show_runtime_report_screen", lambda *_a, **_k: calls.append("report"))
-    monkeypatch.setattr("ofti.app.menus.simulation.run_convergence_check_screen", lambda *_a, **_k: calls.append("converge"))
-    monkeypatch.setattr("ofti.app.menus.simulation.run_stability_check_screen", lambda *_a, **_k: calls.append("stability"))
+    monkeypatch.setattr(
+        "ofti.app.menus.simulation.show_runtime_report_screen", lambda *_a, **_k: calls.append("report")
+    )
+    monkeypatch.setattr(
+        "ofti.app.menus.simulation.run_convergence_check_screen", lambda *_a, **_k: calls.append("converge")
+    )
+    monkeypatch.setattr(
+        "ofti.app.menus.simulation.run_stability_check_screen", lambda *_a, **_k: calls.append("stability")
+    )
     monkeypatch.setattr("ofti.app.menus.simulation.adopt_untracked_screen", lambda *_a, **_k: calls.append("adopt"))
     monkeypatch.setattr("ofti.app.menus.simulation.stop_job_screen", lambda *_a, **_k: calls.append("stop"))
     monkeypatch.setattr("ofti.app.menus.simulation.pause_job_screen", lambda *_a, **_k: calls.append("pause"))

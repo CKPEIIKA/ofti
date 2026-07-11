@@ -6,8 +6,7 @@ from typing import Any
 
 
 def prompt_input(stdscr: Any, prompt: str) -> str | None:
-    """Read a single-line input. Returns None when ESC is pressed.
-    """
+    """Read a single-line input. Returns None when ESC is pressed."""
     try:
         height, width = stdscr.getmaxyx()
         start_y, start_x = stdscr.getyx()

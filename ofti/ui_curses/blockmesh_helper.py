@@ -36,10 +36,7 @@ def blockmesh_helper_screen(stdscr: Any, case_path: Path) -> None:
         _show_message(stdscr, "No vertices found in blockMeshDict.")
         return
 
-    summary = (
-        f"Vertices: {len(vertices)} | Blocks: {len(blocks)} | "
-        f"Boundaries: {len(boundaries)} | Edges: {edges}"
-    )
+    summary = f"Vertices: {len(vertices)} | Blocks: {len(blocks)} | Boundaries: {len(boundaries)} | Edges: {edges}"
     lines = [
         "blockMesh overview",
         "",

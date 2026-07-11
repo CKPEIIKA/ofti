@@ -42,7 +42,7 @@ from tests.real_openfoam_support import (
     write_short_run,
     write_simple_decompose_dict,
 )
-from tests.real_openfoam_tutorials import make_tutorial_case, selected_tutorial_profiles
+from tests.real_openfoam_tutorials import make_tutorial_case, selected_tutorial_profiles, wait_until
 
 
 @pytest.fixture
@@ -607,6 +607,17 @@ def _exercise_parallel_raw_adopt(profile: RealProfile, case: Path) -> bool:
     try:
         if not wait_pid_running(process.pid, timeout=5.0):
             return False
+        wait_until(
+            lambda: bool(
+                process_scan_service.scan_proc_solver_processes(
+                    case,
+                    None,
+                    tracked_pids=set(),
+                ),
+            ),
+            timeout=8.0,
+            description=f"{profile.name} raw MPI process discovery",
+        )
         adopted = knife_service.adopt_payload(case)
         assert adopted["failed"] == [], f"{profile.name}: {adopted}"
         assert len(adopted["adopted"]) == 1, f"{profile.name}: {adopted}"

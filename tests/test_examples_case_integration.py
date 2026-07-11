@@ -11,9 +11,7 @@ def _example_cases() -> list[Path]:
     root = Path("examples")
     if not root.is_dir():
         return []
-    return sorted(
-        path for path in root.iterdir() if path.is_dir() and (path / "system" / "controlDict").is_file()
-    )
+    return sorted(path for path in root.iterdir() if path.is_dir() and (path / "system" / "controlDict").is_file())
 
 
 def test_examples_cases_basic_integration() -> None:

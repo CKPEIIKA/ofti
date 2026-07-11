@@ -163,9 +163,7 @@ def status_payload(
         "solver_error": solver_error,
         "proc_access_warning": None,
         "solver_status": solver_status,
-        "latest_time": (
-            latest_time_value if latest_time_value is not None else latest_time_fn(case_path)
-        ),
+        "latest_time": (latest_time_value if latest_time_value is not None else latest_time_fn(case_path)),
         "latest_iteration": runtime["latest_iteration"],
         "latest_delta_t": runtime["latest_delta_t"],
         "sec_per_iter": runtime["sec_per_iter"],
@@ -218,15 +216,9 @@ def canonical_run_rows(
     untracked_rows: list[SolverProcessRow],
 ) -> list[dict[str, Any]]:
     runs = [_tracked_run_row(case_path, job) for job in active_jobs]
-    tracked_pids = {
-        pid
-        for run in runs
-        for pid in _int_list(run.get("process_group_pids"))
-    }
+    tracked_pids = {pid for run in runs for pid in _int_list(run.get("process_group_pids"))}
     launcher_pids = {
-        int(row["pid"])
-        for row in untracked_rows
-        if str(row.get("role")) == "launcher" and int(row.get("pid", 0)) > 0
+        int(row["pid"]) for row in untracked_rows if str(row.get("role")) == "launcher" and int(row.get("pid", 0)) > 0
     }
     for row in untracked_rows:
         pid = int(row.get("pid", 0) or 0)
@@ -234,11 +226,7 @@ def canonical_run_rows(
             continue
         role = str(row.get("role") or "solver")
         launcher_pid = row.get("launcher_pid")
-        if (
-            role == "solver"
-            and isinstance(launcher_pid, int)
-            and launcher_pid in launcher_pids | tracked_pids
-        ):
+        if role == "solver" and isinstance(launcher_pid, int) and launcher_pid in launcher_pids | tracked_pids:
             continue
         runs.append(_untracked_run_row(row))
     runs.sort(key=lambda item: (str(item.get("case_dir") or ""), int(item.get("pid") or 0)))
@@ -334,9 +322,7 @@ def untracked_running_count(rows: list[SolverProcessRow]) -> int:
     if not rows:
         return 0
     launcher_pids = {
-        pid
-        for row in rows
-        if str(row.get("role")) == "launcher" and (pid := _int_or_none(row.get("pid")))
+        pid for row in rows if str(row.get("role")) == "launcher" and (pid := _int_or_none(row.get("pid")))
     }
     solver_pids = {
         pid

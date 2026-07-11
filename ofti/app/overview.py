@@ -49,8 +49,7 @@ def running_header_metadata(case_path: Path, meta: dict[str, str]) -> dict[str, 
     enriched["jobs_running"] = str(payload.get("jobs_running", 0))
     enriched["jobs_tracked_running"] = str(payload.get("jobs_tracked_running", 0))
     enriched["live_processes"] = str(
-        len(payload.get("tracked_solver_processes", []))
-        + len(payload.get("untracked_solver_processes", [])),
+        len(payload.get("tracked_solver_processes", [])) + len(payload.get("untracked_solver_processes", [])),
     )
     for source, target in (
         ("latest_iteration", "latest_iteration"),

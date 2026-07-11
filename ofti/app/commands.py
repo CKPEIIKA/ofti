@@ -89,11 +89,7 @@ def handle_command(
     if action is None:
         return None
 
-    if (
-        getattr(state, "no_foam", False)
-        and is_blocked_in_no_foam(action)
-        and action.kind != CommandKind.CHECK
-    ):
+    if getattr(state, "no_foam", False) and is_blocked_in_no_foam(action) and action.kind != CommandKind.CHECK:
         callbacks.show_message(
             stdscr,
             "OpenFOAM environment not found; tool commands are disabled in limited mode.",

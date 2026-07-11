@@ -815,12 +815,15 @@ def _require_working_parallel_launcher(command: list[str]) -> None:
 def _ensure_parallel_dict(case: Path, ranks: int) -> None:
     path = case / "system" / "decomposeParDict"
     if path.is_file():
-        assert knife_service.set_entry_payload(
-            case,
-            "system/decomposeParDict",
-            "numberOfSubdomains",
-            str(ranks),
-        )["ok"] is True
+        assert (
+            knife_service.set_entry_payload(
+                case,
+                "system/decomposeParDict",
+                "numberOfSubdomains",
+                str(ranks),
+            )["ok"]
+            is True
+        )
         return
     path.write_text(
         "\n".join(

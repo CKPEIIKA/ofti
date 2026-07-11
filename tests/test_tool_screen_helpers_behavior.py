@@ -284,10 +284,7 @@ def test_job_control_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     monkeypatch.setattr(
         job_control.run_ops,
         "execute_case_command",
-        lambda _case, name, cmd, **_kwargs: (
-            started.append((str(name), list(cmd)))
-            or types.SimpleNamespace(pid=77)
-        ),
+        lambda _case, name, cmd, **_kwargs: started.append((str(name), list(cmd))) or types.SimpleNamespace(pid=77),
     )
     job_control._start_background_command(screen, case, "blockMesh", ["blockMesh"])
     assert started[-1] == ("blockMesh", ["blockMesh"])

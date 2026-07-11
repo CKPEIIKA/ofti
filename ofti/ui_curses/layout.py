@@ -7,8 +7,7 @@ from ofti.core.spinner import next_spinner
 
 
 def draw_status_bar(stdscr: Any, text: str) -> None:
-    """Draw a simple status bar on the last line of the screen.
-    """
+    """Draw a simple status bar on the last line of the screen."""
     try:
         height, width = stdscr.getmaxyx()
         stdscr.attron(curses.A_REVERSE)
@@ -46,23 +45,13 @@ def case_overview_lines(_meta: dict[str, str]) -> list[str]:
 def case_banner_lines(meta: dict[str, str]) -> list[str]:
     env_label = f"Env: {meta['foam_version']}"
     header_version = meta.get("case_header_version", "unknown")
-    if (
-        header_version
-        and header_version != "unknown"
-        and header_version != meta.get("foam_version")
-    ):
+    if header_version and header_version != "unknown" and header_version != meta.get("foam_version"):
         env_label = f"{env_label} (header v {header_version})"
     status_text = f"Status: {meta['status']}"
     latest_text = f"Latest time: {meta['latest_time']}"
     if meta.get("running") == "yes":
-        status_text = (
-            f"Running: jobs={meta.get('jobs_running', '0')} "
-            f"pids={meta.get('live_processes', '0')}"
-        )
-        latest_text = (
-            f"Latest: {meta['latest_time']} "
-            f"iter={meta.get('latest_iteration', 'n/a')}"
-        )
+        status_text = f"Running: jobs={meta.get('jobs_running', '0')} pids={meta.get('live_processes', '0')}"
+        latest_text = f"Latest: {meta['latest_time']} iter={meta.get('latest_iteration', 'n/a')}"
 
     rows = [
         (f"Case: {meta['case_name']}", f"Solver: {meta['solver']}"),
@@ -71,8 +60,7 @@ def case_banner_lines(meta: dict[str, str]) -> list[str]:
             f"Mesh: {meta['mesh']} Cells: {meta.get('cells', 'n/a')}",
             f"Parallel: {meta['parallel']}",
         ),
-        (f"Faces: {meta.get('faces', 'n/a')} Points: {meta.get('points', 'n/a')}",
-         f"Disk: {meta.get('disk', 'n/a')}"),
+        (f"Faces: {meta.get('faces', 'n/a')} Points: {meta.get('points', 'n/a')}", f"Disk: {meta.get('disk', 'n/a')}"),
         (env_label, "Keys: ? help / search : cmd"),
         (f"Path: {meta['case_path']}", f"Log: {meta.get('log', 'none')}"),
     ]
@@ -80,10 +68,7 @@ def case_banner_lines(meta: dict[str, str]) -> list[str]:
         rows.insert(
             4,
             (
-                (
-                    f"dt={meta.get('latest_delta_t', 'n/a')} "
-                    f"sec/iter={meta.get('sec_per_iter', 'n/a')}"
-                ),
+                (f"dt={meta.get('latest_delta_t', 'n/a')} sec/iter={meta.get('sec_per_iter', 'n/a')}"),
                 f"ETA end={meta.get('eta_end', 'n/a')} criteria={meta.get('eta_criteria', 'n/a')}",
             ),
         )

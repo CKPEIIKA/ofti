@@ -56,9 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         ofti [--debug] [CASE_DIR]
     """
     args_in = list(argv) if argv is not None else sys.argv[1:]
-    use_cli_tools = args_in and (
-        args_in[0] in _CLI_TOOLS_GROUPS or any(flag in args_in for flag in _CLI_VERSION_FLAGS)
-    )
+    use_cli_tools = args_in and (args_in[0] in _CLI_TOOLS_GROUPS or any(flag in args_in for flag in _CLI_VERSION_FLAGS))
     if use_cli_tools:
         return cli_tools_main(args_in)
 

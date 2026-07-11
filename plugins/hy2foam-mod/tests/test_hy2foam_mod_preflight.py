@@ -43,10 +43,12 @@ def test_mod_bundle_hints_for_nncompiled_cases(tmp_path: Path) -> None:
 def test_nn_species_order_mismatch_is_detected(tmp_path: Path) -> None:
     case = _case(tmp_path / "case")
     (case / "system" / "nnModel").write_text(
-        "inputOrder (N2 O2 NO N O);\n", encoding="utf-8",
+        "inputOrder (N2 O2 NO N O);\n",
+        encoding="utf-8",
     )
     (case / "constant" / "nnTransport").write_text(
-        "outputOrder (O2 N2 NO N O);\n", encoding="utf-8",  # reordered -> mismatch
+        "outputOrder (O2 N2 NO N O);\n",
+        encoding="utf-8",  # reordered -> mismatch
     )
 
     payload = nn_preflight_payload(case)
@@ -59,10 +61,12 @@ def test_nn_species_order_mismatch_is_detected(tmp_path: Path) -> None:
 def test_nn_species_order_consistent_passes(tmp_path: Path) -> None:
     case = _case(tmp_path / "case")
     (case / "system" / "nnModel").write_text(
-        "inputOrder (N2 O2 NO N O);\n", encoding="utf-8",
+        "inputOrder (N2 O2 NO N O);\n",
+        encoding="utf-8",
     )
     (case / "constant" / "nnTransport").write_text(
-        "outputOrder (N2 O2 NO N O);\n", encoding="utf-8",
+        "outputOrder (N2 O2 NO N O);\n",
+        encoding="utf-8",
     )
 
     payload = nn_preflight_payload(case)

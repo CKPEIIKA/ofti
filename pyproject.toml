@@ -71,6 +71,8 @@ select = [
   "YTT",
 ]
 ignore = [
+  # Ruff's formatter owns trailing-comma layout; COM812 conflicts with it.
+  "COM812",
   "FBT",
   "PLR0913",
   "PLR2004",
@@ -94,17 +96,20 @@ max-branches = 7
 max-statements = 36
 
 [tool.ruff.lint.per-file-ignores]
-# Complexity ratchet: UI/adapters keep temporary broad ignores while shared
-# services/core are cleaned down to the new thresholds.
-"ofti/app/**/*.py" = ["C901", "PLR0912", "PLR0915"]
+# Complexity ratchet: only named legacy adapters remain exempt while they are
+# simplified; new app modules receive the normal project limits.
 "ofti/ui_curses/**/*.py" = ["C901", "PLR0912", "PLR0915"]
 "tests/*" = ["E501", "S101", "PLR2004"]
-"tests/test_runtime_watch_behavior.py" = ["PLR0915"]
-"tests/test_tool_screen_branches.py" = ["PLR0915"]
-"tests/test_tool_services_behavior.py" = ["PLR0915"]
 "ofti/app/app.py" = ["C901", "PLR0912", "PLR0911", "PLR0915", "S603", "S607", "SIM105"]
+"ofti/app/clean_menu.py" = ["C901", "PLR0912"]
+"ofti/app/cli_adapters/command_builder.py" = ["C901"]
+"ofti/app/cli_adapters/knife.py" = ["C901", "PLR0912"]
+"ofti/app/cli_adapters/knife_parser.py" = ["PLR0915"]
+"ofti/app/cli_adapters/run.py" = ["C901", "PLR0912", "PLR0915"]
+"ofti/app/cli_adapters/watch.py" = ["C901", "PLR0912", "PLR0915"]
 "ofti/app/commands.py" = ["C901", "PLR0911", "PLR0912", "PLR0915"]
 "ofti/app/helpers.py" = ["C901", "PLR0911", "PLR0912", "S608", "PLR0915"]
+"ofti/app/logs_analysis.py" = ["C901", "PLR0912"]
 "ofti/foam/config.py" = ["C901", "PLR0912", "PLW0603", "PLR0915"]
 "ofti/ui_curses/entry_browser.py" = ["C901", "PLR0912", "SIM105", "PLR0915"]
 "ofti/app/menus/config.py" = ["C901", "PLR0912", "PLR0915"]
@@ -112,21 +117,26 @@ max-statements = 36
 "ofti/app/menus/postprocessing.py" = ["C901", "PLR0912", "PLR0915"]
 "ofti/app/menus/simulation.py" = ["C901", "PLR0912", "PLR0915"]
 "ofti/app/screens/check.py" = ["C901", "PLR0912", "PLR0915"]
-"ofti/app/screens/editor.py" = ["S603"]
+"ofti/app/screens/editor.py" = ["C901", "PLR0912", "S603"]
 "ofti/app/screens/search.py" = ["C901", "PLR0912", "S603", "PLR0915"]
 "ofti/app/screens/main.py" = ["PLR0911"]
+"ofti/app/tasks.py" = ["C901"]
 "ofti/core/entry_io.py" = ["S110"]
 "ofti/foam/subprocess_utils.py" = ["S603"]
-"ofti/app/tool_screens/cleaning_ops.py" = ["C901"]
-"ofti/app/tool_screens/diagnostics.py" = ["PLR0911"]
+"ofti/app/tool_screens/cleaning_ops.py" = ["C901", "PLR0912"]
+"ofti/app/tool_screens/diagnostics.py" = ["C901", "PLR0911"]
 "ofti/app/tool_screens/job_control.py" = ["E501"]
 "ofti/app/tool_screens/logs_view.py" = ["C901", "PLR0912", "PLC0415", "PLR0915"]
-"ofti/app/tool_screens/menus.py" = ["C901", "E402", "PLR0915"]
+"ofti/app/tool_screens/menus.py" = ["C901", "E402", "PLR0912", "PLR0915"]
+"ofti/app/tool_screens/parametric.py" = ["C901", "PLR0912"]
 "ofti/app/tool_screens/pipeline.py" = ["C901", "PLR0911", "PLR0912", "PLR0915"]
+"ofti/app/tool_screens/postprocessing.py" = ["C901", "PLR0912"]
 "ofti/app/tool_screens/runner.py" = ["PLW0603"]
+"ofti/app/tool_screens/shell_tools.py" = ["C901", "PLR0912"]
 "ofti/app/tool_screens/solver.py" = ["C901", "PLR0912", "S603", "PLR0915"]
-"ofti/app/tool_screens/tool_dicts_foamcalc.py" = ["C901", "PLR0915"]
-"ofti/app/tool_screens/tool_dicts_postprocess.py" = ["C901"]
+"ofti/app/tool_screens/tool_dicts_foamcalc.py" = ["C901", "PLR0912", "PLR0915"]
+"ofti/app/tool_screens/tool_dicts_postprocess.py" = ["C901", "PLR0912"]
+"ofti/app/tool_screens/yplus.py" = ["C901", "PLR0912"]
 "ofti/tools/watch_service.py" = ["S603"]
 "ofti/tools/watch_external.py" = ["S603"]
 "ofti/ui_curses/boundary_matrix.py" = ["C901", "PLR0911"]
@@ -149,7 +159,7 @@ max-statements = 36
 
 [tool.pytest.ini_options]
 addopts = "--cov=ofti --cov-report=term-missing --cov-fail-under=85"
-norecursedirs = ["refs"]
+norecursedirs = ["refs", ".uv-cache"]
 markers = [
     "real_openfoam: opt-in tests that launch real OpenFOAM/PyFoam commands",
     "slow: slow integration tests excluded unless --runslow is passed",

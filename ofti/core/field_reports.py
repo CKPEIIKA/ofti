@@ -83,11 +83,7 @@ def _compare_markdown_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _physical_csv_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    violations = {
-        row.get("field"): row
-        for row in payload.get("violations", [])
-        if isinstance(row, dict)
-    }
+    violations = {row.get("field"): row for row in payload.get("violations", []) if isinstance(row, dict)}
     rows: list[dict[str, Any]] = []
     for row in payload.get("fields", []):
         if not isinstance(row, dict):
@@ -101,9 +97,7 @@ def _physical_csv_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "min": row.get("min"),
                 "max": row.get("max"),
                 "n_bad": row.get("nonfinite_count") or (violation or {}).get("count", 0),
-                "bad_indices_sample": " ".join(
-                    str(item) for item in (violation or {}).get("sample", [])
-                ),
+                "bad_indices_sample": " ".join(str(item) for item in (violation or {}).get("sample", [])),
             },
         )
     return rows

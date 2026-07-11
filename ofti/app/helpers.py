@@ -398,11 +398,7 @@ def _list_local_examples() -> list[Path]:
     examples_root = Path("examples")
     if not examples_root.is_dir():
         return []
-    return sorted(
-        path
-        for path in examples_root.iterdir()
-        if path.is_dir() and is_case_dir(path)
-    )
+    return sorted(path for path in examples_root.iterdir() if path.is_dir() and is_case_dir(path))
 
 
 def _list_tutorial_cases() -> list[Path]:
@@ -431,9 +427,7 @@ def _create_case_from_example(stdscr: Any, current: Path) -> Path | None:
         "Create new case from example",
         [*labels, "Back"],
         hint_provider=lambda idx: (
-            "Create case from selected example."
-            if 0 <= idx < len(labels)
-            else menu_hint("menu:create_case", "Back")
+            "Create case from selected example." if 0 <= idx < len(labels) else menu_hint("menu:create_case", "Back")
         ),
     )
     choice = menu.navigate()
@@ -563,7 +557,11 @@ def prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:
 
 
 def menu_scroll(
-    current: int, scroll: int, stdscr: Any, total: int, header_rows: int,
+    current: int,
+    scroll: int,
+    stdscr: Any,
+    total: int,
+    header_rows: int,
 ) -> int:
     height, _ = stdscr.getmaxyx()
     visible = max(0, height - header_rows - 1)

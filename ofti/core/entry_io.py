@@ -35,10 +35,7 @@ def read_entry(file_path: Path, key: str) -> str:
 
 
 def read_field_entry(file_path: Path, key: str) -> str:
-    if (
-        foamlib_integration.available()
-        and foamlib_integration.is_field_file(file_path)
-    ):
+    if foamlib_integration.available() and foamlib_integration.is_field_file(file_path):
         try:
             return foamlib_integration.read_field_entry(file_path, key)
         except Exception:
@@ -74,10 +71,7 @@ def write_field_entry(file_path: Path, key: str, value: str) -> bool:
     except Exception:
         old_value = None
 
-    if (
-        foamlib_integration.available()
-        and foamlib_integration.is_field_file(file_path)
-    ):
+    if foamlib_integration.available() and foamlib_integration.is_field_file(file_path):
         try:
             ok = foamlib_integration.write_field_entry(file_path, key, value)
         except Exception:

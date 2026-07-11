@@ -87,11 +87,7 @@ def parse_boundary_names_node(node: Any) -> list[str]:
         names.extend([key for key in node if isinstance(key, str)])
     if isinstance(node, (list, tuple)):
         names.extend(
-            [
-                item[0]
-                for item in node
-                if isinstance(item, (list, tuple)) and item and isinstance(item[0], str)
-            ],
+            [item[0] for item in node if isinstance(item, (list, tuple)) and item and isinstance(item[0], str)],
         )
     return names
 

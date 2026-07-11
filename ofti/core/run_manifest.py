@@ -246,11 +246,7 @@ def verify_run_manifest(manifest_path: Path, *, case_path: Path | None = None) -
     expected_map = {str(row["path"]): str(row["sha256"]) for row in expected_rows}
     actual_map = {str(row["path"]): str(row["sha256"]) for row in actual_rows}
     missing = sorted(path for path in expected_map if path not in actual_map)
-    changed = sorted(
-        path
-        for path in expected_map
-        if path in actual_map and expected_map[path] != actual_map[path]
-    )
+    changed = sorted(path for path in expected_map if path in actual_map and expected_map[path] != actual_map[path])
     extra = sorted(path for path in actual_map if path not in expected_map)
     actual_tree_hash = _tree_hash(actual_rows)
     expected_tree_hash = str(manifest.get("inputs", {}).get("tree_hash") or "")
@@ -468,9 +464,7 @@ def _build_provenance(solver_name: str | None, *, bashrc: Path | None) -> dict[s
 def _verify_build_provenance(manifest: dict[str, Any]) -> dict[str, Any]:
     expected = manifest.get("build", {})
     solver = expected.get("solver", {})
-    solver_name = (
-        str(solver.get("name") or manifest.get("case", {}).get("solver") or "").strip() or None
-    )
+    solver_name = str(solver.get("name") or manifest.get("case", {}).get("solver") or "").strip() or None
     bashrc_value = manifest.get("openfoam", {}).get("bashrc")
     bashrc = Path(str(bashrc_value)).expanduser() if bashrc_value else resolve_openfoam_bashrc()
     actual_solver = _solver_binary_row(solver_name, bashrc=bashrc)

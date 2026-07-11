@@ -141,4 +141,6 @@ def test_runner_service_background_detached_and_files(tmp_path: Path) -> None:
 def test_runner_service_safe_name_and_dry_run() -> None:
     assert svc.safe_name("a b!c") == "abc"
     assert svc.safe_name("") == "tool"
-    assert svc.dry_run_command(["echo", "hello world"], with_bashrc_fn=lambda cmd: f"bashrc:{cmd}").startswith("bashrc:")
+    assert svc.dry_run_command(["echo", "hello world"], with_bashrc_fn=lambda cmd: f"bashrc:{cmd}").startswith(
+        "bashrc:"
+    )

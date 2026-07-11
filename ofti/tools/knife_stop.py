@@ -47,11 +47,7 @@ def _untracked_stop_empty(case_path: Path, *, reason: str) -> dict[str, Any]:
 
 
 def _untracked_solver_rows(case_path: Path, *, case_str: str) -> list[dict[str, Any]]:
-    active_jobs = [
-        job
-        for job in refresh_jobs(case_path)
-        if job.get("status") in {"running", "paused"}
-    ]
+    active_jobs = [job for job in refresh_jobs(case_path) if job.get("status") in {"running", "paused"}]
     rows = process_scan_service.scan_proc_solver_processes(
         case_path,
         None,
@@ -78,11 +74,7 @@ def _untracked_stop_plan(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _launcher_pids(rows: list[dict[str, Any]]) -> set[int]:
-    return {
-        int(row["pid"])
-        for row in rows
-        if str(row.get("role")) == "launcher" and int(row.get("pid", 0)) > 0
-    }
+    return {int(row["pid"]) for row in rows if str(row.get("role")) == "launcher" and int(row.get("pid", 0)) > 0}
 
 
 def _is_positive_role_pid(row: dict[str, Any], role: str) -> bool:
@@ -94,10 +86,7 @@ def _solver_pids_without_launcher_groups(
     solver_pids: list[int],
     safe_launchers: set[int],
 ) -> list[int]:
-    solver_launcher = {
-        int(row["pid"]): _to_positive_int(row.get("launcher_pid"))
-        for row in solver_rows
-    }
+    solver_launcher = {int(row["pid"]): _to_positive_int(row.get("launcher_pid")) for row in solver_rows}
     return [pid for pid in solver_pids if solver_launcher.get(pid) not in safe_launchers]
 
 

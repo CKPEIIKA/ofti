@@ -70,11 +70,7 @@ def _mesh_wall_patch_names(case_dir: Path) -> set[str]:
     if not path.is_file():
         return set()
     text = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"))
-    return {
-        name
-        for name, block in _named_blocks(text)
-        if re.search(r"\btype\s+wall\s*;", block)
-    }
+    return {name for name, block in _named_blocks(text) if re.search(r"\btype\s+wall\s*;", block)}
 
 
 def _strip_comments(text: str) -> str:

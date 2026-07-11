@@ -111,19 +111,16 @@ def format_checkmesh_summary(output: str) -> str:
         ),
         (
             "Max aspect ratio",
-            match_first(output, [r"(?i)max\s+aspect\s+ratio\s*=\s*([0-9eE.+-]+)"])
-            or "n/a",
+            match_first(output, [r"(?i)max\s+aspect\s+ratio\s*=\s*([0-9eE.+-]+)"]) or "n/a",
         ),
         (
             "Max cell openness",
-            match_first(output, [r"(?i)max\s+cell\s+openness\s*=\s*([0-9eE.+-]+)"])
-            or "n/a",
+            match_first(output, [r"(?i)max\s+cell\s+openness\s*=\s*([0-9eE.+-]+)"]) or "n/a",
         ),
         ("Min volume", match_first(output, [r"(?i)min\s+volume\s*=\s*([0-9eE.+-]+)"]) or "n/a"),
         (
             "Min detJ",
-            match_first(output, [r"(?i)min\s+determinant\s*=\s*([0-9eE.+-]+)"])
-            or "n/a",
+            match_first(output, [r"(?i)min\s+determinant\s*=\s*([0-9eE.+-]+)"]) or "n/a",
         ),
     ]
     quality = _filter_nonzero(quality)

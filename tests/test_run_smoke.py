@@ -12,9 +12,7 @@ def _write_field(path: Path, *, vector: bool = False) -> None:
     value = "uniform (0 0 0)" if vector else "uniform 1"
     cls = "volVectorField" if vector else "volScalarField"
     path.write_text(
-        f"FoamFile{{ version 2.0; format ascii; class {cls}; }}\n"
-        f"internalField {value};\n"
-        "boundaryField{}\n",
+        f"FoamFile{{ version 2.0; format ascii; class {cls}; }}\ninternalField {value};\nboundaryField{{}}\n",
         encoding="utf-8",
     )
 
@@ -23,11 +21,7 @@ def _make_case(path: Path) -> Path:
     (path / "system").mkdir(parents=True)
     (path / "0").mkdir()
     (path / "system" / "controlDict").write_text(
-        "application fakeFoam;\n"
-        "startFrom latestTime;\n"
-        "deltaT 2;\n"
-        "endTime 100;\n"
-        "writeInterval 50;\n",
+        "application fakeFoam;\nstartFrom latestTime;\ndeltaT 2;\nendTime 100;\nwriteInterval 50;\n",
         encoding="utf-8",
     )
     _write_field(path / "0" / "U", vector=True)

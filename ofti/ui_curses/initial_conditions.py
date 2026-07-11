@@ -101,10 +101,7 @@ def initial_conditions_screen(stdscr: Any, case_path: Path) -> None:
 
 
 def _build_initial_rows(zero_path: Path, fields: list[str]) -> list[_InitialFieldRow]:
-    return [
-        _build_initial_field_row(zero_path / field, field)
-        for field in fields
-    ]
+    return [_build_initial_field_row(zero_path / field, field) for field in fields]
 
 
 def _build_initial_field_row(file_path: Path, field: str) -> _InitialFieldRow:
@@ -181,12 +178,9 @@ def _draw_initial_conditions_table(
 
     field_col = max(10, min(26, width // 4))
     type_col = max(8, min(18, width // 5))
-    preview_col = max(10, width - field_col - type_col - 4)
-    header_line = (
-        "Field".ljust(field_col)
-        + "Type".ljust(type_col)
-        + "Preview".ljust(preview_col)
-    )
+    extra_col = max(0, min(24, width // 4))
+    preview_col = max(10, width - field_col - type_col - extra_col - 4)
+    header_line = "Field".ljust(field_col) + "Type".ljust(type_col) + "Preview".ljust(preview_col)
     with suppress(curses.error):
         stdscr.addstr(row, 0, header_line[: max(1, width - 1)])
     start_row = row + 1
@@ -196,23 +190,23 @@ def _draw_initial_conditions_table(
         line_y = start_row + idx
         selected = state.scroll + idx == state.row
         attr = curses.color_pair(1) if selected else 0
-        field_text = row_data.name[: field_col]
-        type_text = row_data.type_label[: type_col]
-        preview_text = row_data.preview[: preview_col]
+        field_text = row_data.name[:field_col]
+        type_text = row_data.type_label[:type_col]
+        preview_text = row_data.preview[:preview_col]
         extra_limit = max(0, width - (field_col + type_col + preview_col) - 1)
         extra_text = (row_data.extra or "")[:extra_limit]
         with suppress(curses.error):
-            stdscr.addstr(line_y, 0, field_text.ljust(field_col)[: field_col], attr)
+            stdscr.addstr(line_y, 0, field_text.ljust(field_col)[:field_col], attr)
             stdscr.addstr(
                 line_y,
                 field_col,
-                type_text.ljust(type_col)[: type_col],
+                type_text.ljust(type_col)[:type_col],
                 attr,
             )
             stdscr.addstr(
                 line_y,
                 field_col + type_col,
-                preview_text.ljust(preview_col)[: preview_col],
+                preview_text.ljust(preview_col)[:preview_col],
                 attr,
             )
             if extra_text:

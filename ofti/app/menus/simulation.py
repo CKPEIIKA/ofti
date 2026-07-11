@@ -68,15 +68,11 @@ def simulation_menu(
     if not control_dict.is_file():
         for idx in (2, 3, 16, 17):
             disabled.add(idx)
-            disabled_reasons[idx] = (
-                "Simulation requires system/controlDict; create a sample config in Config Manager."
-            )
+            disabled_reasons[idx] = "Simulation requires system/controlDict; create a sample config in Config Manager."
             disabled_helpers[idx] = "config"
     if not decompose_dict.is_file():
         disabled.add(4)
-        disabled_reasons[4] = (
-            "Parallel run requires system/decomposeParDict; create it in Config Manager."
-        )
+        disabled_reasons[4] = "Parallel run requires system/decomposeParDict; create it in Config Manager."
         disabled_helpers[4] = "config"
     if state.no_foam:
         no_foam_sensitive = (0, 1, 2, 3, 4, 16, 17, 18)

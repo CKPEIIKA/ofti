@@ -293,10 +293,7 @@ def _launcher_targets_case(
     return (
         entry_targets_case(entry, case_path)
         or launcher_descendant_targets_case(entry.pid, table, case_path)
-        or (
-            inferred_case is not None
-            and _in_scope_case(inferred_case, case_path, case_root_is_case=case_root_is_case)
-        )
+        or (inferred_case is not None and _in_scope_case(inferred_case, case_path, case_root_is_case=case_root_is_case))
     )
 
 
@@ -419,9 +416,7 @@ def process_role(args: list[str], solver: str | None) -> str | None:
     base = Path(args[0]).name.lower()
     role: str | None = None
     if base in _MPI_LAUNCHERS or (
-        solver is not None
-        and base in _SHELL_LAUNCHERS
-        and _shell_command_matches_solver(args, solver)
+        solver is not None and base in _SHELL_LAUNCHERS and _shell_command_matches_solver(args, solver)
     ):
         role = "launcher"
     elif solver is None:
@@ -469,11 +464,7 @@ def _shell_command_has_any_solver(args: list[str]) -> bool:
 def _shell_commands(args: list[str]) -> list[str]:
     if not args or Path(args[0]).name.lower() not in _SHELL_LAUNCHERS:
         return []
-    return [
-        args[idx + 1]
-        for idx, token in enumerate(args[:-1])
-        if token in {"-c", "-lc"} and args[idx + 1]
-    ]
+    return [args[idx + 1] for idx, token in enumerate(args[:-1]) if token in {"-c", "-lc"} and args[idx + 1]]
 
 
 def _command_has_foam_token(command: str) -> bool:
@@ -796,11 +787,7 @@ def _cache_discovery(entry: ProcEntry, case_path: Path, source: str, *, proc_roo
 
 def _cleanup_discovery_cache() -> None:
     now = time.time()
-    expired = [
-        pid
-        for pid, row in _DISCOVERY_CACHE.items()
-        if (now - row.timestamp) > _DISCOVERY_CACHE_TTL_SECONDS
-    ]
+    expired = [pid for pid, row in _DISCOVERY_CACHE.items() if (now - row.timestamp) > _DISCOVERY_CACHE_TTL_SECONDS]
     for pid in expired:
         _DISCOVERY_CACHE.pop(pid, None)
 

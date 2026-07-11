@@ -11,8 +11,13 @@ def test_signal_and_selection_helpers() -> None:
         {"id": "1", "name": "a", "status": "running"},
         {"id": "2", "name": "b", "status": "paused"},
     ]
-    assert [row["id"] for row in svc.select_jobs(jobs, statuses={"running"}, job_id=None, name=None, all_jobs=False)] == ["1"]
-    assert [row["id"] for row in svc.select_jobs(jobs, statuses={"running", "paused"}, job_id=None, name=None, all_jobs=True)] == ["1", "2"]
+    assert [
+        row["id"] for row in svc.select_jobs(jobs, statuses={"running"}, job_id=None, name=None, all_jobs=False)
+    ] == ["1"]
+    assert [
+        row["id"]
+        for row in svc.select_jobs(jobs, statuses={"running", "paused"}, job_id=None, name=None, all_jobs=True)
+    ] == ["1", "2"]
 
 
 def test_stop_jobs_transitions_and_failures(tmp_path: Path) -> None:

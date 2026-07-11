@@ -1074,7 +1074,8 @@ def test_run_solver_dry_run_json(tmp_path, capsys, monkeypatch) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
     assert payload["dry_run"] is True
-    assert "rhoSimpleFoam" in payload["command"]
+    assert payload["command"] == "run solver"
+    assert "rhoSimpleFoam" in payload["invocation"]
 
 
 def test_run_solver_dry_run_json_no_sync_subdomains(tmp_path, capsys, monkeypatch) -> None:
@@ -1401,15 +1402,18 @@ def test_run_solver_parallel_clean_processors_calls_prepare(tmp_path, capsys, mo
     )
     monkeypatch.setattr(
         "ofti.app.cli_tools.run_ops.prepare_parallel_case",
-        lambda _case, **kwargs: seen.setdefault("prepare", kwargs) or {
-            "parallel": kwargs["parallel"],
-            "clean_processors": kwargs["clean_processors"],
-            "decompose_command": "decomposePar -force",
-            "cleaned_processors": [],
-            "decompose_returncode": 0,
-            "dry_run": False,
-            "applied": True,
-        },
+        lambda _case, **kwargs: (
+            seen.setdefault("prepare", kwargs)
+            or {
+                "parallel": kwargs["parallel"],
+                "clean_processors": kwargs["clean_processors"],
+                "decompose_command": "decomposePar -force",
+                "cleaned_processors": [],
+                "decompose_returncode": 0,
+                "dry_run": False,
+                "applied": True,
+            }
+        ),
     )
     monkeypatch.setattr(
         "ofti.app.cli_tools.run_ops.execute_solver_case_command",
@@ -1693,7 +1697,9 @@ def test_knife_plugin_command_is_dispatched(capsys, monkeypatch) -> None:
 
         def command_spec(self) -> CommandSpec:
             return CommandSpec(
-                name="fake-plugin", summary="Fake plugin command", handler=self.run,
+                name="fake-plugin",
+                summary="Fake plugin command",
+                handler=self.run,
             )
 
         def run(self, args) -> int:
@@ -1762,7 +1768,9 @@ def test_knife_compare_fields_cli_text_nonzero_on_error(tmp_path, capsys, monkey
         },
     )
 
-    code = cli_tools.main(["knife", "compare-fields", str(left), str(right), "--preset", "plugin-preset", "--time", "0"])
+    code = cli_tools.main(
+        ["knife", "compare-fields", str(left), str(right), "--preset", "plugin-preset", "--time", "0"]
+    )
 
     out = capsys.readouterr().out
     assert code == 1

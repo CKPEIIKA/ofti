@@ -135,11 +135,7 @@ def current_scope_payload(
         if (case_path := _adopt_case_path(row)) is not None and _path_within(case_path, scope_root)
     ]
     cases_from_untracked = sorted(
-        {
-            str(case_path)
-            for row in untracked
-            if (case_path := _adopt_case_path(row)) is not None
-        },
+        {str(case_path) for row in untracked if (case_path := _adopt_case_path(row)) is not None},
     )
     case_rows = sorted({str(path) for path in case_paths} | set(cases_from_untracked))
     untracked_count = case_status_service.untracked_running_count(untracked)
@@ -171,11 +167,7 @@ def current_scope_payload(
 
 
 def _scope_registry_warnings(case_paths: list[Path]) -> list[str]:
-    return [
-        f"{case_path}: {warning}"
-        for case_path in case_paths
-        for warning in registry_warnings(case_path)
-    ]
+    return [f"{case_path}: {warning}" for case_path in case_paths for warning in registry_warnings(case_path)]
 
 
 def current_live_payload(case_dir: Path) -> case_status_service.CurrentPayload:
@@ -276,11 +268,7 @@ def _select_case_adopt_rows(
 
 
 def _launcher_pids(rows: list[dict[str, Any]]) -> set[int]:
-    return {
-        int(row["pid"])
-        for row in rows
-        if str(row.get("role")) == "launcher" and int(row.get("pid", 0)) > 0
-    }
+    return {int(row["pid"]) for row in rows if str(row.get("role")) == "launcher" and int(row.get("pid", 0)) > 0}
 
 
 def _adopt_selection_row(
@@ -419,8 +407,7 @@ def _prune_case_walk(dir_names: list[str]) -> None:
         name
         for name in dir_names
         if not (
-            name.startswith("processor")
-            or name in {".git", ".venv", "__pycache__", "postProcessing", ".mypy_cache"}
+            name.startswith("processor") or name in {".git", ".venv", "__pycache__", "postProcessing", ".mypy_cache"}
         )
     ]
     dir_names[:] = pruned
@@ -515,12 +502,10 @@ def compare_payload(
                 "missing_in_left": diff.missing_in_left,
                 "missing_in_right": diff.missing_in_right,
                 "value_diffs": [
-                    {"key": value.key, "left": value.left, "right": value.right}
-                    for value in diff.value_diffs
+                    {"key": value.key, "left": value.left, "right": value.right} for value in diff.value_diffs
                 ],
                 "value_diffs_flat": [
-                    f"{value.key}: left={value.left} right={value.right}"
-                    for value in diff.value_diffs
+                    f"{value.key}: left={value.left} right={value.right}" for value in diff.value_diffs
                 ],
                 "left_hash": diff.left_hash,
                 "right_hash": diff.right_hash,

@@ -85,8 +85,7 @@ def _set_openfoam_bashrc(path: Path | None) -> None:
 
 
 def openfoam_env_screen(stdscr: Any) -> None:
-    """Select an OpenFOAM bashrc for the current session.
-    """
+    """Select an OpenFOAM bashrc for the current session."""
     current = resolve_openfoam_bashrc()
     candidates = auto_detect_bashrc_paths()
     if current and current not in candidates:

@@ -130,7 +130,9 @@ def test_log_tail_screen_branches_and_alerts(monkeypatch: pytest.MonkeyPatch, tm
     case.mkdir()
     messages: list[str] = []
     monkeypatch.setattr(logs_view, "_show_message", lambda _s, text: messages.append(text))
-    monkeypatch.setattr(logs_view, "get_config", lambda: types.SimpleNamespace(courant_limit=0.5, keys={"back": [ord("h")]}))
+    monkeypatch.setattr(
+        logs_view, "get_config", lambda: types.SimpleNamespace(courant_limit=0.5, keys={"back": [ord("h")]})
+    )
     monkeypatch.setattr(logs_view, "key_in", lambda key, keys: key in keys)
 
     logs_view.log_tail_screen(_Screen(), case)
@@ -151,7 +153,9 @@ def test_log_tail_screen_branches_and_alerts(monkeypatch: pytest.MonkeyPatch, tm
     assert "Failed to read log.simpleFoam: io bad" in messages[-1]
 
     monkeypatch.undo()
-    monkeypatch.setattr(logs_view, "get_config", lambda: types.SimpleNamespace(courant_limit=0.5, keys={"back": [ord("h")]}))
+    monkeypatch.setattr(
+        logs_view, "get_config", lambda: types.SimpleNamespace(courant_limit=0.5, keys={"back": [ord("h")]})
+    )
     monkeypatch.setattr(logs_view, "key_in", lambda key, keys: key in keys)
     monkeypatch.setattr(logs_view, "build_menu", lambda *_a, **_k: _Menu(0))
     log_path.write_text(
@@ -212,7 +216,9 @@ def test_log_tail_screen_uses_bounded_reads_and_resets_timeout(
         seen["max_bytes"] = max_bytes
         return ["Time = 1"]
 
-    monkeypatch.setattr(logs_view, "get_config", lambda: types.SimpleNamespace(courant_limit=0.5, keys={"back": [ord("h")]}))
+    monkeypatch.setattr(
+        logs_view, "get_config", lambda: types.SimpleNamespace(courant_limit=0.5, keys={"back": [ord("h")]})
+    )
     monkeypatch.setattr(logs_view, "key_in", lambda key, keys: key in keys)
     monkeypatch.setattr(logs_view, "build_menu", lambda *_a, **_k: _Menu(0))
     monkeypatch.setattr(logs_view, "read_log_tail_lines", _tail)

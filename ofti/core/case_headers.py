@@ -41,8 +41,7 @@ def _most_common_versions(versions: list[str]) -> list[str]:
 
 
 def parse_header_comment_version(text: str) -> str | None:
-    """Extract the version string from the ASCII banner that precedes FoamFile.
-    """
+    """Extract the version string from the ASCII banner that precedes FoamFile."""
     version_pattern = re.compile(r"Version:\s*([^\s|]+)", re.IGNORECASE)
     for line in text.splitlines():
         lower = line.lower()
@@ -57,8 +56,7 @@ def parse_header_comment_version(text: str) -> str | None:
 
 
 def parse_foamfile_block_version(text: str) -> str | None:
-    """Fallback: read the 'version' entry inside the FoamFile dictionary block.
-    """
+    """Fallback: read the 'version' entry inside the FoamFile dictionary block."""
     inside_block = False
     for line in text.splitlines():
         stripped = line.strip()

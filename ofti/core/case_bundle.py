@@ -226,11 +226,7 @@ def manifest_from_payload(payload: dict[str, object]) -> BundleManifest:
     version = _payload_int(payload.get("format_version", payload.get("version")), default=0)
     if payload.get("format") == MANIFEST_FORMAT and version != MANIFEST_FORMAT_VERSION:
         raise ValueError(f"unsupported bundle manifest version: {version}")
-    files = tuple(
-        BundleFile(**entry)
-        for entry in _payload_files(payload.get("files"))
-        if isinstance(entry, dict)
-    )
+    files = tuple(BundleFile(**entry) for entry in _payload_files(payload.get("files")) if isinstance(entry, dict))
     return BundleManifest(
         format=str(payload.get("format", "")),
         version=version,
@@ -306,8 +302,7 @@ def _zstandard_module() -> ModuleType:
         return importlib.import_module("zstandard")
     except ImportError as exc:
         raise ValueError(
-            ".tar.zst bundle support requires the optional 'zstandard' package; "
-            "use .tar.gz or install zstandard",
+            ".tar.zst bundle support requires the optional 'zstandard' package; use .tar.gz or install zstandard",
         ) from exc
 
 
@@ -388,10 +383,7 @@ def _file_syntax_warnings(case_dir: Path, rel: Path) -> list[str]:
         text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return []
-    return [
-        f"syntax warning in {rel.as_posix()}: {warning}"
-        for warning in find_suspicious_lines(text)
-    ]
+    return [f"syntax warning in {rel.as_posix()}: {warning}" for warning in find_suspicious_lines(text)]
 
 
 def _should_lint_bundle_file(rel: Path) -> bool:
@@ -450,11 +442,7 @@ def _add_referenced_include_files(rels: set[Path], root: Path, *, mesh: MeshPoli
 
 
 def _existing_include_refs(root: Path, rel: Path) -> list[Path]:
-    return [
-        include
-        for include in _local_include_refs(root, rel)
-        if include is not None and (root / include).is_file()
-    ]
+    return [include for include in _local_include_refs(root, rel) if include is not None and (root / include).is_file()]
 
 
 def _missing_include_refs(root: Path, rels: list[Path]) -> set[str]:

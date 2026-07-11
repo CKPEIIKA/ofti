@@ -24,8 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ofti",
         description=(
-            "Non-interactive OFTI utilities.\n"
-            "Use --json for machine output and --table for aligned diagnostics."
+            "Non-interactive OFTI utilities.\nUse --json for machine output and --table for aligned diagnostics."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=dedent(

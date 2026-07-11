@@ -61,14 +61,8 @@ def test_dimensioned_value_validation_and_normalization() -> None:
 
 def test_normalize_value_for_type() -> None:
     """Normalize by type label when possible."""
-    assert (
-        validation.normalize_value_for_type("dimensions", "[0 1 -2 0 0 0 0];")
-        == "[0 1 -2 0 0 0 0]"
-    )
-    assert (
-        validation.normalize_value_for_type("dimensioned", "[0 0 0 0 0 0 0] 10;")
-        == "[0 0 0 0 0 0 0] 10"
-    )
+    assert validation.normalize_value_for_type("dimensions", "[0 1 -2 0 0 0 0];") == "[0 1 -2 0 0 0 0]"
+    assert validation.normalize_value_for_type("dimensioned", "[0 0 0 0 0 0 0] 10;") == "[0 0 0 0 0 0 0] 10"
     assert validation.normalize_value_for_type("word", "alpha") is None
 
 

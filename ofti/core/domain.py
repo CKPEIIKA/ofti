@@ -20,8 +20,7 @@ class DictionaryFile:
 
 @dataclass(frozen=True)
 class EntryRef:
-    """Reference to a specific dictionary entry (file + key).
-    """
+    """Reference to a specific dictionary entry (file + key)."""
 
     file: DictionaryFile
     key: str
@@ -29,7 +28,6 @@ class EntryRef:
 
 @dataclass(frozen=True)
 class Case:
-    """Thin representation of a case root.
-    """
+    """Thin representation of a case root."""
 
     root: Path

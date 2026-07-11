@@ -7,11 +7,7 @@ from ofti.foam.tasks import Task
 
 
 def running_tasks_status(state: AppState) -> str | None:
-    tasks = [
-        task
-        for task in state.tasks.list_tasks()
-        if task.status in ("running", "cancelling")
-    ]
+    tasks = [task for task in state.tasks.list_tasks() if task.status in ("running", "cancelling")]
     if not tasks:
         return None
     labels = []

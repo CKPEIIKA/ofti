@@ -947,7 +947,12 @@ def test_run_matrix_and_catalog_helper_branches(
 
     combo = [
         (cast("run.MatrixAxis", {"dict_path": "system/controlDict", "entry": "application", "values": ["a"]}), "a"),
-        (cast("run.MatrixAxis", {"dict_path": "constant/chemistryProperties", "entry": "application", "values": ["b"]}), "b"),
+        (
+            cast(
+                "run.MatrixAxis", {"dict_path": "constant/chemistryProperties", "entry": "application", "values": ["b"]}
+            ),
+            "b",
+        ),
     ]
     name = run.matrix_case_name("base", combo)
     assert "system_controlDict_application-a" in name
@@ -1072,19 +1077,33 @@ def test_run_state_reason_and_create_case_helpers(
     assert run._sanitize_token("__bad  value__") == "bad_value"
     assert run._case_state({"running": False, "solver_error": "x", "run_time_control": {}}) == "error"
     assert run._case_state({"running": False, "solver_error": None, "run_time_control": {"failed": 1}}) == "failed"
-    assert run._case_state({"running": False, "solver_error": None, "run_time_control": {}, "log_fresh": True}) == "recent"
-    assert run._case_state({"running": False, "solver_error": None, "run_time_control": {}, "log_fresh": False}) == "stopped"
+    assert (
+        run._case_state({"running": False, "solver_error": None, "run_time_control": {}, "log_fresh": True}) == "recent"
+    )
+    assert (
+        run._case_state({"running": False, "solver_error": None, "run_time_control": {}, "log_fresh": False})
+        == "stopped"
+    )
 
     assert run._stop_reason({"solver_error": "missing", "run_time_control": {}}, state="error") == "missing"
-    assert run._stop_reason(
-        {"solver_error": None, "run_time_control": {"criteria": [{"status": "fail", "unmet_reason": "window"}]}},
-        state="failed",
-    ) == "window"
-    assert run._stop_reason(
-        {"solver_error": None, "latest_time": 2.0, "run_time_control": {"criteria": [], "end_time": 1.0}},
-        state="done",
-    ) == "end_time_reached"
-    assert run._stop_reason({"solver_error": None, "run_time_control": {"criteria": []}}, state="failed") == "criteria_failed"
+    assert (
+        run._stop_reason(
+            {"solver_error": None, "run_time_control": {"criteria": [{"status": "fail", "unmet_reason": "window"}]}},
+            state="failed",
+        )
+        == "window"
+    )
+    assert (
+        run._stop_reason(
+            {"solver_error": None, "latest_time": 2.0, "run_time_control": {"criteria": [], "end_time": 1.0}},
+            state="done",
+        )
+        == "end_time_reached"
+    )
+    assert (
+        run._stop_reason({"solver_error": None, "run_time_control": {"criteria": []}}, state="failed")
+        == "criteria_failed"
+    )
     assert run._stop_reason({"solver_error": None, "run_time_control": {"criteria": []}}, state="stopped") == "stopped"
 
 

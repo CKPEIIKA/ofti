@@ -242,10 +242,7 @@ def report_markdown(payload: dict[str, Any]) -> str:
         "## Status",
         f"- solver: {payload.get('solver')}",
         f"- running: {payload.get('running')}",
-        (
-            f"- log: {payload.get('log', {}).get('path')} "
-            f"(fresh={payload.get('log', {}).get('fresh')})"
-        ),
+        (f"- log: {payload.get('log', {}).get('path')} (fresh={payload.get('log', {}).get('fresh')})"),
         "",
         "## Key metrics",
         f"- latest_time: {metrics.get('latest_time')}",

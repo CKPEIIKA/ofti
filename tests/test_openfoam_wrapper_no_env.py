@@ -19,10 +19,7 @@ from ofti.foam.openfoam_env import ensure_environment
 
 def _write_foamfile(path: Path) -> None:
     path.write_text(
-        "FoamFile\n"
-        "{\n"
-        "    version 2.0;\n"
-        "}\n",
+        "FoamFile\n{\n    version 2.0;\n}\n",
     )
 
 
@@ -76,12 +73,7 @@ def test_list_subkeys_non_dict_returns_empty(tmp_path: Path) -> None:
 def test_get_entry_comments_picks_preceding_comment_block(tmp_path: Path) -> None:
     case_file = tmp_path / "dict"
     case_file.write_text(
-        "// comment 1\n"
-        "// comment 2\n"
-        "entry1 10;\n"
-        "\n"
-        "// other\n"
-        "entry2 20;\n",
+        "// comment 1\n// comment 2\nentry1 10;\n\n// other\nentry2 20;\n",
     )
 
     comments = get_entry_comments(case_file, "entry1")

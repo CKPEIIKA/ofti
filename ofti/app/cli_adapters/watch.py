@@ -724,8 +724,7 @@ def _print_watch_external_status(payload: dict[str, object]) -> int:
     jobs = cast("list[dict[str, object]]", payload.get("jobs", []))
     for job in jobs:
         print(
-            f"- id={job.get('id')} name={job.get('name')} pid={job.get('pid')} "
-            f"status={job.get('status')}",
+            f"- id={job.get('id')} name={job.get('name')} pid={job.get('pid')} status={job.get('status')}",
         )
     return 0
 

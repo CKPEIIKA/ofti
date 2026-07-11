@@ -61,10 +61,7 @@ def test_run_manifest_load_verify_and_restore_error_branches(tmp_path: Path) -> 
 
     missing_inputs = tmp_path / "missing-inputs.json"
     missing_inputs.write_text(
-        (
-            '{"manifest_kind": "ofti_run_manifest", "case": {"path": "."}, '
-            '"inputs": {"inputs_copy_path": "inputs"}}'
-        ),
+        ('{"manifest_kind": "ofti_run_manifest", "case": {"path": "."}, "inputs": {"inputs_copy_path": "inputs"}}'),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="recorded inputs directory not found"):
@@ -85,7 +82,9 @@ def test_run_manifest_helpers_cover_provenance_and_selection_branches(
 ) -> None:
     case = _make_case(tmp_path / "case")
     assert run_manifest.collect_case_inputs(case, roots=["system", "missing"])
-    assert run_manifest.resolve_manifest_output(case, tmp_path / "explicit.json") == (tmp_path / "explicit.json").resolve()
+    assert (
+        run_manifest.resolve_manifest_output(case, tmp_path / "explicit.json") == (tmp_path / "explicit.json").resolve()
+    )
     assert run_manifest._mesh_hash([{"path": "system/controlDict", "sha256": "x"}]) is None
     assert run_manifest._manifest_roots({"inputs": {"roots": "bad"}}) == run_manifest.DEFAULT_INPUT_ROOTS
     assert run_manifest._normalize_manifest_roots(["system,constant", "system"]) == ["system", "constant"]
@@ -185,10 +184,7 @@ def test_run_manifest_remaining_error_and_copy_branches(
     inputs.mkdir()
     (inputs / "system").write_text("flat system input\n", encoding="utf-8")
     manifest.write_text(
-        (
-            '{"manifest_kind": "ofti_run_manifest", "case": {"path": "."}, '
-            '"inputs": {"inputs_copy_path": "inputs"}}'
-        ),
+        ('{"manifest_kind": "ofti_run_manifest", "case": {"path": "."}, "inputs": {"inputs_copy_path": "inputs"}}'),
         encoding="utf-8",
     )
     restored = run_manifest.restore_run_manifest(manifest, tmp_path / "flat-restored", only=["system"])
@@ -207,11 +203,15 @@ def test_run_manifest_remaining_error_and_copy_branches(
         "missing": [],
     }
 
-    monkeypatch.setattr(run_manifest, "run_trusted", lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="", stderr=""))
+    monkeypatch.setattr(
+        run_manifest, "run_trusted", lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="", stderr="")
+    )
     assert run_manifest._effective_openfoam_env(bashrc) == run_manifest._selected_env(os.environ)
     assert run_manifest._resolve_solver_binary_path("simpleFoam", bashrc=bashrc) is None
 
-    monkeypatch.setattr(run_manifest, "run_trusted", lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="\n", stderr=""))
+    monkeypatch.setattr(
+        run_manifest, "run_trusted", lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="\n", stderr="")
+    )
     assert run_manifest._resolve_solver_binary_path("simpleFoam", bashrc=bashrc) is None
 
 

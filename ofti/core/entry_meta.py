@@ -115,8 +115,7 @@ def refresh_entry_cache(
 
 
 def boundary_condition_info(file_path: Path, full_key: str) -> list[str]:
-    """Provide extra info for boundary patches: show type/value when possible.
-    """
+    """Provide extra info for boundary patches: show type/value when possible."""
     parts = full_key.split(".")
     info: list[str] = []
     if "boundaryField" not in parts:
@@ -268,8 +267,7 @@ def detect_type_with_foamlib(
 
 
 def _guess_validator(key: str) -> Validator:
-    """Simple heuristic to choose a validator based on key name.
-    """
+    """Simple heuristic to choose a validator based on key name."""
     lower = key.lower()
     if any(tok in lower for tok in ("on", "off", "switch", "enable", "disable")):
         return bool_flag

@@ -108,18 +108,18 @@ def diagnostics_screen(
         ("foamSystemCheck", ["foamSystemCheck"]),
         ("foamInstallationTest", ["foamInstallationTest"]),
     ]
-    labels = [
-        "Case report",
-        "Dictionary compare",
-    ] + [name for name, _ in tools] + ["Parallel consistency check"]
+    labels = (
+        [
+            "Case report",
+            "Dictionary compare",
+        ]
+        + [name for name, _ in tools]
+        + ["Parallel consistency check"]
+    )
     disabled = None
     if _no_foam_active():
         disabled = set(range(1, len(labels)))
-    status_line = (
-        "Limited mode: OpenFOAM env not found (simple editor only)"
-        if _no_foam_active()
-        else None
-    )
+    status_line = "Limited mode: OpenFOAM env not found (simple editor only)" if _no_foam_active() else None
     menu = build_menu(
         stdscr,
         "Diagnostics",

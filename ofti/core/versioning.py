@@ -59,12 +59,8 @@ def get_dict_path(kind: str, *, version: str | None = None, fork: str | None = N
         fork = info.fork
     legacy = is_legacy_version(version, fork=fork)
     mappings = {
-        "turbulence": "constant/RASProperties"
-        if legacy
-        else "constant/turbulenceProperties",
-        "turbulenceproperties": "constant/RASProperties"
-        if legacy
-        else "constant/turbulenceProperties",
+        "turbulence": "constant/RASProperties" if legacy else "constant/turbulenceProperties",
+        "turbulenceproperties": "constant/RASProperties" if legacy else "constant/turbulenceProperties",
         "thermophysical": "constant/thermophysicalProperties",
         "thermophysicalproperties": "constant/thermophysicalProperties",
         "transport": "constant/transportProperties",

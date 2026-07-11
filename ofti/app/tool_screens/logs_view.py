@@ -144,7 +144,4 @@ def _read_log_view_text(path: Path) -> str:
     if size <= _LOG_VIEW_MAX_BYTES:
         return path.read_text(encoding="utf-8", errors="ignore")
     text = read_log_text(path, max_bytes=_LOG_VIEW_MAX_BYTES)
-    return (
-        f"[large log: showing last {_LOG_VIEW_MAX_BYTES} bytes "
-        f"of {size} bytes from {path.name}]\n\n{text}"
-    )
+    return f"[large log: showing last {_LOG_VIEW_MAX_BYTES} bytes of {size} bytes from {path.name}]\n\n{text}"

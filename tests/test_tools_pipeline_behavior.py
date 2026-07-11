@@ -145,7 +145,9 @@ def test_pipeline_editor_keypaths(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
         lambda _path: ([["echo", "1"], ["echo", "2"]], []),
     )
     monkeypatch.setattr(pipeline, "_run_pipeline_commands", lambda *_a, **_k: messages.append("run"))
-    pipeline.pipeline_editor_screen(_Screen(keys=[ord("j"), ord("k"), ord("u"), ord("n"), ord("d"), ord("r"), ord("h")]), case)
+    pipeline.pipeline_editor_screen(
+        _Screen(keys=[ord("j"), ord("k"), ord("u"), ord("n"), ord("d"), ord("r"), ord("h")]), case
+    )
     assert "run" in messages
 
     monkeypatch.setattr(

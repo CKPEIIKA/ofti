@@ -111,7 +111,7 @@ def test_postprocessing_browser_and_presets_branches(
     assert postprocessing._prompt_line(screen, "x") == ""
 
 
-def test_postprocessing_sampling_and_parametric_error_paths(
+def test_postprocessing_sampling_error_paths(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -119,11 +119,11 @@ def test_postprocessing_sampling_and_parametric_error_paths(
     case.mkdir()
     screen = _Screen()
     shown: list[str] = []
-    viewed: list[str] = []
-
     monkeypatch.setattr(postprocessing, "_show_message", lambda _s, text: shown.append(text))
     options = [
-        types.SimpleNamespace(label="sample", enabled=False, command=["postProcess"], required_path="system/sampleDict"),
+        types.SimpleNamespace(
+            label="sample", enabled=False, command=["postProcess"], required_path="system/sampleDict"
+        ),
     ]
     monkeypatch.setattr(postprocessing.postprocessing_core, "sampling_options", lambda _case: options)
     monkeypatch.setattr(postprocessing, "build_menu", lambda *_a, **_k: _Menu(0))
@@ -133,6 +133,17 @@ def test_postprocessing_sampling_and_parametric_error_paths(
     monkeypatch.setattr(postprocessing, "build_menu", lambda *_a, **_k: _Menu(1))
     postprocessing.sampling_sets_screen(screen, case)
 
+
+def test_postprocessing_parametric_error_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    screen = _Screen()
+    shown: list[str] = []
+    viewed: list[str] = []
+    monkeypatch.setattr(postprocessing, "_show_message", lambda _s, text: shown.append(text))
     postprocessing.parametric_presets_screen(screen, case)
     assert "ofti.parametric not found" in shown[-1]
 
@@ -155,14 +166,18 @@ def test_postprocessing_sampling_and_parametric_error_paths(
     postprocessing.parametric_presets_screen(screen, case)
     assert "No presets found in ofti.parametric." in shown[-1]
 
-    preset = types.SimpleNamespace(name="demo", dict_path="system/controlDict", entry="application", values=["simpleFoam"])
+    preset = types.SimpleNamespace(
+        name="demo", dict_path="system/controlDict", entry="application", values=["simpleFoam"]
+    )
     monkeypatch.setattr(postprocessing.postprocessing_core, "read_parametric_presets", lambda _p: ([preset], []))
     monkeypatch.setattr(postprocessing, "build_menu", lambda *_a, **_k: _Menu(1))
     postprocessing.parametric_presets_screen(screen, case)
 
     monkeypatch.setattr(postprocessing, "build_menu", lambda *_a, **_k: _Menu(0))
     monkeypatch.setattr(postprocessing, "prompt_line", lambda *_a, **_k: "y")
-    monkeypatch.setattr(postprocessing, "build_parametric_cases", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad preset")))
+    monkeypatch.setattr(
+        postprocessing, "build_parametric_cases", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad preset"))
+    )
     postprocessing.parametric_presets_screen(screen, case)
     assert "Parametric setup failed: bad preset" in shown[-1]
 
@@ -172,7 +187,7 @@ def test_postprocessing_sampling_and_parametric_error_paths(
     assert "All cases completed." in viewed[-1]
 
 
-def test_diagnostics_case_report_compare_and_menu(
+def test_diagnostics_case_report_and_compare(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -183,8 +198,6 @@ def test_diagnostics_case_report_compare_and_menu(
     screen = _Screen()
     shown: list[str] = []
     viewed: list[str] = []
-    parallel_calls: list[bool] = []
-    original_prompt = diagnostics._prompt_line
 
     class _Viewer:
         def __init__(self, _s: object, text: str) -> None:
@@ -224,6 +237,18 @@ def test_diagnostics_case_report_compare_and_menu(
     diagnostics.dictionary_compare_screen(screen, case)
     assert "missing in current: x" in viewed[-1]
 
+
+def test_diagnostics_menu_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    screen = _Screen()
+    shown: list[str] = []
+    parallel_calls: list[bool] = []
+    original_prompt = diagnostics._prompt_line
+    monkeypatch.setattr(diagnostics, "_show_message", lambda _s, text: shown.append(text))
     monkeypatch.setattr(diagnostics, "_no_foam_active", lambda: True)
     monkeypatch.setattr(diagnostics, "build_menu", lambda *_a, **_k: _Menu(-1))
     diagnostics.diagnostics_screen(screen, case)
@@ -238,7 +263,9 @@ def test_diagnostics_case_report_compare_and_menu(
     diagnostics.diagnostics_screen(screen, case)
 
     monkeypatch.setattr(diagnostics, "build_menu", lambda *_a, **_k: _Menu(4))
-    monkeypatch.setattr(diagnostics.run_tools, "parallel_consistency_screen", lambda *_a, **_k: parallel_calls.append(True))
+    monkeypatch.setattr(
+        diagnostics.run_tools, "parallel_consistency_screen", lambda *_a, **_k: parallel_calls.append(True)
+    )
     diagnostics.diagnostics_screen(screen, case)
 
     monkeypatch.setattr(diagnostics, "build_menu", lambda *_a, **_k: _Menu(2))
@@ -278,7 +305,9 @@ def test_shell_tools_job_status_and_back_choice(monkeypatch: pytest.MonkeyPatch,
         lambda _c: [{"name": "solver", "pid": 1, "status": "running", "log": "log.simpleFoam", "started_at": 1.0}],
     )
     monkeypatch.setattr(shell_tools, "key_in", lambda _k, keys: bool(keys))
-    monkeypatch.setattr(shell_tools, "get_config", lambda: types.SimpleNamespace(keys={"quit": [ord("x")], "back": [ord("b")]}))
+    monkeypatch.setattr(
+        shell_tools, "get_config", lambda: types.SimpleNamespace(keys={"quit": [ord("x")], "back": [ord("b")]})
+    )
     shell_tools.job_status_poll_screen(screen, case)
     assert screen.timeout_value == -1
 
@@ -294,14 +323,12 @@ def test_shell_tools_job_status_and_back_choice(monkeypatch: pytest.MonkeyPatch,
     shell_tools.run_shell_script_screen(screen, case)
 
 
-def test_solver_live_paths_and_zero_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_solver_live_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     case = tmp_path / "case"
     case.mkdir()
     screen = _Screen(keys=[ord("n"), ord("y"), ord("h")])
     shown: list[str] = []
     called: list[str] = []
-    original_ensure_zero_dir = solver._ensure_zero_dir
-
     monkeypatch.setattr(solver, "_show_message", lambda _s, text: shown.append(text))
     monkeypatch.setattr(solver, "resolve_solver_name", lambda _c: (None, "no solver"))
     solver.run_current_solver_live(screen, case)
@@ -328,8 +355,12 @@ def test_solver_live_paths_and_zero_dir(monkeypatch: pytest.MonkeyPatch, tmp_pat
     solver.run_current_solver_live(screen, case)
     assert called[-1] == "shell"
 
-    # zero-dir helper branches
-    monkeypatch.setattr(solver, "_ensure_zero_dir", original_ensure_zero_dir)
+
+def test_solver_zero_dir_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+    shown: list[str] = []
+    monkeypatch.setattr(solver, "_show_message", lambda _s, text: shown.append(text))
     monkeypatch.setattr(
         solver.foamlib_runner,
         "restore_0_dir",

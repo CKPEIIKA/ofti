@@ -63,10 +63,7 @@ def root_status_line(state: AppState) -> str | None:
 
 
 def has_processor_dirs(case_path: Path) -> bool:
-    return any(
-        entry.is_dir() and entry.name.startswith("processor")
-        for entry in case_path.iterdir()
-    )
+    return any(entry.is_dir() and entry.name.startswith("processor") for entry in case_path.iterdir())
 
 
 def _merge_status_lines(base: str | None, extra: str | None) -> str | None:

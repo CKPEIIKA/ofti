@@ -290,10 +290,7 @@ def _raw_key_candidate(raw: str) -> str | None:
 
 
 def _line_key_token(line: str) -> str | None:
-    if "{" in line:
-        token = line.split("{", 1)[0].strip().split()[:1]
-    else:
-        token = line.replace(";", " ").split()[:1]
+    token = line.split("{", 1)[0].strip().split()[:1] if "{" in line else line.replace(";", " ").split()[:1]
     return token[0].strip('"') if token else None
 
 

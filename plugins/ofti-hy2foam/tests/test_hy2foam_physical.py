@@ -37,9 +37,7 @@ def _scalar(
         body = "\n".join(f"{value:g}" for value in values)
         internal = f"nonuniform List<scalar>\n{len(values)}\n(\n{body}\n)"
     path.write_text(
-        "FoamFile{ version 2.0; format ascii; class volScalarField; }\n"
-        f"internalField {internal};\n"
-        + boundary,
+        f"FoamFile{{ version 2.0; format ascii; class volScalarField; }}\ninternalField {internal};\n" + boundary,
         encoding="utf-8",
     )
 
@@ -142,11 +140,7 @@ def test_profile_diagnostics_reports_species_sum_and_two_temperature(tmp_path: P
 
 def test_physical_payload_reports_patch_ranges(tmp_path: Path) -> None:
     case = _case(tmp_path / "case")
-    boundary = (
-        "boundaryField\n{\n"
-        "  wall\n  {\n    type fixedValue;\n    value uniform 1200;\n  }\n"
-        "}\n"
-    )
+    boundary = "boundaryField\n{\n  wall\n  {\n    type fixedValue;\n    value uniform 1200;\n  }\n}\n"
     _scalar(case / "0" / "Tt", [1000.0], boundary=boundary)
     _scalar(case / "0" / "Tv", [1000.0])
 

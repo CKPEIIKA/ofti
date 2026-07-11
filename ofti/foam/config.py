@@ -229,11 +229,7 @@ def _apply_file_config(cfg: Config, raw: dict[str, Any]) -> None:
     keys = raw.get("keys")
     if isinstance(keys, dict):
         for key, value in keys.items():
-            if (
-                isinstance(key, str)
-                and isinstance(value, list)
-                and all(isinstance(item, str) for item in value)
-            ):
+            if isinstance(key, str) and isinstance(value, list) and all(isinstance(item, str) for item in value):
                 cfg.keys[key] = cast("list[str]", value)
     examples_value = raw.get("example_paths")
     if isinstance(examples_value, list):
@@ -285,11 +281,7 @@ def _apply_env_overrides(cfg: Config) -> None:
             cfg.courant_limit = float(env_courant.strip())
     env_examples = os.environ.get("OFTI_EXAMPLE_PATHS")
     if env_examples is not None:
-        paths = [
-            item.strip()
-            for item in env_examples.split(os.pathsep)
-            if item.strip()
-        ]
+        paths = [item.strip() for item in env_examples.split(os.pathsep) if item.strip()]
         cfg.example_paths = paths
     _apply_env_path("OFTI_CASE_ROOT", cfg.paths, "case_root")
     _apply_env_path("OFTI_QUEUE_ROOT", cfg.paths, "queue_root")

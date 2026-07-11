@@ -227,9 +227,7 @@ def _parametric_form(
             options,
             menu_key="menu:parametric_form",
             hint_provider=hint_for,
-            status_line=(
-                "Creates sibling case folders; existing destination folders cause an error"
-            ),
+            status_line=("Creates sibling case folders; existing destination folders cause an error"),
             help_lines=_parametric_form_help_lines(),
         )
         choice = menu.navigate()
@@ -243,12 +241,20 @@ def _parametric_form(
         }
         if choice in handlers:
             dict_path, entry, values, run_solver = handlers[choice](
-                stdscr, dict_path, entry, values, run_solver,
+                stdscr,
+                dict_path,
+                entry,
+                values,
+                run_solver,
             )
             continue
         if choice == 4:
             result = _finalize_parametric(
-                stdscr, dict_path, entry, values, run_solver,
+                stdscr,
+                dict_path,
+                entry,
+                values,
+                run_solver,
             )
             if result is not None:
                 return result

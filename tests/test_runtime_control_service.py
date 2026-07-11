@@ -131,7 +131,7 @@ def test_runtime_control_resolve_solver_log_fallback(tmp_path: Path) -> None:
     found = svc.resolve_solver_log(
         case,
         "simpleFoam",
-        resolve_log_source_fn=lambda _source: (_source / "missing"),
+        resolve_log_source_fn=lambda _source: _source / "missing",
     )
     assert found == (case / "log.simpleFoam").resolve()
 

@@ -168,10 +168,7 @@ def _running_jobs(case_path: Path) -> list[dict[str, Any]]:
 
 
 def _job_label(job: dict[str, Any]) -> str:
-    return (
-        f"{job.get('name', 'job')} pid={job.get('pid', '?')} "
-        f"status={job.get('status', 'unknown')}"
-    )
+    return f"{job.get('name', 'job')} pid={job.get('pid', '?')} status={job.get('status', 'unknown')}"
 
 
 def _job_action_screen(

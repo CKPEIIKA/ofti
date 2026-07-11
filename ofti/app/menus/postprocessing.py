@@ -51,21 +51,18 @@ def postprocessing_menu(
     disabled_helpers: dict[int, str] = {}
     if state.no_foam:
         for idx in range(len(options) - 1):
-            disabled_reasons[idx] = (
-                "OpenFOAM environment not initialized; run :foamenv to enable simulation features."
-            )
+            disabled_reasons[idx] = "OpenFOAM environment not initialized; run :foamenv to enable simulation features."
     if not has_processor_dirs(case_path):
         disabled.add(0)
         disabled_reasons.setdefault(
-            0, "Post-processing requires processor* directories (decomposePar first).",
+            0,
+            "Post-processing requires processor* directories (decomposePar first).",
         )
         disabled_helpers[0] = "diagnostics"
     foamcalc_dict = case_path / "system" / "foamCalcDict"
     if not foamcalc_dict.is_file():
         disabled.add(10)
-        disabled_reasons[10] = (
-            "foamCalc requires system/foamCalcDict; create it via Config Manager."
-        )
+        disabled_reasons[10] = "foamCalc requires system/foamCalcDict; create it via Config Manager."
         disabled_helpers[10] = "config"
     if not postprocessing_tables_available():
         disabled.add(5)

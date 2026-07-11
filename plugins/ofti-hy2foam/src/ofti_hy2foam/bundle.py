@@ -10,10 +10,8 @@ class Hy2FoamBundleHints:
         if not _looks_like_hy2foam(case_dir):
             return ()
         return (
-            "plugin ofti-hy2foam: target host needs compatible "
-            "OpenFOAM/hyStrath/hy2Foam runtime libraries",
-            "plugin ofti-hy2foam: verify thermo, chemistry, transport, "
-            "and species order files on target host",
+            "plugin ofti-hy2foam: target host needs compatible OpenFOAM/hyStrath/hy2Foam runtime libraries",
+            "plugin ofti-hy2foam: verify thermo, chemistry, transport, and species order files on target host",
         )
 
 

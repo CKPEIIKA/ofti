@@ -23,11 +23,7 @@ def emit_json(payload: object, args: argparse.Namespace, *, file: TextIO | None 
     error output.
     """
     version = json_version(args)
-    stamped = (
-        stamp_payload(payload, command_name(args))
-        if version == 1
-        else _stamp_payload_v2(payload, args)
-    )
+    stamped = stamp_payload(payload, command_name(args)) if version == 1 else _stamp_payload_v2(payload, args)
     print(json.dumps(stamped, indent=2, sort_keys=True), file=file)
 
 

@@ -352,7 +352,10 @@ def test_postprocessing_browser_sampling_and_presets(
     monkeypatch.setattr(
         postprocessing.postprocessing_core,
         "read_parametric_presets",
-        lambda *_a, **_k: ([SimpleNamespace(name="demo", dict_path="system/controlDict", entry="application", values=["simpleFoam"])], []),
+        lambda *_a, **_k: (
+            [SimpleNamespace(name="demo", dict_path="system/controlDict", entry="application", values=["simpleFoam"])],
+            [],
+        ),
     )
     monkeypatch.setattr(postprocessing, "build_menu", _menu_sequence([0]))
     monkeypatch.setattr(postprocessing, "_prompt_line", lambda *_a, **_k: "y")
@@ -420,7 +423,10 @@ def test_parametric_helpers_and_screen_error_paths(
     monkeypatch.setattr(
         parametric_tools.postprocessing_core,
         "read_parametric_presets",
-        lambda *_a, **_k: ([SimpleNamespace(name="demo", dict_path="system/controlDict", entry="application", values=["simpleFoam"])], []),
+        lambda *_a, **_k: (
+            [SimpleNamespace(name="demo", dict_path="system/controlDict", entry="application", values=["simpleFoam"])],
+            [],
+        ),
     )
     monkeypatch.setattr(parametric_tools, "build_menu", lambda *_a, **_k: _OneChoiceMenu(0))
     monkeypatch.setattr(

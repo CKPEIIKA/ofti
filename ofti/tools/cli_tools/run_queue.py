@@ -599,10 +599,7 @@ def _queue_fill_foamlib_missing_finished(
 
 
 def _queue_record_path(cases: list[Path], *, queue_root: Path | None) -> Path:
-    if queue_root is not None:
-        root = queue_root.expanduser().resolve()
-    else:
-        root = _queue_common_root(cases)
+    root = queue_root.expanduser().resolve() if queue_root is not None else _queue_common_root(cases)
     queue_id = f"queue-{int(time.time())}"
     return root / ".ofti" / "queues" / f"{queue_id}.json"
 
@@ -857,11 +854,7 @@ def _queue_outcome(status_row: Mapping[str, Any], *, returncode: int | None) -> 
         return "crashed"
     latest_time = status_row.get("latest_time")
     end_time = status_row.get("end_time")
-    if (
-        isinstance(latest_time, (int, float))
-        and isinstance(end_time, (int, float))
-        and latest_time >= end_time
-    ):
+    if isinstance(latest_time, (int, float)) and isinstance(end_time, (int, float)) and latest_time >= end_time:
         return "time"
     if (
         int(status_row.get("criteria_total", 0) or 0) > 0

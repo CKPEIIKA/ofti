@@ -44,8 +44,7 @@ def case_status_lines(payload: Mapping[str, Any]) -> list[str]:
     lines.append(f"eta_to_criteria_start={payload.get('eta_seconds_to_criteria_start')}")
     lines.append(f"eta_to_end_time={payload.get('eta_seconds_to_end_time')}")
     lines.append(
-        f"log_path={payload.get('log_path')} "
-        f"fresh={payload.get('log_fresh')} running={payload.get('running')}",
+        f"log_path={payload.get('log_path')} fresh={payload.get('log_fresh')} running={payload.get('running')}",
     )
     tracked = payload.get("tracked_solver_processes", [])
     untracked = payload.get("untracked_solver_processes", [])

@@ -133,7 +133,9 @@ def pipeline_editor_screen(stdscr: Any, case_path: Path) -> None:
 
 
 def _run_pipeline_commands(
-    stdscr: Any, case_path: Path, commands: list[list[str]],
+    stdscr: Any,
+    case_path: Path,
+    commands: list[list[str]],
 ) -> None:
     results = pipeline_service.run_pipeline_commands(
         case_path,
@@ -199,7 +201,9 @@ def _pipeline_pick_tool(stdscr: Any, case_path: Path) -> list[str] | None:
 
 
 def _render_pipeline_editor(
-    stdscr: Any, commands: list[list[str]], cursor: int,
+    stdscr: Any,
+    commands: list[list[str]],
+    cursor: int,
 ) -> None:
     stdscr.clear()
     height, width = stdscr.getmaxyx()

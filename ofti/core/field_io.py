@@ -73,9 +73,7 @@ def resolve_field_names(
     if requested:
         return unique(requested)
     return sorted(
-        path.name
-        for path in time_dir.iterdir()
-        if path.is_file() and foamlib_integration.is_field_file(path)
+        path.name for path in time_dir.iterdir() if path.is_file() and foamlib_integration.is_field_file(path)
     )
 
 
@@ -102,8 +100,7 @@ def _decomposed_field_paths(path: Path) -> list[Path] | None:
     if existing and len(existing) != len(matches):
         missing = [candidate.parent.parent.name for candidate in matches if not candidate.is_file()]
         raise ValueError(
-            f"incomplete decomposed field {field_rel} at {time_name}; "
-            f"missing in {', '.join(missing)}",
+            f"incomplete decomposed field {field_rel} at {time_name}; missing in {', '.join(missing)}",
         )
     return existing if len(existing) > 1 else None
 
@@ -186,8 +183,7 @@ def _nonuniform_field_data(path: Path, match: re.Match[str]) -> FieldData:
     declared = int(match.group("count"))
     if declared != len(values):
         raise ValueError(
-            f"internalField count mismatch for {path.name}: "
-            f"declared {declared}, parsed {len(values)}",
+            f"internalField count mismatch for {path.name}: declared {declared}, parsed {len(values)}",
         )
     return FieldData(
         name=path.name,

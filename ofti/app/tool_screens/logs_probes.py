@@ -17,11 +17,7 @@ def probes_viewer_screen(stdscr: Any, case_path: Path) -> None:
         _show_message(stdscr, "postProcessing/probes not found in case directory.")
         return
 
-    candidates = [
-        path
-        for path in probes_root.rglob("*")
-        if path.is_file() and path.name != "positions"
-    ]
+    candidates = [path for path in probes_root.rglob("*") if path.is_file() and path.name != "positions"]
     if not candidates:
         _show_message(stdscr, "No probe files found under postProcessing/probes.")
         return

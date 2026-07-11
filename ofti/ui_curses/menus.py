@@ -509,8 +509,7 @@ class Submenu(Menu):
 
 
 class RootMenu(Menu):
-    """Root-level menu where 'q' quits the program but 'h' does not.
-    """
+    """Root-level menu where 'q' quits the program but 'h' does not."""
 
     def __init__(
         self,

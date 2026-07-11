@@ -21,9 +21,7 @@ def _case(path: Path) -> Path:
 
 
 def _species_field(path: Path, patches: tuple[str, ...]) -> None:
-    patch_blocks = "\n".join(
-        f"  {patch}\n  {{\n    type zeroGradient;\n  }}" for patch in patches
-    )
+    patch_blocks = "\n".join(f"  {patch}\n  {{\n    type zeroGradient;\n  }}" for patch in patches)
     path.write_text(
         "FoamFile{ version 2.0; format ascii; class volScalarField; }\n"
         "internalField uniform 0.5;\n"
@@ -36,11 +34,7 @@ def test_preflight_detects_missing_fields_and_duplicate_function_objects(tmp_pat
     case = _case(tmp_path / "case")
     (case / "0" / "Tt").write_text("placeholder\n", encoding="utf-8")
     (case / "system" / "controlDict").write_text(
-        "application hy2Foam;\n"
-        "functions\n{\n"
-        "  probes { type probes; }\n"
-        "  probes { type probes; }\n"
-        "}\n",
+        "application hy2Foam;\nfunctions\n{\n  probes { type probes; }\n  probes { type probes; }\n}\n",
         encoding="utf-8",
     )
 

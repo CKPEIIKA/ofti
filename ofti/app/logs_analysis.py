@@ -122,8 +122,7 @@ def _append_residual_summary(lines: list[str], residuals: dict[str, list[float]]
             if not values:
                 continue
             lines.append(
-                f"- {field}: last={values[-1]:.3g} min={min(values):.3g} "
-                f"max={max(values):.3g}",
+                f"- {field}: last={values[-1]:.3g} min={min(values):.3g} max={max(values):.3g}",
             )
 
 

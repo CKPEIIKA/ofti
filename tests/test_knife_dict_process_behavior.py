@@ -175,7 +175,10 @@ def test_knife_proc_graph_helpers(tmp_path: Path) -> None:
 
     assert knife._has_ancestor(11, {10}, table) is True
     assert knife._has_ancestor(50, {10}, table) is False
-    cyc = {1: knife.ProcEntry(pid=1, ppid=2, args=["x"], cwd=case), 2: knife.ProcEntry(pid=2, ppid=1, args=["x"], cwd=case)}
+    cyc = {
+        1: knife.ProcEntry(pid=1, ppid=2, args=["x"], cwd=case),
+        2: knife.ProcEntry(pid=2, ppid=1, args=["x"], cwd=case),
+    }
     assert knife._has_ancestor(1, {9}, cyc) is False
 
     assert knife._entry_targets_case(table[10], case) is True
@@ -279,7 +282,9 @@ def test_knife_current_payload_uses_live_scan_to_relax_scope(
         seen.append(require_case_target)
         if require_case_target:
             return []
-        return [{"pid": 404, "solver": "simpleFoam", "role": "solver", "tracked": False, "command": "simpleFoam -parallel"}]
+        return [
+            {"pid": 404, "solver": "simpleFoam", "role": "solver", "tracked": False, "command": "simpleFoam -parallel"}
+        ]
 
     monkeypatch.setattr(knife_service, "_scan_proc_solver_processes", _scan)
     payload = knife.current_payload(case)
@@ -719,7 +724,9 @@ def test_dict_compare_private_helpers(tmp_path: Path) -> None:
     dat = left / "maxCoSchedule.dat"
     dat.write_text("1\n")
     assert dict_compare._is_dictionary("maxCoSchedule.dat", dat, dat) is False
-    assert dict_compare._is_dictionary("system/controlDict", left / "system" / "controlDict", right / "system" / "controlDict")
+    assert dict_compare._is_dictionary(
+        "system/controlDict", left / "system" / "controlDict", right / "system" / "controlDict"
+    )
 
     (left / "system" / "sampleDict").write_text("FoamFile{}")
     assert dict_compare._is_dictionary(
@@ -963,10 +970,7 @@ def test_knife_campaign_summary_paths_and_group_helpers(tmp_path: Path) -> None:
     summary = root / "summary.csv"
     summary.parent.mkdir(parents=True, exist_ok=True)
     summary.write_text(
-        "case,speed\n"
-        f"{case_a.name},15M\n"
-        f"{case_b.resolve()},20M\n"
-        "missing,30M\n",
+        f"case,speed\n{case_a.name},15M\n{case_b.resolve()},20M\nmissing,30M\n",
     )
     paths = knife.campaign_case_paths(root, summary_csv=summary)
     assert paths == [case_a.resolve(), case_b.resolve()]
@@ -987,11 +991,14 @@ def test_knife_eta_helpers_cover_modes() -> None:
         eta_to_end_time=20.0,
     )
     assert details["eta_worst_seconds"] == 4.0
-    assert knife_service.select_eta(
-        requested_mode="criteria",
-        criteria_details=details,
-        eta_to_end_time=20.0,
-    )["mode"] == "criteria"
+    assert (
+        knife_service.select_eta(
+            requested_mode="criteria",
+            criteria_details=details,
+            eta_to_end_time=20.0,
+        )["mode"]
+        == "criteria"
+    )
 
     details_start = knife_service.criteria_eta_details(
         [{"status": "fail", "key": "c2", "eta_seconds": None, "unmet_reason": "startup"}],
@@ -999,11 +1006,14 @@ def test_knife_eta_helpers_cover_modes() -> None:
         eta_to_end_time=40.0,
     )
     assert details_start["reason"] == "criteria_start_window"
-    assert knife_service.select_eta(
-        requested_mode="criteria",
-        criteria_details=details_start,
-        eta_to_end_time=40.0,
-    )["mode"] == "criteria_start"
+    assert (
+        knife_service.select_eta(
+            requested_mode="criteria",
+            criteria_details=details_start,
+            eta_to_end_time=40.0,
+        )["mode"]
+        == "criteria_start"
+    )
 
     unavailable = knife_service.select_eta(
         requested_mode="endtime",

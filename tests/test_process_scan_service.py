@@ -244,10 +244,20 @@ def test_proc_table_excludes_zombie_processes(tmp_path: Path) -> None:
     proc_root.mkdir()
     # A defunct solver: empty cmdline, but comm still reads the solver name.
     _write_proc_entry(
-        proc_root, pid=501, ppid=1, cmdline=b"", cwd=None, comm="simpleFoam", state="Z",
+        proc_root,
+        pid=501,
+        ppid=1,
+        cmdline=b"",
+        cwd=None,
+        comm="simpleFoam",
+        state="Z",
     )
     _write_proc_entry(
-        proc_root, pid=502, ppid=1, cmdline=b"simpleFoam\x00-parallel\x00", cwd=None,
+        proc_root,
+        pid=502,
+        ppid=1,
+        cmdline=b"simpleFoam\x00-parallel\x00",
+        cwd=None,
     )
 
     table = svc.proc_table(proc_root)
@@ -365,9 +375,7 @@ def test_scan_processes_infers_case_from_shell_with_multiple_cd_segments(tmp_pat
         proc_root,
         pid=520,
         ppid=1,
-        cmdline=(
-            f"bash\x00-lc\x00cd '/tmp' && cd '{case}' && mpirun -np 2 simpleFoam -parallel\x00"
-        ).encode(),
+        cmdline=(f"bash\x00-lc\x00cd '/tmp' && cd '{case}' && mpirun -np 2 simpleFoam -parallel\x00").encode(),
         cwd=None,
     )
     _write_proc_entry(

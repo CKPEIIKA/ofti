@@ -48,10 +48,7 @@ def postprocessing_browser_screen(stdscr: Any, case_path: Path) -> None:
 
 def postprocessing_tables_screen(stdscr: Any, case_path: Path) -> None:
     if not foam_postprocessing.available():
-        reason = (
-            foam_postprocessing.availability_error()
-            or "foamlib postprocessing extras unavailable."
-        )
+        reason = foam_postprocessing.availability_error() or "foamlib postprocessing extras unavailable."
         _show_message(
             stdscr,
             "\n".join(
@@ -71,10 +68,7 @@ def postprocessing_tables_screen(stdscr: Any, case_path: Path) -> None:
     if not sources:
         _show_message(stdscr, "No postProcessing table sources found.")
         return
-    labels = [
-        _table_source_label(row)
-        for row in sources
-    ] + ["Back"]
+    labels = [_table_source_label(row) for row in sources] + ["Back"]
     menu = build_menu(
         stdscr,
         "PostProcessing tables",

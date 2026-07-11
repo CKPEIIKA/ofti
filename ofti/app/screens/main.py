@@ -64,12 +64,14 @@ def main_menu_screen(
         banner_lines=case_banner_lines(banner_meta),
         initial_index=initial_index,
         command_handler=lambda cmd: handle_command(
-            stdscr, case_path, state, cmd, command_callbacks,
+            stdscr,
+            case_path,
+            state,
+            cmd,
+            command_callbacks,
         ),
         command_suggestions=lambda: command_suggestions(case_path),
-        hint_provider=lambda idx: menu_hint("menu:root", menu_options[idx])
-        if 0 <= idx < len(menu_options)
-        else "",
+        hint_provider=lambda idx: menu_hint("menu:root", menu_options[idx]) if 0 <= idx < len(menu_options) else "",
         status_line=root_status_line(state),
         help_lines=main_menu_help(),
     )
@@ -79,6 +81,7 @@ def main_menu_screen(
 
     def menu_suggestions() -> list[str]:
         return command_suggestions(case_path)
+
     choice = root_menu.navigate()
     if choice in (-1, quit_index):
         return None

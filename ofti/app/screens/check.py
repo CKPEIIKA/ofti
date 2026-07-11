@@ -52,7 +52,9 @@ def start_check_thread(case_path: Path, state: AppState) -> None:
 
         try:
             results = verify_case(
-                case_path, progress=progress_callback, result_callback=result_callback,
+                case_path,
+                progress=progress_callback,
+                result_callback=result_callback,
             )
         except (OpenFOAMError, OSError):
             results = {}
@@ -153,13 +155,17 @@ def check_syntax_menu(
                 )
             elif key_in(key, cfg.keys.get("command", [])):
                 command = prompt_command(stdscr, command_suggestions(case_path))
-                if command and handle_command(
-                    stdscr,
-                    case_path,
-                    state,
-                    command,
-                    command_callbacks,
-                ) == "quit":
+                if (
+                    command
+                    and handle_command(
+                        stdscr,
+                        case_path,
+                        state,
+                        command,
+                        command_callbacks,
+                    )
+                    == "quit"
+                ):
                     return
             elif key_in(key, cfg.keys.get("select", [])):
                 file_path = files[current]
@@ -295,8 +301,7 @@ def show_check_result(
             back_hint = key_hint("back", "h")
             fix_hint = "f"
             stdscr.addstr(
-                f"Press {view_hint} to view file, {fix_hint} to auto-fix, "
-                f"or {back_hint} to return.\n",
+                f"Press {view_hint} to view file, {fix_hint} to auto-fix, or {back_hint} to return.\n",
             )
             stdscr.refresh()
         except curses.error:
@@ -360,8 +365,7 @@ def auto_fix_missing_required_entries(
     if fixed:
         show_message(
             stdscr,
-            "Inserted entries:\n"
-            + "\n".join(_format_fix_item(item, desc) for item, desc in fixed),
+            "Inserted entries:\n" + "\n".join(_format_fix_item(item, desc) for item, desc in fixed),
         )
         return
     if skipped:

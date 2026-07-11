@@ -70,17 +70,26 @@ class PluginRegistry:
 
     def add_physical_profile(self, provider: PhysicalRuleProvider) -> bool:
         return self._register(
-            self.physical_profiles, provider.name, provider, "physical profile",
+            self.physical_profiles,
+            provider.name,
+            provider,
+            "physical profile",
         )
 
     def add_knife_command(self, provider: KnifeCommand) -> bool:
         return self._register(
-            self.knife_commands, provider.name, provider, "knife command",
+            self.knife_commands,
+            provider.name,
+            provider,
+            "knife command",
         )
 
     def add_bundle_hint_provider(self, provider: BundleHintProvider) -> bool:
         return self._register(
-            self.bundle_hints, provider.name, provider, "bundle hint provider",
+            self.bundle_hints,
+            provider.name,
+            provider,
+            "bundle hint provider",
         )
 
     def _register(self, target: dict[str, Any], name: str, value: Any, kind: str) -> bool:

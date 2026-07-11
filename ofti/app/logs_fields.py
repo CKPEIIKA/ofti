@@ -182,11 +182,7 @@ def _summarize_patch_fields(field_path: Path, patches: list[str]) -> list[str]:
     for patch in patches:
         patch_type = _read_optional_node(field_path, f"boundaryField.{patch}.type")
         patch_value = _read_optional_node(field_path, f"boundaryField.{patch}.value")
-        type_text = (
-            str(patch_type).strip()
-            if patch_type is not None
-            else "<missing>"
-        )
+        type_text = str(patch_type).strip() if patch_type is not None else "<missing>"
         lines.append(f"- {patch}: type={type_text}")
         if patch_value is None:
             lines.append("    value: <not set>")

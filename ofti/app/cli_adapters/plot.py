@@ -65,9 +65,7 @@ def _plot_metrics(args: argparse.Namespace) -> int:
     print(f"execution_points={exec_data['count']} last={exec_data['last']}")
     if exec_data["delta_avg"] is not None:
         print(
-            "step_time="
-            f"min:{exec_data['delta_min']} avg:{exec_data['delta_avg']} "
-            f"max:{exec_data['delta_max']}",
+            f"step_time=min:{exec_data['delta_min']} avg:{exec_data['delta_avg']} max:{exec_data['delta_max']}",
         )
     print(f"residual_fields={','.join(payload['residual_fields'])}")
     return 0
@@ -95,7 +93,6 @@ def _plot_residuals(args: argparse.Namespace) -> int:
     print(f"log={payload['log']}")
     for row in payload["fields"]:
         print(
-            f"{row['field']}: count={row['count']} last={row['last']:.6g} "
-            f"min={row['min']:.6g} max={row['max']:.6g}",
+            f"{row['field']}: count={row['count']} last={row['last']:.6g} min={row['min']:.6g} max={row['max']:.6g}",
         )
     return 0

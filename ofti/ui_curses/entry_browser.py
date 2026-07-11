@@ -43,8 +43,7 @@ def entry_browser_screen(
     callbacks: BrowserCallbacks,
     initial_index: int | None = None,
 ) -> None:
-    """Browse entries in a file with a left-hand list and right-hand preview.
-    """
+    """Browse entries in a file with a left-hand list and right-hand preview."""
     base_entry: str | None = None
     stack: list[tuple[str | None, list[str], int]] = []
     cfg = get_config()
@@ -61,7 +60,8 @@ def entry_browser_screen(
         keywords = list_keywords(file_path)
     except OpenFOAMError as exc:
         callbacks.show_message(
-            stdscr, f"Error reading {file_path.relative_to(case_path)}: {exc}",
+            stdscr,
+            f"Error reading {file_path.relative_to(case_path)}: {exc}",
         )
         return
 
@@ -81,7 +81,9 @@ def entry_browser_screen(
         if full_key != last_key or last_meta is None:
             status_message(stdscr, f"Loading {full_key}...")
             value, type_label, subkeys, comments, info_lines, validator = get_entry_metadata(
-                cache if use_cache else {}, file_path, full_key,
+                cache if use_cache else {},
+                file_path,
+                full_key,
             )
             last_key = full_key
             last_meta = (value, type_label, subkeys, comments, info_lines, validator)
@@ -127,7 +129,13 @@ def entry_browser_screen(
                 return
         elif key_code == ord("o"):
             if _entry_browser_external_edit(
-                stdscr, file_path, case_path, cache, full_key, callbacks, use_cache,
+                stdscr,
+                file_path,
+                case_path,
+                cache,
+                full_key,
+                callbacks,
+                use_cache,
             ):
                 last_key = None
                 last_meta = None
@@ -181,7 +189,10 @@ def entry_browser_screen(
                     callbacks.show_message(stdscr, "Check OK.")
         elif key_in(key_code, cfg.keys.get("search", [])):
             new_index = _entry_browser_search(
-                stdscr, keywords, index, callbacks,
+                stdscr,
+                keywords,
+                index,
+                callbacks,
             )
             if new_index is not None:
                 index = new_index
@@ -249,10 +260,9 @@ def _draw_entry_browser(
         left_win.addstr(
             2,
             0,
-            (
-                f"j/k: move  l: edit  o: edit section  c: check  K: help  "
-                f"{view_hint}: view  {back_hint}: back"
-            )[: max(1, left_width)],
+            (f"j/k: move  l: edit  o: edit section  c: check  K: help  {view_hint}: view  {back_hint}: back")[
+                : max(1, left_width)
+            ],
         )
     except curses.error:
         pass
@@ -556,7 +566,9 @@ def _fzf_pick_entry_in_file(stdscr: Any, keywords: list[str]) -> int | None:
 
 
 def _open_in_external_editor(
-    stdscr: Any, initial_text: str, callbacks: BrowserCallbacks,
+    stdscr: Any,
+    initial_text: str,
+    callbacks: BrowserCallbacks,
 ) -> str | None:
     editor = os.environ.get("EDITOR") or "vi"
 

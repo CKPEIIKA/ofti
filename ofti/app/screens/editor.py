@@ -84,9 +84,7 @@ def scan_zero_dirs(case_path: Path) -> list[Path]:
     zero_dirs: list[Path] = []
     try:
         zero_dirs.extend(
-            Path(entry.path)
-            for entry in os.scandir(case_path)
-            if entry.is_dir() and entry.name.startswith("0")
+            Path(entry.path) for entry in os.scandir(case_path) if entry.is_dir() and entry.name.startswith("0")
         )
     except OSError:
         return []
@@ -113,7 +111,11 @@ def select_case_file(
             [*section_names, "Back"],
             initial_index=section_index,
             command_handler=lambda cmd, cb=command_callbacks: handle_command(
-                stdscr, case_path, state, cmd, cb,
+                stdscr,
+                case_path,
+                state,
+                cmd,
+                cb,
             ),
             command_suggestions=lambda: command_suggestions(case_path),
         )
@@ -137,7 +139,11 @@ def select_case_file(
                 [*file_labels, "Back"],
                 initial_index=file_index,
                 command_handler=lambda cmd, cb=command_callbacks: handle_command(
-                    stdscr, case_path, state, cmd, cb,
+                    stdscr,
+                    case_path,
+                    state,
+                    cmd,
+                    cb,
                 ),
                 command_suggestions=lambda: command_suggestions(case_path),
             )
@@ -173,7 +179,11 @@ def file_screen(
         f"{file_path.relative_to(case_path)}",
         options[:-1],
         command_handler=lambda cmd: handle_command(
-            stdscr, case_path, state, cmd, command_callbacks,
+            stdscr,
+            case_path,
+            state,
+            cmd,
+            command_callbacks,
         ),
         command_suggestions=lambda: command_suggestions(case_path),
     )
@@ -208,7 +218,11 @@ def no_foam_file_screen(
             f"{file_path.relative_to(case_path)}",
             options,
             command_handler=lambda cmd: handle_command(
-                stdscr, case_path, state, cmd, command_callbacks,
+                stdscr,
+                case_path,
+                state,
+                cmd,
+                command_callbacks,
             ),
             command_suggestions=lambda: command_suggestions(case_path),
         )
@@ -240,7 +254,11 @@ def edit_entry_screen(
         "Select entry to edit",
         [*keywords, "Back"],
         command_handler=lambda cmd: handle_command(
-            stdscr, case_path, state, cmd, command_callbacks,
+            stdscr,
+            case_path,
+            state,
+            cmd,
+            command_callbacks,
         ),
         command_suggestions=lambda: command_suggestions(case_path),
     )
@@ -258,7 +276,11 @@ def edit_entry_screen(
             f"{full_key} is a dictionary",
             ["Browse sub-entries", "Edit this entry", "Back"],
             command_handler=lambda cmd: handle_command(
-                stdscr, case_path, state, cmd, command_callbacks,
+                stdscr,
+                case_path,
+                state,
+                cmd,
+                command_callbacks,
             ),
             command_suggestions=lambda: command_suggestions(case_path),
         )

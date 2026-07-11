@@ -181,10 +181,7 @@ def thermo_out_of_range_count(lines: list[str]) -> int:
         lower = line.lower()
         if "out of range" not in lower:
             continue
-        if any(
-            token in lower
-            for token in ("thermo", "temperature", "enthalpy", "cp", "mu", "rho")
-        ):
+        if any(token in lower for token in ("thermo", "temperature", "enthalpy", "cp", "mu", "rho")):
             count += 1
     return count
 

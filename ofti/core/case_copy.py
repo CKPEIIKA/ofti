@@ -76,9 +76,7 @@ def _build_copy_ignore(
             return ignored
         if relative == Path() and not include_runtime_artifacts:
             ignored |= {
-                name
-                for name in names
-                if _is_runtime_artifact_name(name, keep_zero_directory=keep_zero_directory)
+                name for name in names if _is_runtime_artifact_name(name, keep_zero_directory=keep_zero_directory)
             }
         if relative == Path("constant") and drop_mesh and "polyMesh" in names:
             ignored.add("polyMesh")

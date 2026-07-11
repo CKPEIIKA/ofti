@@ -368,11 +368,7 @@ def runtime_log_terms(case_path: Path) -> list[str]:
 
 
 def _inline_runtime_log_terms(clean_text: str) -> list[str]:
-    return [
-        match.group("key").strip()
-        for match in CRITERIA_RE.finditer(clean_text)
-        if match.group("key").strip()
-    ]
+    return [match.group("key").strip() for match in CRITERIA_RE.finditer(clean_text) if match.group("key").strip()]
 
 
 def _runtime_control_log_terms(clean_text: str) -> list[str]:
@@ -393,11 +389,7 @@ def runtime_control_term_rows(clean_text: str) -> list[tuple[str, tuple[str, str
             continue
         for cond_name, cond_body in iter_named_blocks(conditions):
             cond_type = (first_match(cond_body, TYPE_RE) or "").strip().strip('"')
-            field = (
-                (first_match(cond_body, FIELD_RE) or first_match(cond_body, FIELDS_RE) or "")
-                .strip()
-                .strip('"')
-            )
+            field = (first_match(cond_body, FIELD_RE) or first_match(cond_body, FIELDS_RE) or "").strip().strip('"')
             rows.append((key, (cond_name.strip(), cond_type, field)))
     return rows
 
@@ -441,9 +433,7 @@ def read_with_local_includes(
 
 
 def strip_include_token(value: str) -> str:
-    if (value.startswith('"') and value.endswith('"')) or (
-        value.startswith("<") and value.endswith(">")
-    ):
+    if (value.startswith('"') and value.endswith('"')) or (value.startswith("<") and value.endswith(">")):
         return value[1:-1].strip()
     return value.strip()
 
@@ -539,9 +529,7 @@ def parse_block_name(text: str, start: int) -> tuple[str, int] | None:
     if not (first.isalnum() or first == "_"):
         return None
     end_name = start + 1
-    while end_name < len(text) and (
-        text[end_name].isalnum() or text[end_name] in {"_", ".", "/", ":", "-", "+"}
-    ):
+    while end_name < len(text) and (text[end_name].isalnum() or text[end_name] in {"_", ".", "/", ":", "-", "+"}):
         end_name += 1
     return text[start:end_name], end_name
 
@@ -809,10 +797,7 @@ def _apply_control_dict_edit(case_path: Path, path: Path, key: str, value: str) 
         return False
     pattern = re.compile(rf"(?m)^(\s*{re.escape(key)}\s+)([^;]+)(;)")
     replacement = rf"\g<1>{value}\g<3>"
-    if pattern.search(text):
-        updated = pattern.sub(replacement, text, count=1)
-    else:
-        updated = text.rstrip() + f"\n{key} {value};\n"
+    updated = pattern.sub(replacement, text, count=1) if pattern.search(text) else text.rstrip() + f"\n{key} {value};\n"
     try:
         path.write_text(updated, encoding="utf-8")
     except OSError:
