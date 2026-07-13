@@ -45,7 +45,7 @@ Schema v2 direction is intentionally stricter and should use a stable envelope:
 }
 ```
 
-OFTI 0.9.2 keeps v1 as the default output. New automation can opt into v2 with
+OFTI 0.9.3 keeps v1 as the default output. New automation can opt into v2 with
 `--json-version 2` or `OFTI_JSON_VERSION=2`, but should still pin and check
 `schema_version`.
 
@@ -119,6 +119,19 @@ archives. Readers reject unsafe paths: absolute paths, `..`, and unsafe symlink
 or link targets must not escape the destination.
 
 Current bundle manifest: `ofti.case-bundle` v1.
+
+## Bundle Set Archive
+
+`ofti bundle-set` writes `ofti.bundle-set` v1 archives for campaigns and case
+matrices. The outer `.ofti/bundle-set.json` manifest names every embedded
+`cases/*.ofti.tar.gz` archive and records its size, SHA-256 hash, and complete
+`ofti.case-bundle` manifest. Case names and archive paths are unique.
+
+`ofti unbundle-set` rejects unexpected members, links, unsafe paths, missing or
+modified inner archives, and non-empty destinations. It verifies and extracts
+all cases in a staging directory before publishing `DESTINATION/<case-name>`.
+Each restored directory is therefore an ordinary runnable OpenFOAM case; the
+set format does not introduce a second case layout.
 
 ## Run Manifest
 

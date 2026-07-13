@@ -25,6 +25,8 @@ ofti watch <command> [CASE] [options]
 ofti plot  <command> [CASE] [options]
 ofti bundle CASE --output ARCHIVE
 ofti unbundle ARCHIVE --to CASE
+ofti bundle-set CASE_A CASE_B --output ARCHIVE
+ofti unbundle-set ARCHIVE --to CASE_SET
 ofti -h | -V
 ```
 
@@ -147,11 +149,15 @@ ofti run -h
 ofti watch log -h
 ofti bundle -h
 ofti unbundle -h
+ofti bundle-set -h
+ofti unbundle-set -h
 ofti result -h
 ```
 
 - **`bundle` / `unbundle`** — portable case archives with an embedded manifest
   and hash verification for moving a minimal runnable case to another host.
+- **`bundle-set` / `unbundle-set`** — one campaign archive containing several
+  independently verifiable and runnable case bundles.
 - **`knife`** — case inspection, diagnostics, and quick edits (status,
   preflight, doctor, criteria, ETA, initials, physical/compare-fields, copy,
   current/adopt, manifests). See *KNIFE WORKFLOWS* and *RUN MANIFESTS*.
@@ -226,6 +232,8 @@ ofti bundle CASE --output case.ofti.tar.gz --smoke --smoke-timeout 60s --json
 ofti unbundle case.ofti.tar.gz --to CASE_COPY --json
 ofti unbundle case.ofti.tar.gz --to CASE_COPY --table
 ofti unbundle case.ofti.tar.gz --to CASE_COPY --run --background --json
+ofti bundle-set CASE_A CASE_B --name mesh-study --output mesh-study.ofti-set.tar.gz --json
+ofti unbundle-set mesh-study.ofti-set.tar.gz --to MESH_STUDY --json
 ```
 
 Bundles contain the minimal runnable case tree: `system/`, `constant/`, the
@@ -250,6 +258,13 @@ add `--background` to register a watchable job and still write a run manifest.
 The slow real-case suite includes bundle/unbundle coverage for a toy OpenFOAM
 case: it verifies manifest hashes, preflight/status on the restored copy, and a
 bounded solver smoke run from the unbundled case.
+
+Bundle sets keep each case as an ordinary `ofti.case-bundle` inside an
+`ofti.bundle-set` v1 archive. The outer manifest records each inner archive's
+size, SHA-256 hash, and complete case manifest. `unbundle-set` validates the
+whole collection in a staging directory before publishing `DESTINATION/<case>`
+directories, then prints an `ofti run queue ...` command. Case directory names
+must be unique within a set.
 
 Result packs preserve completed output without pretending to be runnable case
 bundles:
@@ -547,9 +562,10 @@ profile suite generates fresh canonical tutorial cases through the same adapter.
 This keeps the broad service matrix runnable on a normal OpenFOAM installation
 while still allowing heavier external cases to be supplied explicitly.
 
-The 0.9.2 matrix also exercises live progress-state transitions, decomposed
-checkpoint/result archives, queue outcomes, process cleanup, and stopped-case
-parallel resize against generated or supplied OpenFOAM cases.
+The 0.9.3 matrix also exercises live progress-state transitions, decomposed
+checkpoint/result archives, queue outcomes, process cleanup, stopped-case
+parallel resize, foamlib 1.6.2 dictionary round trips, and bundle-set restore/run
+behavior against generated or supplied OpenFOAM cases.
 
 `OFTI_REAL_SCENARIOS` limits expensive checks by name. Current scenario names
 include `runtime`, `smoke`, `diagnostics`, `start-stop`, `parallel-stop`,

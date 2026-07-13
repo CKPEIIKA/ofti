@@ -120,7 +120,7 @@ def _bundle_case(args: argparse.Namespace) -> int:
         output,
         mesh=str(args.mesh),
         time=args.time,
-        extra_warnings=_plugin_bundle_hints(Path(args.case_dir)),
+        extra_warnings=plugin_bundle_hints(Path(args.case_dir)),
     )
     payload: dict[str, object] = {
         "ok": True,
@@ -227,7 +227,7 @@ def _run_unbundled_case(
     return int(result.returncode)
 
 
-def _plugin_bundle_hints(case_dir: Path) -> tuple[str, ...]:
+def plugin_bundle_hints(case_dir: Path) -> tuple[str, ...]:
     registry = discover_plugins()
     warnings: list[str] = []
     for provider in registry.bundle_hints.values():

@@ -1,9 +1,12 @@
-# Foamlib Survey (checked against installed 1.5.7)
+# Foamlib Survey (checked against installed 1.6.2)
 
-Foamlib is installed in `.venv` (version 1.5.7). The notes below are based on
+Foamlib is installed in `.venv` (version 1.6.2). The notes below are based on
 local introspection of the package and the current OFTI adapter.
 
-## Core API (foamlib 1.5.7)
+OFTI 0.9.3 pins foamlib 1.6.2. Adapter/unit coverage and real OpenFOAM
+controlDict round-trip execution are release gates for this upgrade.
+
+## Core API (foamlib 1.6.2)
 
 - `FoamFile(path)`: read/write OpenFOAM dictionaries with dict-like access.
 - `FoamFieldFile(path)`: field file support with `dimensions`, `internal_field`,
@@ -56,9 +59,9 @@ cleanup, log/runtime hygiene around run preparation, and safety snapshots before
 destructive workflows. This keeps foamlib's useful heuristic helper separate
 from OFTI's predictable CLI behavior.
 
-## Still not covered by foamlib 1.5.7 / remaining TODO
+## Still not covered by foamlib 1.6.2 / remaining TODO
 
-- Mesh stats (cells/faces/points) extraction without `checkMesh`: foamlib 1.5.7
+- Mesh stats (cells/faces/points) extraction without `checkMesh`: foamlib 1.6.2
   exposes `TimeDirectory.cell_centers()` but not a complete cheap mesh-info API.
 - Dictionary AST/formatting guarantees for exact round-trip stability: OFTI uses
   foamlib for semantic writes, but preserves text fallbacks for cases where exact

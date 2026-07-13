@@ -164,7 +164,7 @@ def test_cli_tools_without_args_prints_short_help(capsys) -> None:
     out = capsys.readouterr().out
     assert code == 0
     assert "Non-interactive OFTI utilities" in out
-    assert "{knife,plot,watch,run,bundle,unbundle,result,version}" in out
+    assert "{knife,plot,watch,run,bundle,unbundle,bundle-set,unbundle-set,result,version}" in out
 
 
 def test_every_cli_help_page_has_examples() -> None:

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from ofti.core import case_bundle, case_snapshot, result_archive, run_manifest
+from ofti.core import bundle_set, case_bundle, case_snapshot, result_archive, run_manifest
 from ofti.tools import job_registry
 from ofti.tools.cli_tools import run_queue
 
@@ -17,6 +17,7 @@ PERSISTED_EXAMPLES = {
     "queue-record.json": "ofti.queue-record",
     "snapshot.json": "ofti.snapshot",
     "result-pack.json": "ofti.result-pack",
+    "bundle-set.json": "ofti.bundle-set",
 }
 
 EXAMPLE_SCHEMAS = {
@@ -27,6 +28,7 @@ EXAMPLE_SCHEMAS = {
     "snapshot.json": "ofti.snapshot.v1.schema.json",
     "cli-json.json": "ofti.cli-envelope.v1.schema.json",
     "result-pack.json": "ofti.result-pack.v1.schema.json",
+    "bundle-set.json": "ofti.bundle-set.v1.schema.json",
 }
 
 
@@ -68,6 +70,7 @@ def test_format_schema_files_are_valid_json() -> None:
         "ofti.queue-record.v1.schema.json",
         "ofti.snapshot.v1.schema.json",
         "ofti.result-pack.v1.schema.json",
+        "ofti.bundle-set.v1.schema.json",
     } <= names
     for path in schema_root.glob("*.schema.json"):
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -91,6 +94,12 @@ def test_actual_persisted_writers_validate_against_published_schemas(tmp_path: P
     _validate_payload(
         case_bundle.manifest_payload(case_bundle.build_bundle_manifest(case)),
         "ofti.case-bundle.v1.schema.json",
+    )
+    second = _minimal_case(tmp_path / "case-two")
+    set_archive = tmp_path / "cases.tar.gz"
+    _validate_payload(
+        bundle_set.manifest_payload(bundle_set.create_bundle_set([case, second], set_archive)),
+        "ofti.bundle-set.v1.schema.json",
     )
     manifest_path = run_manifest.write_case_run_manifest(
         case,
@@ -162,6 +171,14 @@ def test_persisted_readers_reject_unknown_format_versions(tmp_path: Path) -> Non
     bundle_payload["format_version"] = 999
     with pytest.raises(ValueError, match="unsupported bundle manifest version"):
         case_bundle.manifest_from_payload(bundle_payload)
+
+    second = _minimal_case(tmp_path / "case-two")
+    set_payload = bundle_set.manifest_payload(
+        bundle_set.create_bundle_set([case, second], tmp_path / "set.tar.gz"),
+    )
+    set_payload["format_version"] = 999
+    with pytest.raises(ValueError, match="unsupported bundle-set manifest version"):
+        bundle_set.manifest_from_payload(set_payload)
 
     manifest_path = run_manifest.write_case_run_manifest(
         case,

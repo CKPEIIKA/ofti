@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ofti.dev/schemas/ofti.bundle-set.v1.schema.json",
+  "title": "OFTI Bundle Set Manifest v1",
+  "type": "object",
+  "required": ["format", "format_version", "name", "cases"],
+  "properties": {
+    "format": {"const": "ofti.bundle-set"},
+    "format_version": {"const": 1},
+    "version": {"const": 1},
+    "name": {"type": "string", "minLength": 1},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "archive", "size", "sha256", "manifest"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "archive": {"type": "string", "pattern": "^cases/"},
+          "size": {"type": "integer", "minimum": 0},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "manifest": {
+            "type": "object",
+            "required": ["format", "format_version", "case_name", "start_time", "mesh_policy", "application", "files"],
+            "properties": {
+              "format": {"const": "ofti.case-bundle"},
+              "format_version": {"const": 1},
+              "case_name": {"type": "string"},
+              "start_time": {"type": "string"},
+              "mesh_policy": {"enum": ["auto", "include", "exclude"]},
+              "application": {"type": "string"},
+              "files": {"type": "array"}
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

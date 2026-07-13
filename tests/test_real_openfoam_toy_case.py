@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from ofti.app.cli_tools import main as cli_main
-from ofti.core import case_bundle, run_manifest
+from ofti.core import bundle_set, case_bundle, entry_io, run_manifest
 from ofti.foam.times import latest_time
 from ofti.tools import (
     checkpoint_service,
@@ -104,6 +104,28 @@ def test_real_toy_case_transactional_dictionary_edit(real_case: RealTutorialCase
     assert applied["ok"] is True, applied
     assert applied["applied"] is True
     assert Path(str(applied["snapshot"]), "snapshot.json").is_file()
+
+
+def test_real_toy_case_foamlib_control_round_trip_remains_runnable(
+    real_case: RealTutorialCase,
+    tmp_path: Path,
+) -> None:
+    case = real_case.case
+    control = case / "system" / "controlDict"
+
+    assert entry_io.write_entry(control, "writeInterval", "2") is True
+    assert float(entry_io.read_entry(control, "writeInterval").rstrip(";")) == 2
+
+    smoke = run_ops.smoke_payload(
+        case,
+        iterations=2,
+        timeout=60,
+        output_root=tmp_path / "foamlib-round-trip-smoke",
+        core_only=True,
+    )
+    assert smoke["ok"] is True, smoke
+    assert smoke["iterations_completed"] == 2
+    assert smoke["checkpoint_ok"] is True
 
 
 def test_real_toy_case_cli_manifest_write_is_case_local_and_verifiable(
@@ -241,6 +263,36 @@ def test_real_toy_case_unbundled_smoke_run_is_watchable(
     assert status["log_path"] == smoke["log_path"]
     assert status["latest_time"] is not None
     assert "reason_codes" in status["progress"]
+
+
+def test_real_toy_case_bundle_set_restores_and_runs_every_case(
+    real_case: RealTutorialCase,
+    tmp_path: Path,
+) -> None:
+    source = real_case.case
+    cases = [tmp_path / "bundle-set-a", tmp_path / "bundle-set-b"]
+    for case in cases:
+        shutil.copytree(source, case)
+    archive = tmp_path / "real-study.ofti-set.tar.gz"
+    created = bundle_set.create_bundle_set(cases, archive, name="real-study", mesh="auto", time="0")
+    restored = tmp_path / "restored-study"
+
+    extracted = bundle_set.extract_bundle_set(archive, restored)
+
+    assert extracted == created
+    for entry in extracted.cases:
+        case = restored / entry.name
+        smoke = run_ops.smoke_payload(
+            case,
+            iterations=2,
+            timeout=60,
+            output_root=case,
+            in_place=True,
+            core_only=True,
+        )
+        assert smoke["ok"] is True, smoke
+        assert smoke["iterations_completed"] == 2
+        assert smoke["checkpoint_ok"] is True
 
 
 def test_real_toy_case_smoke_forces_exact_steps_from_adaptive_source(

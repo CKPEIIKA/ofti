@@ -799,7 +799,7 @@ ParkCoefficients
         sigma2   5.0e4;
     }
     
-    O2_e-
+    O2+_e-
     {
         preAij   1.16e-3;
         preMij   0.015;
@@ -1182,4 +1182,3 @@ BourdonVervischCoefficients
         BV3   (64.219 25.635);
     }
 }    
-

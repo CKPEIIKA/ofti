@@ -4,6 +4,9 @@ Completed work only. Record meaningful outcomes and validation evidence, newest 
 
 ## 2026-07-13
 
+- Added deterministic `ofti.bundle-set` v1 campaign archives with per-case manifests/hashes, safe staged extraction, CLI/help/schema documentation, and real OpenFOAM execution coverage for every restored case.
+- Upgraded the pinned foamlib integration from 1.5.7 to 1.6.2, added a real controlDict round-trip followed by an exact runnable smoke check, and repaired duplicate entries exposed by the stricter parser in the wedge-sphere example.
+- Released 0.9.3 with `1011 passed, 54 skipped` and `85.03%` coverage; the 28-test OpenFOAM v2512 toy matrix reports `24 passed, 4 skipped` on host capabilities, and the real foamlib case-operation profile passes.
 - Made `run smoke --iterations N` deterministic: adaptive stepping is disabled in the copy, exact logged steps and a matching checkpoint are required, and incomplete parallel writes fail explicitly.
 - Removed foamlib boolean string-conversion warnings by mapping OpenFOAM `true/false/yes/no` tokens to booleans before assignment.
 - Added fake-solver and real OpenFOAM coverage for exact/adaptive smoke behavior, zero-exit missing checkpoints, and incomplete MPI checkpoints.

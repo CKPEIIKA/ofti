@@ -1,4 +1,4 @@
-ofti(1) "OFTI 0.9.2" "User Commands"
+ofti(1) "OFTI 0.9.3" "User Commands"
 
 # NAME
 
@@ -19,6 +19,10 @@ ofti - scriptable OpenFOAM case utilities and terminal interface
 *ofti bundle* _CASE_ *--output* _ARCHIVE_ [options]
 
 *ofti unbundle* _ARCHIVE_ *--to* _CASE_ [options]
+
+*ofti bundle-set* _CASE_... *--output* _ARCHIVE_ [options]
+
+*ofti unbundle-set* _ARCHIVE_ *--to* _CASE_SET_ [options]
 
 *ofti result* _COMMAND_ [options]
 
@@ -74,6 +78,11 @@ should request *--json* and check both the process exit status and the returned
 	OpenFOAM layout and includes a checksummed *.ofti/bundle.json* manifest.
 	Unbundle can optionally smoke-test or start the restored case.
 
+*bundle-set*, *unbundle-set*
+	Package several independent case bundles in one checksummed campaign archive,
+	or verify and restore them below one destination. Extraction is staged before
+	the restored cases are published.
+
 *result*
 	Pack and unpack result or restart state. Processor state is included only
 	when the selected time is complete across every processor directory.
@@ -99,7 +108,7 @@ supported. *--json* emits a machine envelope with *schema_version*, *command*,
 	Path to the user TOML configuration.
 
 *OFTI_JSON_VERSION*
-	Default JSON envelope version. Version 1 remains the default in OFTI 0.9.2.
+	Default JSON envelope version. Version 1 remains the default in OFTI 0.9.3.
 
 *OFTI_WATCH_STALE_AFTER_SECONDS*
 	Age threshold for STALE_LOG and NO_PROGRESS evidence.
@@ -160,6 +169,14 @@ Move a minimal case to another host:
 ```
 ofti bundle CASE --output case.ofti.tar.gz --smoke --json
 ofti unbundle case.ofti.tar.gz --to CASE_COPY --run --background --json
+```
+
+Move a case campaign and run it through the normal queue:
+
+```
+ofti bundle-set CASE_A CASE_B --output study.ofti-set.tar.gz --json
+ofti unbundle-set study.ofti-set.tar.gz --to STUDY --json
+ofti run queue STUDY/CASE_A STUDY/CASE_B --json
 ```
 
 Run a sequential queue that continues after a failed case:

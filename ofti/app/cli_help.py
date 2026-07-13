@@ -409,4 +409,29 @@ _EXAMPLES_BY_PROG = {
           and refuses non-empty destinations unless --force is used.
         """,
     ),
+    "ofti bundle-set": dedent(
+        """\
+        Examples:
+          ofti bundle-set CASE_A CASE_B --output study.ofti-set.tar.gz
+          ofti bundle-set runs/* --name transport-study --output study.tar.gz --json
+
+        Bundle-set intent:
+          Package several independently runnable case bundles in one campaign
+          archive. Case directory names must be unique. Every inner archive has
+          its own case-bundle manifest and hash, so one damaged member cannot be
+          silently accepted.
+        """,
+    ),
+    "ofti unbundle-set": dedent(
+        """\
+        Examples:
+          ofti unbundle-set study.ofti-set.tar.gz --to STUDY
+          ofti unbundle-set study.ofti-set.tar.gz --to STUDY --json
+
+        The destination must be empty. OFTI verifies the outer manifest, each
+        embedded archive, and every case file before publishing the restored
+        case directories. Use the printed `ofti run queue ...` command to run
+        the restored campaign.
+        """,
+    ),
 }

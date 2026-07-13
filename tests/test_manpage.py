@@ -10,7 +10,7 @@ def test_manpage_source_and_generated_output_cover_public_contract() -> None:
     for section in ("NAME", "SYNOPSIS", "DESCRIPTION", "COMMANDS", "ENVIRONMENT", "FILES", "EXAMPLES"):
         assert f"# {section}" in source
         assert f".SH {section}" in generated
-    for command in ("knife", "run", "watch", "plot", "bundle", "unbundle", "result"):
+    for command in ("knife", "run", "watch", "plot", "bundle", "unbundle", "bundle-set", "unbundle-set", "result"):
         assert command in source
         assert command in generated
     assert "/home/" not in source

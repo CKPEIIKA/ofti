@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 from ofti.core.case_meta import case_metadata_quick
@@ -34,7 +35,9 @@ def test_examples_cases_basic_integration() -> None:
                 # Best-effort smoke check: some dictionary variants may not be supported by list_keywords.
                 keyword_attempts += 1
                 try:
-                    _ = list_keywords(file_path)
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("error", message="Duplicate non-directive file entry.*")
+                        _ = list_keywords(file_path)
                 except OpenFOAMError:
                     continue
                 keyword_successes += 1

@@ -13,8 +13,8 @@ source /usr/lib/openfoam/openfoam2512/etc/bashrc
 OFTI_ENABLE_REAL_CASE_TESTS=1 uv run pytest --runslow tests/test_real_openfoam_toy_case.py
 ```
 
-The real-toy module now collects 26 service tests for the default cavity profile.
-The 0.9.2 additions prove that a manifest-restored case executes its solver and
+The real-toy module now collects 28 service tests for the default cavity profile.
+The 0.9.3 additions prove that a manifest-restored case executes its solver and
 that the public CLI can start, list, and stop a tracked real solver. Both new
 paths pass with OpenFOAM 2512 sourced; the six-test queue/runtime/parallel-prepare
 subset also passes.
@@ -43,10 +43,12 @@ Optional knobs:
 | Queue execution and final status | yes | yes | yes | Real solver logs cover success, crash continuation/cleanup, and explicit criterion classification. |
 | Runtime control / writeNow | yes | yes | planned | Toy path applies snapshot-protected `stopAt writeNow`; if the solver does not honor it live, the test verifies explicit stop fallback. |
 | Bundle / unbundle | yes | yes | planned | Add external-profile host-transfer smoke once real remote profiles exist; CLI now reports target requirements. |
+| Bundle-set restore / run | yes | yes | planned | Two independently hashed real cases are restored and both complete exact smoke runs. |
 | Field compare / physical rules | yes | yes | yes | Generated profiles compare serial fields directly against decomposed fields with mesh identity. |
 | Checkpoint completeness | yes | yes | yes | Real decomposition proves complete reporting and partial-time quarantine without deletion. |
 | Result pack / unpack | yes | yes | planned | Real solver output is packed, hash-verified, and restored. |
 | Transactional dictionary edits | yes | yes | planned | Real controlDict multi-edit uses one snapshot and all-or-rollback service. |
+| Foamlib dictionary round trip | yes | yes | yes | A real controlDict is written/read through the adapter and the resulting case completes an exact smoke run. |
 | Adopt / detached launcher discovery | yes | yes | conditional | Raw mpirun grouping/stop runs when the MPI launcher probe succeeds. |
 
 ## Policy

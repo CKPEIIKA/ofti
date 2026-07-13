@@ -157,7 +157,7 @@ wheels = [
 
 [[package]]
 name = "foamlib"
-version = "1.5.7"
+version = "1.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aioshutil" },
@@ -166,9 +166,9 @@ dependencies = [
     { name = "rich" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/02/e0/d8fc29c278e0d4fa214c66d72edf4fdfb7fcb0ac697178c094837529736a/foamlib-1.5.7.tar.gz", hash = "sha256:3b63ba20ffebcbbb0f23aeb4ef8021faac7575e5f857e89e07df7e151c889cdc", size = 65549, upload-time = "2026-03-02T16:50:39.818Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/85/87af60c428a62b9b82523eda47b0c9a5d4ceb7e5dccf993d4c153f181397/foamlib-1.6.2.tar.gz", hash = "sha256:304b9f7562aaf8a81b5ebe04b85db5ae258f924a89c1cbe89e90efaaf9146e6f", size = 66218, upload-time = "2026-07-10T03:46:45.202Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/fa/0b820b90a6430bab3835672b655a256b1f16bf5b1e2593c8662749de5b57/foamlib-1.5.7-py3-none-any.whl", hash = "sha256:9320613ae71c7d5e684886a812989a7b637f6148668cf59c5ca17249001ae3a2", size = 76826, upload-time = "2026-03-02T16:50:38.859Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/74/e084f6e56cde73b43522d167419ced1b2412b93333575e93107c1cb719ee/foamlib-1.6.2-py3-none-any.whl", hash = "sha256:4c17e1d7f522c4ae0b6bfa4a35da1ab6536a99ec8f7c82c0a489a1a7a40864a7", size = 77944, upload-time = "2026-07-10T03:46:44.128Z" },
 ]
 
 [package.optional-dependencies]
@@ -328,7 +328,7 @@ wheels = [
 
 [[package]]
 name = "ofti"
-version = "0.9.2"
+version = "0.9.3"
 source = { editable = "." }
 dependencies = [
     { name = "foamlib", extra = ["postprocessing", "preprocessing"] },
@@ -344,7 +344,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "foamlib", extras = ["preprocessing", "postprocessing"], specifier = "==1.5.7" }]
+requires-dist = [{ name = "foamlib", extras = ["postprocessing", "preprocessing"], specifier = "==1.6.2" }]
 
 [package.metadata.requires-dev]
 dev = [
