@@ -1,4 +1,5 @@
 import shutil
+import warnings
 from pathlib import Path
 
 import pytest
@@ -52,6 +53,24 @@ def test_foamlib_integration_write_uniform_vector(tmp_path: Path) -> None:
     )
     text = dst.read_text()
     assert "value uniform (1.0 0.0 0.0);" in text
+
+
+def test_foamlib_integration_writes_boolean_without_string_conversion_warning(tmp_path: Path) -> None:
+    src = Path("examples/cavity/system/controlDict")
+    dst = tmp_path / "controlDict"
+    shutil.copy(src, dst)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert foamlib_integration.write_entry(dst, "runTimeModifiable", "false") is True
+        assert foamlib_integration.write_entry(dst, "adjustTimeStep", "yes") is True
+
+    assert not [warning for warning in caught if "will be stored as" in str(warning.message)]
+    stored = foamlib_integration.read_entry(dst, "runTimeModifiable").strip().rstrip(";").lower()
+    assert stored in {"false", "no"}
+    text = dst.read_text(encoding="utf-8")
+    assert any(f"runTimeModifiable {value};" in text for value in ("false", "no"))
+    assert foamlib_integration.read_entry(dst, "adjustTimeStep").strip().rstrip(";").lower() in {"true", "yes"}
 
 
 def test_foamlib_node_type_details_for_field_vectors() -> None:

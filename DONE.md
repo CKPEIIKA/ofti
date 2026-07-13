@@ -2,6 +2,13 @@
 
 Completed work only. Record meaningful outcomes and validation evidence, newest first.
 
+## 2026-07-13
+
+- Made `run smoke --iterations N` deterministic: adaptive stepping is disabled in the copy, exact logged steps and a matching checkpoint are required, and incomplete parallel writes fail explicitly.
+- Removed foamlib boolean string-conversion warnings by mapping OpenFOAM `true/false/yes/no` tokens to booleans before assignment.
+- Added fake-solver and real OpenFOAM coverage for exact/adaptive smoke behavior, zero-exit missing checkpoints, and incomplete MPI checkpoints.
+- Passed the full gate with `1004 passed, 52 skipped` and `85.04%` coverage; exact serial and two-rank MPI smoke checks also passed against OpenFOAM v2512.
+
 ## 2026-07-11
 
 - Released 0.9.2 test hardening: CI installs the explicit dev group, schema-contract collection works, and tests contain no type-only `assert isinstance(...)` assertions.

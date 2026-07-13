@@ -57,6 +57,9 @@ should request *--json* and check both the process exit status and the returned
 	generate parameter matrices, and execute queues. Subcommands are *tool*,
 	*solver*, *smoke*, *resize-parallel*, *matrix*, *parametric*, *queue*,
 	*queue-summary*, and *status*.
+	*run smoke --iterations N* disables adaptive stepping in the smoke copy and
+	requires exactly N logged steps plus a final checkpoint. Parallel smoke also
+	requires a common checkpoint across every requested processor.
 
 *watch*
 	Inspect logs and control tracked jobs. Subcommands are *jobs*, *status*,

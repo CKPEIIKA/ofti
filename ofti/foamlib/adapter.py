@@ -436,6 +436,8 @@ def _parse_uniform_value(value: str) -> object | None:
     text = value.strip()
     if text.startswith("uniform"):
         text = text[len("uniform") :].strip()
+    if text.lower() in {"true", "yes", "false", "no"}:
+        return text.lower() in {"true", "yes"}
     if text.startswith("(") and text.endswith(")"):
         inner = text[1:-1].strip()
         if not inner:

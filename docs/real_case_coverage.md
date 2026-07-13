@@ -13,7 +13,7 @@ source /usr/lib/openfoam/openfoam2512/etc/bashrc
 OFTI_ENABLE_REAL_CASE_TESTS=1 uv run pytest --runslow tests/test_real_openfoam_toy_case.py
 ```
 
-The real-toy module now collects 24 service tests for the default cavity profile.
+The real-toy module now collects 26 service tests for the default cavity profile.
 The 0.9.2 additions prove that a manifest-restored case executes its solver and
 that the public CLI can start, list, and stop a tracked real solver. Both new
 paths pass with OpenFOAM 2512 sourced; the six-test queue/runtime/parallel-prepare
@@ -37,6 +37,7 @@ Optional knobs:
 | Preflight / initials / physical scan | yes | yes | planned | Add more solver families via `OFTI_REAL_CASES=all`. |
 | Run manifest write / verify / restore | yes | yes | planned | Toy path restores recorded inputs and executes the solver from the restored case. |
 | Solver start / tracked status / stop | yes | yes | yes | Service and public CLI lifecycle are real-tested; MPI normalization runs when the launcher probe succeeds. |
+| Exact smoke iterations / checkpoint | yes | yes | conditional | Adaptive source controls are fixed in the copy; MPI coverage requires a working launcher. |
 | Parallel prepare / decompose | yes | yes | planned | Add reconstruct/decompose latest-time restart proof. |
 | Parallel resize/resume | yes | yes | yes | Generated profile proves stopped 2->3 resize; live MPI restart remains launcher-dependent. |
 | Queue execution and final status | yes | yes | yes | Real solver logs cover success, crash continuation/cleanup, and explicit criterion classification. |

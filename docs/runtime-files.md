@@ -131,9 +131,10 @@ nu sweep: constant/transportProperties nu 1e-05,2e-05
   stop reason rows.
 - `.ofti/queues/queue-*.events.jsonl`: append-only queue event journal; use
   `ofti run queue-summary PATH` to rebuild counters from the journal.
-- `.ofti/smoke/*/summary.json` or `--out DIR/summary.json`: bounded smoke-test
-  result with command, normalized controls, log path, times seen, and optional
-  physical-check payload.
+- `.ofti/smoke/*/summary.json` or `--out DIR/summary.json`: exact fixed-step
+  smoke result with normalized controls, requested/completed iterations,
+  final-time checkpoint evidence, failure reasons, log path, and optional
+  physical-check payload. Parallel evidence includes processor completeness.
 - `CASE/runs/*/manifest.json`, `[paths].manifest_root/*/manifest.json`, or
   `--manifest-file PATH`: `ofti.run-manifest` v1 reproducibility manifest
   containing launch settings, OpenFOAM/build provenance, selected setup hashes,

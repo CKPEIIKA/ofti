@@ -243,6 +243,62 @@ def test_real_toy_case_unbundled_smoke_run_is_watchable(
     assert "reason_codes" in status["progress"]
 
 
+def test_real_toy_case_smoke_forces_exact_steps_from_adaptive_source(
+    real_case: RealTutorialCase,
+    tmp_path: Path,
+) -> None:
+    case = real_case.case
+    assert knife_service.set_entry_payload(case, "system/controlDict", "adjustTimeStep", "yes")["ok"] is True
+
+    smoke = run_ops.smoke_payload(
+        case,
+        iterations=5,
+        timeout=60,
+        output_root=tmp_path / "adaptive-source-smoke",
+        core_only=True,
+    )
+
+    assert smoke["ok"] is True, smoke
+    assert smoke["iterations_completed"] == 5
+    assert smoke["iteration_count_exact"] is True
+    assert smoke["requested_iterations_reached"] is True
+    assert smoke["target_time_reached"] is True
+    assert smoke["checkpoint_ok"] is True
+    assert smoke["latest_written_time"] != "0"
+    control_text = Path(str(smoke["case"]), "system", "controlDict").read_text(encoding="utf-8")
+    assert any(f"adjustTimeStep {value};" in control_text for value in ("false", "no"))
+
+
+def test_real_toy_case_parallel_smoke_writes_common_final_checkpoint(
+    real_case: RealTutorialCase,
+    tmp_path: Path,
+) -> None:
+    if not real_case.profile.supports_parallel:
+        pytest.skip(f"{real_case.profile.name} does not support parallel scenario")
+    if shutil.which("mpirun") is None and shutil.which("mpiexec") is None:
+        pytest.skip("MPI launcher unavailable")
+    case = real_case.case
+    real_case.ensure_parallel_dict(2)
+    _require_working_parallel_launcher(run_ops.solver_command(case, parallel=2)[1])
+
+    smoke = run_ops.smoke_payload(
+        case,
+        iterations=5,
+        timeout=90,
+        parallel=2,
+        output_root=tmp_path / "parallel-exact-smoke",
+        core_only=True,
+        clean_processors=True,
+    )
+
+    assert smoke["ok"] is True, smoke
+    assert smoke["iterations_completed"] == 5
+    assert smoke["checkpoint_ok"] is True
+    assert smoke["latest_complete_processor_time"] == smoke["latest_written_time"]
+    assert smoke["checkpoint"]["processor_count"] == 2
+    assert smoke["checkpoint"]["partial_times"] == []
+
+
 def test_real_toy_case_smoke_result_pack_round_trip(
     real_case: RealTutorialCase,
     tmp_path: Path,
@@ -729,6 +785,11 @@ def test_real_toy_case_compare_reconstructed_parallel_to_serial(
     )
     assert serial["ok"] is True, serial
     assert parallel["ok"] is True, parallel
+    assert serial["iterations_completed"] == 2
+    assert parallel["iterations_completed"] == 2
+    assert parallel["checkpoint_ok"] is True
+    assert parallel["checkpoint"]["processor_count"] == 2
+    assert parallel["latest_complete_processor_time"] is not None
 
     direct = knife_service.compare_fields_payload(
         serial_case,

@@ -57,6 +57,9 @@ campaign.
 Run solvers and tools, smoke-test portable case copies, resize parallel runs,
 generate parameter matrices, and execute queues. Subcommands are tool, solver,
 smoke, resize-parallel, matrix, parametric, queue, queue-summary, and status.
+run smoke --iterations N disables adaptive stepping in the smoke copy and
+requires exactly N logged steps plus a final checkpoint. Parallel smoke also
+requires a common checkpoint across every requested processor.
 .TP
 .B watch
 Inspect logs and control tracked jobs. Subcommands are jobs, status, log,

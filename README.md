@@ -68,6 +68,13 @@ python -m pip install -e .
 pipx install .
 ```
 
+`pipx install ofti` installs the latest package published on PyPI, which may
+lag the repository. To test the current upstream `main` explicitly, use:
+
+```bash
+pipx install --force "git+https://github.com/CKPEIIKA/ofti.git@main"
+```
+
 Install the committed `ofti(1)` manual page without root privileges:
 
 ```bash
@@ -193,6 +200,14 @@ ofti run parametric CASE --entry application --values simpleFoam,pisoFoam --json
 ofti run parametric CASE --csv studies/parametric.csv --run-solver --max-parallel 4 --json
 ofti run status --set CASE_SET --fast --easy-on-cpu --json
 ```
+
+`run smoke --iterations N` has exact fixed-step semantics. In its disposable
+copy OFTI writes `adjustTimeStep false`, runs exactly `N` logged solver steps,
+and requires a checkpoint at the final logged time. Parallel success additionally
+requires that checkpoint to be complete across exactly `--parallel` processor
+directories. A zero solver return code without the requested steps or checkpoint
+returns exit code 1 and reports `iterations_completed`, `checkpoint_ok`, and
+`failure_reason` in JSON.
 
 `run resize-parallel` is the safe resume path for changing MPI size. It can ask
 a live solver for `writeNow`, waits for the solver to stop, snapshots

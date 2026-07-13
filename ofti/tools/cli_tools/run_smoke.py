@@ -18,6 +18,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from ofti.core.checkpoint import checkpoint_health
 from ofti.core.entry_io import read_entry, write_entry
 from ofti.tools import knife_service, runner_service
 
@@ -98,6 +99,15 @@ def smoke_payload(
     )
     wall_seconds = time.time() - started
     log_text = log_path.read_text(encoding="utf-8", errors="ignore") if log_path.is_file() else ""
+    verification = _smoke_verification(
+        smoke_case,
+        log_text,
+        iterations=iterations,
+        delta_t=chosen_delta_t,
+        parallel=parallel,
+        returncode=int(result.returncode),
+        timed_out=timed_out,
+    )
     summary: dict[str, Any] = {
         "source_case": str(source.resolve()),
         "case": str(smoke_case.resolve()),
@@ -116,9 +126,7 @@ def smoke_payload(
         "timed_out": bool(timed_out),
         "wall_seconds": wall_seconds,
         "log_path": str(log_path.resolve()),
-        "times_seen": _smoke_times_seen(log_text),
-        "end_seen": "End" in log_text,
-        "ok": int(result.returncode) == 0 and not timed_out,
+        **verification,
     }
     if run_physical:
         summary["physical"] = knife_service.physical_payload(
@@ -181,6 +189,7 @@ def _normalize_smoke_control_dict(
         "endTime": f"{iterations * delta_t:g}",
         "writeControl": "timeStep",
         "writeInterval": str(iterations),
+        "adjustTimeStep": "false",
         "runTimeModifiable": "false",
     }
     if not preserve_delta_t:
@@ -188,6 +197,10 @@ def _normalize_smoke_control_dict(
     if core_only:
         writes["functions"] = "{}"
     applied = {key: value for key, value in writes.items() if write_entry(control, key, value)}
+    required = set(writes).difference({"functions"})
+    failed = sorted(required.difference(applied))
+    if failed:
+        raise ValueError(f"failed to normalize smoke controlDict entries: {', '.join(failed)}")
     return {
         "controlDict": str(control),
         "deltaT": delta_t,
@@ -279,6 +292,117 @@ def _smoke_times_seen(log_text: str) -> list[float]:
     return values
 
 
+def _smoke_verification(
+    case_path: Path,
+    log_text: str,
+    *,
+    iterations: int,
+    delta_t: float,
+    parallel: int,
+    returncode: int,
+    timed_out: bool,
+) -> dict[str, Any]:
+    times_seen = _smoke_times_seen(log_text)
+    completed = len(times_seen)
+    end_seen = "End" in log_text
+    iteration_count_exact = completed == iterations
+    target_time = iterations * delta_t
+    target_time_reached = bool(times_seen) and _same_time(times_seen[-1], target_time)
+    checkpoint = _smoke_checkpoint_evidence(
+        case_path, parallel=parallel, final_time=times_seen[-1] if times_seen else None
+    )
+    failures = _smoke_failure_reasons(
+        returncode=returncode,
+        timed_out=timed_out,
+        end_seen=end_seen,
+        iteration_count_exact=iteration_count_exact,
+        target_time_reached=target_time_reached,
+        checkpoint_ok=bool(checkpoint["checkpoint_ok"]),
+    )
+    contract_failed = not iteration_count_exact or not target_time_reached or not checkpoint["checkpoint_ok"]
+    failure_reason = (
+        "requested_iterations_or_common_checkpoint_not_reached"
+        if contract_failed
+        else (failures[0] if failures else None)
+    )
+    return {
+        "times_seen": times_seen,
+        "iterations_completed": completed,
+        "requested_iterations_reached": completed >= iterations,
+        "iteration_count_exact": iteration_count_exact,
+        "target_time": target_time,
+        "target_time_reached": target_time_reached,
+        "end_seen": end_seen,
+        "checkpoint_required": True,
+        **checkpoint,
+        "failure_reason": failure_reason,
+        "failure_reasons": failures,
+        "ok": not failures,
+    }
+
+
+def _smoke_checkpoint_evidence(case_path: Path, *, parallel: int, final_time: float | None) -> dict[str, Any]:
+    try:
+        health = checkpoint_health(case_path, expected_processors=parallel if parallel > 1 else None)
+    except ValueError as exc:
+        return {
+            "checkpoint_ok": False,
+            "checkpoint_error": str(exc),
+            "latest_complete_processor_time": None,
+            "latest_written_time": None,
+            "checkpoint": None,
+        }
+    time_names = health["complete_times"] if parallel > 1 else health["reconstructed_times"]
+    matched = _matching_time(time_names, final_time)
+    return {
+        "checkpoint_ok": matched is not None and final_time is not None and final_time > 0,
+        "checkpoint_error": None,
+        "latest_complete_processor_time": health["latest_complete_time"] if parallel > 1 else None,
+        "latest_written_time": health["latest_complete_time"] if parallel > 1 else health["latest_reconstructed_time"],
+        "checkpoint": health,
+    }
+
+
+def _matching_time(time_names: list[str], final_time: float | None) -> str | None:
+    if final_time is None:
+        return None
+    for time_name in reversed(time_names):
+        with suppress(ValueError):
+            if _same_time(float(time_name), final_time):
+                return time_name
+    return None
+
+
+def _same_time(left: float, right: float) -> bool:
+    tolerance = max(1e-30, max(abs(left), abs(right)) * 1e-9)
+    return abs(left - right) <= tolerance
+
+
+def _smoke_failure_reasons(
+    *,
+    returncode: int,
+    timed_out: bool,
+    end_seen: bool,
+    iteration_count_exact: bool,
+    target_time_reached: bool,
+    checkpoint_ok: bool,
+) -> list[str]:
+    failures: list[str] = []
+    if returncode != 0:
+        failures.append("solver_returncode_nonzero")
+    if timed_out:
+        failures.append("solver_timeout")
+    if not end_seen:
+        failures.append("solver_end_not_seen")
+    if not iteration_count_exact:
+        failures.append("requested_iteration_count_not_met")
+    if not target_time_reached:
+        failures.append("fixed_step_target_time_not_reached")
+    if not checkpoint_ok:
+        failures.append("common_checkpoint_not_written")
+    return failures
+
+
 def _write_smoke_reports(payload: Mapping[str, Any], root: Path) -> None:
     root.mkdir(parents=True, exist_ok=True)
     (root / "summary.json").write_text(
@@ -293,6 +417,10 @@ def _write_smoke_reports(payload: Mapping[str, Any], root: Path) -> None:
         f"- ok: {payload.get('ok')}",
         f"- returncode: {payload.get('returncode')}",
         f"- timed_out: {payload.get('timed_out')}",
+        f"- iterations: {payload.get('iterations_completed')}/{payload.get('iterations_requested')}",
+        f"- checkpoint_ok: {payload.get('checkpoint_ok')}",
+        f"- latest_written_time: {payload.get('latest_written_time')}",
+        f"- failure_reason: {payload.get('failure_reason')}",
         f"- wall_seconds: {float(payload.get('wall_seconds') or 0):.3f}",
         f"- log: {payload.get('log_path')}",
     ]

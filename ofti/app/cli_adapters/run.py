@@ -119,14 +119,19 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         "smoke",
         help="Run a bounded solver smoke test on a copied case",
         description=(
-            "Run a short solver smoke test. By default OFTI copies the case into "
-            "an output directory, normalizes controlDict for a bounded run, writes "
-            "log/summary artifacts, and leaves the source case untouched."
+            "Run an exact fixed-step solver smoke test. By default OFTI copies the case into "
+            "an output directory, disables adaptive stepping, requires the requested iteration "
+            "count and a written checkpoint, and leaves the source case untouched."
         ),
     )
     smoke.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)
     smoke.add_argument("--solver", default=None)
-    smoke.add_argument("--iterations", type=int, default=20)
+    smoke.add_argument(
+        "--iterations",
+        type=int,
+        default=20,
+        help="Exact solver steps required for success (default: 20)",
+    )
     smoke.add_argument(
         "--timeout",
         default="300s",
@@ -633,8 +638,11 @@ def _run_smoke(args: argparse.Namespace) -> int:
     print(f"case={payload['case']}")
     print(f"solver={payload['solver']} ok={payload['ok']} returncode={payload['returncode']}")
     print(
-        f"times_seen={len(cast('list[object]', payload['times_seen']))} end_seen={payload['end_seen']}",
+        f"iterations={payload['iterations_completed']}/{payload['iterations_requested']} end_seen={payload['end_seen']}"
     )
+    print(f"checkpoint_ok={payload['checkpoint_ok']} latest_written_time={payload['latest_written_time']}")
+    if payload.get("failure_reason"):
+        print(f"failure_reason={payload['failure_reason']}")
     print(f"log={payload['log_path']}")
     print(f"summary={Path(str(payload['output_root'])) / 'summary.json'}")
     return 0 if bool(payload.get("ok")) else 1
