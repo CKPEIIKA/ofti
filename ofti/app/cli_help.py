@@ -381,57 +381,57 @@ _EXAMPLES_BY_PROG = {
     "ofti bundle": dedent(
         """\
         Examples:
-          ofti bundle CASE --output case.ofti.tar.gz --mesh auto --time 0
-          ofti bundle CASE --output case.ofti.tar.gz --mesh include-polyMesh --table
-          ofti bundle CASE --output case.ofti.tar.gz --smoke --smoke-timeout 60s
+          ofti bundle case CASE --output case.ofti.tar.gz
+          ofti bundle set CASE_A CASE_B --output study.ofti-set.tar.gz
+          ofti bundle extract study.ofti-set.tar.gz --to STUDY
 
-        Bundle intent:
+        One command family creates single-case and campaign archives. Extract
+        detects the embedded manifest and restores the correct archive kind.
+        """,
+    ),
+    "ofti bundle case": dedent(
+        """\
+        Examples:
+          ofti bundle case CASE --output case.ofti.tar.gz --mesh auto --time 0
+          ofti bundle case CASE --output case.ofti.tar.gz --mesh include-polyMesh --table
+          ofti bundle case CASE --output case.ofti.tar.gz --smoke --smoke-timeout 60s
+
+        Case-bundle intent:
           Create the smallest portable archive that can run elsewhere: system/,
           constant/, the selected start-time directory, Allrun/Allclean when
           present, OFTI metadata, and mesh files when --mesh auto/include needs
           them. The aliases include-polyMesh and none are accepted but v1
           manifests keep canonical auto/include/exclude values. Logs,
           processor* directories, postProcessing, and caches are excluded. Add
-          --smoke to prove the archive can be unbundled and run on the current
+          --smoke to prove the archive can be extracted and run on the current
           host before copying it elsewhere.
         """,
     ),
-    "ofti unbundle": dedent(
+    "ofti bundle set": dedent(
         """\
         Examples:
-          ofti unbundle case.ofti.tar.gz --to CASE_COPY
-          ofti unbundle case.ofti.tar.gz --to CASE_COPY --table
-          ofti unbundle case.ofti.tar.gz --to CASE_COPY --run --background --json
+          ofti bundle set CASE_A CASE_B --output study.ofti-set.tar.gz
+          ofti bundle set runs/* --name transport-study --output study.tar.gz --json
 
-        Target-host workflow:
-          Copy archive to another host, run unbundle there, then use --run (or
-          the printed `ofti run solver ...` command). Extraction verifies hashes
-          and refuses non-empty destinations unless --force is used.
-        """,
-    ),
-    "ofti bundle-set": dedent(
-        """\
-        Examples:
-          ofti bundle-set CASE_A CASE_B --output study.ofti-set.tar.gz
-          ofti bundle-set runs/* --name transport-study --output study.tar.gz --json
-
-        Bundle-set intent:
+        Set-bundle intent:
           Package several independently runnable case bundles in one campaign
           archive. Case directory names must be unique. Every inner archive has
           its own case-bundle manifest and hash, so one damaged member cannot be
           silently accepted.
         """,
     ),
-    "ofti unbundle-set": dedent(
+    "ofti bundle extract": dedent(
         """\
         Examples:
-          ofti unbundle-set study.ofti-set.tar.gz --to STUDY
-          ofti unbundle-set study.ofti-set.tar.gz --to STUDY --json
+          ofti bundle extract case.ofti.tar.gz --to CASE_COPY
+          ofti bundle extract case.ofti.tar.gz --to CASE_COPY --run --background --json
+          ofti bundle extract study.ofti-set.tar.gz --to STUDY --table
 
-        The destination must be empty. OFTI verifies the outer manifest, each
-        embedded archive, and every case file before publishing the restored
-        case directories. Use the printed `ofti run queue ...` command to run
-        the restored campaign.
+        Target-host workflow:
+          Copy an archive to another host and extract it there. OFTI detects a
+          case or set manifest, verifies all hashes, and prints the appropriate
+          solver or queue command. Case archives support --run and --force;
+          set destinations must be empty.
         """,
     ),
 }

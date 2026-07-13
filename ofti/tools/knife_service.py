@@ -592,6 +592,9 @@ def copy_payload(
         "destination": str(dest),
         "include_runtime_artifacts": include_runtime_artifacts,
         "drop_mesh": drop_mesh,
+        "cleanup_applied": False,
+        "cleanup_target": None,
+        "cleanup_command": None,
         "ok": True,
     }
 

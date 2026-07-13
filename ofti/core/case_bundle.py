@@ -27,7 +27,9 @@ from ofti.core.times import latest_time
 
 MeshPolicy = Literal["auto", "include", "exclude"]
 ArchiveFormat = Literal["gztar", "zstdtar"]
+BundleKind = Literal["case", "set"]
 MANIFEST_PATH = ".ofti/bundle.json"
+BUNDLE_SET_MANIFEST_PATH = ".ofti/bundle-set.json"
 MANIFEST_FORMAT = "ofti.case-bundle"
 MANIFEST_FORMAT_VERSION = 1
 
@@ -137,6 +139,22 @@ def read_bundle_manifest(archive: Path) -> BundleManifest:
             payload = json.loads(extracted.read().decode())
             return manifest_from_payload(payload)
     raise ValueError(f"bundle manifest is unreadable: {archive}")
+
+
+def detect_bundle_kind(archive: Path) -> BundleKind:
+    """Identify a case or set archive from its authoritative manifest path."""
+    markers: set[str] = set()
+    with _open_bundle_tar_for_read(archive) as tar:
+        for member in tar:
+            if member.name in {MANIFEST_PATH, BUNDLE_SET_MANIFEST_PATH}:
+                markers.add(member.name)
+    if markers == {MANIFEST_PATH}:
+        return "case"
+    if markers == {BUNDLE_SET_MANIFEST_PATH}:
+        return "set"
+    if markers:
+        raise ValueError(f"bundle archive has conflicting manifests: {archive}")
+    raise ValueError(f"not an OFTI bundle archive: {archive}")
 
 
 def extract_bundle(archive: Path, destination: Path, *, force: bool = False) -> BundleManifest:
@@ -346,7 +364,7 @@ def _validate_bundle_case(case_dir: Path, time: str, *, mesh: MeshPolicy) -> tup
         )
     elif not (case_dir / "constant" / "polyMesh").is_dir():
         warnings.append(
-            "constant/polyMesh not found; direct unbundle --run may need mesh generation first",
+            "constant/polyMesh not found; direct bundle extract --run may need mesh generation first",
         )
     return tuple(warnings)
 

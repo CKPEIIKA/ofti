@@ -559,7 +559,46 @@ def bundle_table_lines(payload: Mapping[str, Any]) -> list[str]:
     return lines
 
 
-def unbundle_table_lines(payload: Mapping[str, Any]) -> list[str]:
+def bundle_set_table_lines(payload: Mapping[str, Any]) -> list[str]:
+    manifest = _dict(payload.get("manifest"))
+    cases = _list(manifest.get("cases"))
+    lines = render_kv(
+        [
+            ("archive", payload.get("archive")),
+            ("name", manifest.get("name")),
+            ("cases", len(cases)),
+            ("next", payload.get("next")),
+        ],
+    )
+    if cases:
+        rows = [
+            {
+                "name": _dict(item).get("name"),
+                "solver": _dict(_dict(item).get("manifest")).get("application"),
+                "files": _file_count(_dict(_dict(item).get("manifest"))),
+            }
+            for item in cases
+        ]
+        lines.extend(["", "Cases", *render_table(rows, [("name", "Case"), ("solver", "Solver"), ("files", "Files")])])
+    return lines
+
+
+def extracted_bundle_set_table_lines(payload: Mapping[str, Any]) -> list[str]:
+    cases = _list(payload.get("cases"))
+    lines = render_kv(
+        [
+            ("archive", payload.get("archive")),
+            ("destination", payload.get("destination")),
+            ("cases_verified", len(cases)),
+            ("next", payload.get("next")),
+        ],
+    )
+    if cases:
+        lines.extend(["", "Cases", *render_table(_message_rows(cases), [("message", "Path")])])
+    return lines
+
+
+def extracted_bundle_table_lines(payload: Mapping[str, Any]) -> list[str]:
     manifest = _dict(payload.get("manifest"))
     requirements = _dict(payload.get("requirements"))
     warnings = _list(manifest.get("warnings"))

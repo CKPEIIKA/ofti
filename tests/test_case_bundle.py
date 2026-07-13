@@ -209,14 +209,32 @@ def test_case_bundle_rejects_archive_links(tmp_path: Path) -> None:
         case_bundle.extract_bundle(archive, tmp_path / "out")
 
 
+def test_bundle_kind_rejects_missing_or_conflicting_manifests(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.tar.gz"
+    with tarfile.open(missing, "w:gz"):
+        pass
+    with pytest.raises(ValueError, match="not an OFTI bundle archive"):
+        case_bundle.detect_bundle_kind(missing)
+
+    conflicting = tmp_path / "conflicting.tar.gz"
+    with tarfile.open(conflicting, "w:gz") as tar:
+        _add_minimal_bundle_manifest(tar)
+        payload = b"{}"
+        info = tarfile.TarInfo(case_bundle.BUNDLE_SET_MANIFEST_PATH)
+        info.size = len(payload)
+        tar.addfile(info, io.BytesIO(payload))
+    with pytest.raises(ValueError, match="conflicting manifests"):
+        case_bundle.detect_bundle_kind(conflicting)
+
+
 def test_bundle_cli_json_and_unbundle_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     case = _case(tmp_path)
     archive = tmp_path / "case.ofti.tar.gz"
-    code = cli_main(["bundle", str(case), "--output", str(archive), "--json"])
+    code = cli_main(["bundle", "case", str(case), "--output", str(archive), "--json"])
     output = json.loads(capsys.readouterr().out)
 
     assert code == 0
-    assert output["command"] == "bundle"
+    assert output["command"] == "bundle case"
     assert output["ok"] is True
     assert output["manifest"]["application"] == "simpleFoam"
     assert output["manifest"]["header_version"] == "unknown"
@@ -226,24 +244,24 @@ def test_bundle_cli_json_and_unbundle_cli(tmp_path: Path, capsys: pytest.Capture
     assert archive.is_file()
 
     destination = tmp_path / "unpacked"
-    code = cli_main(["unbundle", str(archive), "--to", str(destination), "--json"])
+    code = cli_main(["bundle", "extract", str(archive), "--to", str(destination), "--json"])
     output = json.loads(capsys.readouterr().out)
 
     assert code == 0
-    assert output["command"] == "unbundle"
+    assert output["command"] == "bundle extract"
     assert output["ok"] is True
     assert output["requirements"]["solver"] == "simpleFoam"
     assert (destination / "system" / "controlDict").is_file()
 
 
-def test_bundle_and_unbundle_cli_table_output(
+def test_bundle_and_extract_cli_table_output(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     case = _case(tmp_path)
     archive = tmp_path / "case.ofti.tar.gz"
 
-    code = cli_main(["bundle", str(case), "--output", str(archive), "--table"])
+    code = cli_main(["bundle", "case", str(case), "--output", str(archive), "--table"])
     output = capsys.readouterr().out
 
     assert code == 0
@@ -254,7 +272,7 @@ def test_bundle_and_unbundle_cli_table_output(
     assert "run_command" in output
 
     destination = tmp_path / "table-unpacked"
-    code = cli_main(["unbundle", str(archive), "--to", str(destination), "--table"])
+    code = cli_main(["bundle", "extract", str(archive), "--to", str(destination), "--table"])
     output = capsys.readouterr().out
 
     assert code == 0
@@ -279,7 +297,7 @@ def test_bundle_cli_embeds_plugin_bundle_hints(
     registry.add_bundle_hint_provider(FakeHints())
     monkeypatch.setattr(bundle_adapter, "discover_plugins", lambda: registry)
 
-    code = cli_main(["bundle", str(case), "--output", str(archive), "--json"])
+    code = cli_main(["bundle", "case", str(case), "--output", str(archive), "--json"])
     output = json.loads(capsys.readouterr().out)
 
     assert code == 0
@@ -309,7 +327,7 @@ def test_bundle_cli_smoke_validates_archive_copy(
 
     monkeypatch.setattr(bundle_adapter.run_ops, "smoke_payload", fake_smoke_payload)
 
-    code = cli_main(["bundle", str(case), "--output", str(archive), "--smoke", "--json"])
+    code = cli_main(["bundle", "case", str(case), "--output", str(archive), "--smoke", "--json"])
     output = json.loads(capsys.readouterr().out)
 
     assert code == 0
@@ -332,7 +350,7 @@ def test_bundle_cli_smoke_failure_returns_nonzero(
         lambda *_a, **_k: {"ok": False, "returncode": 1, "log_path": "log.simpleFoam"},
     )
 
-    code = cli_main(["bundle", str(case), "--output", str(archive), "--smoke", "--json"])
+    code = cli_main(["bundle", "case", str(case), "--output", str(archive), "--smoke", "--json"])
     output = json.loads(capsys.readouterr().out)
 
     assert code == 1
@@ -340,7 +358,7 @@ def test_bundle_cli_smoke_failure_returns_nonzero(
     assert output["smoke"]["returncode"] == 1
 
 
-def test_unbundle_cli_can_run_restored_case(
+def test_bundle_extract_cli_can_run_restored_case(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -374,7 +392,7 @@ def test_unbundle_cli_can_run_restored_case(
 
     destination = tmp_path / "run-now"
     code = cli_main(
-        ["unbundle", str(archive), "--to", str(destination), "--run", "--background", "--json"],
+        ["bundle", "extract", str(archive), "--to", str(destination), "--run", "--background", "--json"],
     )
     output = json.loads(capsys.readouterr().out)
 

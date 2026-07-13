@@ -347,6 +347,7 @@ def _knife_copy(args: argparse.Namespace) -> int:
     print(f"destination={payload['destination']}")
     print(f"include_runtime_artifacts={payload['include_runtime_artifacts']}")
     print(f"drop_mesh={payload['drop_mesh']}")
+    print(f"cleanup_applied={payload['cleanup_applied']}")
     print(f"ok={payload['ok']}")
     return 0
 

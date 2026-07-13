@@ -13,11 +13,12 @@ source /usr/lib/openfoam/openfoam2512/etc/bashrc
 OFTI_ENABLE_REAL_CASE_TESTS=1 uv run pytest --runslow tests/test_real_openfoam_toy_case.py
 ```
 
-The real-toy module now collects 28 service tests for the default cavity profile.
-The 0.9.3 additions prove that a manifest-restored case executes its solver and
-that the public CLI can start, list, and stop a tracked real solver. Both new
-paths pass with OpenFOAM 2512 sourced; the six-test queue/runtime/parallel-prepare
-subset also passes.
+The real-toy module now collects 30 service tests for the default cavity profile.
+The 0.9.3 additions prove that a manifest-restored case executes its solver,
+that the public CLI can start, list, and stop a tracked real solver, and that
+real OpenFOAM binary scalar/vector fields remain readable before and after
+two-way decomposition. These paths pass with OpenFOAM 2512 sourced; the
+queue/runtime/parallel-prepare subset also passes.
 The generated-profile matrix reports `11 passed, 4 skipped`; three skips are
 host-capability paths (MPI/foamlib parallel execution) and one is optional HPC.
 (MPI launcher present but unusable in the sandbox network namespace).
@@ -42,9 +43,9 @@ Optional knobs:
 | Parallel resize/resume | yes | yes | yes | Generated profile proves stopped 2->3 resize; live MPI restart remains launcher-dependent. |
 | Queue execution and final status | yes | yes | yes | Real solver logs cover success, crash continuation/cleanup, and explicit criterion classification. |
 | Runtime control / writeNow | yes | yes | planned | Toy path applies snapshot-protected `stopAt writeNow`; if the solver does not honor it live, the test verifies explicit stop fallback. |
-| Bundle / unbundle | yes | yes | planned | Add external-profile host-transfer smoke once real remote profiles exist; CLI now reports target requirements. |
+| Bundle create / extract | yes | yes | planned | Add external-profile host-transfer smoke once real remote profiles exist; CLI now reports target requirements. |
 | Bundle-set restore / run | yes | yes | planned | Two independently hashed real cases are restored and both complete exact smoke runs. |
-| Field compare / physical rules | yes | yes | yes | Generated profiles compare serial fields directly against decomposed fields with mesh identity. |
+| Field compare / physical rules | yes | yes | yes | Generated profiles compare serial fields directly against decomposed fields with mesh identity; the cavity profile covers real serial and decomposed binary fields. |
 | Checkpoint completeness | yes | yes | yes | Real decomposition proves complete reporting and partial-time quarantine without deletion. |
 | Result pack / unpack | yes | yes | planned | Real solver output is packed, hash-verified, and restored. |
 | Transactional dictionary edits | yes | yes | planned | Real controlDict multi-edit uses one snapshot and all-or-rollback service. |

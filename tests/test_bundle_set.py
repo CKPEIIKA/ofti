@@ -92,22 +92,56 @@ def test_bundle_set_cli_json_round_trip(tmp_path: Path, capsys: pytest.CaptureFi
     second = _case(tmp_path, "second")
     archive = tmp_path / "campaign.tar.gz"
 
-    code = cli_main(["bundle-set", str(first), str(second), "--output", str(archive), "--json"])
+    code = cli_main(["bundle", "set", str(first), str(second), "--output", str(archive), "--json"])
     created = json.loads(capsys.readouterr().out)
 
     assert code == 0
-    assert created["command"] == "bundle-set"
+    assert created["command"] == "bundle set"
     assert created["ok"] is True
     assert len(created["manifest"]["cases"]) == 2
 
     destination = tmp_path / "campaign"
-    code = cli_main(["unbundle-set", str(archive), "--to", str(destination), "--json"])
+    code = cli_main(["bundle", "extract", str(archive), "--to", str(destination), "--json"])
     extracted = json.loads(capsys.readouterr().out)
 
     assert code == 0
-    assert extracted["command"] == "unbundle-set"
+    assert extracted["command"] == "bundle extract"
     assert extracted["cases"] == [str((destination / "first").resolve()), str((destination / "second").resolve())]
     assert extracted["next"].startswith("ofti run queue ")
+
+
+def test_bundle_extract_rejects_case_only_options_for_sets(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    archive = tmp_path / "campaign.tar.gz"
+    bundle_set.create_bundle_set([_case(tmp_path, "case")], archive)
+
+    code = cli_main(["bundle", "extract", str(archive), "--to", str(tmp_path / "out"), "--run"])
+
+    assert code == 2
+    assert "--run only applies to case bundles" in capsys.readouterr().err
+
+
+def test_bundle_set_cli_table_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    first = _case(tmp_path, "first")
+    second = _case(tmp_path, "second")
+    archive = tmp_path / "campaign.tar.gz"
+
+    code = cli_main(["bundle", "set", str(first), str(second), "--output", str(archive), "--table"])
+    created = capsys.readouterr().out
+
+    assert code == 0
+    assert "Cases" in created
+    assert "simpleFoam" in created
+
+    destination = tmp_path / "campaign"
+    code = cli_main(["bundle", "extract", str(archive), "--to", str(destination), "--table"])
+    extracted = capsys.readouterr().out
+
+    assert code == 0
+    assert "cases_verified" in extracted
+    assert str((destination / "first").resolve()) in extracted
 
 
 def _add_bytes(tar: tarfile.TarFile, name: str, data: bytes) -> None:

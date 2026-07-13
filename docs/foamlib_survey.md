@@ -64,8 +64,13 @@ from OFTI's predictable CLI behavior.
 - Mesh stats (cells/faces/points) extraction without `checkMesh`: foamlib 1.6.2
   exposes `TimeDirectory.cell_centers()` but not a complete cheap mesh-info API.
 - Dictionary AST/formatting guarantees for exact round-trip stability: OFTI uses
-  foamlib for semantic writes, but preserves text fallbacks for cases where exact
-  formatting or unsupported syntax matters.
+  foamlib for semantic writes, but uses a narrow text-preserving writer for smoke
+  control normalization so unrelated precision and source text cannot be
+  reserialized.
+- Binary internal-field decoding: OFTI owns the small reader for declared
+  OpenFOAM scalar/vector/tensor layouts because foamlib 1.6.2 does not expose a
+  reliable binary-field path for this diagnostic. Unknown layouts fail
+  explicitly instead of using the ASCII fallback.
 - Runtime process ownership, adopt/stop, queues, and live process discovery:
   outside foamlib's scope; OFTI owns this layer.
 - OpenFOAM utilities without foamlib equivalents (`checkMesh`, `postProcess`

@@ -16,9 +16,6 @@ _CLI_TOOLS_GROUPS = {
     "watch",
     "run",
     "bundle",
-    "unbundle",
-    "bundle-set",
-    "unbundle-set",
     "version",
 }
 _CLI_VERSION_FLAGS = {"-V", "--version"}
@@ -34,10 +31,10 @@ def build_parser() -> argparse.ArgumentParser:
             "  ofti CASE\n"
             "  ofti knife preflight CASE --json\n"
             "  ofti run solver CASE --dry-run\n"
-            "  ofti bundle CASE --output case.ofti.tar.gz\n"
-            "  ofti unbundle case.ofti.tar.gz --to CASE_COPY --run --background\n\n"
-            "  ofti bundle-set CASE_A CASE_B --output study.ofti-set.tar.gz\n\n"
-            "Non-interactive tools: ofti knife|plot|watch|run|bundle|unbundle|bundle-set ..."
+            "  ofti bundle case CASE --output case.ofti.tar.gz\n"
+            "  ofti bundle extract case.ofti.tar.gz --to CASE_COPY --run --background\n"
+            "  ofti bundle set CASE_A CASE_B --output study.ofti-set.tar.gz\n\n"
+            "Non-interactive tools: ofti knife|plot|watch|run|bundle|result ..."
         ),
     )
     parser.add_argument(

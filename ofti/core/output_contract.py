@@ -15,6 +15,7 @@ def command_name(args: object) -> str:
     """Derive the dotted command path from an argparse-style namespace."""
     parts = [
         getattr(args, "group", None),
+        getattr(args, "bundle_command", None),
         getattr(args, "command", None),
         getattr(args, "manifest_command", None),
         getattr(args, "registry_command", None),

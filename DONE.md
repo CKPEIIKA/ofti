@@ -4,6 +4,10 @@ Completed work only. Record meaningful outcomes and validation evidence, newest 
 
 ## 2026-07-13
 
+- Hardened the 0.9.3 release against the Cheb-Coulomb smoke findings: case copy never executes `Allclean`, smoke edits preserve unrelated numeric text and expose a diff, binary scalar/vector/tensor internal fields decode across decomposed ranks, and OpenFOAM bashrc injection precedes nounset commands.
+- Added opt-in OpenFOAM v2512 proofs for serial and two-way decomposed binary fields; both physical checks pass with complete 400-cell scalar/vector data. The complete release gate passes with `1022 passed, 56 skipped`, `85.11%` coverage, both 0.9.3 distributions build, and an isolated Python 3.11 wheel install reports `ofti 0.9.3`.
+- Documented a tag-only GitHub release process and stopped presenting the unpublished project as available from PyPI.
+- Unified portable archives under `ofti bundle case|set|extract`; extraction now detects case/set manifests, obsolete top-level adapters were removed, JSON command paths and help/docs/manpage were updated, and real bundle tests pass against OpenFOAM v2512.
 - Added deterministic `ofti.bundle-set` v1 campaign archives with per-case manifests/hashes, safe staged extraction, CLI/help/schema documentation, and real OpenFOAM execution coverage for every restored case.
 - Upgraded the pinned foamlib integration from 1.5.7 to 1.6.2, added a real controlDict round-trip followed by an exact runnable smoke check, and repaired duplicate entries exposed by the stricter parser in the wedge-sphere example.
 - Released 0.9.3 with `1011 passed, 54 skipped` and `85.03%` coverage; the 28-test OpenFOAM v2512 toy matrix reports `24 passed, 4 skipped` on host capabilities, and the real foamlib case-operation profile passes.

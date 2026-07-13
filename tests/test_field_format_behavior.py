@@ -2,12 +2,13 @@
 
 These tests exercise ``field_io.read_field_values`` with the foamlib backend
 disabled, so they pin the behaviour of the pure-Python fallback for every
-OpenFOAM field rank, surface fields, binary rejection, decomposed processor
+OpenFOAM field rank, surface fields, binary decoding/rejection, decomposed processor
 fields, patch values, and missing-patch handling.
 """
 
 from __future__ import annotations
 
+import struct
 from pathlib import Path
 
 import pytest
@@ -108,8 +109,63 @@ def test_binary_format_field_is_rejected_gracefully(tmp_path: Path) -> None:
         b"boundaryField{}\n",
     )
 
-    with pytest.raises(ValueError, match="internalField"):
+    with pytest.raises(ValueError, match="unsupported_binary_format: missing arch metadata"):
         field_io.read_field_values(path)
+
+
+@pytest.mark.parametrize(
+    ("kind", "values"),
+    [
+        ("scalar", [(1.25,), (-2.5,)]),
+        ("vector", [(1.0, 2.0, 3.0), (-4.0, 5.0, -6.0)]),
+    ],
+)
+def test_binary_internal_fields_are_read(tmp_path: Path, kind: str, values: list[tuple[float, ...]]) -> None:
+    path = tmp_path / "field"
+    flattened = [component for row in values for component in row]
+    binary = struct.pack(f"<{len(flattened)}d", *flattened)
+    path.write_bytes(
+        b'FoamFile { format binary; arch "LSB;label=32;scalar=64"; class volScalarField; }\n'
+        + f"internalField nonuniform List<{kind}> {len(values)}\n(".encode()
+        + binary
+        + b");\nboundaryField {}\n",
+    )
+
+    data = field_io.read_field_values(path)
+
+    assert data.values == values
+    assert data.declared_count == len(values)
+    assert data.component_count == len(values[0])
+
+
+def test_binary_internal_field_respects_big_endian_float_layout(tmp_path: Path) -> None:
+    path = tmp_path / "p"
+    path.write_bytes(
+        b'FoamFile { format binary; arch "MSB;label=64;scalar=32"; class volScalarField; }\n'
+        b"internalField nonuniform List<scalar> 2\n(" + struct.pack(">2f", 1.5, -2.25) + b");\nboundaryField {}\n",
+    )
+
+    data = field_io.read_field_values(path)
+
+    assert data.values == [(1.5,), (-2.25,)]
+
+
+def test_decomposed_binary_fields_are_aggregated(tmp_path: Path) -> None:
+    paths = [tmp_path / f"processor{rank}" / "1" / "p" for rank in range(2)]
+    for rank, path in enumerate(paths):
+        path.parent.mkdir(parents=True)
+        path.write_bytes(
+            b'FoamFile { format binary; arch "LSB;label=32;scalar=64"; class volScalarField; }\n'
+            b"internalField nonuniform List<scalar> 2\n("
+            + struct.pack("<2d", rank + 0.25, rank + 0.75)
+            + b");\nboundaryField {}\n",
+        )
+
+    data = field_io.read_field_values(paths[0])
+
+    assert data.count == 4
+    assert data.declared_count == 4
+    assert data.values == [(0.25,), (0.75,), (1.25,), (1.75,)]
 
 
 def test_missing_patch_raises_value_error(tmp_path: Path) -> None:

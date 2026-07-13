@@ -23,10 +23,9 @@ ofti knife <command> [CASE] [--json | --table]
 ofti run   <command> [CASE] [options]
 ofti watch <command> [CASE] [options]
 ofti plot  <command> [CASE] [options]
-ofti bundle CASE --output ARCHIVE
-ofti unbundle ARCHIVE --to CASE
-ofti bundle-set CASE_A CASE_B --output ARCHIVE
-ofti unbundle-set ARCHIVE --to CASE_SET
+ofti bundle case CASE --output ARCHIVE
+ofti bundle set CASE_A CASE_B --output ARCHIVE
+ofti bundle extract ARCHIVE --to DESTINATION
 ofti -h | -V
 ```
 
@@ -70,12 +69,16 @@ python -m pip install -e .
 pipx install .
 ```
 
-`pipx install ofti` installs the latest package published on PyPI, which may
-lag the repository. To test the current upstream `main` explicitly, use:
+Install the tagged 0.9.3 release directly from GitHub:
 
 ```bash
-pipx install --force "git+https://github.com/CKPEIIKA/ofti.git@main"
+uv tool install "git+https://github.com/CKPEIIKA/ofti.git@v0.9.3"
+# or with pipx:
+pipx install "git+https://github.com/CKPEIIKA/ofti.git@v0.9.3"
 ```
+
+OFTI is not published on PyPI. Maintainer tagging and artifact steps are in
+[the release guide](https://github.com/CKPEIIKA/ofti/blob/main/docs/releasing.md).
 
 Install the committed `ofti(1)` manual page without root privileges:
 
@@ -139,7 +142,8 @@ they emit machine output through the shared output contract
 
 ## COMMANDS
 
-`ofti` exposes non-interactive command groups plus top-level bundle helpers.
+`ofti` exposes non-interactive command groups, including one bundle command
+family for cases and campaigns.
 Prefer built-in help for command-level details:
 
 ```bash
@@ -148,16 +152,14 @@ ofti knife -h
 ofti run -h
 ofti watch log -h
 ofti bundle -h
-ofti unbundle -h
-ofti bundle-set -h
-ofti unbundle-set -h
+ofti bundle case -h
+ofti bundle set -h
+ofti bundle extract -h
 ofti result -h
 ```
 
-- **`bundle` / `unbundle`** — portable case archives with an embedded manifest
-  and hash verification for moving a minimal runnable case to another host.
-- **`bundle-set` / `unbundle-set`** — one campaign archive containing several
-  independently verifiable and runnable case bundles.
+- **`bundle case|set|extract`** — create portable single-case or campaign
+  archives and safely auto-detect either format during extraction.
 - **`knife`** — case inspection, diagnostics, and quick edits (status,
   preflight, doctor, criteria, ETA, initials, physical/compare-fields, copy,
   current/adopt, manifests). See *KNIFE WORKFLOWS* and *RUN MANIFESTS*.
@@ -192,6 +194,16 @@ ofti knife current --root REPO --recursive --live --table
 ofti knife adopt --root REPO --all-untracked --json
 ```
 
+`knife physical` reads ASCII and OpenFOAM binary nonuniform internal fields,
+including scalar, vector, spherical-tensor, symmetric-tensor, and tensor data.
+For decomposed cases it combines every complete `processor*` field at the
+selected time. Unsupported binary layouts and binary boundary-patch values are
+reported explicitly rather than being interpreted as malformed ASCII.
+
+`knife copy` is non-executing: it filters runtime paths while copying files and
+never invokes case-provided `Allclean`, `Allrun`, or other scripts. Its JSON
+result records that no cleanup command was applied.
+
 Running and queueing (`run`):
 
 ```bash
@@ -213,7 +225,9 @@ and requires a checkpoint at the final logged time. Parallel success additionall
 requires that checkpoint to be complete across exactly `--parallel` processor
 directories. A zero solver return code without the requested steps or checkpoint
 returns exit code 1 and reports `iterations_completed`, `checkpoint_ok`, and
-`failure_reason` in JSON.
+`failure_reason` in JSON. Smoke control edits use a text-preserving writer, and
+`normalized_control.diff` records exactly what changed in the copied
+`controlDict`.
 
 `run resize-parallel` is the safe resume path for changing MPI size. It can ask
 a live solver for `writeNow`, waits for the solver to stop, snapshots
@@ -226,14 +240,14 @@ restarts.
 Portable case bundles:
 
 ```bash
-ofti bundle CASE --output case.ofti.tar.gz --mesh auto --time 0 --json
-ofti bundle CASE --output case.ofti.tar.gz --mesh include-polyMesh --table
-ofti bundle CASE --output case.ofti.tar.gz --smoke --smoke-timeout 60s --json
-ofti unbundle case.ofti.tar.gz --to CASE_COPY --json
-ofti unbundle case.ofti.tar.gz --to CASE_COPY --table
-ofti unbundle case.ofti.tar.gz --to CASE_COPY --run --background --json
-ofti bundle-set CASE_A CASE_B --name mesh-study --output mesh-study.ofti-set.tar.gz --json
-ofti unbundle-set mesh-study.ofti-set.tar.gz --to MESH_STUDY --json
+ofti bundle case CASE --output case.ofti.tar.gz --mesh auto --time 0 --json
+ofti bundle case CASE --output case.ofti.tar.gz --mesh include-polyMesh --table
+ofti bundle case CASE --output case.ofti.tar.gz --smoke --smoke-timeout 60s --json
+ofti bundle extract case.ofti.tar.gz --to CASE_COPY --json
+ofti bundle extract case.ofti.tar.gz --to CASE_COPY --table
+ofti bundle extract case.ofti.tar.gz --to CASE_COPY --run --background --json
+ofti bundle set CASE_A CASE_B --name mesh-study --output mesh-study.ofti-set.tar.gz --json
+ofti bundle extract mesh-study.ofti-set.tar.gz --to MESH_STUDY --json
 ```
 
 Bundles contain the minimal runnable case tree: `system/`, `constant/`, the
@@ -245,23 +259,24 @@ requirements, and runs a lightweight dictionary syntax lint before archiving.
 
 The deterministic `.tar.gz` archive embeds `.ofti/bundle.json` with file hashes,
 solver application, detected OpenFOAM header version, warnings, and plugin
-target-host hints. `unbundle` rejects unsafe archive paths/links, refuses
+target-host hints. `bundle extract` rejects unsafe archive paths/links, refuses
 non-empty destinations unless `--force`, and verifies hashes after extraction.
 `.tar.zst` is supported when the optional Python `zstandard` backend is
 installed.
 
-Use `bundle --smoke` before copying to prove the archive can be extracted and
-run through a bounded solver smoke test on the current host. `unbundle --run`
-executes the restored case through the same solver service as `ofti run solver`;
-add `--background` to register a watchable job and still write a run manifest.
+Use `bundle case --smoke` before copying to prove the archive can be extracted
+and run through a bounded solver smoke test on the current host.
+`bundle extract --run` executes the restored case through the same solver
+service as `ofti run solver`; add `--background` to register a watchable job and
+still write a run manifest.
 
-The slow real-case suite includes bundle/unbundle coverage for a toy OpenFOAM
-case: it verifies manifest hashes, preflight/status on the restored copy, and a
-bounded solver smoke run from the unbundled case.
+The slow real-case suite includes bundle create/extract coverage for a toy
+OpenFOAM case: it verifies manifest hashes, preflight/status on the restored
+copy, and a bounded solver smoke run from the extracted case.
 
 Bundle sets keep each case as an ordinary `ofti.case-bundle` inside an
 `ofti.bundle-set` v1 archive. The outer manifest records each inner archive's
-size, SHA-256 hash, and complete case manifest. `unbundle-set` validates the
+size, SHA-256 hash, and complete case manifest. `bundle extract` validates the
 whole collection in a staging directory before publishing `DESTINATION/<case>`
 directories, then prints an `ofti run queue ...` command. Case directory names
 must be unique within a set.

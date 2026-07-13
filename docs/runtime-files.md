@@ -134,7 +134,9 @@ nu sweep: constant/transportProperties nu 1e-05,2e-05
 - `.ofti/smoke/*/summary.json` or `--out DIR/summary.json`: exact fixed-step
   smoke result with normalized controls, requested/completed iterations,
   final-time checkpoint evidence, failure reasons, log path, and optional
-  physical-check payload. Parallel evidence includes processor completeness.
+  physical-check payload. `normalized_control.diff` preserves the exact
+  `controlDict` edit evidence. Parallel evidence includes processor
+  completeness.
 - `CASE/runs/*/manifest.json`, `[paths].manifest_root/*/manifest.json`, or
   `--manifest-file PATH`: `ofti.run-manifest` v1 reproducibility manifest
   containing launch settings, OpenFOAM/build provenance, selected setup hashes,

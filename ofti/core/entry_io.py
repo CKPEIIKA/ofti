@@ -64,6 +64,18 @@ def write_entry(file_path: Path, key: str, value: str) -> bool:
     return ok
 
 
+def write_entry_preserving_text(file_path: Path, key: str, value: str) -> bool:
+    """Write one dictionary entry while preserving all unrelated source text."""
+    try:
+        old_value = read_entry(file_path, key)
+    except Exception:
+        old_value = None
+    ok = foamlib_integration.write_entry_preserving_text(file_path, key, value)
+    if ok:
+        _log_entry_edit(file_path, key, old_value, value)
+    return ok
+
+
 def write_field_entry(file_path: Path, key: str, value: str) -> bool:
     old_value: str | None = None
     try:

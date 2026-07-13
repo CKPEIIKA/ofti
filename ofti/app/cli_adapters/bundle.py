@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import shlex
 import time
 from pathlib import Path
 from typing import cast
 
 from ofti.app.cli_help import emit_json
-from ofti.core import case_bundle
+from ofti.core import bundle_set, case_bundle
 from ofti.core import run_manifest as manifest_ops
 from ofti.foam.config import get_config
 from ofti.plugins import discover_plugins
@@ -18,24 +19,30 @@ def _build_bundle_parser(groups: argparse._SubParsersAction[argparse.ArgumentPar
     cfg = get_config()
     bundle = groups.add_parser(
         "bundle",
-        help="Create a portable case archive",
-        description=("Bundle the minimal files needed to move and run an OpenFOAM case on another host."),
+        help="Create or extract portable case archives",
+        description="Create case or campaign archives, or safely extract either archive kind.",
     )
-    bundle.add_argument(
+    commands = bundle.add_subparsers(dest="bundle_command", required=True)
+    case = commands.add_parser(
+        "case",
+        help="Package one runnable case",
+        description="Bundle the minimal files needed to move and run one OpenFOAM case on another host.",
+    )
+    case.add_argument(
         "case_dir",
         nargs="?",
         default=Path.cwd(),
         type=Path,
         help="Case directory to package (default: current directory)",
     )
-    bundle.add_argument(
+    case.add_argument(
         "--output",
         "-o",
         required=True,
         type=Path,
         help="Archive path to write (gzip tar format; .tar.gz recommended)",
     )
-    bundle.add_argument(
+    case.add_argument(
         "--mesh",
         choices=("auto", "include", "exclude", "include-polyMesh", "none"),
         default=cfg.bundle.mesh,
@@ -45,72 +52,100 @@ def _build_bundle_parser(groups: argparse._SubParsersAction[argparse.ArgumentPar
             "mesh generation to target host"
         ),
     )
-    bundle.add_argument(
+    case.add_argument(
         "--time",
         default=cfg.bundle.time,
         help="Start time directory to include, or 'latest'",
     )
-    bundle.add_argument(
+    case.add_argument(
         "--smoke",
         action="store_true",
-        help="After writing the archive, unbundle it locally and run a bounded smoke test",
+        help="After writing the archive, extract it locally and run a bounded smoke test",
     )
-    bundle.add_argument(
+    case.add_argument(
         "--smoke-iterations",
         type=int,
         default=cfg.bundle.smoke_iterations,
         help="Iterations for --smoke validation (default: config or 5)",
     )
-    bundle.add_argument(
+    case.add_argument(
         "--smoke-timeout",
         default=cfg.bundle.smoke_timeout,
         help="Wall timeout for --smoke, e.g. 30s, 2m (default: config or 60s)",
     )
-    bundle.add_argument(
+    case.add_argument(
         "--smoke-solver",
         default=None,
         help="Solver override for --smoke; defaults to controlDict application",
     )
-    bundle.add_argument("--json", action="store_true", help="Print result as JSON")
-    bundle.add_argument("--table", action="store_true", help="Print aligned summary table")
-    bundle.set_defaults(func=_bundle_case)
+    case.add_argument("--json", action="store_true", help="Print result as JSON")
+    case.add_argument("--table", action="store_true", help="Print aligned summary table")
+    case.set_defaults(func=_bundle_case)
 
-    unbundle = groups.add_parser(
-        "unbundle",
-        help="Extract a portable case archive",
-        description="Extract an OFTI case bundle and verify file hashes before use.",
+    bundle_set_parser = commands.add_parser(
+        "set",
+        help="Package multiple runnable cases",
+        description="Create one deterministic archive of independently verifiable OFTI case bundles.",
     )
-    unbundle.add_argument("archive", type=Path, help="Bundle archive created by `ofti bundle`")
-    unbundle.add_argument(
+    bundle_set_parser.add_argument(
+        "cases",
+        nargs="+",
+        type=Path,
+        help="Case directories to include; directory names must be unique",
+    )
+    bundle_set_parser.add_argument("--output", "-o", required=True, type=Path, help="Bundle-set archive to write")
+    bundle_set_parser.add_argument("--name", default=None, help="Campaign name stored in the manifest")
+    bundle_set_parser.add_argument(
+        "--mesh",
+        choices=("auto", "include", "exclude", "include-polyMesh", "none"),
+        default=cfg.bundle.mesh,
+        help="Mesh policy applied independently to every case (default: config or auto)",
+    )
+    bundle_set_parser.add_argument(
+        "--time",
+        default=cfg.bundle.time,
+        help="Start time included from every case, or 'latest'",
+    )
+    bundle_set_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+    bundle_set_parser.add_argument("--table", action="store_true", help="Print aligned summary table")
+    bundle_set_parser.set_defaults(func=_bundle_set)
+
+    extract = commands.add_parser(
+        "extract",
+        help="Extract a case or set archive",
+        description="Detect the archive kind, verify every manifest and hash, then restore its cases.",
+    )
+    extract.add_argument("archive", type=Path, help="Archive created by `ofti bundle case` or `ofti bundle set`")
+    extract.add_argument(
         "--to",
         dest="destination",
         required=True,
         type=Path,
         help="Destination case directory to create or verify",
     )
-    unbundle.add_argument(
+    extract.add_argument(
         "--force",
         action="store_true",
-        help="Allow extracting into a non-empty destination",
+        help="Allow a case archive to extract into a non-empty destination (not valid for sets)",
     )
-    unbundle.add_argument(
+    extract.add_argument(
         "--run",
         action="store_true",
-        help="Run the restored case immediately through the normal solver service",
+        help="Run a restored case immediately (not valid for sets)",
     )
-    unbundle.add_argument(
+    extract.add_argument(
         "--solver",
         default=None,
         help="Solver override for --run; defaults to controlDict application",
     )
-    unbundle.add_argument(
+    extract.add_argument(
         "--background",
         action="store_true",
         help="With --run, launch in the background and register a normal watchable job",
     )
-    unbundle.add_argument("--json", action="store_true", help="Print result as JSON")
-    unbundle.add_argument("--table", action="store_true", help="Print aligned summary table")
-    unbundle.set_defaults(func=_unbundle_case)
+    extract.add_argument("--json", action="store_true", help="Print result as JSON")
+    extract.add_argument("--table", action="store_true", help="Print aligned summary table")
+    extract.set_defaults(func=_extract_bundle)
 
 
 def _bundle_case(args: argparse.Namespace) -> int:
@@ -128,7 +163,7 @@ def _bundle_case(args: argparse.Namespace) -> int:
         "case_dir": str(Path(args.case_dir)),
         "manifest": case_bundle.manifest_payload(manifest),
         "requirements": case_bundle.environment_requirements(manifest),
-        "next": f"ofti unbundle {output} --to CASE_DIR",
+        "next": f"ofti bundle extract {output} --to CASE_DIR",
     }
     smoke_ok = True
     if bool(getattr(args, "smoke", False)):
@@ -153,7 +188,45 @@ def _bundle_case(args: argparse.Namespace) -> int:
     return 0 if smoke_ok else 1
 
 
-def _unbundle_case(args: argparse.Namespace) -> int:
+def _bundle_set(args: argparse.Namespace) -> int:
+    output = _configured_bundle_path(Path(args.output))
+    cases = [Path(case).expanduser().resolve() for case in args.cases]
+    manifest = bundle_set.create_bundle_set(
+        cases,
+        output,
+        name=args.name,
+        mesh=str(args.mesh),
+        time=str(args.time),
+        extra_warnings={case: plugin_bundle_hints(case) for case in cases},
+    )
+    payload: dict[str, object] = {
+        "ok": True,
+        "archive": str(output.resolve()),
+        "manifest": bundle_set.manifest_payload(manifest),
+        "next": shlex.join(["ofti", "bundle", "extract", str(output.resolve()), "--to", "CASE_SET"]),
+    }
+    if args.json:
+        emit_json(payload, args)
+    elif args.table:
+        print("\n".join(table_render_service.bundle_set_table_lines(payload)))
+    else:
+        print(f"Bundle set written: {output.resolve()}")
+        print(f"Name: {manifest.name}")
+        print(f"Cases: {len(manifest.cases)}")
+        for entry in manifest.cases:
+            print(f"  {entry.name}: {entry.manifest.application} ({len(entry.manifest.files)} files)")
+        print(f"Next: {payload['next']}")
+    return 0
+
+
+def _extract_bundle(args: argparse.Namespace) -> int:
+    archive = Path(args.archive)
+    if case_bundle.detect_bundle_kind(archive) == "set":
+        return _extract_bundle_set(args)
+    return _extract_case(args)
+
+
+def _extract_case(args: argparse.Namespace) -> int:
     destination = _configured_case_destination(Path(args.destination))
     manifest = case_bundle.extract_bundle(
         Path(args.archive),
@@ -168,11 +241,11 @@ def _unbundle_case(args: argparse.Namespace) -> int:
         "requirements": case_bundle.environment_requirements(manifest),
         "next": f"ofti run solver {destination}",
     }
-    code = _run_unbundled_case(args, destination, payload) if args.run else 0
+    code = _run_extracted_case(args, destination, payload) if args.run else 0
     if args.json:
         emit_json(payload, args)
     elif args.table:
-        print("\n".join(table_render_service.unbundle_table_lines(payload)))
+        print("\n".join(table_render_service.extracted_bundle_table_lines(payload)))
     else:
         print(f"Bundle extracted: {destination}")
         print(f"Files verified: {len(manifest.files)}")
@@ -181,11 +254,40 @@ def _unbundle_case(args: argparse.Namespace) -> int:
         print(f"OpenFOAM header: {manifest.header_version}")
         _print_requirements(payload)
         _print_warnings(manifest.warnings)
-        _print_unbundle_run_or_next(payload)
+        _print_extract_run_or_next(payload)
     return code
 
 
-def _run_unbundled_case(
+def _extract_bundle_set(args: argparse.Namespace) -> int:
+    unsupported = [name for name in ("force", "run", "solver", "background") if getattr(args, name, False)]
+    if unsupported:
+        options = ", ".join(f"--{name}" for name in unsupported)
+        raise ValueError(f"{options} only applies to case bundles")
+    destination = _configured_case_destination(Path(args.destination))
+    manifest = bundle_set.extract_bundle_set(Path(args.archive), destination)
+    restored = [str((destination / entry.name).resolve()) for entry in manifest.cases]
+    payload: dict[str, object] = {
+        "ok": True,
+        "archive": str(Path(args.archive)),
+        "destination": str(destination.resolve()),
+        "manifest": bundle_set.manifest_payload(manifest),
+        "cases": restored,
+        "next": shlex.join(["ofti", "run", "queue", *restored]),
+    }
+    if args.json:
+        emit_json(payload, args)
+    elif args.table:
+        print("\n".join(table_render_service.extracted_bundle_set_table_lines(payload)))
+    else:
+        print(f"Bundle set extracted: {destination.resolve()}")
+        print(f"Cases verified: {len(restored)}")
+        for case in restored:
+            print(f"  {case}")
+        print(f"Next: {payload['next']}")
+    return 0
+
+
+def _run_extracted_case(
     args: argparse.Namespace,
     destination: Path,
     payload: dict[str, object],
@@ -291,7 +393,7 @@ def _print_bundle_smoke(payload: dict[str, object]) -> None:
         print(f"Smoke log: {smoke['log_path']}")
 
 
-def _print_unbundle_run_or_next(payload: dict[str, object]) -> None:
+def _print_extract_run_or_next(payload: dict[str, object]) -> None:
     raw_run = payload.get("run")
     if not isinstance(raw_run, dict):
         print(f"Next: {payload['next']}")
@@ -327,4 +429,4 @@ def _print_warnings(warnings: tuple[str, ...]) -> None:
         print(f"Warning: {warning}")
 
 
-__all__ = ["_build_bundle_parser", "_bundle_case", "_unbundle_case"]
+__all__ = ["_build_bundle_parser"]

@@ -4,8 +4,6 @@ import shutil
 from collections.abc import Callable
 from pathlib import Path
 
-from ofti.foamlib import adapter as foamlib_integration
-
 _RUNTIME_DIR_NAMES = {"postProcessing", ".ofti", "__pycache__"}
 
 
@@ -18,16 +16,6 @@ def copy_case_directory(
     keep_zero_directory: bool = True,
 ) -> Path:
     source_path, dest_path = _resolve_copy_paths(source_case, destination)
-
-    # Prefer foamlib clone for the default "clean copy" semantics.
-    if not include_runtime_artifacts and keep_zero_directory and not drop_mesh:
-        cloned_path = foamlib_integration.clone_case_directory(source_path, dest_path)
-        if cloned_path is not None and cloned_path.is_dir():
-            _strip_runtime_artifacts(cloned_path, keep_zero_directory=keep_zero_directory)
-            return cloned_path
-        if dest_path.exists():
-            shutil.rmtree(dest_path, ignore_errors=True)
-
     ignore = _build_copy_ignore(
         source_path,
         include_runtime_artifacts=include_runtime_artifacts,
@@ -105,16 +93,3 @@ def _is_time_dir_name(name: str) -> bool:
     except ValueError:
         return False
     return value >= 0
-
-
-def _strip_runtime_artifacts(destination: Path, *, keep_zero_directory: bool) -> None:
-    for entry in destination.iterdir():
-        if not _is_runtime_artifact_name(entry.name, keep_zero_directory=keep_zero_directory):
-            continue
-        try:
-            if entry.is_dir() and not entry.is_symlink():
-                shutil.rmtree(entry)
-            else:
-                entry.unlink()
-        except OSError:
-            continue

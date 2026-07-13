@@ -7,7 +7,6 @@ from importlib.metadata import version as package_version
 from textwrap import dedent
 
 from ofti.app.cli_adapters.bundle import _build_bundle_parser
-from ofti.app.cli_adapters.bundle_set import _build_bundle_set_parsers
 from ofti.app.cli_adapters.knife_parser import _build_knife_parser
 from ofti.app.cli_adapters.plot import _build_plot_parser
 from ofti.app.cli_adapters.result import _build_result_parser
@@ -36,10 +35,9 @@ def build_parser() -> argparse.ArgumentParser:
               ofti run tool --list --case CASE
               ofti run tool blockMesh --case CASE --background
               ofti run solver CASE --parallel 8 --dry-run
-              ofti bundle CASE --output case.ofti.tar.gz
-              ofti unbundle case.ofti.tar.gz --to CASE
-              ofti bundle-set CASE_A CASE_B --output study.ofti-set.tar.gz
-              ofti unbundle-set study.ofti-set.tar.gz --to STUDY
+              ofti bundle case CASE --output case.ofti.tar.gz
+              ofti bundle set CASE_A CASE_B --output study.ofti-set.tar.gz
+              ofti bundle extract study.ofti-set.tar.gz --to STUDY
               ofti run parametric CASE --entry application --values simpleFoam,pisoFoam
             """,
         ),
@@ -64,7 +62,6 @@ def build_parser() -> argparse.ArgumentParser:
     _build_watch_parser(groups)
     _build_run_parser(groups)
     _build_bundle_parser(groups)
-    _build_bundle_set_parsers(groups)
     _build_result_parser(groups)
     version_cmd = groups.add_parser("version", help="Show version and exit")
     version_cmd.set_defaults(func=_version_command)

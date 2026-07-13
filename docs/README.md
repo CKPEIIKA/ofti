@@ -25,5 +25,6 @@
 - [Testing](testing.md)
 - [Test-suite audit](test_suite_audit.md)
 - [Real-case coverage](real_case_coverage.md)
+- [Release process](releasing.md)
 
 Keep installation, primary commands, the CLI contract, TUI preview, and the vibe-coded disclaimer in the root README.

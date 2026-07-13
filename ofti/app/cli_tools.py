@@ -6,7 +6,6 @@ from types import ModuleType
 from typing import TYPE_CHECKING
 
 from ofti.app.cli_adapters import bundle as _bundle_adapter
-from ofti.app.cli_adapters import bundle_set as _bundle_set_adapter
 from ofti.app.cli_adapters import knife as _knife_adapter
 from ofti.app.cli_adapters import main as _main_adapter
 from ofti.app.cli_adapters import plot as _plot_adapter
@@ -74,7 +73,6 @@ def _export_private_handlers(module: ModuleType) -> None:
 
 for _module in (
     _bundle_adapter,
-    _bundle_set_adapter,
     _knife_adapter,
     _plot_adapter,
     _result_adapter,

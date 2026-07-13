@@ -16,13 +16,11 @@ ofti - scriptable OpenFOAM case utilities and terminal interface
 
 *ofti plot* _COMMAND_ [options]
 
-*ofti bundle* _CASE_ *--output* _ARCHIVE_ [options]
+*ofti bundle case* _CASE_ *--output* _ARCHIVE_ [options]
 
-*ofti unbundle* _ARCHIVE_ *--to* _CASE_ [options]
+*ofti bundle set* _CASE_... *--output* _ARCHIVE_ [options]
 
-*ofti bundle-set* _CASE_... *--output* _ARCHIVE_ [options]
-
-*ofti unbundle-set* _ARCHIVE_ *--to* _CASE_SET_ [options]
+*ofti bundle extract* _ARCHIVE_ *--to* _DESTINATION_ [options]
 
 *ofti result* _COMMAND_ [options]
 
@@ -63,7 +61,8 @@ should request *--json* and check both the process exit status and the returned
 	*queue-summary*, and *status*.
 	*run smoke --iterations N* disables adaptive stepping in the smoke copy and
 	requires exactly N logged steps plus a final checkpoint. Parallel smoke also
-	requires a common checkpoint across every requested processor.
+	requires a common checkpoint across every requested processor. Control edits
+	preserve unrelated source text and JSON includes their unified diff.
 
 *watch*
 	Inspect logs and control tracked jobs. Subcommands are *jobs*, *status*,
@@ -73,15 +72,11 @@ should request *--json* and check both the process exit status and the returned
 *plot*
 	Render terminal plots from solver logs and criteria data.
 
-*bundle*, *unbundle*
-	Create or extract a portable minimal case archive. A bundle retains native
-	OpenFOAM layout and includes a checksummed *.ofti/bundle.json* manifest.
-	Unbundle can optionally smoke-test or start the restored case.
-
-*bundle-set*, *unbundle-set*
-	Package several independent case bundles in one checksummed campaign archive,
-	or verify and restore them below one destination. Extraction is staged before
-	the restored cases are published.
+*bundle case*, *bundle set*, *bundle extract*
+	Create portable minimal case or campaign archives. *bundle extract* detects
+	the embedded manifest, verifies all hashes, and restores either archive kind.
+	Case bundles retain native OpenFOAM layout and can optionally start the
+	restored case. Set extraction is staged before restored cases are published.
 
 *result*
 	Pack and unpack result or restart state. Processor state is included only
@@ -167,15 +162,15 @@ ofti run resize-parallel CASE --to 8 --json
 Move a minimal case to another host:
 
 ```
-ofti bundle CASE --output case.ofti.tar.gz --smoke --json
-ofti unbundle case.ofti.tar.gz --to CASE_COPY --run --background --json
+ofti bundle case CASE --output case.ofti.tar.gz --smoke --json
+ofti bundle extract case.ofti.tar.gz --to CASE_COPY --run --background --json
 ```
 
 Move a case campaign and run it through the normal queue:
 
 ```
-ofti bundle-set CASE_A CASE_B --output study.ofti-set.tar.gz --json
-ofti unbundle-set study.ofti-set.tar.gz --to STUDY --json
+ofti bundle set CASE_A CASE_B --output study.ofti-set.tar.gz --json
+ofti bundle extract study.ofti-set.tar.gz --to STUDY --json
 ofti run queue STUDY/CASE_A STUDY/CASE_B --json
 ```
 

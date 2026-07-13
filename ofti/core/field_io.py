@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import re
+import struct
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,13 @@ _NUMBER_RE = re.compile(
     r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?|[-+]?inf|nan",
     re.IGNORECASE,
 )
+_BINARY_HEADER_RE = re.compile(rb"\bFoamFile\s*\{(?P<body>.*?)\}", re.DOTALL)
+_BINARY_ARCH_RE = re.compile(rb'\barch\s+"(?P<arch>[^"]+)"\s*;')
+_BINARY_INTERNAL_RE = re.compile(
+    rb"\binternalField\s+nonuniform\s+List<(?P<kind>[^>]+)>\s+(?P<count>\d+)\s*\(",
+    re.DOTALL,
+)
+_BINARY_COMPONENTS = {"scalar": 1, "sphericaltensor": 1, "vector": 3, "symmtensor": 6, "tensor": 9}
 
 
 @dataclass(frozen=True)
@@ -138,6 +146,9 @@ def _read_field_aggregate(
 def _read_field_single(path: Path, *, patch: str | None = None) -> FieldData:
     if not path.is_file():
         raise ValueError(f"field not found: {path.name}")
+    payload = path.read_bytes()
+    if _binary_field(payload):
+        return _read_binary_field(path, payload, patch=patch)
     node_data = _field_from_foamlib(path, patch=patch)
     if node_data is not None:
         return node_data
@@ -149,6 +160,78 @@ def _read_field_single(path: Path, *, patch: str | None = None) -> FieldData:
         return _field_data_from_match(path, text_match)
     label = f"boundaryField.{patch}.value" if patch else "internalField"
     raise ValueError(f"unsupported or missing {label}: {path.name}")
+
+
+def _binary_field(payload: bytes) -> bool:
+    header = _BINARY_HEADER_RE.search(payload)
+    return bool(header and re.search(rb"\bformat\s+binary\s*;", header.group("body")))
+
+
+def _read_binary_field(path: Path, payload: bytes, *, patch: str | None) -> FieldData:
+    if patch is not None:
+        raise ValueError(f"unsupported_binary_format: boundary patch values are not supported for {path.name}")
+    match = _BINARY_INTERNAL_RE.search(payload)
+    if match is None:
+        return _read_binary_uniform_field(path, payload)
+    kind = match.group("kind").decode("ascii", errors="strict").strip()
+    count = int(match.group("count"))
+    endian, scalar_code, scalar_size = _binary_scalar_layout(path, payload)
+    components = _binary_component_count(path, kind)
+    byte_count = count * components * scalar_size
+    start = match.end()
+    end = start + byte_count
+    if end > len(payload) or not payload[end:].lstrip().startswith(b");"):
+        raise ValueError(f"invalid_binary_field_payload: truncated internalField for {path.name}")
+    values = _unpack_binary_rows(payload[start:end], endian, scalar_code, components)
+    return FieldData(path.name, path, _field_kind_from_list(values), values, count, False)
+
+
+def _read_binary_uniform_field(path: Path, payload: bytes) -> FieldData:
+    text = _strip_comments(payload.decode("utf-8", errors="ignore"))
+    match = _UNIFORM_RE.search(text)
+    if match is None:
+        raise ValueError(f"unsupported_binary_format: internalField layout for {path.name}")
+    return _uniform_field_data(path, match.group("value"))
+
+
+def _binary_scalar_layout(path: Path, payload: bytes) -> tuple[str, str, int]:
+    header = _BINARY_HEADER_RE.search(payload)
+    arch = _BINARY_ARCH_RE.search(header.group("body")) if header else None
+    if arch is None:
+        raise ValueError(f"unsupported_binary_format: missing arch metadata for {path.name}")
+    entries = _binary_arch_entries(arch.group("arch").decode("ascii", errors="strict"))
+    byte_order = entries.get("byte_order")
+    if byte_order not in {"LSB", "MSB"} or entries.get("label") not in {"32", "64"}:
+        raise ValueError(f"unsupported_binary_format: arch metadata for {path.name}")
+    endian = "<" if byte_order == "LSB" else ">"
+    scalar_bits = entries.get("scalar")
+    if scalar_bits == "32":
+        return endian, "f", 4
+    if scalar_bits == "64":
+        return endian, "d", 8
+    raise ValueError(f"unsupported_binary_format: scalar size {scalar_bits!r} for {path.name}")
+
+
+def _binary_arch_entries(arch: str) -> dict[str, str]:
+    parts = [part.strip() for part in arch.split(";") if part.strip()]
+    entries = {"byte_order": parts[0]} if parts else {}
+    entries.update(dict(part.split("=", 1) for part in parts[1:] if "=" in part))
+    return entries
+
+
+def _binary_component_count(path: Path, kind: str) -> int:
+    components = _BINARY_COMPONENTS.get(kind.lower())
+    if components is None:
+        raise ValueError(f"unsupported_binary_format: List<{kind}> for {path.name}")
+    return components
+
+
+def _unpack_binary_rows(payload: bytes, endian: str, scalar_code: str, components: int) -> list[tuple[float, ...]]:
+    scalar_size = struct.calcsize(scalar_code)
+    row_size = scalar_size * components
+    row_format = f"{endian}{components}{scalar_code}"
+    complete_payload = payload[: len(payload) // row_size * row_size]
+    return [tuple(float(value) for value in row) for row in struct.iter_unpack(row_format, complete_payload)]
 
 
 def _field_text_match(text: str, *, patch: str | None) -> re.Match[str] | None:

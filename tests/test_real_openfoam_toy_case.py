@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from ofti.app.cli_tools import main as cli_main
-from ofti.core import bundle_set, case_bundle, entry_io, run_manifest
+from ofti.core import bundle_set, case_bundle, entry_io, field_io, run_manifest
 from ofti.foam.times import latest_time
 from ofti.tools import (
     checkpoint_service,
@@ -49,6 +49,23 @@ def real_case(tutorial_profile: TutorialProfile, tmp_path: Path) -> Iterator[Rea
         yield case
     finally:
         case.cleanup()
+
+
+def _require_cavity_profile(real_case: RealTutorialCase) -> None:
+    if real_case.profile.name != "icoFoam-cavity":
+        pytest.skip("binary field contract currently uses the canonical cavity profile")
+
+
+def _configure_binary_single_step(case: Path) -> None:
+    settings = {
+        "startFrom": "startTime",
+        "startTime": "0",
+        "endTime": "0.005",
+        "writeInterval": "1",
+        "writeFormat": "binary",
+    }
+    for key, value in settings.items():
+        assert knife_service.set_entry_payload(case, "system/controlDict", key, value)["ok"] is True
 
 
 def test_real_toy_case_prelaunch_diagnostics_and_manifest(real_case: RealTutorialCase, tmp_path: Path) -> None:
@@ -126,6 +143,47 @@ def test_real_toy_case_foamlib_control_round_trip_remains_runnable(
     assert smoke["ok"] is True, smoke
     assert smoke["iterations_completed"] == 2
     assert smoke["checkpoint_ok"] is True
+
+
+def test_real_toy_case_binary_scalar_and_vector_fields_are_physical(real_case: RealTutorialCase) -> None:
+    _require_cavity_profile(real_case)
+    case = real_case.case
+    _configure_binary_single_step(case)
+    display, command = run_ops.solver_command(case)
+    real_case.run_tool(display, command)
+
+    time_name = latest_time(case)
+    pressure = field_io.read_internal_field(case / time_name / "p")
+    velocity = field_io.read_internal_field(case / time_name / "U")
+    physical = knife_service.physical_payload(case, time_name="latest", fields=["p", "U"])
+
+    assert pressure.count == 400
+    assert pressure.declared_count == 400
+    assert velocity.count == 400
+    assert velocity.component_count == 3
+    assert physical["hard_errors"] == []
+
+
+def test_real_toy_case_decomposed_binary_fields_reduce_across_ranks(real_case: RealTutorialCase) -> None:
+    _require_cavity_profile(real_case)
+    case = real_case.case
+    _configure_binary_single_step(case)
+    display, command = run_ops.solver_command(case)
+    real_case.run_tool(display, command)
+    time_name = latest_time(case)
+    real_case.ensure_parallel_dict(2)
+    real_case.run_tool("decomposePar", ["decomposePar", "-force", "-latestTime"])
+    (case / time_name).rename(case / ".serial-binary-result")
+
+    time_dir = field_io.resolve_time_dir(case, "latest")
+    pressure = field_io.read_field_values(time_dir / "p")
+    velocity = field_io.read_field_values(time_dir / "U")
+    physical = knife_service.physical_payload(case, time_name="latest", fields=["p", "U"])
+
+    assert pressure.count == 400
+    assert velocity.count == 400
+    assert velocity.component_count == 3
+    assert physical["hard_errors"] == []
 
 
 def test_real_toy_case_cli_manifest_write_is_case_local_and_verifiable(
@@ -222,7 +280,7 @@ def test_real_toy_case_manifest_restore_executes_solver(
     assert latest_time(restored) != "0"
 
 
-def test_real_toy_case_bundle_unbundle_status(real_case: RealTutorialCase, tmp_path: Path) -> None:
+def test_real_toy_case_bundle_extract_status(real_case: RealTutorialCase, tmp_path: Path) -> None:
     case = real_case.case
     archive = tmp_path / "real-case.ofti.tar.gz"
     manifest = case_bundle.create_bundle(case, archive, mesh="auto", time="0")
@@ -237,7 +295,7 @@ def test_real_toy_case_bundle_unbundle_status(real_case: RealTutorialCase, tmp_p
     assert knife_service.status_payload(restored, lightweight=True)["case"] == str(restored)
 
 
-def test_real_toy_case_unbundled_smoke_run_is_watchable(
+def test_real_toy_case_extracted_smoke_run_is_watchable(
     real_case: RealTutorialCase,
     tmp_path: Path,
 ) -> None:
@@ -388,6 +446,7 @@ def test_real_toy_case_bundle_cli_smoke_is_portable(
     code = cli_main(
         [
             "bundle",
+            "case",
             str(case),
             "--output",
             str(archive),

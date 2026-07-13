@@ -53,18 +53,6 @@ def available() -> bool:
     return FOAMLIB_AVAILABLE or fallback.available()
 
 
-def clone_case_directory(source: Path, destination: Path) -> Path | None:
-    if not FOAMLIB_AVAILABLE:
-        return None
-    try:
-        from foamlib import FoamCase
-
-        cloned = FoamCase(source).clone(destination)
-    except Exception:
-        return None
-    return Path(getattr(cloned, "path", destination)).expanduser().resolve()
-
-
 def validate_dimension_set(values: list[float]) -> bool:
     if FoamlibDimensionSet is None:
         return True
@@ -475,6 +463,11 @@ def write_entry(file_path: Path, key: str, value: str) -> bool:
     with foam_file:
         foam_file[key_parts or None] = cleaned
     return True
+
+
+def write_entry_preserving_text(file_path: Path, key: str, value: str) -> bool:
+    """Edit one entry without reserializing unrelated dictionary text."""
+    return fallback.write_entry(file_path, key, value)
 
 
 def write_field_entry(file_path: Path, key: str, value: str) -> bool:

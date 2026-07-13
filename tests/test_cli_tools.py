@@ -164,7 +164,7 @@ def test_cli_tools_without_args_prints_short_help(capsys) -> None:
     out = capsys.readouterr().out
     assert code == 0
     assert "Non-interactive OFTI utilities" in out
-    assert "{knife,plot,watch,run,bundle,unbundle,bundle-set,unbundle-set,result,version}" in out
+    assert "{knife,plot,watch,run,bundle,result,version}" in out
 
 
 def test_every_cli_help_page_has_examples() -> None:
@@ -575,6 +575,9 @@ def test_knife_copy_skips_runtime_artifacts(tmp_path, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
     assert payload["ok"] is True
+    assert payload["cleanup_applied"] is False
+    assert payload["cleanup_target"] is None
+    assert payload["cleanup_command"] is None
     assert dest.is_dir()
     assert (dest / "0" / "U").is_file()
     assert not (dest / "1").exists()

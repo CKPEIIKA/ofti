@@ -26,18 +26,18 @@ def test_cli_main_delegates_tool_subcommand(monkeypatch) -> None:
 
 def test_cli_main_delegates_bundle_subcommands() -> None:
     with mock.patch("ofti.app.cli.cli_tools_main", return_value=0) as tool_main:
-        code = cli.main(["bundle", "CASE", "--output", "case.ofti.tar.gz"])
+        code = cli.main(["bundle", "case", "CASE", "--output", "case.ofti.tar.gz"])
 
     assert code == 0
-    tool_main.assert_called_once_with(["bundle", "CASE", "--output", "case.ofti.tar.gz"])
+    tool_main.assert_called_once_with(["bundle", "case", "CASE", "--output", "case.ofti.tar.gz"])
 
 
-def test_cli_main_delegates_bundle_set_subcommands() -> None:
+def test_cli_main_delegates_bundle_set_subcommand() -> None:
     with mock.patch("ofti.app.cli.cli_tools_main", return_value=0) as tool_main:
-        code = cli.main(["bundle-set", "CASE_A", "CASE_B", "--output", "study.tar.gz"])
+        code = cli.main(["bundle", "set", "CASE_A", "CASE_B", "--output", "study.tar.gz"])
 
     assert code == 0
-    tool_main.assert_called_once_with(["bundle-set", "CASE_A", "CASE_B", "--output", "study.tar.gz"])
+    tool_main.assert_called_once_with(["bundle", "set", "CASE_A", "CASE_B", "--output", "study.tar.gz"])
 
 
 def test_cli_main_delegates_version_flag() -> None:
@@ -59,5 +59,5 @@ def test_cli_main_delegates_version_subcommand() -> None:
 def test_cli_help_mentions_version_and_noninteractive_tools() -> None:
     help_text = cli.build_parser().format_help()
     assert "--version" in help_text
-    assert "knife|plot|watch|run|bundle|unbundle|bundle-set" in help_text
+    assert "knife|plot|watch|run|bundle|result" in help_text
     assert "Examples:" in help_text

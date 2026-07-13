@@ -65,3 +65,14 @@ def test_with_bashrc_injects_marker(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OFTI_BASHRC", str(bashrc))
     cmd = with_bashrc("echo hi")
     assert str(bashrc) in cmd
+
+
+def test_with_bashrc_sources_openfoam_before_enabling_nounset(tmp_path: Path, monkeypatch) -> None:
+    bashrc = tmp_path / "etc" / "bashrc"
+    bashrc.parent.mkdir(parents=True)
+    bashrc.write_text("")
+    monkeypatch.setenv("OFTI_BASHRC", str(bashrc))
+
+    cmd = with_bashrc("set -u; echo ready")
+
+    assert cmd == f'. "{bashrc}"; set -u; echo ready'

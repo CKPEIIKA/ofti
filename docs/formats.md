@@ -122,12 +122,12 @@ Current bundle manifest: `ofti.case-bundle` v1.
 
 ## Bundle Set Archive
 
-`ofti bundle-set` writes `ofti.bundle-set` v1 archives for campaigns and case
+`ofti bundle set` writes `ofti.bundle-set` v1 archives for campaigns and case
 matrices. The outer `.ofti/bundle-set.json` manifest names every embedded
 `cases/*.ofti.tar.gz` archive and records its size, SHA-256 hash, and complete
 `ofti.case-bundle` manifest. Case names and archive paths are unique.
 
-`ofti unbundle-set` rejects unexpected members, links, unsafe paths, missing or
+`ofti bundle extract` rejects unexpected members, links, unsafe paths, missing or
 modified inner archives, and non-empty destinations. It verifies and extracts
 all cases in a staging directory before publishing `DESTINATION/<case-name>`.
 Each restored directory is therefore an ordinary runnable OpenFOAM case; the
@@ -182,7 +182,10 @@ Supported:
 
 - native OpenFOAM case tree layout
 - ASCII FoamFile dictionaries where parseable by foamlib or OFTI fallback logic
-- scalar/vector/tensor-like internal fields where parseable
+- OpenFOAM binary nonuniform scalar, vector, spherical-tensor,
+  symmetric-tensor, and tensor internal fields with declared LSB/MSB and
+  32/64-bit scalar layouts
+- scalar/vector/tensor-like ASCII internal fields where parseable
 - uniform and nonuniform internalField forms
 - decomposed `processor*` aggregation for selected workflows
 
@@ -196,7 +199,8 @@ Best effort:
 Unsupported or rejected:
 
 - evaluating `#codeStream`
-- unknown binary field encodings
+- binary boundary-patch values and unknown binary field encodings; these fail
+  with `unsupported_binary_format` rather than falling back to ASCII parsing
 - path traversal in archives
 - unsafe archive links or symlinks
 

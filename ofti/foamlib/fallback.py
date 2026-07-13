@@ -111,7 +111,9 @@ def write_entry(file_path: Path, key: str, value: str) -> bool:
     if parent_parts and parent_span is None:
         return False
     replacement = _normalize_value(value)
-    updated = _set_scalar_entry(text, parent_span, leaf, replacement)
+    updated = _set_empty_block_entry(text, parent_span, leaf) if replacement == "{}" else None
+    if updated is None:
+        updated = _set_scalar_entry(text, parent_span, leaf, replacement)
     if updated is None:
         return False
     try:
@@ -602,6 +604,22 @@ def _set_scalar_entry(
     if parent_span is None:
         return text + insertion
     return text[:insert_at] + insertion + text[insert_at:]
+
+
+def _set_empty_block_entry(text: str, parent_span: tuple[int, int] | None, key: str) -> str | None:
+    start, end = parent_span or (0, len(text))
+    segment = text[start:end]
+    pattern = re.compile(rf'(?m)^(?P<indent>[ \t]*)"?{re.escape(key)}"?\s*\{{')
+    match = pattern.search(segment)
+    if match is None:
+        return None
+    open_brace = start + match.end() - 1
+    close_brace = _match_brace(text, open_brace)
+    if close_brace is None:
+        return None
+    indent = match.group("indent")
+    replacement = f"{indent}{key}\n{indent}{{\n{indent}}}"
+    return text[: start + match.start()] + replacement + text[close_brace + 1 :]
 
 
 def _strip_comments(line: str) -> str:

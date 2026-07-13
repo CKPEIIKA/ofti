@@ -116,6 +116,41 @@ def test_run_smoke_cli_json_uses_real_subprocess(tmp_path: Path, monkeypatch, ca
     assert Path(payload["log_path"]).read_text(encoding="utf-8").count("Time =") == 1
 
 
+def test_smoke_normalization_preserves_unrelated_numeric_text(tmp_path: Path, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case")
+    control = case / "system" / "controlDict"
+    original = control.read_text(encoding="utf-8")
+    control.write_text(
+        original
+        + "rhoInf 0.00666666667;\n"
+        + "Aref 0.000706858347;\n"
+        + "functions\n{\n    probe { point (-0.0152362205 0 0); }\n}\n",
+        encoding="utf-8",
+    )
+    source_before = control.read_bytes()
+    _install_fake_solver(tmp_path / "bin")
+    monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
+
+    payload = run.smoke_payload(
+        case,
+        iterations=1,
+        timeout=5,
+        output_root=tmp_path / "smoke",
+        core_only=True,
+    )
+
+    normalized = payload["normalized_control"]
+    smoke_text = Path(str(normalized["controlDict"])).read_text(encoding="utf-8")
+    assert payload["ok"] is True
+    assert normalized["text_preserving"] is True
+    assert "controlDict.before" in normalized["diff"]
+    assert "rhoInf 0.00666666667;" in smoke_text
+    assert "Aref 0.000706858347;" in smoke_text
+    assert "functions\n{\n}" in smoke_text
+    assert "-0.0152362205" not in smoke_text
+    assert control.read_bytes() == source_before
+
+
 def test_smoke_requires_exact_iterations_and_written_checkpoint(tmp_path: Path, monkeypatch) -> None:
     case = _make_case(tmp_path / "case")
     (case / "system" / "controlDict").write_text(

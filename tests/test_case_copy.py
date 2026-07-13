@@ -43,6 +43,25 @@ def test_copy_case_default_skips_runtime_artifacts(tmp_path: Path) -> None:
     assert not (dest / "source.foam").exists()
 
 
+def test_copy_case_never_executes_allclean_or_mutates_source(tmp_path: Path) -> None:
+    source = _make_case(tmp_path / "source")
+    marker = tmp_path / "allclean-ran"
+    allclean = source / "Allclean"
+    allclean.write_text(f"#!/bin/sh\ntouch {marker}\n", encoding="utf-8")
+    allclean.chmod(0o755)
+    (source / "1").mkdir()
+    (source / "1" / "p").write_text("checkpoint\n", encoding="utf-8")
+    before = {path.relative_to(source): path.read_bytes() for path in source.rglob("*") if path.is_file()}
+
+    destination = copy_case_directory(source, tmp_path / "copied")
+
+    after = {path.relative_to(source): path.read_bytes() for path in source.rglob("*") if path.is_file()}
+    assert marker.exists() is False
+    assert before == after
+    assert (destination / "Allclean").read_bytes() == allclean.read_bytes()
+    assert (destination / "1").exists() is False
+
+
 def test_copy_case_with_runtime_and_drop_mesh_options(tmp_path: Path) -> None:
     source = _make_case(tmp_path / "source")
     (source / "1").mkdir()

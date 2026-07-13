@@ -15,11 +15,12 @@ import subprocess
 import time
 from collections.abc import Mapping
 from contextlib import suppress
+from difflib import unified_diff
 from pathlib import Path
 from typing import Any
 
 from ofti.core.checkpoint import checkpoint_health
-from ofti.core.entry_io import read_entry, write_entry
+from ofti.core.entry_io import read_entry, write_entry_preserving_text
 from ofti.tools import knife_service, runner_service
 
 from .common import require_case_dir
@@ -182,6 +183,7 @@ def _normalize_smoke_control_dict(
     preserve_delta_t: bool,
     core_only: bool,
 ) -> dict[str, Any]:
+    before = control.read_text(encoding="utf-8")
     writes = {
         "startFrom": "startTime",
         "startTime": "0",
@@ -196,16 +198,26 @@ def _normalize_smoke_control_dict(
         writes["deltaT"] = f"{delta_t:g}"
     if core_only:
         writes["functions"] = "{}"
-    applied = {key: value for key, value in writes.items() if write_entry(control, key, value)}
+    applied = {key: value for key, value in writes.items() if write_entry_preserving_text(control, key, value)}
     required = set(writes).difference({"functions"})
     failed = sorted(required.difference(applied))
     if failed:
         raise ValueError(f"failed to normalize smoke controlDict entries: {', '.join(failed)}")
+    after = control.read_text(encoding="utf-8")
     return {
         "controlDict": str(control),
         "deltaT": delta_t,
         "entries": applied,
         "core_only": bool(core_only),
+        "text_preserving": True,
+        "diff": "".join(
+            unified_diff(
+                before.splitlines(keepends=True),
+                after.splitlines(keepends=True),
+                fromfile="controlDict.before",
+                tofile="controlDict.smoke",
+            ),
+        ),
     }
 
 
