@@ -4,6 +4,7 @@ Completed work only. Record meaningful outcomes and validation evidence, newest 
 
 ## 2026-07-29
 
+- Removed superseded GUI, foamlib-adoption, plugin-extraction, and test-audit snapshots; current documentation now points directly to maintained contracts and the hy2Foam plugin.
 - Prepared OFTI 0.9.4 with the accumulated CLI/runtime hardening, plugin surfaces, field metrics, portable provenance, compact documentation, and authoritative dynamic package metadata; the full gate passes with `1083 passed, 56 skipped` at 85.38% coverage and both distributions verify as `GPL-3.0-or-later`.
 - Extended `knife metric` with direct min/max/mean reductions for internal and boundary-patch fields, scalar-safe vector/tensor component selection, nonfinite failure status, and real OpenFOAM binary/internal plus wall-patch coverage.
 - Added `bundle case --run-manifest PATH`: external `ofti.run-manifest` v1 provenance is validated, embedded at `.ofti/provenance/run-manifest.json`, hash/build-digest verified after extraction, and exercised with a real OpenFOAM case.

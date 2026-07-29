@@ -4,9 +4,8 @@
 
 - [Architecture](architecture.md)
 - [Layering rules](layering.md)
-- [foamlib adoption](foamlib_adoption.md)
 - [foamlib survey](foamlib_survey.md)
-- [hy2Foam plugin extraction](hy2foam_plugin_extraction.md)
+- [hy2Foam plugin](../plugins/ofti-hy2foam/README.md)
 
 ## Contracts and runtime formats
 
@@ -25,7 +24,6 @@
 ## Testing and evidence
 
 - [Testing](testing.md)
-- [Test-suite audit](test_suite_audit.md)
 - [Complexity debt](complexity-debt.md)
 - [Real-case coverage](real_case_coverage.md)
 - [Release process](releasing.md)

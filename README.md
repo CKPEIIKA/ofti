@@ -146,8 +146,8 @@ diagnostics, preflight checks, and comparison helpers.
 
 Plugins declare framework-neutral `CommandSpec` objects and use the same JSON
 output contract as core commands. Inspect discovery with `ofti plugins list`
-and `ofti plugins doctor`. See
-[docs/hy2foam_plugin_extraction.md](docs/hy2foam_plugin_extraction.md).
+and `ofti plugins doctor`. See the
+[hy2Foam plugin README](plugins/ofti-hy2foam/README.md).
 
 ## Architecture and development
 
