@@ -24,11 +24,11 @@ def config_menu(
     case_path: Path,
     state: AppState,
     has_fzf: bool,
+    *,
     editor_screen: Any,
     check_syntax_screen: Any,
     openfoam_env_screen: Any,
     global_search_screen: Any,
-    *,
     command_handler: Any | None = None,
     command_suggestions: Any | None = None,
 ) -> Screen:

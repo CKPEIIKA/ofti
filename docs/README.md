@@ -17,6 +17,8 @@
 
 ## Command reference
 
+- [CLI workflows](cli.md)
+- [Curses interface](tui.md)
 - [`ofti(1)` source](../man/ofti.1.scd)
 - [`ofti(1)` generated manual](../man/ofti.1)
 
@@ -24,6 +26,7 @@
 
 - [Testing](testing.md)
 - [Test-suite audit](test_suite_audit.md)
+- [Complexity debt](complexity-debt.md)
 - [Real-case coverage](real_case_coverage.md)
 - [Release process](releasing.md)
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ofti.app.cli_adapters.command_builder import build_spec_parser
+from ofti.app.cli_adapters.command_builder import build_provider_parsers
 from ofti.app.cli_adapters.knife import (
     _knife_adopt,
     _knife_campaign_compare,
@@ -40,19 +40,25 @@ from ofti.app.cli_adapters.knife import (
     _knife_status,
     _knife_stop,
 )
+from ofti.app.cli_adapters.knife_metric import _knife_metric
 from ofti.app.cli_adapters.plot import _plot_metrics
 from ofti.app.cli_adapters.watch import _watch_pause, _watch_resume, _watch_start
 from ofti.app.cli_help import _add_easy_on_cpu_flag, _add_table_flag, _help_handler
-from ofti.plugins import discover_plugins
+from ofti.plugins import PluginRegistry, discover_plugins
 
 
-def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def _build_knife_parser(
+    groups: argparse._SubParsersAction[argparse.ArgumentParser],
+    *,
+    registry: PluginRegistry | None = None,
+) -> None:
+    selected_registry = registry or discover_plugins()
     knife = groups.add_parser(
         "knife",
         help="Case inspection and quick edits",
         description="Case inspection and quick edits.",
     )
-    knife.set_defaults(func=_help_handler(knife))
+    knife.set_defaults(func=_help_handler(knife), plugin_registry=selected_registry)
     knife_sub = knife.add_subparsers(dest="command", required=False)
 
     doctor = knife_sub.add_parser("doctor", help="Run case doctor checks")
@@ -162,6 +168,77 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     )
     physical.add_argument("--json", action="store_true")
     physical.set_defaults(func=_knife_physical)
+
+    metric = knife_sub.add_parser(
+        "metric",
+        help="Reduce a field or extract a scalar from sampled tables",
+        description=(
+            "Reduce an OpenFOAM field, read a case-relative table as a scalar "
+            "time series, or track a crossing across sampled profiles."
+        ),
+    )
+    metric.add_argument("case_dir", type=Path)
+    metric.add_argument(
+        "source",
+        nargs="?",
+        help="Case-relative table path or glob, e.g. postProcessing/probes/0/p",
+    )
+    metric.add_argument("--field", help="OpenFOAM field name to reduce instead of reading SOURCE")
+    metric.add_argument("--time", default="latest", help="Field time directory (default: latest)")
+    metric.add_argument("--patch", default=None, help="Reduce values on this boundary patch")
+    metric.add_argument(
+        "--reduction",
+        choices=("min", "max", "mean"),
+        default="mean",
+        help="Field reduction (default: mean)",
+    )
+    metric.add_argument(
+        "--component",
+        default="magnitude",
+        help="Vector/tensor component index, or magnitude (default: magnitude)",
+    )
+    metric.add_argument("--name", default=None, help="Stable metric name for JSON/reporting")
+    metric.add_argument(
+        "--coordinate-column",
+        type=int,
+        default=0,
+        help="Zero-based time/x column (negative indices count from the end; default: 0)",
+    )
+    metric.add_argument(
+        "--value-column",
+        type=int,
+        default=-1,
+        help="Zero-based sampled value column (default: last)",
+    )
+    metric.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Track x at this value crossing in each matched profile",
+    )
+    metric.add_argument(
+        "--direction",
+        choices=("any", "rising", "falling"),
+        default="any",
+        help="Threshold crossing direction (default: any)",
+    )
+    metric.add_argument(
+        "--pick",
+        choices=("first", "last"),
+        default="first",
+        help="Choose the first or last crossing in each profile (default: first)",
+    )
+    metric.add_argument("--window", type=int, default=10, help="Recent sample count for span/stationarity")
+    metric.add_argument(
+        "--max-span",
+        type=float,
+        default=None,
+        help="Mark mature when the full recent window span is at most this value",
+    )
+    metric.add_argument("--scale", type=float, default=1.0, help="Multiply extracted values by this factor")
+    metric.add_argument("--offset", type=float, default=0.0, help="Add this after --scale")
+    metric.add_argument("--json", action="store_true", help="Print result as JSON")
+    metric.set_defaults(func=_knife_metric)
 
     compare_fields = knife_sub.add_parser(
         "compare-fields",
@@ -303,9 +380,9 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     manifest_restore.add_argument("--json", action="store_true")
     manifest_restore.set_defaults(func=_knife_manifest_restore)
 
-    registry = knife_sub.add_parser("registry", help="Inspect and repair OFTI runtime registries")
-    registry.set_defaults(func=_help_handler(registry))
-    registry_sub = registry.add_subparsers(dest="registry_command", required=False)
+    registry_cmd = knife_sub.add_parser("registry", help="Inspect and repair OFTI runtime registries")
+    registry_cmd.set_defaults(func=_help_handler(registry_cmd))
+    registry_sub = registry_cmd.add_subparsers(dest="registry_command", required=False)
     registry_repair = registry_sub.add_parser(
         "repair",
         help="Rebuild .ofti/jobs.json from .ofti/runs/*.json identities",
@@ -428,6 +505,11 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         default=[],
         metavar="FILE:KEY=VALUE",
         help="Transactional edit; repeat to change several entries together",
+    )
+    set_cmd.add_argument(
+        "--insert",
+        action="store_true",
+        help="Allow missing key paths to be created (default: update existing keys only)",
     )
     set_cmd.add_argument("--dry-run", action="store_true", help="Preview changes without writing")
     set_cmd.add_argument("--json", action="store_true", help="Print result as JSON")
@@ -805,19 +887,17 @@ def _build_knife_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
     plot_criteria.add_argument("--json", action="store_true")
     plot_criteria.set_defaults(func=_plot_metrics)
 
-    _add_plugin_knife_commands(knife_sub)
+    _add_plugin_knife_commands(knife_sub, selected_registry)
 
 
 def _add_plugin_knife_commands(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    registry: PluginRegistry | None = None,
 ) -> None:
-    registry = discover_plugins()
-    for name, command in sorted(registry.knife_commands.items()):
-        spec_fn = getattr(command, "command_spec", None)
-        if not callable(spec_fn):
-            registry.errors.append(f"{name}: plugin command lacks command_spec()")
-            continue
-        try:
-            build_spec_parser(subparsers, spec_fn())
-        except argparse.ArgumentError as exc:
-            registry.errors.append(f"{name}: {exc}")
+    selected = registry or discover_plugins()
+    build_provider_parsers(
+        subparsers,
+        selected.knife_commands,
+        selected.errors,
+        surface="knife",
+    )

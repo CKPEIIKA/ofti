@@ -1,9 +1,15 @@
+import json
 from pathlib import Path
 
 import pytest
 
+from ofti.app import cli_tools
 from ofti.core.checkpoint import checkpoint_health, safe_reconstruct_time
-from ofti.tools.checkpoint_service import checkpoint_payload, quarantine_partial_payload
+from ofti.tools.checkpoint_service import (
+    checkpoint_payload,
+    quarantine_partial_payload,
+    restart_plan_payload,
+)
 
 
 def _field(path: Path) -> None:
@@ -74,3 +80,82 @@ def test_checkpoint_quarantine_refuses_to_move_only_partial_state(tmp_path: Path
 
     with pytest.raises(ValueError, match="without a complete checkpoint"):
         quarantine_partial_payload(case, apply=True)
+
+
+def test_restart_plan_reports_latest_common_partial_newer_and_rank_resize(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    _field(case / "system" / "controlDict")
+    (case / "system" / "decomposeParDict").write_text(
+        "FoamFile\n{\nclass dictionary;\nobject decomposeParDict;\n}\nnumberOfSubdomains 2;\n",
+        encoding="utf-8",
+    )
+    for processor in ("processor0", "processor1"):
+        _field(case / processor / "10" / "U")
+    _field(case / "processor0" / "20" / "U")
+
+    payload = restart_plan_payload(case, expected_processors=2, target_processors=4)
+
+    assert payload["safe_to_apply"] is True
+    assert payload["mutated"] is False
+    assert payload["latest_common_time"] == "10"
+    assert [row["time"] for row in payload["partial_newer_times"]] == ["20"]
+    assert payload["mpi"] == {
+        "processor_dirs": ["processor0", "processor1"],
+        "actual": 2,
+        "configured": 2,
+        "expected": 2,
+        "target": 4,
+        "contiguous": True,
+        "consistent": True,
+    }
+    assert [row["action"] for row in payload["plan"]] == [
+        "quarantine-partial",
+        "reconstruct",
+        "set-subdomains",
+        "decompose",
+        "resume-latest",
+        "start",
+    ]
+
+
+def test_restart_plan_is_unsafe_for_mpi_size_mismatch(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    _field(case / "system" / "controlDict")
+    (case / "system" / "decomposeParDict").write_text(
+        "FoamFile\n{\nclass dictionary;\nobject decomposeParDict;\n}\nnumberOfSubdomains 4;\n",
+        encoding="utf-8",
+    )
+    for processor in ("processor0", "processor1"):
+        _field(case / processor / "10" / "U")
+
+    payload = restart_plan_payload(case)
+
+    assert payload["safe_to_apply"] is False
+    assert payload["mpi"]["actual"] == 2
+    assert payload["mpi"]["configured"] == 4
+    assert payload["mpi"]["consistent"] is False
+
+
+def test_restart_plan_cli_exposes_read_only_evidence(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    case = tmp_path / "case"
+    _field(case / "system" / "controlDict")
+    (case / "system" / "decomposeParDict").write_text(
+        "FoamFile\n{\nclass dictionary;\nobject decomposeParDict;\n}\nnumberOfSubdomains 2;\n",
+        encoding="utf-8",
+    )
+    for processor in ("processor0", "processor1"):
+        _field(case / processor / "10" / "U")
+
+    code = cli_tools.main(
+        ["run", "restart-plan", str(case), "--from", "2", "--to", "4", "--json"],
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["command"] == "run restart-plan"
+    assert payload["safe_to_apply"] is True
+    assert payload["mutated"] is False
+    assert (case / "10").exists() is False

@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -19,6 +20,7 @@ from ofti.tools import (
     parallel_resize_service,
     result_service,
     runtime_control_service,
+    sample_metric_service,
     watch_service,
 )
 from ofti.tools.cli_tools import run as run_ops
@@ -98,7 +100,10 @@ def test_real_toy_case_prelaunch_diagnostics_and_manifest(real_case: RealTutoria
     assert run_manifest.verify_run_manifest(written, case_path=case)["ok"] is True
 
 
-def test_real_toy_case_transactional_dictionary_edit(real_case: RealTutorialCase) -> None:
+def test_real_toy_case_transactional_dictionary_edit(
+    real_case: RealTutorialCase,
+    tmp_path: Path,
+) -> None:
     case = real_case.case
 
     preview = dictionary_transaction_service.set_entries_payload(
@@ -121,6 +126,17 @@ def test_real_toy_case_transactional_dictionary_edit(real_case: RealTutorialCase
     assert applied["ok"] is True, applied
     assert applied["applied"] is True
     assert Path(str(applied["snapshot"]), "snapshot.json").is_file()
+    assert Path(str(applied["manifest"])).is_file()
+    assert "endTime 0.01;" in Path(case, "system", "controlDict").read_text(encoding="utf-8")
+    smoke = run_ops.smoke_payload(
+        case,
+        iterations=2,
+        timeout=60,
+        output_root=tmp_path / "transaction-smoke",
+        core_only=True,
+    )
+    assert smoke["ok"] is True, smoke
+    assert smoke["output_readable"] is True
 
 
 def test_real_toy_case_foamlib_control_round_trip_remains_runnable(
@@ -156,12 +172,27 @@ def test_real_toy_case_binary_scalar_and_vector_fields_are_physical(real_case: R
     pressure = field_io.read_internal_field(case / time_name / "p")
     velocity = field_io.read_internal_field(case / time_name / "U")
     physical = knife_service.physical_payload(case, time_name="latest", fields=["p", "U"])
+    pressure_mean = sample_metric_service.field_metric_payload(case, "p", reduction="mean")
+    velocity_max = sample_metric_service.field_metric_payload(case, "U", reduction="max")
+    moving_wall = sample_metric_service.field_metric_payload(
+        case,
+        "U",
+        time_name="0",
+        patch="movingWall",
+        reduction="max",
+    )
 
     assert pressure.count == 400
     assert pressure.declared_count == 400
     assert velocity.count == 400
     assert velocity.component_count == 3
     assert physical["hard_errors"] == []
+    assert pressure_mean["finite_count"] == 400
+    assert cast("float", pressure_mean["min"]) <= cast("float", pressure_mean["value"])
+    assert cast("float", pressure_mean["value"]) <= cast("float", pressure_mean["max"])
+    assert velocity_max["finite_count"] == 400
+    assert cast("float", velocity_max["value"]) >= 0.0
+    assert moving_wall["value"] == pytest.approx(1.0)
 
 
 def test_real_toy_case_decomposed_binary_fields_reduce_across_ranks(real_case: RealTutorialCase) -> None:
@@ -282,12 +313,34 @@ def test_real_toy_case_manifest_restore_executes_solver(
 
 def test_real_toy_case_bundle_extract_status(real_case: RealTutorialCase, tmp_path: Path) -> None:
     case = real_case.case
+    display, command = run_ops.solver_command(case)
+    external_manifest = run_manifest.write_case_run_manifest(
+        case,
+        name=display,
+        command=run_ops.dry_run_command(command),
+        background=False,
+        detached=False,
+        parallel=0,
+        mpi=None,
+        sync_subdomains=True,
+        prepare_parallel=True,
+        clean_processors=False,
+        output=tmp_path / "external-run-manifest.json",
+    )
     archive = tmp_path / "real-case.ofti.tar.gz"
-    manifest = case_bundle.create_bundle(case, archive, mesh="auto", time="0")
+    manifest = case_bundle.create_bundle(
+        case,
+        archive,
+        mesh="auto",
+        time="0",
+        run_manifest=external_manifest,
+    )
     restored = tmp_path / "restored"
     extracted = case_bundle.extract_bundle(archive, restored)
 
     assert extracted == manifest
+    assert manifest.run_manifest == case_bundle.BUNDLED_RUN_MANIFEST_PATH
+    assert (restored / case_bundle.BUNDLED_RUN_MANIFEST_PATH).is_file()
     assert (restored / "system" / "controlDict").is_file()
     assert (restored / "constant" / "polyMesh").is_dir()
     assert not (restored / "postProcessing").exists()
@@ -399,6 +452,7 @@ def test_real_toy_case_parallel_smoke_writes_common_final_checkpoint(
         output_root=tmp_path / "parallel-exact-smoke",
         core_only=True,
         clean_processors=True,
+        reconstruct=True,
     )
 
     assert smoke["ok"] is True, smoke
@@ -407,6 +461,9 @@ def test_real_toy_case_parallel_smoke_writes_common_final_checkpoint(
     assert smoke["latest_complete_processor_time"] == smoke["latest_written_time"]
     assert smoke["checkpoint"]["processor_count"] == 2
     assert smoke["checkpoint"]["partial_times"] == []
+    assert smoke["output_readable"] is True
+    assert smoke["reconstruction_ok"] is True
+    assert smoke["reconstruction"]["returncode"] == 0
 
 
 def test_real_toy_case_smoke_result_pack_round_trip(
@@ -573,6 +630,7 @@ def test_real_toy_case_progress_tracks_live_pause_and_resume(real_case: RealTuto
         assert live["process_live"] is True
         assert live["paused"] is False
         assert "IDLE" not in live["reason_codes"]
+        assert live["state"] in {"STARTING", "SOLVING", "WRITING"}
 
         paused = watch_service.pause_payload(case, all_jobs=True, kind="solver")
         assert paused["failed"] == []
@@ -580,6 +638,7 @@ def test_real_toy_case_progress_tracks_live_pause_and_resume(real_case: RealTuto
         assert progress["process_live"] is False
         assert progress["paused"] is True
         assert progress["reason_codes"] == ["PAUSED"]
+        assert progress["state"] == "STALLED_LOG"
 
         resumed = watch_service.resume_payload(case, all_jobs=True, kind="solver")
         assert resumed["failed"] == []
@@ -956,8 +1015,21 @@ def test_real_toy_case_prepare_parallel_extra_rank_profile(real_case: RealTutori
     checkpoint = checkpoint_service.checkpoint_payload(case, expected_processors=ranks)
     assert checkpoint["ok"] is True
     assert checkpoint["latest_complete_time"] == "0"
+    restart = checkpoint_service.restart_plan_payload(
+        case,
+        expected_processors=ranks,
+        target_processors=ranks + 1,
+    )
+    assert restart["safe_to_apply"] is True
+    assert restart["latest_common_time"] == "0"
+    assert restart["mpi"]["consistent"] is True
     partial = case / "processor0" / "999"
     shutil.copytree(case / "processor0" / "0", partial)
+    partial_plan = checkpoint_service.restart_plan_payload(
+        case,
+        expected_processors=ranks,
+    )
+    assert [row["time"] for row in partial_plan["partial_newer_times"]] == ["999"]
     preview = checkpoint_service.quarantine_partial_payload(
         case,
         expected_processors=ranks,
@@ -1010,12 +1082,13 @@ def _prepare_parallel_resize_source(real_case: RealTutorialCase) -> None:
     case = real_case.case
     real_case.ensure_parallel_dict(2)
     _require_working_parallel_launcher(run_ops.solver_command(case, parallel=2)[1])
-    dry_plan = parallel_resize_service.parallel_resize_payload(case, from_ranks=2, to_ranks=3, dry_run=True)
-    assert dry_plan["ok"] is True
-    assert any(row["step"] == "decompose" for row in dry_plan["steps"])
     prepared = run_ops.prepare_parallel_case(case, parallel=2, clean_processors=True)
     assert prepared["decompose_returncode"] == 0
     assert (case / "processor0").is_dir()
+    dry_plan = parallel_resize_service.parallel_resize_payload(case, from_ranks=2, to_ranks=3, dry_run=True)
+    assert dry_plan["ok"] is True
+    assert dry_plan["restart_plan"]["safe_to_apply"] is True
+    assert any(row["step"] == "decompose" for row in dry_plan["steps"])
     pid = real_case.start_solver(parallel=2)
     assert pid > 0
     wait_until(lambda: running_jobs(case) >= 1, description="parallel solver discovery")

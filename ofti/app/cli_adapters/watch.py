@@ -8,6 +8,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import cast
 
+from ofti.app.cli_adapters.command_builder import build_provider_parsers
 from ofti.app.cli_adapters.common import interval_with_cpu_mode, parse_env_assignments
 from ofti.app.cli_adapters.run import _run_solver_with_mode
 from ofti.app.cli_help import (
@@ -16,11 +17,17 @@ from ofti.app.cli_help import (
     _help_handler,
     emit_json,
 )
+from ofti.plugins import PluginRegistry, discover_plugins
 from ofti.tools import table_render_service
 from ofti.tools.cli_tools import watch as watch_ops
 
 
-def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def _build_watch_parser(
+    groups: argparse._SubParsersAction[argparse.ArgumentParser],
+    *,
+    registry: PluginRegistry | None = None,
+) -> None:
+    selected_registry = registry or discover_plugins()
     watch = groups.add_parser(
         "watch",
         help="Logs and tracked job control",
@@ -31,7 +38,7 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    watch.set_defaults(func=_help_handler(watch))
+    watch.set_defaults(func=_help_handler(watch), plugin_registry=selected_registry)
     watch_sub = watch.add_subparsers(dest="command", required=False)
 
     jobs = watch_sub.add_parser("jobs", help="Show tracked jobs in .ofti/jobs.json")
@@ -356,6 +363,13 @@ def _build_watch_parser(groups: argparse._SubParsersAction[argparse.ArgumentPars
         help="External watcher command and arguments (use '--' before command)",
     )
     external.set_defaults(func=_watch_external)
+
+    build_provider_parsers(
+        watch_sub,
+        selected_registry.watch_commands,
+        selected_registry.errors,
+        surface="watch",
+    )
 
 
 def _watch_jobs(args: argparse.Namespace) -> int:

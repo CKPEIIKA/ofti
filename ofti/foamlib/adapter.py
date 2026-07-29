@@ -470,6 +470,11 @@ def write_entry_preserving_text(file_path: Path, key: str, value: str) -> bool:
     return fallback.write_entry(file_path, key, value)
 
 
+def updated_entry_text(text: str, key: str, value: str) -> str | None:
+    """Plan a source-preserving edit through the generic fallback writer."""
+    return fallback.updated_entry_text(text, key, value)
+
+
 def write_field_entry(file_path: Path, key: str, value: str) -> bool:
     if not FOAMLIB_AVAILABLE:
         return fallback.write_field_entry(file_path, key, value)

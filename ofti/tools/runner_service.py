@@ -78,7 +78,7 @@ def execute_case_command(
             name,
             process_pid,
             shell_cmd,
-            chosen_log_path,
+            log_path=chosen_log_path,
             detached=detached,
         )
         return RunResult(0, "", "", pid=process_pid, log_path=chosen_log_path)
@@ -124,8 +124,8 @@ def _register_background_job(
     name: str,
     pid: int,
     command: str,
-    log_path: Path | None,
     *,
+    log_path: Path | None,
     detached: bool,
 ) -> None:
     try:

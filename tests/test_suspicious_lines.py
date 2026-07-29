@@ -44,3 +44,24 @@ def test_find_suspicious_lines_ignore_block_comments() -> None:
     content = "FoamFile\n{\n    /*\n       comment block\n    */\n    version     2.0;\n}\n"
     warnings = find_suspicious_lines(content)
     assert warnings == []
+
+
+def test_find_suspicious_lines_accepts_openfoam_table_lists() -> None:
+    content = """\
+FoamFile
+{
+    version 2.0;
+}
+species
+(
+    A
+    B
+);
+coeffs
+(
+    (A B) 1.0 2.0 3.0
+    (B A) 4.0 5.0 6.0
+);
+"""
+
+    assert find_suspicious_lines(content) == []

@@ -198,7 +198,7 @@ def file_screen(
                 file_path,
                 keywords,
                 state,
-                command_callbacks,
+                command_callbacks=command_callbacks,
             )
         elif choice == 1:
             view_file_screen(stdscr, file_path)
@@ -241,8 +241,8 @@ def edit_entry_screen(
     file_path: Path,
     keywords: list[str],
     state: AppState,
-    command_callbacks: CommandCallbacks,
     *,
+    command_callbacks: CommandCallbacks,
     base_entry: str | None = None,
 ) -> None:
     if not keywords:
@@ -292,7 +292,7 @@ def edit_entry_screen(
                 file_path,
                 subkeys,
                 state,
-                command_callbacks,
+                command_callbacks=command_callbacks,
                 base_entry=full_key,
             )
             return

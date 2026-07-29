@@ -3,7 +3,7 @@
 Foamlib is installed in `.venv` (version 1.6.2). The notes below are based on
 local introspection of the package and the current OFTI adapter.
 
-OFTI 0.9.3 pins foamlib 1.6.2. Adapter/unit coverage and real OpenFOAM
+The current release pins foamlib 1.6.2. Adapter/unit coverage and real OpenFOAM
 controlDict round-trip execution are release gates for this upgrade.
 
 ## Core API (foamlib 1.6.2)

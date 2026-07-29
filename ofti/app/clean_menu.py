@@ -47,18 +47,19 @@ def clean_case_menu(
         )
         if choice in (-1, len(options) - 1):
             return Screen.MAIN_MENU
-        if choice == 0:
-            clean_all(stdscr, case_path)
-        elif choice == 1:
-            remove_all_logs(stdscr, case_path)
-        elif choice == 2:
-            clean_time_directories(stdscr, case_path)
-        elif choice == 3:
-            foamlib_clean(stdscr, case_path)
-        elif choice == 4:
-            clear_parallel(stdscr, case_path)
-        elif choice == 5:
-            time_directory_pruner_screen(stdscr, case_path)
+        _run_clean_action(choice, stdscr, case_path)
+
+
+def _run_clean_action(choice: int, stdscr: Any, case_path: Path) -> None:
+    actions = (
+        clean_all,
+        remove_all_logs,
+        clean_time_directories,
+        foamlib_clean,
+        clear_parallel,
+        time_directory_pruner_screen,
+    )
+    actions[choice](stdscr, case_path)
 
 
 def clean_all(stdscr: Any, case_path: Path) -> None:

@@ -121,8 +121,94 @@ def test_knife_fallback_solver_and_set_payload(tmp_path: Path, monkeypatch: pyte
     assert knife._fallback_solver(case / "system" / "missing") is None
 
     monkeypatch.setattr(knife_service, "write_entry", lambda *_a, **_k: False)
-    payload = knife.set_entry_payload(case, "system/controlDict", "application", "simpleFoam")
+    payload = knife.set_entry_payload(
+        case,
+        "system/controlDict",
+        "application",
+        "simpleFoam",
+        allow_insert=True,
+    )
     assert payload["ok"] is False
+    assert payload["operation"] == "insert"
+
+
+def test_knife_set_requires_explicit_insert_and_reports_operation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    writes: list[tuple[Path, str, str]] = []
+
+    def missing(_path: Path, _key: str) -> str:
+        raise RuntimeError("missing")
+
+    def record_write(path: Path, key: str, value: str) -> bool:
+        writes.append((path, key, value))
+        return True
+
+    monkeypatch.setattr(knife_service, "read_entry", missing)
+    monkeypatch.setattr(knife_service, "write_entry", record_write)
+
+    with pytest.raises(ValueError, match="use --insert"):
+        knife.set_entry_payload(case, "system/controlDict", "nested.missing", "value")
+    assert writes == []
+
+    inserted = knife.set_entry_payload(
+        case,
+        "system/controlDict",
+        "nested.missing",
+        "value;",
+        allow_insert=True,
+    )
+    assert inserted["operation"] == "insert"
+    assert inserted["existed"] is False
+    assert inserted["before"] is None
+    assert inserted["after"] == "value"
+    assert writes[0][1:] == ("nested.missing", "value;")
+
+
+def test_knife_set_normalizes_existing_scalar_for_diff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    monkeypatch.setattr(knife_service, "read_entry", lambda _path, _key: "Wilke;")
+    monkeypatch.setattr(knife_service, "write_entry", lambda *_args: True)
+
+    payload = knife.set_entry_payload(
+        case,
+        "system/controlDict",
+        "transportModels.mixingRule",
+        "Gupta;",
+    )
+
+    assert payload["operation"] == "update"
+    assert payload["before"] == "Wilke"
+    assert payload["after"] == "Gupta"
+
+
+def test_knife_set_dry_run_does_not_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    monkeypatch.setattr(knife_service, "read_entry", lambda _path, _key: "Wilke;")
+    writes: list[tuple[object, ...]] = []
+    monkeypatch.setattr(knife_service, "write_entry", lambda *args: writes.append(args) or True)
+
+    payload = knife.set_entry_payload(
+        case,
+        "system/controlDict",
+        "transportModels.mixingRule",
+        "Gupta;",
+        apply=False,
+    )
+
+    assert payload["ok"] is True
+    assert payload["applied"] is False
+    assert payload["before"] == "Wilke"
+    assert payload["after"] == "Gupta"
+    assert writes == []
 
 
 def test_knife_proc_parsing_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

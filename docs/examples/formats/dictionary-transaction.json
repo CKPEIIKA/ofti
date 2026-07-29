@@ -1,0 +1,27 @@
+{
+  "applied": true,
+  "case": "/work/cavity",
+  "created_at": "2026-07-29T12:00:00Z",
+  "edits": [
+    {
+      "after": "100",
+      "before": "10",
+      "existed": true,
+      "file": "system/controlDict",
+      "key": "endTime",
+      "operation": "update"
+    }
+  ],
+  "files": [
+    {
+      "after_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "before_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "diff": "--- system/controlDict.before\n+++ system/controlDict.after\n@@ -1 +1 @@\n-endTime 10;\n+endTime 100;\n",
+      "path": "system/controlDict"
+    }
+  ],
+  "format": "ofti.dictionary-transaction",
+  "format_version": 1,
+  "rolled_back": false,
+  "snapshot": "/work/cavity/.ofti/transactions/20260729T120000000000Z"
+}

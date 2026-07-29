@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 from ofti.foam.openfoam import FileCheckResult
@@ -77,6 +78,31 @@ def test_lint_case_dicts_suppresses_include_heavy_parser_noise(
     assert not any("parser error" in item for item in warnings)
     assert not any("missing/invalid FoamFile header" in item for item in warnings)
     assert any("parser lint skipped for include-heavy/custom syntax" in item for item in warnings)
+
+
+def test_lint_case_dicts_suppresses_foamlib_custom_table_warning(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    case_path = tmp_path / "case"
+    file_path = case_path / "constant" / "customTable"
+    file_path.parent.mkdir(parents=True)
+    file_path.write_text("FoamFile{}\n")
+    result = FileCheckResult(checked=True)
+
+    def verify(_case: Path) -> dict[Path, FileCheckResult]:
+        warnings.warn("Duplicate non-directive file entry 'A_B'", UserWarning, stacklevel=2)
+        return {file_path: result}
+
+    monkeypatch.setattr("ofti.tools.case_doctor._can_lint", lambda: True)
+    monkeypatch.setattr("ofti.tools.case_doctor.openfoam.verify_case", verify)
+
+    with warnings.catch_warnings(record=True) as caught:
+        errors, lint_warnings = _lint_case_dicts(case_path)
+
+    assert errors == []
+    assert lint_warnings == []
+    assert caught == []
 
 
 def test_case_doctor_screen_uses_fast_report_without_parser_lint(

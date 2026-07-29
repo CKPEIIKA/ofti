@@ -131,7 +131,14 @@ def check_syntax_menu(
             labels, checks = check_labels(case_path, files, state)
             status = status_with_check(state, "Check syntax")
             status = f"{status} | {mode_status(state)}" if status else mode_status(state)
-            draw_check_menu(stdscr, labels, checks, current, scroll, status)
+            draw_check_menu(
+                stdscr,
+                labels,
+                checks,
+                current=current,
+                scroll=scroll,
+                status=status,
+            )
             key = stdscr.getch()
             if key == -1:
                 continue
@@ -210,6 +217,7 @@ def draw_check_menu(
     stdscr: Any,
     labels: list[str],
     checks: list[FileCheckResult | None],
+    *,
     current: int,
     scroll: int,
     status: str,

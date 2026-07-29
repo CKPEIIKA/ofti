@@ -21,6 +21,7 @@ def command_name(args: object) -> str:
         getattr(args, "registry_command", None),
         getattr(args, "campaign_command", None),
         getattr(args, "result_command", None),
+        getattr(args, "plugins_command", None),
     ]
     return " ".join(str(part) for part in parts if part)
 

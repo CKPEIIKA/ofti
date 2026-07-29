@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings as python_warnings
 from pathlib import Path
 from typing import Any
 
@@ -124,7 +125,14 @@ def _lint_case_dicts(case_path: Path) -> tuple[list[str], list[str]]:
         warnings.append("Syntax lint skipped (foamlib not available).")
         return errors, warnings
     try:
-        results = openfoam.verify_case(case_path)
+        with python_warnings.catch_warnings():
+            # foamlib warns when a custom table repeats row labels. OpenFOAM
+            # accepts those non-directive rows, so they are not case defects.
+            python_warnings.filterwarnings(
+                "ignore",
+                message=r"Duplicate non-directive (file )?entry.*",
+            )
+            results = openfoam.verify_case(case_path)
     except Exception as exc:
         warnings.append(f"Syntax lint failed: {exc}")
         return errors, warnings

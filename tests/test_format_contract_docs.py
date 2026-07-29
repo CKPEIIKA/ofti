@@ -7,7 +7,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from ofti.core import bundle_set, case_bundle, case_snapshot, result_archive, run_manifest
-from ofti.tools import job_registry
+from ofti.tools import dictionary_transaction_service, job_registry
 from ofti.tools.cli_tools import run_queue
 
 PERSISTED_EXAMPLES = {
@@ -16,6 +16,7 @@ PERSISTED_EXAMPLES = {
     "jobs.json": "ofti.jobs",
     "queue-record.json": "ofti.queue-record",
     "snapshot.json": "ofti.snapshot",
+    "dictionary-transaction.json": "ofti.dictionary-transaction",
     "result-pack.json": "ofti.result-pack",
     "bundle-set.json": "ofti.bundle-set",
 }
@@ -26,6 +27,7 @@ EXAMPLE_SCHEMAS = {
     "jobs.json": "ofti.jobs.v1.schema.json",
     "queue-record.json": "ofti.queue-record.v1.schema.json",
     "snapshot.json": "ofti.snapshot.v1.schema.json",
+    "dictionary-transaction.json": "ofti.dictionary-transaction.v1.schema.json",
     "cli-json.json": "ofti.cli-envelope.v1.schema.json",
     "result-pack.json": "ofti.result-pack.v1.schema.json",
     "bundle-set.json": "ofti.bundle-set.v1.schema.json",
@@ -69,6 +71,7 @@ def test_format_schema_files_are_valid_json() -> None:
         "ofti.jobs.v1.schema.json",
         "ofti.queue-record.v1.schema.json",
         "ofti.snapshot.v1.schema.json",
+        "ofti.dictionary-transaction.v1.schema.json",
         "ofti.result-pack.v1.schema.json",
         "ofti.bundle-set.v1.schema.json",
     } <= names
@@ -158,6 +161,15 @@ def test_actual_persisted_writers_validate_against_published_schemas(tmp_path: P
         ),
         "ofti.snapshot.v1.schema.json",
     )
+    transaction = dictionary_transaction_service.set_entries_payload(
+        case,
+        [("system/controlDict", "application", "simpleFoam")],
+    )
+    transaction_manifest = Path(str(transaction["manifest"]))
+    _validate_payload(
+        json.loads(transaction_manifest.read_text(encoding="utf-8")),
+        "ofti.dictionary-transaction.v1.schema.json",
+    )
     archive = tmp_path / "results.tar.gz"
     _validate_payload(
         result_archive.create_result_pack(case, archive, time_name="0"),
@@ -211,7 +223,16 @@ def _minimal_case(case: Path) -> Path:
     (case / "system").mkdir(parents=True)
     (case / "constant").mkdir()
     (case / "0").mkdir()
-    (case / "system" / "controlDict").write_text("application icoFoam;\n", encoding="utf-8")
+    (case / "system" / "controlDict").write_text(
+        "FoamFile\n{\n"
+        "    version 2.0;\n"
+        "    format ascii;\n"
+        "    class dictionary;\n"
+        "    object controlDict;\n"
+        "}\n"
+        "application icoFoam;\n",
+        encoding="utf-8",
+    )
     (case / "system" / "fvSchemes").write_text("ddtSchemes {}\n", encoding="utf-8")
     (case / "0" / "U").write_text("internalField uniform (0 0 0);\n", encoding="utf-8")
     (case / "0" / "p").write_text("internalField uniform 0;\n", encoding="utf-8")

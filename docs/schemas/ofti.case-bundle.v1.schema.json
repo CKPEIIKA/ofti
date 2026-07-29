@@ -13,6 +13,10 @@
     "mesh_policy": {"enum": ["auto", "include", "exclude"]},
     "application": {"type": "string"},
     "header_version": {"type": "string"},
+    "case_fingerprint": {"type": "string"},
+    "run_manifest": {"type": ["string", "null"]},
+    "run_manifest_sha256": {"type": ["string", "null"]},
+    "build_digest": {"type": ["string", "null"]},
     "files": {
       "type": "array",
       "items": {

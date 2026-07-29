@@ -26,6 +26,9 @@ def case_status_lines(payload: Mapping[str, Any]) -> list[str]:
         f"latest_deltaT={payload.get('latest_delta_t')}",
         f"sec_per_iter={payload.get('sec_per_iter')}",
     ]
+    progress = payload.get("progress")
+    if isinstance(progress, Mapping):
+        lines.append(f"run_state={progress.get('state') or 'unknown'}")
     if payload.get("solver_error"):
         lines.append(f"solver_error={payload['solver_error']}")
     else:

@@ -12,7 +12,7 @@ from ofti.core.case_snapshot import write_case_snapshot, write_snapshot_manifest
 from ofti.core.checkpoint import checkpoint_health, safe_reconstruct_time
 from ofti.core.tool_dicts_service import apply_assignment_or_write
 from ofti.foam.times import latest_time
-from ofti.tools import case_source_service, knife_service, watch_service
+from ofti.tools import case_source_service, checkpoint_service, knife_service, watch_service
 from ofti.tools.cli_tools import run as run_ops
 
 _DEFAULT_STOP_TIMEOUT = 45.0
@@ -60,8 +60,14 @@ def parallel_resize_payload(
         steps=steps,
     )
     _add_plan_steps(steps, to_ranks=to_ranks, start=start, write_now=write_now)
-    if dry_run:
-        payload["rollback"] = _rollback_guidance(case_path, None)
+    if _finish_restart_planning(
+        payload,
+        case_path,
+        steps,
+        expected_processors=from_ranks or current_ranks,
+        target_processors=to_ranks,
+        dry_run=dry_run,
+    ):
         return payload
 
     try:
@@ -83,6 +89,35 @@ def parallel_resize_payload(
         payload["error"] = str(exc)
         _mark_first_pending_failed(steps, str(exc))
     return payload
+
+
+def _finish_restart_planning(
+    payload: dict[str, Any],
+    case_path: Path,
+    steps: list[dict[str, Any]],
+    *,
+    expected_processors: int | None,
+    target_processors: int,
+    dry_run: bool,
+) -> bool:
+    restart_plan = checkpoint_service.restart_plan_payload(
+        case_path,
+        expected_processors=expected_processors,
+        target_processors=target_processors,
+    )
+    payload["restart_plan"] = restart_plan
+    if dry_run:
+        payload["ok"] = bool(restart_plan["safe_to_apply"])
+        if not payload["ok"]:
+            payload["error"] = "; ".join(restart_plan["unsafe_reasons"])
+        payload["rollback"] = _rollback_guidance(case_path, None)
+        return True
+    if restart_plan["safe_to_apply"]:
+        return False
+    payload["ok"] = False
+    payload["error"] = f"{'; '.join(restart_plan['unsafe_reasons'])}; no files were changed"
+    _mark_first_pending_failed(steps, str(payload["error"]))
+    return True
 
 
 def _execute_parallel_resize(
@@ -112,6 +147,7 @@ def _execute_parallel_resize(
     reconstruct_time = safe_reconstruct_time(time_health)
     _mark_step(steps, "verify-processor-time", "done", **time_health)
     _run_reconstruct_step(case_path, steps, reconstruct_time)
+    _quarantine_partial_times(case_path, steps, time_health)
     _clean_processor_dirs(case_path, steps, enabled=clean_processors)
     _set_subdomains(decompose_dict, to_ranks)
     _mark_step(steps, "set-subdomains", "done")
@@ -212,6 +248,7 @@ def _add_plan_steps(
             "reconstruct latest complete decomposed time",
             "reconstructPar -time <time>",
         ),
+        ("quarantine-partial", "preserve incomplete newer processor writes", None),
         ("clean-processors", "remove old processor* directories", None),
         ("set-subdomains", f"set numberOfSubdomains={to_ranks}", None),
         ("resume-from-latest", "set startFrom=latestTime and stopAt=endTime", None),
@@ -371,6 +408,29 @@ def _verify_reconstructed_time(case_path: Path, time_name: str) -> None:
     raise ValueError(
         f"reconstructPar did not produce a non-empty root time directory: {time_name}; "
         "processor directories were left untouched",
+    )
+
+
+def _quarantine_partial_times(
+    case_path: Path,
+    steps: list[dict[str, Any]],
+    health: dict[str, Any],
+) -> None:
+    partial_times = list(health["quarantinable_times"])
+    if not partial_times:
+        _mark_step(steps, "quarantine-partial", "skipped")
+        return
+    payload = checkpoint_service.quarantine_partial_payload(
+        case_path,
+        expected_processors=int(health["processor_count"]),
+        apply=True,
+    )
+    _mark_step(
+        steps,
+        "quarantine-partial",
+        "done",
+        quarantine=payload["quarantine"],
+        moves=payload["moves"],
     )
 
 

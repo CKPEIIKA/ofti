@@ -11,7 +11,11 @@ def find_suspicious_lines(content: str) -> list[str]:
         line = state.code_line(raw)
         if not line:
             continue
+        inside_list = state.paren_depth > 0
         _update_braces(line, idx, state, warnings)
+        _update_parentheses(line, state)
+        if inside_list or state.paren_depth > 0:
+            continue
         if _should_skip_semicolon_check(line.strip(), line, state.next_significant_line(idx - 1)):
             continue
         warnings.append(f"Line {idx}: missing ';'? -> {line.strip()[:60]}")
@@ -24,6 +28,7 @@ class _SyntaxState:
     def __init__(self, *, lines: list[str]) -> None:
         self.lines = lines
         self.brace_depth = 0
+        self.paren_depth = 0
         self.header_done = False
         self.in_block_comment = False
 
@@ -94,6 +99,10 @@ def _update_braces(line: str, idx: int, state: _SyntaxState, warnings: list[str]
                 state.brace_depth = 0
 
 
+def _update_parentheses(line: str, state: _SyntaxState) -> None:
+    state.paren_depth = max(0, state.paren_depth + line.count("(") - line.count(")"))
+
+
 def _should_skip_semicolon_check(stripped_line: str, line: str, next_line: str | None) -> bool:
     if stripped_line.startswith(("#include", "#ifdef")):
         return True
@@ -101,4 +110,4 @@ def _should_skip_semicolon_check(stripped_line: str, line: str, next_line: str |
         return True
     if stripped_line.endswith((";", "{", "}", "(", ")")):
         return True
-    return next_line == "{"
+    return next_line in {"{", "("}

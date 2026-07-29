@@ -41,8 +41,10 @@ ui is UI-neutral contracts/helpers.
 - `ofti/app/cli_adapters/`: argparse and CLI output adapters by command group.
   These modules parse arguments, map exit codes, and render human/JSON/table
   output. Domain behavior belongs in `ofti/tools`.
-- `ofti/app/cli_tools.py`: compatibility dispatcher for legacy imports and the
-  public CLI entrypoint. New command wiring belongs in `ofti/app/cli_adapters`.
+- `ofti/app/cli.py`: installed entry point and TUI/non-interactive boundary.
+- `ofti/app/cli_tools.py`: stable compatibility imports for `main`,
+  `build_parser`, and `ofti_version` only. New command wiring belongs in
+  `ofti/app/cli_adapters`.
 - `ofti/app/menus/` and `ofti/app/screens/`: TUI flow controllers. They prompt,
   dispatch to services, render screens, and handle keys.
 - `ofti/ui/`: UI-neutral contracts/helpers.
@@ -64,12 +66,11 @@ ui is UI-neutral contracts/helpers.
 
 ## Near-term cleanup targets
 
-- Keep `ofti/app/cli_tools.py` as a thin compatibility shim; do not add command
-  implementation bodies there.
+- Keep `ofti/app/cli_tools.py` as an explicit three-name compatibility shim; do
+  not add handlers, service aliases, or namespace copying there.
 - Move Captains Deck aggregation out of `ofti/app/overview.py` into shared
   services.
 - Keep `ofti/core/times.py` filesystem-only; OpenFOAM-assisted time lookup lives
   in `ofti/foam/times.py`.
-- Run receipt logic currently lives in `ofti/core/run_receipt.py`; CLI adapters
-  expose it as the stable user-facing `receipt` workflow until a manifest rename
-  is implemented as a real migration.
+- Run manifests live in `ofti/core/run_manifest.py`; `run_receipt.py` contains
+  old import aliases only. New commands and documentation use `manifest`.

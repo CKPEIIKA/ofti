@@ -6,7 +6,7 @@ from typing import Any, TypeAlias, TypedDict
 
 from ofti.core.progress import progress_evidence
 from ofti.foam.config import get_config
-from ofti.tools import process_scan_service
+from ofti.tools import plugin_service, process_scan_service
 
 SolverProcessRow: TypeAlias = process_scan_service.ProcRow
 
@@ -150,12 +150,18 @@ def status_payload(
     untracked_count = untracked_running_count(untracked_live)
     running_count = len(active_jobs) + untracked_count
     runs = canonical_run_rows(case_path, active_jobs, untracked_live)
+    progress_log = Path(runtime["log_path"]) if runtime["log_path"] else None
     progress = progress_evidence(
         case_path,
         process_live=running_heuristic,
-        log_path=Path(runtime["log_path"]) if runtime["log_path"] else None,
+        log_path=progress_log,
         paused=bool(active_jobs) and all(job.get("status") == "paused" for job in active_jobs),
         stale_after=get_config().watch.stale_after_seconds,
+    )
+    plugin_service.attach_progress_metrics(
+        progress,
+        case_path,
+        log_path=progress_log,
     )
     return {
         "case": str(case_path),

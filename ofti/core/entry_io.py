@@ -34,6 +34,14 @@ def read_entry(file_path: Path, key: str) -> str:
     return openfoam.read_entry(file_path, key)
 
 
+def display_entry_value(value: str) -> str:
+    """Normalize a scalar dictionary value for diffs and machine output."""
+    text = value.strip()
+    if "\n" not in text and text.endswith(";"):
+        return text[:-1].rstrip()
+    return text
+
+
 def read_field_entry(file_path: Path, key: str) -> str:
     if foamlib_integration.available() and foamlib_integration.is_field_file(file_path):
         try:
@@ -74,6 +82,16 @@ def write_entry_preserving_text(file_path: Path, key: str, value: str) -> bool:
     if ok:
         _log_entry_edit(file_path, key, old_value, value)
     return ok
+
+
+def updated_entry_text(text: str, key: str, value: str) -> str | None:
+    """Plan one dictionary edit while preserving unrelated source text."""
+    return foamlib_integration.updated_entry_text(text, key, value)
+
+
+def record_entry_edit(file_path: Path, key: str, old: str | None, new: str) -> None:
+    """Record an edit performed by a higher-level atomic transaction."""
+    _log_entry_edit(file_path, key, old, new)
 
 
 def write_field_entry(file_path: Path, key: str, value: str) -> bool:

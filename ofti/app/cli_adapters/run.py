@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
+from ofti.app.cli_adapters.command_builder import build_provider_parsers
 from ofti.app.cli_adapters.common import (
     interval_with_cpu_mode,
     parse_env_assignments,
@@ -12,7 +13,9 @@ from ofti.app.cli_adapters.common import (
     solver_name_for_manifest,
     tail_bytes_with_cpu_mode,
 )
+from ofti.app.cli_adapters.run_parametric import _run_parametric
 from ofti.app.cli_adapters.run_queue_summary import build_queue_summary_parser
+from ofti.app.cli_adapters.run_restart import build_restart_plan_parser
 from ofti.app.cli_help import (
     _add_easy_on_cpu_flag,
     _add_table_flag,
@@ -22,6 +25,7 @@ from ofti.app.cli_help import (
 from ofti.core import run_manifest as manifest_ops
 from ofti.core.field_diagnostics import split_field_list
 from ofti.foam.config import get_config
+from ofti.plugins import PluginRegistry, discover_plugins
 from ofti.tools import parallel_resize_service, table_render_service
 from ofti.tools.cli_tools import run as run_ops
 
@@ -36,7 +40,12 @@ def _choice_default(value: str, choices: tuple[str, ...], fallback: str) -> str:
     return value if value in choices else fallback
 
 
-def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def _build_run_parser(
+    groups: argparse._SubParsersAction[argparse.ArgumentParser],
+    *,
+    registry: PluginRegistry | None = None,
+) -> None:
+    selected_registry = registry or discover_plugins()
     cfg = get_config()
     default_case_root = _configured_path(cfg.paths.case_root) or Path.cwd()
     default_parallel = max(0, int(cfg.run.default_parallel))
@@ -53,7 +62,7 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    run.set_defaults(func=_help_handler(run))
+    run.set_defaults(func=_help_handler(run), plugin_registry=selected_registry)
     run_sub = run.add_subparsers(dest="command", required=False)
 
     tool = run_sub.add_parser("tool", help="Run a tool from the OFTI tool catalog")
@@ -165,6 +174,11 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     )
     smoke.add_argument("--clean-processors", action="store_true")
     smoke.add_argument(
+        "--reconstruct",
+        action="store_true",
+        help="For parallel smoke runs, reconstruct and verify the final common checkpoint",
+    )
+    smoke.add_argument(
         "--physical",
         action="store_true",
         help="Run ofti knife physical on the smoke case after the solver exits",
@@ -177,6 +191,8 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     )
     smoke.add_argument("--json", action="store_true", help="Print result as JSON")
     smoke.set_defaults(func=_run_smoke)
+
+    build_restart_plan_parser(run_sub)
 
     resize = run_sub.add_parser(
         "resize-parallel",
@@ -310,7 +326,11 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         "--grid-axis",
         action="append",
         default=[],
-        help="Grid axis: [DICT:]ENTRY=v1,v2 (repeatable)",
+        metavar="[DICT:]ENTRY=v1,v2",
+        help=(
+            "Generate a Cartesian sweep axis; repeat for multiple dictionaries, "
+            "e.g. constant/transportProperties:nu=1e-5,2e-5"
+        ),
     )
     parametric.add_argument(
         "--dict",
@@ -329,7 +349,12 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         default=[],
         help="Value list for single-entry mode (comma-separated, repeatable)",
     )
-    parametric.add_argument("--output-root", type=Path, default=None)
+    parametric.add_argument(
+        "--output-root",
+        type=Path,
+        default=None,
+        help="Directory for generated cases (default: template case parent)",
+    )
     parametric.add_argument(
         "--run-solver",
         action="store_true",
@@ -357,6 +382,25 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
         "--clean-processors",
         action="store_true",
         help="Remove stale processor* directories before parallel decompose",
+    )
+    parametric.add_argument(
+        "--bundle-set",
+        dest="bundle_output",
+        type=Path,
+        default=None,
+        help="After generation, package every case into this portable bundle-set archive",
+    )
+    parametric.add_argument("--bundle-name", default=None, help="Campaign name stored by --bundle-set")
+    parametric.add_argument(
+        "--bundle-mesh",
+        choices=("auto", "include", "exclude", "include-polyMesh", "none"),
+        default=cfg.bundle.mesh,
+        help="Mesh policy for --bundle-set (default: config or auto)",
+    )
+    parametric.add_argument(
+        "--bundle-time",
+        default=cfg.bundle.time,
+        help="Start time included by --bundle-set (default: config or 0)",
     )
     parametric.add_argument("--json", action="store_true", help="Print result as JSON")
     parametric.set_defaults(func=_run_parametric)
@@ -445,6 +489,13 @@ def _build_run_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser
     status.add_argument("--json", action="store_true", help="Print result as JSON")
     status.set_defaults(func=_run_status)
 
+    build_provider_parsers(
+        run_sub,
+        selected_registry.run_commands,
+        selected_registry.errors,
+        surface="run",
+    )
+
 
 def _run_matrix(args: argparse.Namespace) -> int:
     axes = run_ops.parse_matrix_axes(
@@ -502,56 +553,6 @@ def _run_matrix(args: argparse.Namespace) -> int:
                 print(f"  failed {row['case']}: {row['error']}")
     if queue_result and queue_result.get("ok") is False:
         return 1
-    return 0
-
-
-def _run_parametric(args: argparse.Namespace) -> int:
-    poll_interval = interval_with_cpu_mode(args, float(getattr(args, "poll_interval", 0.25)))
-    values = run_ops.parse_sweep_values(list(getattr(args, "values", [])))
-    grid_axes = run_ops.parse_grid_axes(
-        list(getattr(args, "grid_axis", [])),
-        default_dict=str(getattr(args, "dict_path", "system/controlDict")),
-    )
-    payload = run_ops.parametric_case_payload(
-        args.case_dir,
-        dict_path=str(getattr(args, "dict_path", "system/controlDict")),
-        entry=getattr(args, "entry", None),
-        values=values,
-        csv_path=getattr(args, "csv", None),
-        grid_axes=grid_axes,
-        output_root=getattr(args, "output_root", None),
-        run_solver=bool(getattr(args, "run_solver", False)),
-        solver=getattr(args, "solver", None),
-        parallel=int(getattr(args, "parallel", 0)),
-        mpi=getattr(args, "mpi", None),
-        max_parallel=int(getattr(args, "max_parallel", 1)),
-        poll_interval=poll_interval,
-        queue_backend=str(getattr(args, "backend", "process")),
-        prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
-        clean_processors=bool(getattr(args, "clean_processors", False)),
-    )
-    if bool(getattr(args, "json", False)):
-        emit_json(payload, args)
-        queue = cast("dict[str, object] | None", payload.get("queue"))
-        if queue and queue.get("ok") is False:
-            return 1
-        return 0
-    print(f"case={payload['case']}")
-    print(
-        f"mode={payload['mode']} created={payload['created_count']} run_solver={payload['run_solver']}",
-    )
-    for path in cast("list[str]", payload["created"]):
-        print(f"- {path}")
-    queue = cast("dict[str, object] | None", payload.get("queue"))
-    if queue:
-        print(
-            f"queue max_parallel={queue['max_parallel']} "
-            f"backend={queue.get('backend', 'process')} "
-            f"started={len(cast('list[object]', queue['started']))} "
-            f"failed_to_start={len(cast('list[object]', queue['failed_to_start']))}",
-        )
-        if queue.get("ok") is False:
-            return 1
     return 0
 
 
@@ -626,6 +627,7 @@ def _run_smoke(args: argparse.Namespace) -> int:
             core_only=bool(getattr(args, "core_only", False)),
             prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
             clean_processors=bool(getattr(args, "clean_processors", False)),
+            reconstruct=bool(getattr(args, "reconstruct", False)),
             run_physical=bool(getattr(args, "physical", False)),
             physical_fields=split_field_list(getattr(args, "fields", None)),
         )
@@ -641,6 +643,10 @@ def _run_smoke(args: argparse.Namespace) -> int:
         f"iterations={payload['iterations_completed']}/{payload['iterations_requested']} end_seen={payload['end_seen']}"
     )
     print(f"checkpoint_ok={payload['checkpoint_ok']} latest_written_time={payload['latest_written_time']}")
+    print(
+        f"clean_exit={payload['clean_exit']} output_readable={payload['output_readable']} "
+        f"reconstruction_ok={payload['reconstruction_ok']}",
+    )
     if payload.get("failure_reason"):
         print(f"failure_reason={payload['failure_reason']}")
     print(f"log={payload['log_path']}")

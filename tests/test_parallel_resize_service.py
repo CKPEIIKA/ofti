@@ -84,6 +84,7 @@ def test_parallel_resize_dry_run_plans_safe_steps(tmp_path: Path) -> None:
         "write-now",
         "verify-processor-time",
         "reconstruct",
+        "quarantine-partial",
         "clean-processors",
         "set-subdomains",
         "resume-from-latest",
@@ -199,6 +200,9 @@ def test_parallel_resize_discards_incomplete_latest_processor_time(
     assert verify_step["latest_complete_time"] == "10"
     assert verify_step["incomplete_latest_discarded"] is True
     assert verify_step["missing_latest_processors"] == ["processor1"]
+    quarantine_step = next(row for row in payload["steps"] if row["step"] == "quarantine-partial")
+    assert quarantine_step["status"] == "done"
+    assert Path(quarantine_step["moves"][0]["destination"]).joinpath("U").is_file()
 
 
 def test_parallel_resize_keeps_processors_when_reconstruct_output_is_missing(

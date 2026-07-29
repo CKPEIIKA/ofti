@@ -45,7 +45,7 @@ Schema v2 direction is intentionally stricter and should use a stable envelope:
 }
 ```
 
-OFTI 0.9.3 keeps v1 as the default output. New automation can opt into v2 with
+OFTI keeps v1 as the compatibility default. New automation can opt into v2 with
 `--json-version 2` or `OFTI_JSON_VERSION=2`, but should still pin and check
 `schema_version`.
 
@@ -118,7 +118,19 @@ package is available. Writers sort paths and normalize tar metadata for stable
 archives. Readers reject unsafe paths: absolute paths, `..`, and unsafe symlink
 or link targets must not escape the destination.
 
-Current bundle manifest: `ofti.case-bundle` v1.
+Current bundle manifest: `ofti.case-bundle` v1. The writer records a digest of
+the selected case inputs. When a case-local immutable run manifest exists at
+`manifest.json` or `runs/*/manifest.json`, the latest deterministic candidate is
+included as a normal hashed archive member. Its complete SHA-256 and a canonical
+digest of its `build` section are repeated in the bundle manifest and verified
+during extraction. This preserves the model/build provenance used to prepare a
+portable case without making bundles depend on an external state directory.
+
+`ofti bundle case --run-manifest PATH` explicitly selects an immutable manifest
+outside the case tree. OFTI validates it as `ofti.run-manifest` v1 and stores it
+at the stable relative path `.ofti/provenance/run-manifest.json`. Its original
+absolute path is never written into the archive layout, and normal extraction
+hash/build-digest verification applies.
 
 ## Bundle Set Archive
 
@@ -166,6 +178,20 @@ Snapshots under `.ofti/parallel-resize/` and other safety workflows write a
 stable `ofti.snapshot` v1 manifest next to copied inputs. The directory layout
 remains an implementation detail; external consumers should consume the
 manifest.
+
+## Dictionary Transaction
+
+Transactional `knife set --edit` writes `ofti.dictionary-transaction` v1 under
+`.ofti/transactions/<timestamp>/transaction.json`. It records each requested
+update/insert, full per-file unified diffs, exact before/after SHA-256 hashes,
+the safety snapshot, and whether a failed apply was rolled back. Files are
+staged, fsynced, and atomically replaced; any failed replacement restores every
+file from the snapshot.
+
+`.ofti/transactions/latest.json` is an atomic convenience copy. It is local
+runtime state and may contain absolute case/snapshot paths. Run manifests remain
+immutable; the transaction manifest is the auditable record for edits made
+after launch.
 
 ## Result Pack
 

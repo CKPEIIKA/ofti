@@ -4,13 +4,20 @@ import argparse
 from pathlib import Path
 from typing import Any, cast
 
+from ofti.app.cli_adapters.command_builder import build_provider_parsers
 from ofti.app.cli_help import _help_handler, emit_json
+from ofti.plugins import PluginRegistry, discover_plugins
 from ofti.tools import result_service
 
 
-def _build_result_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def _build_result_parser(
+    groups: argparse._SubParsersAction[argparse.ArgumentParser],
+    *,
+    registry: PluginRegistry | None = None,
+) -> None:
+    selected_registry = registry or discover_plugins()
     result = groups.add_parser("result", help="Pack and unpack completed run results")
-    result.set_defaults(func=_help_handler(result))
+    result.set_defaults(func=_help_handler(result), plugin_registry=selected_registry)
     commands = result.add_subparsers(dest="result_command", required=False)
 
     pack = commands.add_parser("pack", help="Pack latest results, logs, and provenance")
@@ -30,6 +37,13 @@ def _build_result_parser(groups: argparse._SubParsersAction[argparse.ArgumentPar
     unpack.add_argument("--to", required=True, type=Path)
     unpack.add_argument("--json", action="store_true")
     unpack.set_defaults(func=_result_unpack)
+
+    build_provider_parsers(
+        commands,
+        selected_registry.result_commands,
+        selected_registry.errors,
+        surface="result",
+    )
 
 
 def _result_pack(args: argparse.Namespace) -> int:

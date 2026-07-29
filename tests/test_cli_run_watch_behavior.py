@@ -708,6 +708,36 @@ def test_run_parametric_helpers_and_payload(
         )
 
 
+def test_run_parametric_can_bundle_generated_cases_for_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    template = _make_case(tmp_path / "template")
+    generated = [_make_case(tmp_path / "generated-a"), _make_case(tmp_path / "generated-b")]
+    for case in generated:
+        (case / "constant").mkdir()
+        (case / "0" / "U").write_text("internalField uniform (0 0 0);\n", encoding="utf-8")
+    monkeypatch.setattr(run, "build_parametric_cases", lambda *_args, **_kwargs: generated)
+    archive = tmp_path / "study.ofti-set.tar.gz"
+
+    payload = run.parametric_case_payload(
+        template,
+        dict_path="system/controlDict",
+        entry="application",
+        values=["simpleFoam", "pisoFoam"],
+        csv_path=None,
+        grid_axes=[],
+        bundle_output=archive,
+        bundle_name="handoff",
+    )
+
+    bundle = cast("dict[str, object]", payload["bundle"])
+    assert bundle["archive"] == str(archive.resolve())
+    assert archive.is_file()
+    manifest = cast("dict[str, object]", bundle["manifest"])
+    assert len(cast("list[object]", manifest["cases"])) == 2
+
+
 def test_run_queue_payload_dry_run_and_active_flow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

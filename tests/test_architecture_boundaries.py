@@ -80,6 +80,57 @@ def test_library_modules_do_not_import_cli_adapters() -> None:
     assert offenders == {}
 
 
+def test_plugin_implementations_do_not_import_cli_frameworks() -> None:
+    forbidden = ("argparse", "click", "typer")
+    offenders: dict[Path, list[str]] = {}
+    for path in _py_files("plugins"):
+        if "tests" in path.parts:
+            continue
+        bad = [
+            name
+            for name in _imports(path)
+            if any(name == framework or name.startswith(f"{framework}.") for framework in forbidden)
+        ]
+        if bad:
+            offenders[path] = bad
+    assert offenders == {}
+
+
+def test_cli_tools_uses_an_explicit_public_facade() -> None:
+    path = Path("ofti/app/cli_tools.py")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    forbidden_calls = {"dir", "getattr", "globals", "locals", "setattr", "vars"}
+    calls = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in forbidden_calls
+    }
+    private_adapter_imports = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(CLI_ADAPTER_PREFIX)
+        for alias in node.names
+        if alias.name == "*" or alias.name.startswith("_")
+    }
+
+    assert calls == set()
+    assert private_adapter_imports == set()
+    assert set(cli_tools_public_names(tree)) == {"build_parser", "main", "ofti_version"}
+
+
+def cli_tools_public_names(tree: ast.Module) -> list[str]:
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets):
+            continue
+        if isinstance(node.value, ast.List):
+            return [
+                item.value for item in node.value.elts if isinstance(item, ast.Constant) and isinstance(item.value, str)
+            ]
+    return []
+
+
 _RAW_SUBPROCESS_RE = re.compile(r"\bsubprocess\b|\bPopen\b|\bos\.(system|exec|spawn)")
 
 

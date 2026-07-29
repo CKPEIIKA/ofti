@@ -202,7 +202,7 @@ def test_tail_process_log_stops_on_back(tmp_path: Path) -> None:
         "simpleFoam",
         cast("subprocess.Popen[str]", process),
         log_path,
-        None,
+        job_id=None,
     )
 
     assert process.terminated
@@ -230,7 +230,7 @@ def test_tail_process_log_renders_residuals(tmp_path: Path) -> None:
         "simpleFoam",
         cast("subprocess.Popen[str]", process),
         log_path,
-        None,
+        job_id=None,
     )
 
     joined = "\n".join(screen.lines)
@@ -275,7 +275,7 @@ def test_tail_process_log_uses_bounded_reads_and_resets_timeout(
         "simpleFoam",
         cast("subprocess.Popen[str]", process),
         log_path,
-        None,
+        job_id=None,
     )
 
     assert seen["path"] == log_path

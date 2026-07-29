@@ -484,10 +484,14 @@ def test_real_profiles_core_services_are_fixture_free(
 def test_real_parallel_resize_dry_run_profiles(real_profiles: list[tuple[RealProfile, Path]]) -> None:
     if not scenario_enabled("parallel-resize"):
         pytest.skip("parallel-resize real scenario disabled by OFTI_REAL_SCENARIOS")
-    for _profile, case in real_profiles:
+    for profile, case in real_profiles:
+        prepare_case(case)
         write_scotch_decompose_dict(case, ranks=2)
+        result = run.execute_case_command(case, "decomposePar", ["decomposePar", "-force"], background=False)
+        assert result.returncode == 0, f"{profile.name}: {result.stderr or result.stdout}"
         payload = parallel_resize_service.parallel_resize_payload(case, to_ranks=2, dry_run=True)
         assert payload["ok"] is True
+        assert payload["restart_plan"]["safe_to_apply"] is True
         assert any(row["step"] == "reconstruct" for row in payload["steps"])
 
 

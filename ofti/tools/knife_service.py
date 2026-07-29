@@ -9,7 +9,7 @@ from typing import Any, cast
 from ofti.core.boundary import list_field_files, read_optional, zero_dir
 from ofti.core.case_copy import copy_case_directory
 from ofti.core.dict_compare import compare_case_dicts
-from ofti.core.entry_io import list_subkeys, write_entry
+from ofti.core.entry_io import display_entry_value, list_subkeys, read_entry, write_entry
 from ofti.core.field_diagnostics import (
     compare_fields_payload as compare_fields_core_payload,
 )
@@ -850,21 +850,45 @@ def _fallback_solver(control_dict_path: Path) -> str | None:
     return None
 
 
-def set_entry_payload(case_dir: Path, rel_file: str, key: str, value: str) -> dict[str, Any]:
+def set_entry_payload(
+    case_dir: Path,
+    rel_file: str,
+    key: str,
+    value: str,
+    *,
+    allow_insert: bool = False,
+    apply: bool = True,
+) -> dict[str, Any]:
     case_path = case_source_service.require_case_dir(case_dir)
     file_path = (case_path / rel_file).resolve()
     if not file_path.is_relative_to(case_path):
         raise ValueError(f"dictionary path escapes case: {rel_file}")
     if not file_path.is_file():
         raise ValueError(f"dictionary not found: {file_path}")
-    ok = write_entry(file_path, key, value)
+    before = _optional_entry(file_path, key)
+    existed = before is not None
+    if not existed and not allow_insert:
+        raise ValueError(f"key path not found: {rel_file}:{key}; use --insert to create it")
+    ok = write_entry(file_path, key, value) if apply else True
     return {
         "case": str(case_path),
         "file": str(file_path),
         "key": key,
         "value": value,
+        "before": display_entry_value(before) if before is not None else None,
+        "after": display_entry_value(value),
+        "existed": existed,
+        "operation": "update" if existed else "insert",
+        "applied": apply and bool(ok),
         "ok": bool(ok),
     }
+
+
+def _optional_entry(file_path: Path, key: str) -> str | None:
+    try:
+        return read_entry(file_path, key)
+    except (KeyError, OSError, RuntimeError, ValueError):
+        return None
 
 
 def _compare_file_filter(files: list[str] | None) -> set[str]:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import tarfile
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -139,6 +140,135 @@ def test_case_bundle_archive_is_deterministic(tmp_path: Path) -> None:
     case_bundle.create_bundle(case, archive_b, mesh="auto")
 
     assert archive_a.read_bytes() == archive_b.read_bytes()
+
+
+def test_case_bundle_embeds_and_verifies_latest_run_provenance(tmp_path: Path) -> None:
+    case = _case(tmp_path)
+    run_dir = case / "runs" / "20260729T120000Z_case"
+    run_dir.mkdir(parents=True)
+    run_manifest = run_dir / "manifest.json"
+    run_manifest.write_text(
+        json.dumps(
+            {
+                "format": "ofti.run-manifest",
+                "format_version": 1,
+                "build": {
+                    "solver": {"name": "simpleFoam", "sha256": "solver-digest"},
+                    "linked_libs": {"hash": "library-digest"},
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+    archive = tmp_path / "case-with-provenance.ofti.tar.gz"
+
+    manifest = case_bundle.create_bundle(case, archive)
+    restored = tmp_path / "restored"
+    case_bundle.extract_bundle(archive, restored)
+
+    relative_manifest = "runs/20260729T120000Z_case/manifest.json"
+    assert manifest.run_manifest == relative_manifest
+    assert manifest.run_manifest_sha256
+    assert manifest.build_digest
+    assert manifest.case_fingerprint
+    assert (restored / relative_manifest).is_file()
+
+    (restored / relative_manifest).write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="run manifest"):
+        case_bundle.verify_bundle_files(restored, manifest)
+
+
+def test_case_bundle_embeds_explicit_external_run_manifest(tmp_path: Path) -> None:
+    case = _case(tmp_path)
+    external = tmp_path / "provenance" / "manifest.json"
+    external.parent.mkdir()
+    external.write_text(
+        json.dumps(
+            {
+                "format": "ofti.run-manifest",
+                "format_version": 1,
+                "manifest_kind": "ofti_run_manifest",
+                "build": {"solver": {"name": "simpleFoam", "sha256": "explicit-build"}},
+            },
+        ),
+        encoding="utf-8",
+    )
+    archive = tmp_path / "external-provenance.ofti.tar.gz"
+
+    manifest = case_bundle.create_bundle(case, archive, run_manifest=external)
+    restored = tmp_path / "restored-external"
+    case_bundle.extract_bundle(archive, restored)
+
+    assert manifest.run_manifest == case_bundle.BUNDLED_RUN_MANIFEST_PATH
+    assert manifest.run_manifest_sha256
+    assert manifest.build_digest
+    assert (restored / case_bundle.BUNDLED_RUN_MANIFEST_PATH).read_bytes() == external.read_bytes()
+    assert case_bundle.verify_bundle_files(restored, manifest) == []
+
+
+def test_bundle_cli_accepts_external_run_manifest_override(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    case = _case(tmp_path)
+    external = tmp_path / "external-manifest.json"
+    external.write_text(
+        json.dumps(
+            {
+                "format": "ofti.run-manifest",
+                "format_version": 1,
+                "manifest_kind": "ofti_run_manifest",
+            },
+        ),
+        encoding="utf-8",
+    )
+    archive = tmp_path / "case.ofti.tar.gz"
+
+    code = cli_main(
+        [
+            "bundle",
+            "case",
+            str(case),
+            "--output",
+            str(archive),
+            "--run-manifest",
+            str(external),
+            "--json",
+        ],
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["manifest"]["run_manifest"] == case_bundle.BUNDLED_RUN_MANIFEST_PATH
+    assert archive.is_file()
+
+
+def test_case_bundle_rejects_invalid_explicit_run_manifest(tmp_path: Path) -> None:
+    case = _case(tmp_path)
+    invalid = tmp_path / "invalid-manifest.json"
+    invalid.write_text('{"format": "another.format"}\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsupported manifest"):
+        case_bundle.create_bundle(case, tmp_path / "case.ofti.tar.gz", run_manifest=invalid)
+    with pytest.raises(ValueError, match="run manifest not found"):
+        case_bundle.create_bundle(
+            case,
+            tmp_path / "missing.ofti.tar.gz",
+            run_manifest=tmp_path / "missing.json",
+        )
+
+
+def test_case_bundle_provenance_requires_embedded_manifest(tmp_path: Path) -> None:
+    case = _case(tmp_path)
+    manifest = case_bundle.build_bundle_manifest(case)
+    forged = replace(
+        manifest,
+        run_manifest="runs/missing/manifest.json",
+        run_manifest_sha256="missing",
+    )
+
+    with pytest.raises(ValueError, match="missing run manifest"):
+        case_bundle.verify_bundle_files(case, forged)
 
 
 def test_case_bundle_zstd_archive_requires_safe_backend(tmp_path: Path) -> None:
@@ -295,7 +425,7 @@ def test_bundle_cli_embeds_plugin_bundle_hints(
     archive = tmp_path / "case.ofti.tar.gz"
     registry = PluginRegistry()
     registry.add_bundle_hint_provider(FakeHints())
-    monkeypatch.setattr(bundle_adapter, "discover_plugins", lambda: registry)
+    monkeypatch.setattr("ofti.app.cli_adapters.main.discover_plugins", lambda: registry)
 
     code = cli_main(["bundle", "case", str(case), "--output", str(archive), "--json"])
     output = json.loads(capsys.readouterr().out)

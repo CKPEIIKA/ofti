@@ -60,7 +60,10 @@ def run_tui(case_dir: str, debug: bool = False) -> None:
     input_path = Path(case_dir).expanduser().resolve()
     start_path = input_path.parent if input_path.is_file() else input_path
     state = AppState()
-    curses.wrapper(_main, start_path, debug, state)
+    try:
+        curses.wrapper(_main, start_path, debug, state)
+    except curses.error as exc:
+        raise RuntimeError(f"failed to initialize terminal UI: {exc}") from exc
 
 
 def _main(stdscr: Any, case_path: Path, debug: bool, state: AppState) -> None:
@@ -380,10 +383,10 @@ def _command_callbacks() -> CommandCallbacks:
             path,
             app_state,
             has_fzf,
-            editor_screen_wrapper,
-            check_screen_wrapper,
-            openfoam_env_screen,
-            search_screen_wrapper,
+            editor_screen=editor_screen_wrapper,
+            check_syntax_screen=check_screen_wrapper,
+            openfoam_env_screen=openfoam_env_screen,
+            global_search_screen=search_screen_wrapper,
             command_handler=lambda cmd: handle_command(stdscr, path, app_state, cmd, callbacks),
             command_suggestions=lambda: command_suggestions(path),
         )

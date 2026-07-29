@@ -80,6 +80,9 @@ def test_smoke_payload_runs_real_solver_script_on_copied_case(
     assert payload["iterations_completed"] == 1
     assert payload["iteration_count_exact"] is True
     assert payload["checkpoint_ok"] is True
+    assert payload["clean_exit"] is True
+    assert payload["output_readable"] is True
+    assert {row["field"] for row in payload["readable_fields"]} == {"U", "p"}
     smoke_case = Path(str(payload["case"]))
     assert smoke_case != case.resolve()
     assert (smoke_case / "2" / "p").is_file()
@@ -114,6 +117,27 @@ def test_run_smoke_cli_json_uses_real_subprocess(tmp_path: Path, monkeypatch, ca
     assert payload["ok"] is True
     assert payload["returncode"] == 0
     assert Path(payload["log_path"]).read_text(encoding="utf-8").count("Time =") == 1
+
+
+def test_run_smoke_cli_forwards_reconstruction_request(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    case = _make_case(tmp_path / "case")
+    captured: dict[str, object] = {}
+
+    def smoke_payload(case_dir: Path, **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"case": str(case_dir), "ok": True}
+
+    monkeypatch.setattr(run, "smoke_payload", smoke_payload)
+
+    code = cli_tools.main(["run", "smoke", str(case), "--reconstruct", "--json"])
+
+    assert code == 0
+    assert captured["reconstruct"] is True
+    assert json.loads(capsys.readouterr().out)["ok"] is True
 
 
 def test_smoke_normalization_preserves_unrelated_numeric_text(tmp_path: Path, monkeypatch) -> None:
@@ -201,6 +225,25 @@ def test_smoke_rejects_zero_exit_without_requested_iterations_or_checkpoint(tmp_
     assert payload["failure_reason"] == "requested_iterations_or_common_checkpoint_not_reached"
 
 
+def test_smoke_clean_exit_requires_exact_end_marker(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    _write_field(case / "2" / "p")
+
+    payload = run_smoke._smoke_verification(
+        case,
+        "Time = 2\nReached endTime without marker\n",
+        iterations=1,
+        delta_t=2,
+        parallel=0,
+        returncode=0,
+        timed_out=False,
+    )
+
+    assert payload["end_seen"] is False
+    assert payload["clean_exit"] is False
+    assert "solver_end_not_seen" in payload["failure_reasons"]
+
+
 def test_run_smoke_cli_returns_failure_for_incomplete_contract(tmp_path: Path, monkeypatch, capsys) -> None:
     case = _make_case(tmp_path / "case")
     bin_dir = tmp_path / "bin"
@@ -263,3 +306,39 @@ def test_parallel_smoke_rejects_checkpoint_missing_on_one_rank(tmp_path: Path) -
     assert complete["ok"] is True
     assert complete["checkpoint_ok"] is True
     assert complete["latest_complete_processor_time"] == "10"
+    assert complete["output_readable"] is True
+
+
+def test_parallel_smoke_reconstruction_verifies_reconstructed_fields(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    case = tmp_path / "case"
+    for processor in ("processor0", "processor1"):
+        _write_field(case / processor / "10" / "p")
+
+    def reconstruct(
+        case_path: Path,
+        _display: str,
+        command: list[str],
+        *,
+        background: bool,
+    ) -> run.RunResult:
+        assert command == ["reconstructPar", "-time", "10"]
+        assert background is False
+        _write_field(case_path / "10" / "p")
+        return run.RunResult(0, "reconstructed\n", "")
+
+    monkeypatch.setattr(run, "execute_case_command", reconstruct)
+
+    payload = run_smoke._smoke_reconstruction(
+        case,
+        "Time = 10\nEnd\n",
+        parallel=2,
+        requested=True,
+    )
+
+    assert payload["ok"] is True
+    assert payload["time"] == "10"
+    assert payload["returncode"] == 0
+    assert payload["output"]["output_readable"] is True

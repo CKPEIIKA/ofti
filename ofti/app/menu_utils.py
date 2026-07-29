@@ -17,6 +17,7 @@ def menu_choice(
     options: list[str],
     state: AppState,
     menu_key: str,
+    *,
     command_handler: Callable[[str], str | None] | None = None,
     command_suggestions: Callable[[], list[str]] | None = None,
     disabled_indices: set[int] | None = None,

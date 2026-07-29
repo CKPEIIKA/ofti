@@ -1,4 +1,4 @@
-ofti(1) "OFTI 0.9.3" "User Commands"
+ofti(1) "OFTI" "User Commands"
 
 # NAME
 
@@ -6,7 +6,7 @@ ofti - scriptable OpenFOAM case utilities and terminal interface
 
 # SYNOPSIS
 
-*ofti* [*-h*] [*--debug*] [*-V*] [_CASE_]
+*ofti* [*-h*] [*--debug*] [*--plain*] [*-V*] [_CASE_]
 
 *ofti knife* _COMMAND_ [options]
 
@@ -23,6 +23,8 @@ ofti - scriptable OpenFOAM case utilities and terminal interface
 *ofti bundle extract* _ARCHIVE_ *--to* _DESTINATION_ [options]
 
 *ofti result* _COMMAND_ [options]
+
+*ofti plugins* _COMMAND_ [options]
 
 # DESCRIPTION
 
@@ -43,6 +45,9 @@ should request *--json* and check both the process exit status and the returned
 *--debug*
 	Enable debug logging and verbose error reports.
 
+*--plain*, *--no-tty*
+	Never enter curses. An explicit non-interactive command is required.
+
 *-V*, *--version*
 	Print the OFTI version.
 
@@ -51,18 +56,20 @@ should request *--json* and check both the process exit status and the returned
 *knife*
 	Inspect, validate, compare, edit, adopt, stop, and report on cases. Important
 	subcommands include *doctor*, *preflight*, *checkpoint*, *physical*,
-	*compare-fields*, *manifest*, *registry*, *status*, *current*, *adopt*,
+	*compare-fields*, *metric*, *manifest*, *registry*, *status*, *current*, *adopt*,
 	*set*, *criteria*, *eta*, *report*, and *campaign*.
 
 *run*
 	Run solvers and tools, smoke-test portable case copies, resize parallel runs,
 	generate parameter matrices, and execute queues. Subcommands are *tool*,
-	*solver*, *smoke*, *resize-parallel*, *matrix*, *parametric*, *queue*,
-	*queue-summary*, and *status*.
+	*solver*, *smoke*, *restart-plan*, *resize-parallel*, *matrix*,
+	*parametric*, *queue*, *queue-summary*, and *status*.
 	*run smoke --iterations N* disables adaptive stepping in the smoke copy and
-	requires exactly N logged steps plus a final checkpoint. Parallel smoke also
-	requires a common checkpoint across every requested processor. Control edits
-	preserve unrelated source text and JSON includes their unified diff.
+	requires exactly N logged steps, a clean solver exit, a nonzero final
+	checkpoint, and readable output. Parallel smoke requires a common checkpoint
+	across every requested processor; *--reconstruct* additionally proves
+	reconstruction. *restart-plan* is read-only and reports common/partial times,
+	MPI-size consistency, and the ordered mutation plan.
 
 *watch*
 	Inspect logs and control tracked jobs. Subcommands are *jobs*, *status*,
@@ -76,11 +83,17 @@ should request *--json* and check both the process exit status and the returned
 	Create portable minimal case or campaign archives. *bundle extract* detects
 	the embedded manifest, verifies all hashes, and restores either archive kind.
 	Case bundles retain native OpenFOAM layout and can optionally start the
-	restored case. Set extraction is staged before restored cases are published.
+	restored case. A case-local run manifest and its build digest are embedded
+	when available. Set extraction is staged before restored cases are published.
 
 *result*
 	Pack and unpack result or restart state. Processor state is included only
 	when the selected time is complete across every processor directory.
+
+*plugins*
+	List installed plugin entry points or diagnose load and registration
+	failures. Reports source, distribution/version, and registered knife, run,
+	watch, result, progress, preset/profile, and bundle-hint surfaces.
 
 # OUTPUT AND EXIT STATUS
 
@@ -103,7 +116,7 @@ supported. *--json* emits a machine envelope with *schema_version*, *command*,
 	Path to the user TOML configuration.
 
 *OFTI_JSON_VERSION*
-	Default JSON envelope version. Version 1 remains the default in OFTI 0.9.3.
+	Default JSON envelope version. Version 1 remains the compatibility default.
 
 *OFTI_WATCH_STALE_AFTER_SECONDS*
 	Age threshold for STALE_LOG and NO_PROGRESS evidence.
@@ -116,32 +129,46 @@ supported. *--json* emits a machine envelope with *schema_version*, *command*,
 
 # FILES
 
-*_CASE_/ofti.toml*
+*CASE/ofti.toml*
 	Case-local configuration. CLI flags and environment variables take priority.
 
 *~/.config/ofti/config.toml*
 	Default user configuration when *OFTI_CONFIG* is unset.
 
-*_CASE_/.ofti/jobs.json*
+*CASE/.ofti/jobs.json*
 	Atomic tracked-job registry. Repair it from durable run identities with
 	*ofti knife registry repair CASE*.
 
-*_CASE_/.ofti/runs/*.json*
+*CASE/.ofti/runs/\*.json*
 	Durable run identity records used for process ownership recovery.
 
-*_CASE_/runs/*
+*CASE/runs/\**
 	Case-local immutable run manifests and optional input snapshots.
 
-*_CASE_/.ofti/queues/*
+*CASE/.ofti/queues/\**
 	Queue summaries and append-only event journals.
+
+*CASE/.ofti/transactions/\**
+	Snapshots, full diffs, before/after hashes, and rollback evidence for atomic
+	multi-dictionary edits.
 
 # EXAMPLES
 
 Inspect a case without starting the TUI:
 
 ```
-ofti knife preflight CASE --json
+ofti --plain knife preflight CASE --json
 ofti knife status CASE --table
+```
+
+Reduce a field or extract stationarity from sampled output:
+
+```
+ofti knife metric CASE --field p --time latest --reduction mean --json
+ofti knife metric CASE --field wallHeatFlux --patch wall --reduction max --json
+ofti knife metric CASE postProcessing/probes/0/p --value-column 1 --json
+ofti knife metric CASE 'postProcessing/sets/*/line_p.xy' \
+  --threshold 0.3 --value-column 1 --window 20 --max-span 1e-4 --json
 ```
 
 Start, inspect, and safely stop a solver:
@@ -156,22 +183,40 @@ Resize a stopped decomposed run after validating its checkpoint:
 
 ```
 ofti knife checkpoint CASE --common --np auto --json
+ofti run restart-plan CASE --to 8 --json
 ofti run resize-parallel CASE --to 8 --json
+```
+
+Inspect plugin discovery:
+
+```
+ofti plugins list --json
+ofti plugins doctor --json
 ```
 
 Move a minimal case to another host:
 
 ```
 ofti bundle case CASE --output case.ofti.tar.gz --smoke --json
+ofti bundle case CASE --output case.ofti.tar.gz \
+  --run-manifest RUN/manifest.json --json
 ofti bundle extract case.ofti.tar.gz --to CASE_COPY --run --background --json
 ```
 
 Move a case campaign and run it through the normal queue:
 
 ```
-ofti bundle set CASE_A CASE_B --output study.ofti-set.tar.gz --json
+ofti bundle set --cases-file cases.txt --cases-root . \
+  --output study.ofti-set.tar.gz --json
 ofti bundle extract study.ofti-set.tar.gz --to STUDY --json
 ofti run queue STUDY/CASE_A STUDY/CASE_B --json
+```
+
+Generate a dictionary-aware sweep and package it for an HPC handoff:
+
+```
+ofti run parametric CASE --grid-axis 'application=simpleFoam,pisoFoam' \
+  --output-root runs --bundle-set study.ofti-set.tar.gz
 ```
 
 Run a sequential queue that continues after a failed case:
@@ -184,9 +229,10 @@ ofti run queue CASE_A CASE_B --max-parallel 1 --json
 
 Use *ofti knife doctor CASE* for case-structure diagnostics and *ofti knife
 preflight CASE* for launch prerequisites. *ofti watch status CASE* reports
-PAUSED, IDLE, STALE_LOG, and NO_PROGRESS reason codes. Destructive recovery is
-never inferred: checkpoint quarantine previews by default and requires
-*--apply*.
+stable reason codes plus STARTING, SOLVING, WRITING, STALLED_LOG,
+PARTIAL_CHECKPOINT, MPI_FAILED, and FINISHED run states. Destructive recovery
+is never inferred: restart planning is read-only and checkpoint quarantine
+previews by default and requires *--apply*.
 
 # LIMITATIONS
 

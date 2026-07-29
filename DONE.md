@@ -2,6 +2,26 @@
 
 Completed work only. Record meaningful outcomes and validation evidence, newest first.
 
+## 2026-07-29
+
+- Prepared OFTI 0.9.4 with the accumulated CLI/runtime hardening, plugin surfaces, field metrics, portable provenance, compact documentation, and authoritative dynamic package metadata; the full gate passes with `1083 passed, 56 skipped` at 85.38% coverage and both distributions verify as `GPL-3.0-or-later`.
+- Extended `knife metric` with direct min/max/mean reductions for internal and boundary-patch fields, scalar-safe vector/tensor component selection, nonfinite failure status, and real OpenFOAM binary/internal plus wall-patch coverage.
+- Added `bundle case --run-manifest PATH`: external `ofti.run-manifest` v1 provenance is validated, embedded at `.ofti/provenance/run-manifest.json`, hash/build-digest verified after extraction, and exercised with a real OpenFOAM case.
+- Updated CLI help, README, detailed docs, real-case coverage, and the generated man page; targeted OpenFOAM 2512 checks pass and the complete gate reports `1083 passed, 56 skipped` at 85.38% coverage.
+- Made plugin discovery inspectable through `ofti plugins list|doctor`, added explicit `CommandSpec` surfaces for knife/run/watch/result plus namespaced progress metrics, and documented/tested entry-point source, version, registrations, duplicate claims, and failures.
+- Hardened runtime acceptance: smoke now proves exact steps, a clean exit, a nonzero complete and readable checkpoint, and optional reconstruction; status distinguishes seven lifecycle states; restart planning is read-only and reports common/partial times plus MPI consistency before resize.
+- Made repeatable dictionary edits one text-preserving transaction with a complete preview diff, fsynced atomic replacements, all-file rollback, immutable transaction manifest/schema, and a latest pointer.
+- Validated the new contracts against sourced OpenFOAM 2512: real dictionary-edit smoke, live pause/resume state, three-rank partial-checkpoint planning/quarantine, two-rank smoke/reconstruction, and full 2-to-3-rank resize all pass with no leftover solver/MPI processes.
+- Split restart-plan CLI wiring from the oversized run adapter to keep every production module below the 1000-SLOC ratchet; the complete gate passes with `1076 passed, 56 skipped` and 85.38% coverage.
+- Replaced `cli_tools.py` private namespace copying and cross-module rebinding with an explicit three-name compatibility surface; handler tests now patch their real adapters and an architecture test prevents dynamic private exports from returning.
+- Removed complexity exemptions from the clean menu, recent-task summary, and command-spec option builder; recorded the before/after measurements and ranked remaining debt in `docs/complexity-debt.md`.
+- Made `ofti.__version__` authoritative for package metadata and CLI output, unified licensing on `GPL-3.0-or-later`, verified both built distributions, compacted the README, and moved detailed CLI/TUI/release guidance into `docs/`; the gate passes with `1058 passed, 56 skipped` and 85.31% coverage.
+- Fixed non-interactive dispatch: `result` reaches its real command group, bare headless TUI launches fail cleanly with exit code 2, and global `--plain`/`--no-tty` guarantees that curses is never entered.
+- Made dictionary edits explicit and safe: `knife set` is update-only unless `--insert` is passed, reports normalized before/after values and operation kind, and honors `--dry-run` for positional and transactional forms.
+- Removed custom OpenFOAM table false positives from bundle/doctor linting while retaining generic syntax checks, including regression coverage for parenthesized table rows.
+- Added generic probe/sample scalar metrics, HPC-compatible bundle case lists, one-step parametric bundle sets, and verified case/run/build provenance in portable case bundles.
+- Updated CLI help, README, formats, schemas, and the generated manual; Ruff 0.16.0, formatting, Ty, and the full suite pass with `1045 passed, 56 skipped` and 85.18% coverage.
+
 ## 2026-07-13
 
 - Hardened the 0.9.3 release against the Cheb-Coulomb smoke findings: case copy never executes `Allclean`, smoke edits preserve unrelated numeric text and expose a diff, binary scalar/vector/tensor internal fields decode across decomposed ranks, and OpenFOAM bashrc injection precedes nounset commands.

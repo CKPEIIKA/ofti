@@ -132,7 +132,7 @@ def _knife_physical(args: argparse.Namespace) -> int:
     rules = list(getattr(args, "field_rules", []))
     profile_name = getattr(args, "profile", None)
     if profile_name:
-        registry = discover_plugins()
+        registry = getattr(args, "plugin_registry", None) or discover_plugins()
         profile = registry.physical_profiles.get(str(profile_name))
         if profile is None:
             available = ", ".join(sorted(registry.physical_profiles)) or "none"
@@ -1047,26 +1047,43 @@ def _knife_set(args: argparse.Namespace) -> int:
             args.case_dir,
             edits,
             apply=not bool(getattr(args, "dry_run", False)),
+            allow_insert=bool(getattr(args, "insert", False)),
         )
         if args.json:
             emit_json(payload, args)
         else:
             print(f"case={payload['case']} applied={payload['applied']} ok={payload['ok']}")
             for row in payload["edits"]:
-                print(f"- {row['file']}:{row['key']} {row['before']} -> {row['after']}")
+                print(
+                    f"- {row['operation']} {row['file']}:{row['key']} {row['before']} -> {row['after']}",
+                )
+            if payload.get("diff"):
+                print(str(payload["diff"]), end="")
             if payload.get("snapshot"):
                 print(f"snapshot={payload['snapshot']}")
+            if payload.get("manifest"):
+                print(f"manifest={payload['manifest']}")
         return 0 if payload["ok"] else 1
     if not args.file or not args.key or not args.value:
         print("ofti: provide FILE KEY VALUE or repeat --edit FILE:KEY=VALUE", file=sys.stderr)
         return 2
     value = " ".join(args.value).strip()
-    payload = knife_ops.set_entry_payload(args.case_dir, args.file, args.key, value)
+    payload = knife_ops.set_entry_payload(
+        args.case_dir,
+        args.file,
+        args.key,
+        value,
+        allow_insert=bool(getattr(args, "insert", False)),
+        apply=not bool(getattr(args, "dry_run", False)),
+    )
     if args.json:
         emit_json(payload, args)
         return 0 if payload["ok"] else 1
     print(f"file={payload['file']}")
     print(f"key={payload['key']}")
-    print(f"value={payload['value']}")
+    print(f"operation={payload['operation']}")
+    print(f"applied={payload['applied']}")
+    print(f"before={payload['before']}")
+    print(f"after={payload['after']}")
     print(f"ok={payload['ok']}")
     return 0 if payload["ok"] else 1

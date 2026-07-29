@@ -213,7 +213,7 @@ def _run_solver_live_cmd(
         solver,
         process,
         target_log,
-        job_id or None,
+        job_id=job_id or None,
     )
 
 
@@ -281,6 +281,7 @@ def _tail_process_log(
     solver: str,
     process: Any,
     log_path: Path,
+    *,
     job_id: str | None,
 ) -> None:
     cfg = get_config()

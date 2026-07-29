@@ -9,6 +9,8 @@ import pytest
 
 from ofti.app import cli_tools
 from ofti.app.cli_adapters import knife as knife_adapter
+from ofti.app.cli_adapters import run as run_adapter
+from ofti.app.cli_adapters import watch as watch_adapter
 from ofti.core.command_spec import CommandSpec
 from ofti.plugins import PluginRegistry, ProfileMatch, SpecCommandProvider
 from ofti.tools.cli_tools import knife as knife_ops
@@ -40,7 +42,7 @@ def test_run_group_help_lists_new_subcommands(capsys) -> None:
     code = cli_tools.main(["run"])
     out = capsys.readouterr().out
     assert code == 0
-    assert "{tool,solver,smoke,resize-parallel,matrix,parametric,queue,queue-summary,status}" in out
+    assert "{tool,solver,smoke,restart-plan,resize-parallel,matrix,parametric,queue,queue-summary,status}" in out
 
 
 def test_run_queue_summary_cli_from_events(tmp_path: Path, capsys) -> None:
@@ -164,7 +166,7 @@ def test_cli_tools_without_args_prints_short_help(capsys) -> None:
     out = capsys.readouterr().out
     assert code == 0
     assert "Non-interactive OFTI utilities" in out
-    assert "{knife,plot,watch,run,bundle,result,version}" in out
+    assert "{knife,plot,watch,run,bundle,result,plugins,version}" in out
 
 
 def test_every_cli_help_page_has_examples() -> None:
@@ -232,7 +234,7 @@ def test_run_tool_list_outputs_catalog_json(tmp_path, capsys) -> None:
 def test_run_tool_catalog_payload_matches_list_json(tmp_path) -> None:
     case = _make_case(tmp_path / "case")
 
-    payload = cli_tools.run_ops.tool_catalog_payload(case)
+    payload = run_adapter.run_ops.tool_catalog_payload(case)
 
     assert payload["case"] == str(case.resolve())
     assert "blockMesh" in payload["tools"]
@@ -240,12 +242,12 @@ def test_run_tool_catalog_payload_matches_list_json(tmp_path) -> None:
 
 def test_run_matrix_queue_status_cli_json(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "parse_matrix_axes",
         lambda _params, **_k: [{"dict_path": "system/controlDict", "entry": "application", "values": ["a"]}],
     )
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "matrix_case_payload",
         lambda _case, **_k: {
             "template_case": "/case",
@@ -258,7 +260,7 @@ def test_run_matrix_queue_status_cli_json(monkeypatch, capsys) -> None:
         },
     )
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "queue_payload",
         lambda **_k: {
             "count": 1,
@@ -273,12 +275,12 @@ def test_run_matrix_queue_status_cli_json(monkeypatch, capsys) -> None:
         },
     )
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "resolve_case_set",
         lambda **_k: [Path("/set/caseA")],
     )
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "status_set_payload",
         lambda **_k: {
             "set_dir": "/set",
@@ -323,7 +325,7 @@ def test_run_queue_explicit_case_does_not_force_set_dir_as_queue_root(
     case = _make_case(tmp_path / "case")
     seen: dict[str, object] = {}
 
-    monkeypatch.setattr(cli_tools.run_ops, "resolve_case_set", lambda **_k: [case])
+    monkeypatch.setattr(run_adapter.run_ops, "resolve_case_set", lambda **_k: [case])
 
     def _queue_payload(**kwargs: object) -> dict[str, object]:
         seen["queue_root"] = kwargs.get("queue_root")
@@ -337,7 +339,7 @@ def test_run_queue_explicit_case_does_not_force_set_dir_as_queue_root(
             "queue_path": "",
         }
 
-    monkeypatch.setattr(cli_tools.run_ops, "queue_payload", _queue_payload)
+    monkeypatch.setattr(run_adapter.run_ops, "queue_payload", _queue_payload)
 
     code = cli_tools.main(["run", "queue", str(case), "--json"])
     payload = json.loads(capsys.readouterr().out)
@@ -349,17 +351,17 @@ def test_run_queue_explicit_case_does_not_force_set_dir_as_queue_root(
 
 def test_run_parametric_cli_json(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "parse_sweep_values",
         lambda _values: ["simpleFoam", "pisoFoam"],
     )
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "parse_grid_axes",
         lambda _axes, **_k: [],
     )
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "parametric_case_payload",
         lambda *_a, **_k: {
             "case": "/case",
@@ -398,12 +400,12 @@ def test_run_parametric_cli_json(monkeypatch, capsys) -> None:
 def test_run_matrix_easy_on_cpu_forces_min_poll_interval(monkeypatch, capsys) -> None:
     seen: dict[str, object] = {}
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "parse_matrix_axes",
         lambda _params, **_k: [{"dict_path": "system/controlDict", "entry": "application", "values": ["a"]}],
     )
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "matrix_case_payload",
         lambda _case, **_k: {
             "template_case": "/case",
@@ -430,7 +432,7 @@ def test_run_matrix_easy_on_cpu_forces_min_poll_interval(monkeypatch, capsys) ->
             "ok": True,
         }
 
-    monkeypatch.setattr(cli_tools.run_ops, "queue_payload", _queue_payload)
+    monkeypatch.setattr(run_adapter.run_ops, "queue_payload", _queue_payload)
     code = cli_tools.main(
         [
             "run",
@@ -453,12 +455,12 @@ def test_run_matrix_easy_on_cpu_forces_min_poll_interval(monkeypatch, capsys) ->
 def test_run_parametric_easy_on_cpu_forces_min_poll_interval(monkeypatch, capsys) -> None:
     seen: dict[str, object] = {}
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "parse_sweep_values",
         lambda _values: ["simpleFoam", "pisoFoam"],
     )
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "parse_grid_axes",
         lambda _axes, **_k: [],
     )
@@ -480,7 +482,7 @@ def test_run_parametric_easy_on_cpu_forces_min_poll_interval(monkeypatch, capsys
             "queue": None,
         }
 
-    monkeypatch.setattr(cli_tools.run_ops, "parametric_case_payload", _parametric_case_payload)
+    monkeypatch.setattr(run_adapter.run_ops, "parametric_case_payload", _parametric_case_payload)
     code = cli_tools.main(
         [
             "run",
@@ -504,7 +506,7 @@ def test_run_parametric_easy_on_cpu_forces_min_poll_interval(monkeypatch, capsys
 
 def test_run_write_tool_catalog_json_default_path(tmp_path) -> None:
     case = _make_case(tmp_path / "case")
-    export_path = cli_tools.run_ops.write_tool_catalog_json(case)
+    export_path = run_adapter.run_ops.write_tool_catalog_json(case)
 
     exported = case / ".ofti" / "tool_catalog.json"
     assert export_path == exported.resolve()
@@ -739,12 +741,12 @@ def test_knife_new_commands_json(tmp_path, capsys) -> None:
 
 def test_knife_campaign_commands_json(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "campaign_list_payload",
         lambda *_a, **_k: {"case": "/root", "count": 1, "cases": ["/root/caseA"]},
     )
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "campaign_rank_payload",
         lambda *_a, **_k: {
             "case": "/root",
@@ -753,7 +755,7 @@ def test_knife_campaign_commands_json(monkeypatch, capsys) -> None:
         },
     )
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "campaign_stop_worst_payload",
         lambda *_a, **_k: {
             "case": "/root",
@@ -781,9 +783,9 @@ def test_knife_campaign_commands_json(monkeypatch, capsys) -> None:
 
 
 def test_watch_start_uses_watcher_preset_when_available(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(cli_tools.watch_ops, "watcher_preset_payload", lambda _case: {"found": True})
+    monkeypatch.setattr(watch_adapter.watch_ops, "watcher_preset_payload", lambda _case: {"found": True})
     monkeypatch.setattr(
-        cli_tools.watch_ops,
+        watch_adapter.watch_ops,
         "watcher_start_payload",
         lambda *_a, **_k: {
             "case": "/case",
@@ -804,7 +806,7 @@ def test_watch_start_uses_watcher_preset_when_available(monkeypatch, capsys) -> 
 
 def test_watch_attach_watcher_json(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
-        cli_tools.watch_ops,
+        watch_adapter.watch_ops,
         "watcher_attach_payload",
         lambda *_a, **_k: {
             "case": "/case",
@@ -870,11 +872,11 @@ def test_watch_stop_stops_selected_job(tmp_path, capsys, monkeypatch) -> None:
 def test_watch_start_runs_solver_in_background(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.setattr(
-        "ofti.app.cli_tools.run_ops.solver_command",
+        "ofti.app.cli_adapters.run.run_ops.solver_command",
         lambda _case, **_kwargs: ("simpleFoam", ["simpleFoam"]),
     )
     monkeypatch.setattr(
-        "ofti.app.cli_tools.run_ops.execute_case_command",
+        "ofti.app.cli_adapters.run.run_ops.execute_case_command",
         lambda _case, _name, _cmd, **_kwargs: RunResult(
             0,
             "",
@@ -934,7 +936,7 @@ def test_knife_status_lightweight_flags_forwarded(monkeypatch, tmp_path, capsys)
             "jobs_total": 0,
         }
 
-    monkeypatch.setattr(cli_tools.knife_ops, "status_payload", _status)
+    monkeypatch.setattr(knife_adapter.knife_ops, "status_payload", _status)
     code = cli_tools.main(
         [
             "knife",
@@ -961,7 +963,7 @@ def test_knife_status_easy_on_cpu_sets_default_tail_bytes(monkeypatch, tmp_path,
         seen.update(kwargs)
         return {"case": str(case_dir)}
 
-    monkeypatch.setattr(cli_tools.knife_ops, "status_payload", _status)
+    monkeypatch.setattr(knife_adapter.knife_ops, "status_payload", _status)
     code = cli_tools.main(["knife", "status", str(case), "--easy-on-cpu", "--json"])
 
     assert code == 0
@@ -979,7 +981,7 @@ def test_knife_status_defaults_to_fast_mode(monkeypatch, tmp_path, capsys) -> No
         seen.update(kwargs)
         return {"case": str(case_dir)}
 
-    monkeypatch.setattr(cli_tools.knife_ops, "status_payload", _status)
+    monkeypatch.setattr(knife_adapter.knife_ops, "status_payload", _status)
     code = cli_tools.main(["knife", "status", str(case), "--json"])
 
     assert code == 0
@@ -996,7 +998,7 @@ def test_knife_status_full_disables_fast_mode(monkeypatch, tmp_path, capsys) -> 
         seen.update(kwargs)
         return {"case": str(case_dir)}
 
-    monkeypatch.setattr(cli_tools.knife_ops, "status_payload", _status)
+    monkeypatch.setattr(knife_adapter.knife_ops, "status_payload", _status)
     code = cli_tools.main(["knife", "status", str(case), "--full", "--json"])
 
     assert code == 0
@@ -1019,7 +1021,7 @@ def test_knife_criteria_fast_default_with_full_override(monkeypatch, tmp_path, c
             "criteria": [],
         }
 
-    monkeypatch.setattr(cli_tools.knife_ops, "criteria_payload", _criteria)
+    monkeypatch.setattr(knife_adapter.knife_ops, "criteria_payload", _criteria)
     assert cli_tools.main(["knife", "criteria", str(case), "--json"]) == 0
     assert seen[0]["lightweight"] is True
     assert json.loads(capsys.readouterr().out)["case"] == str(case)
@@ -1032,12 +1034,16 @@ def test_knife_criteria_fast_default_with_full_override(monkeypatch, tmp_path, c
 def test_knife_set_uses_shared_logic(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.setattr(
-        "ofti.app.cli_tools.knife_ops.set_entry_payload",
-        lambda case_dir, rel_file, key, value: {
+        "ofti.app.cli_adapters.knife.knife_ops.set_entry_payload",
+        lambda case_dir, rel_file, key, value, **_kwargs: {
             "case": str(case_dir),
             "file": str(Path(case_dir) / rel_file),
             "key": key,
             "value": value,
+            "before": "icoFoam",
+            "after": "simpleFoam",
+            "operation": "update",
+            "applied": True,
             "ok": True,
         },
     )
@@ -1054,7 +1060,7 @@ def test_knife_set_uses_shared_logic(tmp_path, capsys, monkeypatch) -> None:
 def test_run_solver_dry_run_uses_control_dict_solver(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case", solver="rhoSimpleFoam")
     monkeypatch.setattr(
-        "ofti.app.cli_tools.run_ops.solver_command",
+        "ofti.app.cli_adapters.run.run_ops.solver_command",
         lambda _case, **_kwargs: ("rhoSimpleFoam", ["rhoSimpleFoam"]),
     )
 
@@ -1068,7 +1074,7 @@ def test_run_solver_dry_run_uses_control_dict_solver(tmp_path, capsys, monkeypat
 def test_run_solver_dry_run_json(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case", solver="rhoSimpleFoam")
     monkeypatch.setattr(
-        "ofti.app.cli_tools.run_ops.solver_command",
+        "ofti.app.cli_adapters.run.run_ops.solver_command",
         lambda _case, **_kwargs: ("rhoSimpleFoam", ["rhoSimpleFoam"]),
     )
 
@@ -1089,7 +1095,7 @@ def test_run_solver_dry_run_json_no_sync_subdomains(tmp_path, capsys, monkeypatc
         seen["sync_subdomains"] = kwargs.get("sync_subdomains")
         return ("rhoSimpleFoam", ["rhoSimpleFoam"])
 
-    monkeypatch.setattr("ofti.app.cli_tools.run_ops.solver_command", _solver_command)
+    monkeypatch.setattr("ofti.app.cli_adapters.run.run_ops.solver_command", _solver_command)
     code = cli_tools.main(
         ["run", "solver", str(case), "--dry-run", "--json", "--no-sync-subdomains"],
     )
@@ -1109,7 +1115,7 @@ def test_watch_attach_forwards_job_id_to_log_handler(tmp_path, monkeypatch) -> N
         captured["follow"] = args.follow
         return 0
 
-    monkeypatch.setattr("ofti.app.cli_tools._watch_log", fake_watch_log)
+    monkeypatch.setattr("ofti.app.cli_adapters.watch._watch_log", fake_watch_log)
 
     code = cli_tools.main(["watch", "attach", "--job-id", "job-1", "--case", str(case)])
 
@@ -1197,7 +1203,7 @@ def test_knife_current_includes_untracked_solver_processes(tmp_path, monkeypatch
 def test_knife_adopt_cli_json(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case", solver="simpleFoam")
     monkeypatch.setattr(
-        "ofti.app.cli_tools.knife_ops.adopt_payload",
+        "ofti.app.cli_adapters.knife.knife_ops.adopt_payload",
         lambda _case: {
             "case": str(case),
             "selected": 1,
@@ -1235,7 +1241,7 @@ def test_knife_adopt_cli_recursive_passes_flag(tmp_path, capsys, monkeypatch) ->
             "jobs_running_after": 0,
         }
 
-    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.adopt_payload", _adopt)
+    monkeypatch.setattr("ofti.app.cli_adapters.knife.knife_ops.adopt_payload", _adopt)
     code = cli_tools.main(["knife", "adopt", str(case), "--recursive", "--json"])
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
@@ -1266,7 +1272,7 @@ def test_knife_current_cli_root_recursive_uses_scope_payload(tmp_path, capsys, m
             "untracked_processes": [],
         }
 
-    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.current_scope_payload", _current_scope)
+    monkeypatch.setattr("ofti.app.cli_adapters.knife.knife_ops.current_scope_payload", _current_scope)
     code = cli_tools.main(["knife", "current", "--root", str(root), "--recursive", "--live", "--json"])
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
@@ -1299,7 +1305,7 @@ def test_knife_current_cli_non_case_scope_auto_recurses(tmp_path, capsys, monkey
             "untracked_processes": [],
         }
 
-    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.current_scope_payload", _current_scope)
+    monkeypatch.setattr("ofti.app.cli_adapters.knife.knife_ops.current_scope_payload", _current_scope)
     code = cli_tools.main(["knife", "current", str(root), "--live", "--json"])
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
@@ -1333,7 +1339,7 @@ def test_knife_adopt_cli_root_all_untracked_passes_flag(tmp_path, capsys, monkey
             "jobs_running_after": 0,
         }
 
-    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.adopt_payload", _adopt)
+    monkeypatch.setattr("ofti.app.cli_adapters.knife.knife_ops.adopt_payload", _adopt)
     code = cli_tools.main(["knife", "adopt", "--root", str(root), "--all-untracked", "--json"])
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
@@ -1345,12 +1351,15 @@ def test_knife_adopt_cli_root_all_untracked_passes_flag(tmp_path, capsys, monkey
 def test_knife_set_json_output(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.setattr(
-        "ofti.app.cli_tools.knife_ops.set_entry_payload",
-        lambda case_dir, rel_file, key, value: {
+        "ofti.app.cli_adapters.knife.knife_ops.set_entry_payload",
+        lambda case_dir, rel_file, key, value, **_kwargs: {
             "case": str(case_dir),
             "file": str(Path(case_dir) / rel_file),
             "key": key,
             "value": value,
+            "before": "icoFoam",
+            "after": "simpleFoam",
+            "operation": "update",
             "ok": True,
         },
     )
@@ -1376,6 +1385,7 @@ def test_knife_set_transaction_preview_json(tmp_path: Path, capsys) -> None:
             "system/controlDict:endTime=20",
             "--edit",
             "system/controlDict:writeInterval=2",
+            "--insert",
             "--dry-run",
             "--json",
         ],
@@ -1385,6 +1395,45 @@ def test_knife_set_transaction_preview_json(tmp_path: Path, capsys) -> None:
     assert code == 0
     assert payload["applied"] is False
     assert [row["key"] for row in payload["edits"]] == ["endTime", "writeInterval"]
+
+
+def test_knife_set_positional_preview_passes_dry_run(tmp_path: Path, capsys, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case")
+    seen: dict[str, object] = {}
+
+    def preview(_case, _file, _key, _value, **kwargs):
+        seen.update(kwargs)
+        return {
+            "case": str(case),
+            "file": str(case / "system/controlDict"),
+            "key": "application",
+            "value": "simpleFoam",
+            "before": "icoFoam",
+            "after": "simpleFoam",
+            "operation": "update",
+            "applied": False,
+            "ok": True,
+        }
+
+    monkeypatch.setattr("ofti.app.cli_adapters.knife.knife_ops.set_entry_payload", preview)
+
+    code = cli_tools.main(
+        [
+            "knife",
+            "set",
+            str(case),
+            "system/controlDict",
+            "application",
+            "simpleFoam",
+            "--dry-run",
+            "--json",
+        ],
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["applied"] is False
+    assert seen["apply"] is False
 
 
 def test_run_tool_help_mentions_presets(capsys) -> None:
@@ -1400,11 +1449,11 @@ def test_run_solver_parallel_clean_processors_calls_prepare(tmp_path, capsys, mo
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(
-        "ofti.app.cli_tools.run_ops.solver_command",
+        "ofti.app.cli_adapters.run.run_ops.solver_command",
         lambda _case, **_kwargs: ("rhoSimpleFoam-parallel", ["mpirun", "-np", "2", "rhoSimpleFoam", "-parallel"]),
     )
     monkeypatch.setattr(
-        "ofti.app.cli_tools.run_ops.prepare_parallel_case",
+        "ofti.app.cli_adapters.run.run_ops.prepare_parallel_case",
         lambda _case, **kwargs: (
             seen.setdefault("prepare", kwargs)
             or {
@@ -1419,7 +1468,7 @@ def test_run_solver_parallel_clean_processors_calls_prepare(tmp_path, capsys, mo
         ),
     )
     monkeypatch.setattr(
-        "ofti.app.cli_tools.run_ops.execute_solver_case_command",
+        "ofti.app.cli_adapters.run.run_ops.execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(0, "", "", pid=None, log_path=Path(_args[0]) / "log.rhoSimpleFoam"),
     )
     code = cli_tools.main(
@@ -1435,15 +1484,15 @@ def test_run_solver_parallel_clean_processors_calls_prepare(tmp_path, capsys, mo
 def test_run_solver_parallel_no_prepare_skips_prepare(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case", solver="rhoSimpleFoam")
     monkeypatch.setattr(
-        "ofti.app.cli_tools.run_ops.solver_command",
+        "ofti.app.cli_adapters.run.run_ops.solver_command",
         lambda _case, **_kwargs: ("rhoSimpleFoam-parallel", ["mpirun", "-np", "2", "rhoSimpleFoam", "-parallel"]),
     )
     monkeypatch.setattr(
-        "ofti.app.cli_tools.run_ops.prepare_parallel_case",
+        "ofti.app.cli_adapters.run.run_ops.prepare_parallel_case",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("prepare should be skipped")),
     )
     monkeypatch.setattr(
-        "ofti.app.cli_tools.run_ops.execute_solver_case_command",
+        "ofti.app.cli_adapters.run.run_ops.execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(0, "", "", pid=None, log_path=Path(_args[0]) / "log.rhoSimpleFoam"),
     )
     code = cli_tools.main(
@@ -1459,7 +1508,7 @@ def test_knife_converge_cli_json(tmp_path, capsys, monkeypatch) -> None:
     log_path = tmp_path / "log.simpleFoam"
     log_path.write_text("Time = 1\n")
     monkeypatch.setattr(
-        "ofti.app.cli_tools.knife_ops.converge_payload",
+        "ofti.app.cli_adapters.knife.knife_ops.converge_payload",
         lambda *_args, **_kwargs: {
             "log": str(log_path),
             "shock": {"drift": 0.1, "limit": 0.02, "ok": False},
@@ -1499,7 +1548,7 @@ def test_knife_physical_cli_json(tmp_path, capsys, monkeypatch) -> None:
             "species_sum": None,
         }
 
-    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.physical_payload", _payload)
+    monkeypatch.setattr("ofti.app.cli_adapters.knife.knife_ops.physical_payload", _payload)
 
     code = cli_tools.main(["knife", "physical", str(case), "--time", "0", "--fields", "rho,p", "--json"])
 
@@ -1521,7 +1570,7 @@ def test_knife_physical_fail_on_bad_returns_one(tmp_path, capsys, monkeypatch) -
     case = _make_case(tmp_path / "case")
 
     monkeypatch.setattr(
-        "ofti.app.cli_tools.knife_ops.physical_payload",
+        "ofti.app.cli_adapters.knife.knife_ops.physical_payload",
         lambda *_args, **_kwargs: {
             "case": str(case),
             "time": "0",
@@ -1574,7 +1623,7 @@ def test_knife_physical_profile_forwards_plugin_fields_and_rules(
             return ["rho:min=0", "T:min=0"]
 
     registry = PluginRegistry(physical_profiles={"fake": FakeProfile()})
-    monkeypatch.setattr("ofti.app.cli_adapters.knife.discover_plugins", lambda: registry)
+    monkeypatch.setattr("ofti.app.cli_adapters.main.discover_plugins", lambda: registry)
 
     def _payload(case_dir: Path, **kwargs: object) -> dict[str, object]:
         seen["case"] = case_dir
@@ -1590,7 +1639,7 @@ def test_knife_physical_profile_forwards_plugin_fields_and_rules(
             "fields": [],
         }
 
-    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.physical_payload", _payload)
+    monkeypatch.setattr("ofti.app.cli_adapters.knife.knife_ops.physical_payload", _payload)
 
     code = cli_tools.main(["knife", "physical", str(case), "--profile", "fake", "--json"])
 
@@ -1633,7 +1682,7 @@ def test_knife_physical_profile_merges_diagnostics(tmp_path, capsys, monkeypatch
             }
 
     registry = PluginRegistry(physical_profiles={"fake": FakeProfile()})
-    monkeypatch.setattr("ofti.app.cli_adapters.knife.discover_plugins", lambda: registry)
+    monkeypatch.setattr("ofti.app.cli_adapters.main.discover_plugins", lambda: registry)
 
     def _payload(case_dir: Path, **kwargs: object) -> dict[str, object]:
         del case_dir, kwargs
@@ -1648,7 +1697,7 @@ def test_knife_physical_profile_merges_diagnostics(tmp_path, capsys, monkeypatch
             "fields": [],
         }
 
-    monkeypatch.setattr("ofti.app.cli_tools.knife_ops.physical_payload", _payload)
+    monkeypatch.setattr("ofti.app.cli_adapters.knife.knife_ops.physical_payload", _payload)
 
     code = cli_tools.main(["knife", "physical", str(case), "--profile", "fake", "--json"])
 
@@ -1711,7 +1760,7 @@ def test_knife_plugin_command_is_dispatched(capsys, monkeypatch) -> None:
             return 0
 
     registry = PluginRegistry(knife_commands={"fake-plugin": FakeCommand()})
-    monkeypatch.setattr("ofti.app.cli_adapters.knife_parser.discover_plugins", lambda: registry)
+    monkeypatch.setattr("ofti.app.cli_adapters.main.discover_plugins", lambda: registry)
 
     code = cli_tools.main(["knife", "fake-plugin"])
 
@@ -1732,11 +1781,12 @@ def test_knife_plugin_command_without_spec_is_skipped_with_error(monkeypatch) ->
             return 0
 
     registry = PluginRegistry(knife_commands={"bad": cast(SpecCommandProvider, BadCommand())})
-    monkeypatch.setattr(knife_parser, "discover_plugins", lambda: registry)
+    knife_parser._add_plugin_knife_commands(
+        argparse.ArgumentParser().add_subparsers(),
+        registry,
+    )
 
-    knife_parser._add_plugin_knife_commands(argparse.ArgumentParser().add_subparsers())
-
-    assert any("lacks command_spec" in err for err in registry.errors)
+    assert any("invalid knife command" in err for err in registry.errors)
 
 
 def test_knife_compare_fields_unknown_plugin_preset_returns_usage_error(tmp_path, capsys) -> None:
@@ -1755,7 +1805,7 @@ def test_knife_compare_fields_cli_text_nonzero_on_error(tmp_path, capsys, monkey
     right = _make_case(tmp_path / "right")
 
     monkeypatch.setattr(
-        "ofti.app.cli_tools.knife_ops.compare_fields_payload",
+        "ofti.app.cli_adapters.knife.knife_ops.compare_fields_payload",
         lambda *_args, **_kwargs: {
             "left_case": str(left),
             "right_case": str(right),
@@ -1786,7 +1836,7 @@ def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monk
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(
-        "ofti.app.cli_tools.run_ops.resolve_case_set",
+        "ofti.app.cli_adapters.run.run_ops.resolve_case_set",
         lambda **_kwargs: [case],
     )
 
@@ -1805,7 +1855,7 @@ def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monk
             "ok": True,
         }
 
-    monkeypatch.setattr("ofti.app.cli_tools.run_ops.queue_payload", _queue_payload)
+    monkeypatch.setattr("ofti.app.cli_adapters.run.run_ops.queue_payload", _queue_payload)
 
     code = cli_tools.main(
         [
@@ -1838,7 +1888,7 @@ def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monk
 def test_watch_external_cli_dry_run_json(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.setattr(
-        "ofti.app.cli_tools.watch_ops.external_watch_payload",
+        "ofti.app.cli_adapters.watch.watch_ops.external_watch_payload",
         lambda *_args, **_kwargs: {
             "case": str(case),
             "command": ["python", "watcher.py"],
@@ -1869,7 +1919,7 @@ def test_watch_external_cli_dry_run_json(tmp_path, capsys, monkeypatch) -> None:
 def test_watch_pause_resume_and_stop_signal_cli(tmp_path, capsys, monkeypatch) -> None:
     case = _make_case(tmp_path / "case")
     monkeypatch.setattr(
-        "ofti.app.cli_tools.watch_ops.pause_payload",
+        "ofti.app.cli_adapters.watch.watch_ops.pause_payload",
         lambda *_args, **_kwargs: {
             "case": str(case),
             "selected": 1,
@@ -1882,7 +1932,7 @@ def test_watch_pause_resume_and_stop_signal_cli(tmp_path, capsys, monkeypatch) -
     assert json.loads(capsys.readouterr().out)["selected"] == 1
 
     monkeypatch.setattr(
-        "ofti.app.cli_tools.watch_ops.resume_payload",
+        "ofti.app.cli_adapters.watch.watch_ops.resume_payload",
         lambda *_args, **_kwargs: {
             "case": str(case),
             "selected": 1,
@@ -1895,7 +1945,7 @@ def test_watch_pause_resume_and_stop_signal_cli(tmp_path, capsys, monkeypatch) -
     assert "resumed:" in capsys.readouterr().out
 
     monkeypatch.setattr(
-        "ofti.app.cli_tools.watch_ops.stop_payload",
+        "ofti.app.cli_adapters.watch.watch_ops.stop_payload",
         lambda *_args, **kwargs: {
             "case": str(case),
             "signal": kwargs.get("signal_name", "TERM"),
@@ -1927,7 +1977,7 @@ def test_run_resize_parallel_cli_json_and_table(monkeypatch, capsys) -> None:
         ],
     }
     monkeypatch.setattr(
-        cli_tools.parallel_resize_service,
+        run_adapter.parallel_resize_service,
         "parallel_resize_payload",
         lambda *_a, **_k: payload,
     )

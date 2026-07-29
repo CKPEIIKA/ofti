@@ -21,6 +21,7 @@ from pathlib import Path, PurePosixPath
 from types import ModuleType
 from typing import Any, Literal, cast
 
+from ofti.core import run_manifest as run_manifest_ops
 from ofti.core.case_headers import detect_case_header_version
 from ofti.core.syntax import find_suspicious_lines
 from ofti.core.times import latest_time
@@ -30,6 +31,7 @@ ArchiveFormat = Literal["gztar", "zstdtar"]
 BundleKind = Literal["case", "set"]
 MANIFEST_PATH = ".ofti/bundle.json"
 BUNDLE_SET_MANIFEST_PATH = ".ofti/bundle-set.json"
+BUNDLED_RUN_MANIFEST_PATH = ".ofti/provenance/run-manifest.json"
 MANIFEST_FORMAT = "ofti.case-bundle"
 MANIFEST_FORMAT_VERSION = 1
 
@@ -57,6 +59,10 @@ class BundleManifest:
     header_version: str
     files: tuple[BundleFile, ...]
     warnings: tuple[str, ...] = ()
+    case_fingerprint: str = ""
+    run_manifest: str | None = None
+    run_manifest_sha256: str | None = None
+    build_digest: str | None = None
 
 
 def build_bundle_manifest(
@@ -64,19 +70,29 @@ def build_bundle_manifest(
     *,
     mesh: str = "auto",
     time: str = "0",
+    run_manifest: Path | None = None,
     extra_warnings: Iterable[str] = (),
 ) -> BundleManifest:
     """Return the deterministic manifest for files selected from ``case_dir``."""
     mesh_policy = _mesh_policy(mesh)
     root = case_dir.resolve()
     selected_time = _selected_time(root, time)
-    selected_files = select_bundle_files(root, mesh=mesh_policy, time=selected_time)
+    selected_files = select_bundle_files(
+        root,
+        mesh=mesh_policy,
+        time=selected_time,
+        include_run_manifest=run_manifest is None,
+    )
     warnings = _validate_bundle_case(root, selected_time, mesh=mesh_policy)
     warnings += _include_warnings(root, selected_files)
     warnings += _syntax_warnings(root, selected_files)
     warnings += tuple(extra_warnings)
     application = _control_application(root)
-    files = tuple(_file_entry(root, rel) for rel in selected_files)
+    manifest_source, manifest_rel = _bundle_run_manifest(root, run_manifest)
+    files = [_file_entry(root, rel) for rel in selected_files]
+    if run_manifest is not None and manifest_source is not None and manifest_rel is not None:
+        files.append(_external_file_entry(manifest_source, manifest_rel))
+    file_entries = tuple(sorted(files, key=lambda entry: entry.path))
     return BundleManifest(
         format=MANIFEST_FORMAT,
         version=MANIFEST_FORMAT_VERSION,
@@ -85,8 +101,12 @@ def build_bundle_manifest(
         mesh_policy=mesh_policy,
         application=application,
         header_version=detect_case_header_version(root),
-        files=files,
+        files=file_entries,
         warnings=warnings,
+        case_fingerprint=_bundle_fingerprint(file_entries),
+        run_manifest=manifest_rel.as_posix() if manifest_rel is not None else None,
+        run_manifest_sha256=_sha256(manifest_source) if manifest_source is not None else None,
+        build_digest=_run_build_digest(manifest_source),
     )
 
 
@@ -95,6 +115,7 @@ def select_bundle_files(
     *,
     mesh: str = "auto",
     time: str = "0",
+    include_run_manifest: bool = True,
 ) -> list[Path]:
     """Select relative case files for a portable minimal archive."""
     mesh_policy = _mesh_policy(mesh)
@@ -106,6 +127,8 @@ def select_bundle_files(
         _add_tree(rels, root, Path(dirname), mesh=mesh_policy)
     _add_root_files(rels, root)
     _add_ofti_metadata(rels, root)
+    if include_run_manifest:
+        _add_run_manifest(rels, root)
     _add_mesh_tree(rels, root, mesh_policy)
     _add_referenced_include_files(rels, root, mesh=mesh_policy)
     return sorted(rels, key=lambda rel: rel.as_posix())
@@ -117,14 +140,23 @@ def create_bundle(
     *,
     mesh: str = "auto",
     time: str = "0",
+    run_manifest: Path | None = None,
     extra_warnings: Iterable[str] = (),
 ) -> BundleManifest:
     """Create a deterministic tar archive and return its manifest."""
-    manifest = build_bundle_manifest(case_dir, mesh=mesh, time=time, extra_warnings=extra_warnings)
+    explicit_manifest = _explicit_run_manifest(run_manifest) if run_manifest is not None else None
+    manifest = build_bundle_manifest(
+        case_dir,
+        mesh=mesh,
+        time=time,
+        run_manifest=explicit_manifest,
+        extra_warnings=extra_warnings,
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
     root = case_dir.resolve()
+    external_sources = {BUNDLED_RUN_MANIFEST_PATH: explicit_manifest} if explicit_manifest is not None else {}
     with _deterministic_bundle_tar(output) as tar:
-        _write_bundle_tar(tar, root, manifest)
+        _write_bundle_tar(tar, root, manifest, external_sources=external_sources)
     return manifest
 
 
@@ -196,7 +228,11 @@ def _extract_bundle_member(
 def verify_bundle_files(case_dir: Path, manifest: BundleManifest) -> list[str]:
     errors: list[str] = []
     for entry in manifest.files:
-        path = case_dir / entry.path
+        rel = _safe_member_path(entry.path)
+        if rel is None:
+            errors.append(f"unsafe manifest path: {entry.path}")
+            continue
+        path = case_dir / rel
         if not path.is_file():
             errors.append(f"missing: {entry.path}")
             continue
@@ -205,6 +241,7 @@ def verify_bundle_files(case_dir: Path, manifest: BundleManifest) -> list[str]:
         digest = _sha256(path)
         if digest != entry.sha256:
             errors.append(f"hash mismatch: {entry.path}")
+    errors.extend(_provenance_errors(case_dir, manifest))
     if errors:
         raise ValueError("bundle verification failed: " + "; ".join(errors))
     return errors
@@ -255,6 +292,10 @@ def manifest_from_payload(payload: dict[str, object]) -> BundleManifest:
         header_version=str(payload.get("header_version", "unknown")),
         files=files,
         warnings=_payload_strings(payload.get("warnings")),
+        case_fingerprint=str(payload.get("case_fingerprint", "")),
+        run_manifest=_payload_optional_string(payload.get("run_manifest")),
+        run_manifest_sha256=_payload_optional_string(payload.get("run_manifest_sha256")),
+        build_digest=_payload_optional_string(payload.get("build_digest")),
     )
 
 
@@ -324,9 +365,16 @@ def _zstandard_module() -> ModuleType:
         ) from exc
 
 
-def _write_bundle_tar(tar: tarfile.TarFile, root: Path, manifest: BundleManifest) -> None:
+def _write_bundle_tar(
+    tar: tarfile.TarFile,
+    root: Path,
+    manifest: BundleManifest,
+    *,
+    external_sources: dict[str, Path] | None = None,
+) -> None:
+    sources = external_sources or {}
     for entry in manifest.files:
-        _add_tar_file(tar, root / entry.path, entry.path)
+        _add_tar_file(tar, sources.get(entry.path, root / entry.path), entry.path)
     payload = json.dumps(manifest_payload(manifest), indent=2, sort_keys=True).encode()
     _add_tar_bytes(tar, MANIFEST_PATH, payload)
 
@@ -349,6 +397,11 @@ def _payload_strings(value: object) -> tuple[str, ...]:
     if not isinstance(value, list):
         return ()
     return tuple(str(item) for item in value)
+
+
+def _payload_optional_string(value: object) -> str | None:
+    text = str(value).strip() if value is not None else ""
+    return text or None
 
 
 def _validate_bundle_case(case_dir: Path, time: str, *, mesh: MeshPolicy) -> tuple[str, ...]:
@@ -443,6 +496,89 @@ def _add_ofti_metadata(rels: set[Path], root: Path) -> None:
             rels.add(candidate.relative_to(root))
 
 
+def _add_run_manifest(rels: set[Path], root: Path) -> None:
+    manifest = _latest_run_manifest(root)
+    if manifest is not None:
+        rels.add(manifest.relative_to(root))
+
+
+def _latest_run_manifest(root: Path) -> Path | None:
+    direct = root / "manifest.json"
+    if _is_run_manifest(direct):
+        return direct
+    candidates = [path for path in sorted(root.glob("runs/*/manifest.json")) if _is_run_manifest(path)]
+    return candidates[-1] if candidates else None
+
+
+def _bundle_run_manifest(root: Path, explicit: Path | None) -> tuple[Path | None, Path | None]:
+    if explicit is not None:
+        source = _explicit_run_manifest(explicit)
+        return source, Path(BUNDLED_RUN_MANIFEST_PATH)
+    source = _latest_run_manifest(root)
+    return (source, source.relative_to(root)) if source is not None else (None, None)
+
+
+def _explicit_run_manifest(path: Path) -> Path:
+    resolved = path.expanduser().resolve()
+    if not resolved.is_file():
+        raise ValueError(f"run manifest not found: {resolved}")
+    try:
+        run_manifest_ops.load_run_manifest(resolved)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid run manifest: {resolved}") from exc
+    return resolved
+
+
+def _is_run_manifest(path: Path) -> bool:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return isinstance(payload, dict) and payload.get("format") == "ofti.run-manifest"
+
+
+def _run_build_digest(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    build = payload.get("build") if isinstance(payload, dict) else None
+    return _json_digest(build) if isinstance(build, dict) else None
+
+
+def _bundle_fingerprint(files: tuple[BundleFile, ...]) -> str:
+    rows = [{"path": entry.path, "size": entry.size, "sha256": entry.sha256} for entry in files]
+    return _json_digest(rows)
+
+
+def _json_digest(value: object) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _provenance_errors(case_dir: Path, manifest: BundleManifest) -> list[str]:
+    errors: list[str] = []
+    if manifest.case_fingerprint and manifest.case_fingerprint != _bundle_fingerprint(manifest.files):
+        errors.append("case fingerprint mismatch")
+    if manifest.run_manifest is None:
+        return errors
+    rel = _safe_member_path(manifest.run_manifest)
+    if rel is None:
+        errors.append(f"unsafe run manifest path: {manifest.run_manifest}")
+        return errors
+    path = case_dir / rel
+    if not path.is_file():
+        errors.append(f"missing run manifest: {manifest.run_manifest}")
+        return errors
+    if manifest.run_manifest_sha256 and _sha256(path) != manifest.run_manifest_sha256:
+        errors.append("run manifest digest mismatch")
+    if manifest.build_digest and _run_build_digest(path) != manifest.build_digest:
+        errors.append("run manifest build digest mismatch")
+    return errors
+
+
 def _add_mesh_tree(rels: set[Path], root: Path, mesh: MeshPolicy) -> None:
     poly_mesh = Path("constant") / "polyMesh"
     if mesh == "include" or (mesh == "auto" and (root / poly_mesh).is_dir()):
@@ -527,6 +663,10 @@ def _include_file(rel: Path, *, mesh: MeshPolicy) -> bool:
 
 def _file_entry(root: Path, rel: Path) -> BundleFile:
     path = root / rel
+    return BundleFile(path=rel.as_posix(), size=path.stat().st_size, sha256=_sha256(path))
+
+
+def _external_file_entry(path: Path, rel: Path) -> BundleFile:
     return BundleFile(path=rel.as_posix(), size=path.stat().st_size, sha256=_sha256(path))
 
 

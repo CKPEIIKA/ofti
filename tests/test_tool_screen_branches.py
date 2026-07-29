@@ -435,7 +435,7 @@ def test_solver_run_live_shell_cmd_and_tail_finish(monkeypatch: pytest.MonkeyPat
         "simpleFoam",
         cast("Any", _Finished()),
         case / "log.simpleFoam",
-        "job-9",
+        job_id="job-9",
     )
     assert finished[-1] == ("job-9", 2, False)
     assert screen.timeout_value == -1

@@ -7,6 +7,11 @@ from pathlib import Path
 import pytest
 
 from ofti.app import cli_tools
+from ofti.app.cli_adapters import knife as knife_adapter
+from ofti.app.cli_adapters import main as main_adapter
+from ofti.app.cli_adapters import plot as plot_adapter
+from ofti.app.cli_adapters import run as run_adapter
+from ofti.app.cli_adapters import watch as watch_adapter
 from ofti.tools.cli_tools.run import RunResult
 
 
@@ -22,7 +27,7 @@ def test_main_catches_value_error(monkeypatch: pytest.MonkeyPatch, capsys: pytes
     def _build_parser() -> FakeParser:
         return FakeParser()
 
-    monkeypatch.setattr(cli_tools, "build_parser", _build_parser)
+    monkeypatch.setattr(main_adapter, "build_parser", _build_parser)
     code = cli_tools.main(["knife", "status"])
     assert code == 2
     assert "ofti: bad args" in capsys.readouterr().err
@@ -40,7 +45,7 @@ def test_knife_doctor_plain_formats_errors_and_warnings(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "doctor_payload",
         lambda _case: {
             "case": "case-path",
@@ -49,8 +54,8 @@ def test_knife_doctor_plain_formats_errors_and_warnings(
             "warnings": ["warn"],
         },
     )
-    monkeypatch.setattr(cli_tools.knife_ops, "doctor_exit_code", lambda payload: 1 if payload["errors"] else 0)
-    code = cli_tools._knife_doctor(_ns(case_dir=Path(), json=False))
+    monkeypatch.setattr(knife_adapter.knife_ops, "doctor_exit_code", lambda payload: 1 if payload["errors"] else 0)
+    code = knife_adapter._knife_doctor(_ns(case_dir=Path(), json=False))
     out = capsys.readouterr().out
     assert code == 1
     assert "Errors:" in out
@@ -62,7 +67,7 @@ def test_knife_compare_plain_no_diffs_and_with_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "compare_payload",
         lambda _left, _right: {
             "left_case": "a",
@@ -71,12 +76,12 @@ def test_knife_compare_plain_no_diffs_and_with_error(
             "diffs": [],
         },
     )
-    code = cli_tools._knife_compare(_ns(left_case=Path("a"), right_case=Path("b"), json=False))
+    code = knife_adapter._knife_compare(_ns(left_case=Path("a"), right_case=Path("b"), json=False))
     assert code == 0
     assert "No dictionary key differences detected." in capsys.readouterr().out
 
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "compare_payload",
         lambda _left, _right: {
             "left_case": "a",
@@ -92,7 +97,7 @@ def test_knife_compare_plain_no_diffs_and_with_error(
             ],
         },
     )
-    code = cli_tools._knife_compare(_ns(left_case=Path("a"), right_case=Path("b"), json=False))
+    code = knife_adapter._knife_compare(_ns(left_case=Path("a"), right_case=Path("b"), json=False))
     assert code == 0
     assert "error: parse failed" in capsys.readouterr().out
 
@@ -102,7 +107,7 @@ def test_knife_compare_table_output(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "compare_payload",
         lambda *_a, **_k: {
             "left_case": "a",
@@ -122,7 +127,7 @@ def test_knife_compare_table_output(
         },
     )
 
-    code = cli_tools._knife_compare(
+    code = knife_adapter._knife_compare(
         _ns(left_case=Path("a"), right_case=Path("b"), flat=False, files=[], raw_hash=False, json=False, table=True),
     )
     out = capsys.readouterr().out
@@ -136,7 +141,7 @@ def test_knife_preflight_status_current_and_set_plain(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "preflight_payload",
         lambda _case: {
             "case": "case-path",
@@ -145,11 +150,11 @@ def test_knife_preflight_status_current_and_set_plain(
             "ok": True,
         },
     )
-    assert cli_tools._knife_preflight(_ns(case_dir=Path(), json=False)) == 0
+    assert knife_adapter._knife_preflight(_ns(case_dir=Path(), json=False)) == 0
     assert "system/controlDict=ok" in capsys.readouterr().out
 
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "status_payload",
         lambda _case: {
             "case": "case-path",
@@ -162,13 +167,13 @@ def test_knife_preflight_status_current_and_set_plain(
             "jobs_total": 1,
         },
     )
-    assert cli_tools._knife_status(_ns(case_dir=Path(), json=False)) == 0
+    assert knife_adapter._knife_status(_ns(case_dir=Path(), json=False)) == 0
     out = capsys.readouterr().out
     assert "solver_status=not tracked" in out
     assert "proc_access_warning=" in out
 
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "current_payload",
         lambda _case: {
             "case": "case-path",
@@ -179,18 +184,27 @@ def test_knife_preflight_status_current_and_set_plain(
             "untracked_processes": [{"pid": 88, "solver": "simpleFoam", "command": "simpleFoam -case ."}],
         },
     )
-    assert cli_tools._knife_current(_ns(case_dir=Path(), json=False)) == 0
+    assert knife_adapter._knife_current(_ns(case_dir=Path(), json=False)) == 0
     out = capsys.readouterr().out
     assert "proc_access_warning=" in out
     assert "tracked_jobs:" in out
     assert "untracked_solver_processes:" in out
 
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "set_entry_payload",
-        lambda *_args, **_kwargs: {"file": "f", "key": "k", "value": "v", "ok": False},
+        lambda *_args, **_kwargs: {
+            "file": "f",
+            "key": "k",
+            "value": "v",
+            "before": "old",
+            "after": "v",
+            "operation": "update",
+            "applied": False,
+            "ok": False,
+        },
     )
-    assert cli_tools._knife_set(_ns(case_dir=Path(), file="f", key="k", value=["v"], json=False)) == 1
+    assert knife_adapter._knife_set(_ns(case_dir=Path(), file="f", key="k", value=["v"], json=False)) == 1
     assert "ok=False" in capsys.readouterr().out
 
 
@@ -199,7 +213,7 @@ def test_readonly_handlers_support_table_output(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "status_payload",
         lambda *_a, **_k: {
             "case": "case-path",
@@ -222,13 +236,13 @@ def test_readonly_handlers_support_table_output(
             "untracked_solver_processes": [],
         },
     )
-    assert cli_tools._knife_status(_ns(case_dir=Path(), json=False, table=True)) == 0
+    assert knife_adapter._knife_status(_ns(case_dir=Path(), json=False, table=True)) == 0
     out = capsys.readouterr().out
     assert "Key" in out
     assert "Runtime control" in out
 
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "current_payload",
         lambda *_a, **_k: {
             "case": "case-path",
@@ -243,13 +257,13 @@ def test_readonly_handlers_support_table_output(
             "untracked_processes": [],
         },
     )
-    assert cli_tools._knife_current(_ns(case_dir=Path(), json=False, table=True)) == 0
+    assert knife_adapter._knife_current(_ns(case_dir=Path(), json=False, table=True)) == 0
     out = capsys.readouterr().out
     assert "Tracked jobs" in out
     assert "j1" in out
 
     monkeypatch.setattr(
-        cli_tools.watch_ops,
+        watch_adapter.watch_ops,
         "jobs_payload",
         lambda *_a, **_k: {
             "case": "case-path",
@@ -258,7 +272,7 @@ def test_readonly_handlers_support_table_output(
             "jobs": [{"id": "j1", "kind": "solver", "pid": 42, "status": "running"}],
         },
     )
-    assert cli_tools._watch_jobs(_ns(case_dir=Path(), all=False, kind="any", json=False, table=True)) == 0
+    assert watch_adapter._watch_jobs(_ns(case_dir=Path(), all=False, kind="any", json=False, table=True)) == 0
     assert "Jobs" in capsys.readouterr().out
 
 
@@ -276,28 +290,31 @@ def test_campaign_handlers_support_table_output(
         "eta_seconds": 20,
     }
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "campaign_list_payload",
         lambda *_a, **_k: {"case": "root", "glob": "*", "summary_csv": None, "count": 1, "cases": ["case_1"]},
     )
-    assert cli_tools._knife_campaign_list(_ns(case_dir=Path(), glob="*", summary_csv=None, json=False, table=True)) == 0
+    assert (
+        knife_adapter._knife_campaign_list(_ns(case_dir=Path(), glob="*", summary_csv=None, json=False, table=True))
+        == 0
+    )
     out = capsys.readouterr().out
     assert "Cases" in out
     assert "case_1" in out
 
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "campaign_status_payload",
         lambda *_a, **_k: {"case": "root", "glob": "*", "summary_csv": None, "count": 1, "cases": [status_row]},
     )
     args = _ns(case_dir=Path(), glob="*", summary_csv=None, tail_bytes=10, json=False, table=True)
-    assert cli_tools._knife_campaign_status(args) == 0
+    assert knife_adapter._knife_campaign_status(args) == 0
     out = capsys.readouterr().out
     assert "Worst" in out
     assert "case_1" in out
 
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "campaign_rank_payload",
         lambda *_a, **_k: {
             "case": "root",
@@ -309,13 +326,13 @@ def test_campaign_handlers_support_table_output(
         },
     )
     args = _ns(case_dir=Path(), by="convergence", glob="*", summary_csv=None, tail_bytes=10, json=False, table=True)
-    assert cli_tools._knife_campaign_rank(args) == 0
+    assert knife_adapter._knife_campaign_rank(args) == 0
     out = capsys.readouterr().out
     assert "Ranked cases" in out
     assert "case_1" in out
 
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "campaign_compare_payload",
         lambda *_a, **_k: {
             "case": "root",
@@ -326,7 +343,7 @@ def test_campaign_handlers_support_table_output(
         },
     )
     args = _ns(case_dir=Path(), group_by="speed", glob="*", summary_csv=None, json=False, table=True)
-    assert cli_tools._knife_campaign_compare(args) == 0
+    assert knife_adapter._knife_campaign_compare(args) == 0
     out = capsys.readouterr().out
     assert "Groups" in out
     assert "fast" in out
@@ -337,7 +354,7 @@ def test_initials_converge_stability_support_table_output(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "initials_payload",
         lambda _case: {
             "case": "case-path",
@@ -354,13 +371,13 @@ def test_initials_converge_stability_support_table_output(
             "failed": [],
         },
     )
-    assert cli_tools._knife_initials(_ns(case_dir=Path(), json=False, table=True)) == 0
+    assert knife_adapter._knife_initials(_ns(case_dir=Path(), json=False, table=True)) == 0
     out = capsys.readouterr().out
     assert "Boundary conditions" in out
     assert "fixedValue" in out
 
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "converge_payload",
         lambda *_a, **_k: {
             "log": "log.simpleFoam",
@@ -383,11 +400,11 @@ def test_initials_converge_stability_support_table_output(
         json=False,
         table=True,
     )
-    assert cli_tools._knife_converge(args) == 0
+    assert knife_adapter._knife_converge(args) == 0
     assert "Checks" in capsys.readouterr().out
 
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "stability_payload",
         lambda *_a, **_k: {
             "log": "log.simpleFoam",
@@ -413,7 +430,7 @@ def test_initials_converge_stability_support_table_output(
         json=False,
         table=True,
     )
-    assert cli_tools._knife_stability(args) == 0
+    assert knife_adapter._knife_stability(args) == 0
     out = capsys.readouterr().out
     assert "status" in out
     assert "pass" in out
@@ -425,18 +442,18 @@ def test_plot_handlers_error_and_empty_residuals(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        cli_tools.plot_ops, "metrics_payload", lambda _source: (_ for _ in ()).throw(ValueError("bad log"))
+        plot_adapter.plot_ops, "metrics_payload", lambda _source: (_ for _ in ()).throw(ValueError("bad log"))
     )
-    code = cli_tools._plot_metrics(_ns(source=Path(), json=False))
+    code = plot_adapter._plot_metrics(_ns(source=Path(), json=False))
     assert code == 1
     assert "ofti: bad log" in capsys.readouterr().err
 
     monkeypatch.setattr(
-        cli_tools.plot_ops,
+        plot_adapter.plot_ops,
         "residuals_payload",
         lambda _source, **_kwargs: {"log": "case-log", "fields": []},
     )
-    code = cli_tools._plot_residuals(_ns(source=Path(), field=[], limit=0, json=False))
+    code = plot_adapter._plot_residuals(_ns(source=Path(), field=[], limit=0, json=False))
     assert code == 1
     assert "No residuals found in case-log" in capsys.readouterr().err
 
@@ -446,7 +463,7 @@ def test_plot_handlers_success_and_json(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        cli_tools.plot_ops,
+        plot_adapter.plot_ops,
         "metrics_payload",
         lambda _source: {
             "log": "log.simpleFoam",
@@ -456,26 +473,26 @@ def test_plot_handlers_success_and_json(
             "residual_fields": ["U", "p"],
         },
     )
-    assert cli_tools._plot_metrics(_ns(source=Path(), json=False)) == 0
+    assert plot_adapter._plot_metrics(_ns(source=Path(), json=False)) == 0
     out = capsys.readouterr().out
     assert "step_time=min:0.4 avg:0.5 max:0.6" in out
     assert "residual_fields=U,p" in out
 
     monkeypatch.setattr(
-        cli_tools.plot_ops,
+        plot_adapter.plot_ops,
         "residuals_payload",
         lambda _source, **_kwargs: {
             "log": "log.simpleFoam",
             "fields": [{"field": "U", "count": 3, "last": 1.0, "min": 0.1, "max": 2.0}],
         },
     )
-    assert cli_tools._plot_residuals(_ns(source=Path(), field=[], limit=0, json=True)) == 0
+    assert plot_adapter._plot_residuals(_ns(source=Path(), field=[], limit=0, json=True)) == 0
     assert json.loads(capsys.readouterr().out)["fields"][0]["field"] == "U"
 
     monkeypatch.setattr(
-        cli_tools.plot_ops, "residuals_payload", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad residuals"))
+        plot_adapter.plot_ops, "residuals_payload", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad residuals"))
     )
-    assert cli_tools._plot_residuals(_ns(source=Path(), field=[], limit=0, json=False)) == 1
+    assert plot_adapter._plot_residuals(_ns(source=Path(), field=[], limit=0, json=False)) == 1
     assert "ofti: bad residuals" in capsys.readouterr().err
 
 
@@ -484,7 +501,7 @@ def test_plot_handlers_support_table_output(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        cli_tools.plot_ops,
+        plot_adapter.plot_ops,
         "metrics_payload",
         lambda _source: {
             "log": "log.simpleFoam",
@@ -494,18 +511,18 @@ def test_plot_handlers_support_table_output(
             "residual_fields": ["U"],
         },
     )
-    assert cli_tools._plot_metrics(_ns(source=Path(), json=False, table=True)) == 0
+    assert plot_adapter._plot_metrics(_ns(source=Path(), json=False, table=True)) == 0
     assert "residual_fields" in capsys.readouterr().out
 
     monkeypatch.setattr(
-        cli_tools.plot_ops,
+        plot_adapter.plot_ops,
         "residuals_payload",
         lambda *_a, **_k: {
             "log": "log.simpleFoam",
             "fields": [{"field": "U", "count": 3, "last": 1.0, "min": 0.1, "max": 2.0}],
         },
     )
-    assert cli_tools._plot_residuals(_ns(source=Path(), field=[], limit=0, json=False, table=True)) == 0
+    assert plot_adapter._plot_residuals(_ns(source=Path(), field=[], limit=0, json=False, table=True)) == 0
     out = capsys.readouterr().out
     assert "Field" in out
     assert "U" in out
@@ -546,11 +563,11 @@ def test_watch_jobs_plain_and_watch_attach_forwarding(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        cli_tools.watch_ops,
+        watch_adapter.watch_ops,
         "jobs_payload",
         lambda _case, **_kwargs: {"case": "case-path", "count": 0, "jobs": []},
     )
-    code = cli_tools._watch_jobs(_ns(case_dir=Path(), all=False, json=False))
+    code = watch_adapter._watch_jobs(_ns(case_dir=Path(), all=False, json=False))
     assert code == 0
     assert "No tracked jobs." in capsys.readouterr().out
 
@@ -562,9 +579,9 @@ def test_watch_jobs_plain_and_watch_attach_forwarding(
         captured["easy_on_cpu"] = args.easy_on_cpu
         return 7
 
-    monkeypatch.setattr(cli_tools, "_watch_log", fake_watch_log)
+    monkeypatch.setattr(watch_adapter, "_watch_log", fake_watch_log)
     case_dir = Path("relative-case")
-    code = cli_tools._watch_attach(
+    code = watch_adapter._watch_attach(
         _ns(source=None, lines=10, job_id="j1", case_dir=case_dir, easy_on_cpu=True, json=False),
     )
     assert code == 7
@@ -575,7 +592,7 @@ def test_watch_jobs_plain_and_watch_attach_forwarding(
 
 def test_watch_jobs_with_rows(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(
-        cli_tools.watch_ops,
+        watch_adapter.watch_ops,
         "jobs_payload",
         lambda _case, **_kwargs: {
             "case": "case-path",
@@ -583,7 +600,7 @@ def test_watch_jobs_with_rows(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Ca
             "jobs": [{"name": "simpleFoam", "pid": 123, "status": "running"}],
         },
     )
-    assert cli_tools._watch_jobs(_ns(case_dir=Path(), all=False, json=False)) == 0
+    assert watch_adapter._watch_jobs(_ns(case_dir=Path(), all=False, json=False)) == 0
     out = capsys.readouterr().out
     assert "simpleFoam kind=unknown pid=123 status=running" in out
 
@@ -596,22 +613,22 @@ def test_watch_log_follow_paths(
     log_path = tmp_path / "log.simpleFoam"
     log_path.write_text("line-1\n")
     monkeypatch.setattr(
-        cli_tools.watch_ops,
+        watch_adapter.watch_ops,
         "log_tail_payload",
         lambda _source, **_kwargs: {"log": str(log_path), "lines": []},
     )
-    monkeypatch.setattr(cli_tools.time, "sleep", lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt()))
+    monkeypatch.setattr(watch_adapter.time, "sleep", lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt()))
 
     args = _ns(source=tmp_path, case_dir=tmp_path, lines=5, follow=True, job_id=None, json=False)
-    assert cli_tools._watch_log(args) == 0
+    assert watch_adapter._watch_log(args) == 0
 
     missing = tmp_path / "missing.log"
     monkeypatch.setattr(
-        cli_tools.watch_ops,
+        watch_adapter.watch_ops,
         "log_tail_payload",
         lambda _source, **_kwargs: {"log": str(missing), "lines": []},
     )
-    assert cli_tools._watch_log(args) == 1
+    assert watch_adapter._watch_log(args) == 1
     assert "Failed to follow" in capsys.readouterr().err
 
 
@@ -623,21 +640,21 @@ def test_watch_log_job_id_and_value_error(
     log_path = tmp_path / "log.simpleFoam"
     log_path.write_text("line-1\nline-2\n")
     monkeypatch.setattr(
-        cli_tools.watch_ops,
+        watch_adapter.watch_ops,
         "log_tail_payload_for_job",
         lambda _case, **_kwargs: {"log": str(log_path), "lines": ["line-2"]},
     )
     args = _ns(source=tmp_path, case_dir=tmp_path, lines=5, follow=False, job_id="job-1", json=False)
-    assert cli_tools._watch_log(args) == 0
+    assert watch_adapter._watch_log(args) == 0
     assert "line-2" in capsys.readouterr().out
 
     monkeypatch.setattr(
-        cli_tools.watch_ops,
+        watch_adapter.watch_ops,
         "log_tail_payload",
         lambda _source, **_kwargs: (_ for _ in ()).throw(ValueError("bad log")),
     )
     args = _ns(source=tmp_path, case_dir=tmp_path, lines=5, follow=False, job_id=None, json=False)
-    assert cli_tools._watch_log(args) == 1
+    assert watch_adapter._watch_log(args) == 1
     assert "ofti: bad log" in capsys.readouterr().err
 
 
@@ -649,7 +666,7 @@ def test_watch_log_follow_prints_new_lines(
     log_path = tmp_path / "log.simpleFoam"
     log_path.write_text("")
     monkeypatch.setattr(
-        cli_tools.watch_ops,
+        watch_adapter.watch_ops,
         "log_tail_payload",
         lambda _source, **_kwargs: {"log": str(log_path), "lines": []},
     )
@@ -672,9 +689,9 @@ def test_watch_log_follow_prints_new_lines(
             return "new-line\n" if self._read_count == 1 else ""
 
     monkeypatch.setattr(Path, "open", lambda *_a, **_k: _Handle())
-    monkeypatch.setattr(cli_tools.time, "sleep", lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt()))
+    monkeypatch.setattr(watch_adapter.time, "sleep", lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt()))
     args = _ns(source=tmp_path, case_dir=tmp_path, lines=5, follow=True, job_id=None, json=False)
-    assert cli_tools._watch_log(args) == 0
+    assert watch_adapter._watch_log(args) == 0
     assert "new-line" in capsys.readouterr().out
 
 
@@ -686,25 +703,25 @@ def test_watch_log_easy_on_cpu_enforces_min_follow_interval(
     log_path.write_text("")
     seen: dict[str, float] = {}
     monkeypatch.setattr(
-        cli_tools.watch_ops,
+        watch_adapter.watch_ops,
         "log_tail_payload",
         lambda _source, **_kwargs: {"log": str(log_path), "lines": []},
     )
-    monkeypatch.setattr(cli_tools.watch_ops, "effective_interval", lambda _case_dir: 0.1)
+    monkeypatch.setattr(watch_adapter.watch_ops, "effective_interval", lambda _case_dir: 0.1)
 
     def _follow(_path: Path, *, interval: float) -> int:
         seen["interval"] = interval
         return 0
 
-    monkeypatch.setattr(cli_tools, "_follow_log_path", _follow)
+    monkeypatch.setattr(watch_adapter, "_follow_log_path", _follow)
     args = _ns(source=tmp_path, case_dir=tmp_path, lines=5, follow=True, job_id=None, easy_on_cpu=True, json=False)
-    assert cli_tools._watch_log(args) == 0
+    assert watch_adapter._watch_log(args) == 0
     assert seen["interval"] == pytest.approx(1.0)
 
 
 def test_watch_stop_plain_failed(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(
-        cli_tools.watch_ops,
+        watch_adapter.watch_ops,
         "stop_payload",
         lambda *_args, **_kwargs: {
             "case": "case-path",
@@ -713,7 +730,7 @@ def test_watch_stop_plain_failed(monkeypatch: pytest.MonkeyPatch, capsys: pytest
             "failed": [{"id": "2", "pid": 200, "error": "gone"}],
         },
     )
-    code = cli_tools._watch_stop(_ns(case_dir=Path(), job_id=None, name=None, all=False, json=False))
+    code = watch_adapter._watch_stop(_ns(case_dir=Path(), job_id=None, name=None, all=False, json=False))
     out = capsys.readouterr().out
     assert code == 1
     assert "stopped:" in out
@@ -722,17 +739,17 @@ def test_watch_stop_plain_failed(monkeypatch: pytest.MonkeyPatch, capsys: pytest
 
 def test_run_tool_branches(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(ValueError, match="tool name is required"):
-        cli_tools._run_tool(_ns(list=False, json=False, name=None, case_dir=Path(), background=False))
+        run_adapter._run_tool(_ns(list=False, json=False, name=None, case_dir=Path(), background=False))
 
-    monkeypatch.setattr(cli_tools.run_ops, "resolve_tool", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(cli_tools.run_ops, "tool_catalog_names", lambda _case: ["blockMesh"])
-    code = cli_tools._run_tool(_ns(list=False, json=False, name="missing", case_dir=Path(), background=False))
+    monkeypatch.setattr(run_adapter.run_ops, "resolve_tool", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(run_adapter.run_ops, "tool_catalog_names", lambda _case: ["blockMesh"])
+    code = run_adapter._run_tool(_ns(list=False, json=False, name="missing", case_dir=Path(), background=False))
     assert code == 1
     err = capsys.readouterr().err
     assert "Unknown tool: missing" in err
     assert "Available tools: blockMesh" in err
 
-    code = cli_tools._run_tool(_ns(list=False, json=True, name="missing", case_dir=Path(), background=False))
+    code = run_adapter._run_tool(_ns(list=False, json=True, name="missing", case_dir=Path(), background=False))
     assert code == 1
     payload = json.loads(capsys.readouterr().err)
     assert payload["error"] == "unknown tool"
@@ -745,25 +762,25 @@ def test_run_tool_outputs_json_and_background_message(
 ) -> None:
     case = tmp_path / "case"
     case.mkdir()
-    monkeypatch.setattr(cli_tools.run_ops, "resolve_tool", lambda *_args, **_kwargs: ("blockMesh", ["blockMesh"]))
-    monkeypatch.setattr(cli_tools.run_ops, "dry_run_command", lambda _cmd: "blockMesh")
+    monkeypatch.setattr(run_adapter.run_ops, "resolve_tool", lambda *_args, **_kwargs: ("blockMesh", ["blockMesh"]))
+    monkeypatch.setattr(run_adapter.run_ops, "dry_run_command", lambda _cmd: "blockMesh")
 
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "execute_case_command",
         lambda *_args, **_kwargs: RunResult(0, "", "", pid=321, log_path=case / "log.blockMesh"),
     )
-    code = cli_tools._run_tool(_ns(list=False, json=True, name="blockMesh", case_dir=case, background=True))
+    code = run_adapter._run_tool(_ns(list=False, json=True, name="blockMesh", case_dir=case, background=True))
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
     assert payload["pid"] == 321
 
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "execute_case_command",
         lambda *_args, **_kwargs: RunResult(0, "done\n", "warn\n", pid=None, log_path=None),
     )
-    code = cli_tools._run_tool(_ns(list=False, json=False, name="blockMesh", case_dir=case, background=False))
+    code = run_adapter._run_tool(_ns(list=False, json=False, name="blockMesh", case_dir=case, background=False))
     out = capsys.readouterr()
     assert code == 0
     assert "done" in out.out
@@ -777,13 +794,13 @@ def test_run_tool_background_plain_message(
 ) -> None:
     case = tmp_path / "case"
     case.mkdir()
-    monkeypatch.setattr(cli_tools.run_ops, "resolve_tool", lambda *_args, **_kwargs: ("blockMesh", ["blockMesh"]))
+    monkeypatch.setattr(run_adapter.run_ops, "resolve_tool", lambda *_args, **_kwargs: ("blockMesh", ["blockMesh"]))
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "execute_case_command",
         lambda *_args, **_kwargs: RunResult(0, "", "", pid=55, log_path=case / "log.blockMesh"),
     )
-    assert cli_tools._run_tool(_ns(list=False, json=False, name="blockMesh", case_dir=case, background=True)) == 0
+    assert run_adapter._run_tool(_ns(list=False, json=False, name="blockMesh", case_dir=case, background=True)) == 0
     assert "Started blockMesh in background: pid=55" in capsys.readouterr().out
 
 
@@ -794,41 +811,41 @@ def test_run_solver_with_mode_branches(
 ) -> None:
     case = tmp_path / "case"
     case.mkdir()
-    monkeypatch.setattr(cli_tools.run_ops, "solver_command", lambda *_args, **_kwargs: ("simpleFoam", ["simpleFoam"]))
-    monkeypatch.setattr(cli_tools.run_ops, "dry_run_command", lambda _cmd: "simpleFoam")
+    monkeypatch.setattr(run_adapter.run_ops, "solver_command", lambda *_args, **_kwargs: ("simpleFoam", ["simpleFoam"]))
+    monkeypatch.setattr(run_adapter.run_ops, "dry_run_command", lambda _cmd: "simpleFoam")
 
     args = _ns(case_dir=case, solver=None, parallel=0, mpi=None, dry_run=True, json=False)
-    assert cli_tools._run_solver_with_mode(args, background=False) == 0
+    assert run_adapter._run_solver_with_mode(args, background=False) == 0
     assert "simpleFoam" in capsys.readouterr().out
 
     args = _ns(case_dir=case, solver=None, parallel=0, mpi=None, dry_run=True, json=True)
-    assert cli_tools._run_solver_with_mode(args, background=False) == 0
+    assert run_adapter._run_solver_with_mode(args, background=False) == 0
     assert json.loads(capsys.readouterr().out)["dry_run"] is True
 
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(0, "", "", pid=777, log_path=case / "log.simpleFoam"),
     )
     args = _ns(case_dir=case, solver=None, parallel=0, mpi=None, json=False, dry_run=False)
-    assert cli_tools._run_solver_with_mode(args, background=True) == 0
+    assert run_adapter._run_solver_with_mode(args, background=True) == 0
     assert "pid=777" in capsys.readouterr().out
 
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(1, "stdout\n", "stderr\n", pid=None, log_path=None),
     )
     args = _ns(case_dir=case, solver=None, parallel=0, mpi=None, json=False, dry_run=False)
-    assert cli_tools._run_solver_with_mode(args, background=False) == 1
+    assert run_adapter._run_solver_with_mode(args, background=False) == 1
     out = capsys.readouterr()
     assert "stdout" in out.out
     assert "stderr" in out.err
 
 
 def test_watch_run_wrapper(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli_tools, "_run_solver_with_mode", lambda _args, **_kwargs: 9)
-    assert cli_tools._watch_run(_ns()) == 9
+    monkeypatch.setattr(watch_adapter, "_run_solver_with_mode", lambda _args, **_kwargs: 9)
+    assert watch_adapter._watch_run(_ns()) == 9
 
 
 def test_run_solver_with_mode_json_result(
@@ -838,15 +855,15 @@ def test_run_solver_with_mode_json_result(
 ) -> None:
     case = tmp_path / "case"
     case.mkdir()
-    monkeypatch.setattr(cli_tools.run_ops, "solver_command", lambda *_args, **_kwargs: ("simpleFoam", ["simpleFoam"]))
-    monkeypatch.setattr(cli_tools.run_ops, "dry_run_command", lambda _cmd: "simpleFoam")
+    monkeypatch.setattr(run_adapter.run_ops, "solver_command", lambda *_args, **_kwargs: ("simpleFoam", ["simpleFoam"]))
+    monkeypatch.setattr(run_adapter.run_ops, "dry_run_command", lambda _cmd: "simpleFoam")
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(0, "ok", "", pid=None, log_path=None),
     )
     args = _ns(case_dir=case, solver=None, parallel=0, mpi=None, json=True, dry_run=False)
-    assert cli_tools._run_solver_with_mode(args, background=False) == 0
+    assert run_adapter._run_solver_with_mode(args, background=False) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["dry_run"] is False
 
@@ -863,9 +880,9 @@ def test_run_solver_with_mode_forwards_sync_subdomains_flag(
         seen["sync_subdomains"] = kwargs.get("sync_subdomains")
         return ("simpleFoam", ["simpleFoam"])
 
-    monkeypatch.setattr(cli_tools.run_ops, "solver_command", _solver_command)
+    monkeypatch.setattr(run_adapter.run_ops, "solver_command", _solver_command)
     monkeypatch.setattr(
-        cli_tools.run_ops,
+        run_adapter.run_ops,
         "execute_solver_case_command",
         lambda *_args, **_kwargs: RunResult(0, "ok", "", pid=None, log_path=None),
     )
@@ -878,7 +895,7 @@ def test_run_solver_with_mode_forwards_sync_subdomains_flag(
         json=False,
         dry_run=False,
     )
-    assert cli_tools._run_solver_with_mode(args, background=False) == 0
+    assert run_adapter._run_solver_with_mode(args, background=False) == 0
     assert seen["sync_subdomains"] is False
 
 
@@ -887,7 +904,7 @@ def test_knife_converge_plain_and_json(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        cli_tools.knife_ops,
+        knife_adapter.knife_ops,
         "converge_payload",
         lambda *_args, **_kwargs: {
             "log": "log.simpleFoam",
@@ -909,11 +926,11 @@ def test_knife_converge_plain_and_json(
         mass_limit=1e-4,
         json=False,
     )
-    assert cli_tools._knife_converge(args) == 0
+    assert knife_adapter._knife_converge(args) == 0
     assert "strict_ok=True" in capsys.readouterr().out
 
     args.json = True
-    assert cli_tools._knife_converge(args) == 0
+    assert knife_adapter._knife_converge(args) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
 
@@ -928,11 +945,11 @@ def test_watch_external_handler_requires_command_and_formats_output(
         dry_run=False,
         json=False,
     )
-    assert cli_tools._watch_external(args) == 2
+    assert watch_adapter._watch_external(args) == 2
     assert "external command is required" in capsys.readouterr().err
 
     monkeypatch.setattr(
-        cli_tools.watch_ops,
+        watch_adapter.watch_ops,
         "external_watch_mode_payload",
         lambda *_a, **_k: {
             "case": "/case",
@@ -943,7 +960,7 @@ def test_watch_external_handler_requires_command_and_formats_output(
         },
     )
     args.command = ["python", "watcher.py"]
-    assert cli_tools._watch_external(args) == 0
+    assert watch_adapter._watch_external(args) == 0
     out = capsys.readouterr().out
     assert "pid=555" in out
     assert "returncode=0" in out
@@ -990,7 +1007,7 @@ def test_watch_external_handler_start_status_attach_stop_modes(
             "failed": [],
         }
 
-    monkeypatch.setattr(cli_tools.watch_ops, "external_watch_mode_payload", _payload)
+    monkeypatch.setattr(watch_adapter.watch_ops, "external_watch_mode_payload", _payload)
     args = _ns(
         case_dir=Path("/case"),
         command=["python", "watcher.py"],
@@ -1010,22 +1027,22 @@ def test_watch_external_handler_start_status_attach_stop_modes(
         dry_run=False,
         json=False,
     )
-    assert cli_tools._watch_external(args) == 0
+    assert watch_adapter._watch_external(args) == 0
     assert "job_id=job-1" in capsys.readouterr().out
 
     args.start = False
     args.status = True
-    assert cli_tools._watch_external(args) == 0
+    assert watch_adapter._watch_external(args) == 0
     assert "count=1" in capsys.readouterr().out
 
     args.status = False
     args.attach = True
-    assert cli_tools._watch_external(args) == 0
+    assert watch_adapter._watch_external(args) == 0
     assert "a\nb" in capsys.readouterr().out
 
     args.attach = False
     args.stop = True
-    assert cli_tools._watch_external(args) == 0
+    assert watch_adapter._watch_external(args) == 0
     assert "selected=1" in capsys.readouterr().out
 
 
@@ -1038,8 +1055,8 @@ def test_watch_external_attach_easy_on_cpu_enforces_min_interval(
         seen["interval"] = interval
         return 0
 
-    monkeypatch.setattr(cli_tools, "_follow_log_path", _follow)
+    monkeypatch.setattr(watch_adapter, "_follow_log_path", _follow)
     args = _ns(case_dir=Path("/case"), output=None, follow=True, interval=0.25, easy_on_cpu=True)
-    payload = {"log": "/case/log.watch.external", "lines": []}
-    assert cli_tools._print_watch_external_attach(args, payload) == 0
+    payload: dict[str, object] = {"log": "/case/log.watch.external", "lines": []}
+    assert watch_adapter._print_watch_external_attach(args, payload) == 0
     assert seen["interval"] == pytest.approx(1.0)

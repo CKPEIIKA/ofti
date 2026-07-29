@@ -18,6 +18,7 @@ from ofti.tools import (
     case_source_service,
     case_status_service,
     job_control_service,
+    plugin_service,
     process_scan_service,
     runner_service,
 )
@@ -84,12 +85,18 @@ def _case_jobs_payload(
 ) -> dict[str, Any]:
     jobs = refresh_jobs(case_path)
     active = [job for job in jobs if job.get("status") in {"running", "paused"}]
+    progress_log = _latest_job_log(active)
     progress = progress_evidence(
         case_path,
         process_live=any(job.get("status") == "running" for job in active),
-        log_path=_latest_job_log(active),
+        log_path=progress_log,
         paused=bool(active) and all(job.get("status") == "paused" for job in active),
         stale_after=get_config().watch.stale_after_seconds,
+    )
+    plugin_service.attach_progress_metrics(
+        progress,
+        case_path,
+        log_path=progress_log,
     )
     selected_kind = _normalize_kind_filter(kind)
     if not include_all:

@@ -7,6 +7,10 @@
   "mesh_policy": "auto",
   "application": "icoFoam",
   "header_version": "v2512",
+  "case_fingerprint": "sha256-selected-case-inputs",
+  "run_manifest": "runs/20260629T225418Z_cavity/manifest.json",
+  "run_manifest_sha256": "sha256-run-manifest",
+  "build_digest": "sha256-build-section",
   "files": [
     {
       "path": "system/controlDict",

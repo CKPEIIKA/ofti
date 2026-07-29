@@ -195,7 +195,14 @@ def test_edit_entry_reads_validates_and_saves(tmp_path: Path, monkeypatch: pytes
         "apply_assignment_or_write",
         lambda _case, _path, keys, value: saved.append((keys, value)) or True,
     )
-    editor.edit_entry_screen(Screen(), case, control, ["application"], AppState(), _callbacks())
+    editor.edit_entry_screen(
+        Screen(),
+        case,
+        control,
+        ["application"],
+        AppState(),
+        command_callbacks=_callbacks(),
+    )
     assert saved == [(["application"], "rhoSimpleFoam")]
 
 
@@ -203,7 +210,7 @@ def test_edit_entry_empty_nested_and_read_failure_paths(tmp_path: Path, monkeypa
     case, control = _case(tmp_path)
     messages: list[str] = []
     monkeypatch.setattr(editor, "show_message", lambda _screen, message: messages.append(message))
-    editor.edit_entry_screen(Screen(), case, control, [], AppState(), _callbacks())
+    editor.edit_entry_screen(Screen(), case, control, [], AppState(), command_callbacks=_callbacks())
     assert messages[-1] == "No entries found in file."
 
     choices = iter([0, 2])
@@ -217,11 +224,18 @@ def test_edit_entry_empty_nested_and_read_failure_paths(tmp_path: Path, monkeypa
 
     monkeypatch.setattr(editor, "Menu", Menu)
     monkeypatch.setattr(editor, "list_subkeys", lambda *_a: ["p"])
-    editor.edit_entry_screen(Screen(), case, control, ["solvers"], AppState(), _callbacks())
+    editor.edit_entry_screen(Screen(), case, control, ["solvers"], AppState(), command_callbacks=_callbacks())
     monkeypatch.setattr(editor, "list_subkeys", lambda *_a: [])
     monkeypatch.setattr(editor, "read_entry", lambda *_a: (_ for _ in ()).throw(OpenFOAMError("bad")))
     choices = iter([0])
-    editor.edit_entry_screen(Screen(), case, control, ["application"], AppState(), _callbacks())
+    editor.edit_entry_screen(
+        Screen(),
+        case,
+        control,
+        ["application"],
+        AppState(),
+        command_callbacks=_callbacks(),
+    )
     assert messages[-1] == "Failed to read entry: bad"
 
 
@@ -306,7 +320,7 @@ def test_check_menu_handles_navigation_help_and_unchecked(tmp_path: Path, monkey
     messages: list[str] = []
     monkeypatch.setattr(check, "get_config", _check_config)
     monkeypatch.setattr(check, "discover_case_files", lambda _case: {"system": [control]})
-    monkeypatch.setattr(check, "draw_check_menu", lambda *_a: None)
+    monkeypatch.setattr(check, "draw_check_menu", lambda *_a, **_k: None)
     monkeypatch.setattr(check, "show_message", lambda _screen, message: messages.append(message))
     check.check_syntax_menu(screen, case, AppState(), command_callbacks=_callbacks())
     assert any("Check syntax menu" in message for message in messages)
@@ -320,7 +334,7 @@ def test_check_menu_opens_checked_result(tmp_path: Path, monkeypatch: pytest.Mon
     viewed: list[tuple[Path, list[str] | None]] = []
     monkeypatch.setattr(check, "get_config", _check_config)
     monkeypatch.setattr(check, "discover_case_files", lambda _case: {"system": [control]})
-    monkeypatch.setattr(check, "draw_check_menu", lambda *_a: None)
+    monkeypatch.setattr(check, "draw_check_menu", lambda *_a, **_k: None)
     monkeypatch.setattr(check, "show_check_result", lambda *_a: True)
     monkeypatch.setattr(
         check, "view_file_screen", lambda _s, path, lint_warnings=None: viewed.append((path, lint_warnings))
@@ -383,7 +397,14 @@ def test_draw_check_menu_and_format_helpers(tmp_path: Path, monkeypatch: pytest.
         FileCheckResult(checked=True, warnings=["warn"]),
         FileCheckResult(checked=True, errors=["bad"]),
     ]
-    check.draw_check_menu(screen, ["none", "ok", "warn", "bad"], rows, 1, 0, "ready")
+    check.draw_check_menu(
+        screen,
+        ["none", "ok", "warn", "bad"],
+        rows,
+        current=1,
+        scroll=0,
+        status="ready",
+    )
     assert any(">> ok" in line for line in screen.lines)
     assert screen.lines[-1] == "ready"
     assert check._format_fix_item("p", None) == "- p"

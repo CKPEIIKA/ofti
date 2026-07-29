@@ -4,9 +4,17 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ofti.core.checkpoint import checkpoint_health
 from ofti.core.times import latest_time, processor_dirs
 
 DEFAULT_STALE_AFTER_SECONDS = 120.0
+_LOG_TAIL_BYTES = 64 * 1024
+_MPI_FAILURE_MARKERS = (
+    "MPI_ABORT",
+    "mpirun detected that one or more processes exited with non-zero status",
+    "primary job terminated normally, but 1 process returned",
+    "error while loading shared libraries",
+)
 
 
 def progress_evidence(
@@ -33,6 +41,16 @@ def progress_evidence(
     log_age = _age(timestamp, log_mtime)
     time_age = _age(timestamp, time_mtime)
     write_age = _age(timestamp, latest_write)
+    log_tail = _read_log_tail(selected_log)
+    checkpoint = _checkpoint_evidence(case_dir)
+    state = _progress_state(
+        process_live=process_live,
+        paused=paused,
+        log_tail=log_tail,
+        log_age=log_age,
+        stale_after=stale_after,
+        checkpoint=checkpoint,
+    )
     reasons: list[str] = []
     if paused:
         reasons.append("PAUSED")
@@ -43,6 +61,10 @@ def progress_evidence(
             reasons.append("STALE_LOG")
         if write_age is None or write_age > stale_after:
             reasons.append("NO_PROGRESS")
+    if state == "PARTIAL_CHECKPOINT":
+        reasons.append("PARTIAL_CHECKPOINT")
+    if state == "MPI_FAILED":
+        reasons.append("MPI_FAILED")
     return {
         "process_live": process_live,
         "paused": paused,
@@ -52,6 +74,10 @@ def progress_evidence(
         "latest_time_write_age_seconds": time_age,
         "latest_filesystem_write_age_seconds": write_age,
         "stale_after_seconds": stale_after,
+        "state": state,
+        "clean_end_seen": _clean_end_seen(log_tail),
+        "mpi_failure_seen": _mpi_failure_seen(log_tail),
+        "partial_checkpoint_times": checkpoint["partial_times"],
         "reason_codes": reasons,
     }
 
@@ -92,3 +118,78 @@ def _mtime(path: Path | None) -> float | None:
 
 def _age(now: float, mtime: float | None) -> float | None:
     return max(0.0, now - mtime) if mtime is not None else None
+
+
+def _progress_state(
+    *,
+    process_live: bool,
+    paused: bool,
+    log_tail: str,
+    log_age: float | None,
+    stale_after: float,
+    checkpoint: dict[str, Any],
+) -> str:
+    priority = _priority_state(log_tail, checkpoint, paused=paused)
+    if priority is not None:
+        return priority
+    if not process_live:
+        return "FINISHED" if _clean_end_seen(log_tail) else "STALLED_LOG"
+    if log_age is not None and log_age > stale_after:
+        return "STALLED_LOG"
+    if not _time_seen(log_tail):
+        return "STARTING"
+    return "WRITING" if _writing_seen(log_tail) else "SOLVING"
+
+
+def _priority_state(
+    log_tail: str,
+    checkpoint: dict[str, Any],
+    *,
+    paused: bool,
+) -> str | None:
+    if _mpi_failure_seen(log_tail):
+        return "MPI_FAILED"
+    if checkpoint["partial_times"]:
+        return "PARTIAL_CHECKPOINT"
+    return "STALLED_LOG" if paused else None
+
+
+def _checkpoint_evidence(case_dir: Path) -> dict[str, Any]:
+    if not processor_dirs(case_dir):
+        return {"partial_times": []}
+    try:
+        health = checkpoint_health(case_dir)
+    except (OSError, ValueError):
+        return {"partial_times": []}
+    return {"partial_times": list(health["partial_times"])}
+
+
+def _read_log_tail(path: Path | None) -> str:
+    if path is None:
+        return ""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, 2)
+            size = handle.tell()
+            handle.seek(max(0, size - _LOG_TAIL_BYTES))
+            return handle.read().decode("utf-8", errors="ignore")
+    except OSError:
+        return ""
+
+
+def _time_seen(log_tail: str) -> bool:
+    return any(line.lstrip().startswith("Time =") for line in log_tail.splitlines())
+
+
+def _writing_seen(log_tail: str) -> bool:
+    lines = [line.strip().lower() for line in log_tail.splitlines() if line.strip()]
+    return any("writing" in line for line in lines[-8:])
+
+
+def _clean_end_seen(log_tail: str) -> bool:
+    return any(line.strip() == "End" for line in log_tail.splitlines()[-8:])
+
+
+def _mpi_failure_seen(log_tail: str) -> bool:
+    lowered = log_tail.lower()
+    return any(marker.lower() in lowered for marker in _MPI_FAILURE_MARKERS)

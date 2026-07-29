@@ -126,6 +126,13 @@ nu sweep: constant/transportProperties nu 1e-05,2e-05
 - `.ofti/parallel-resize/*/case_snapshot.json` and `snapshot.json`: setup
   snapshot plus stable `ofti.snapshot` manifest created before resize/restart
   operations.
+- `.ofti/transactions/<timestamp>/transaction.json`: immutable
+  `ofti.dictionary-transaction` v1 record for one atomic multi-dictionary
+  edit. It records normalized edit intent, complete unified diffs, before/after
+  hashes, snapshot location, and rollback outcome.
+- `.ofti/transactions/latest.json`: atomic pointer copy of the newest
+  dictionary transaction. Immutable run manifests are not rewritten after a
+  launch; this transaction record is the post-launch mutation audit trail.
 - `.ofti/queues/queue-*.json`: `ofti.queue-record` v1 durable queue
   plan/progress record with started, finished, failed-to-start, outcome, and
   stop reason rows.
@@ -133,10 +140,10 @@ nu sweep: constant/transportProperties nu 1e-05,2e-05
   `ofti run queue-summary PATH` to rebuild counters from the journal.
 - `.ofti/smoke/*/summary.json` or `--out DIR/summary.json`: exact fixed-step
   smoke result with normalized controls, requested/completed iterations,
-  final-time checkpoint evidence, failure reasons, log path, and optional
+  clean-exit evidence, final-time checkpoint completeness, readable output,
+  optional reconstruction, failure reasons, log path, and optional
   physical-check payload. `normalized_control.diff` preserves the exact
-  `controlDict` edit evidence. Parallel evidence includes processor
-  completeness.
+  `controlDict` edit evidence.
 - `CASE/runs/*/manifest.json`, `[paths].manifest_root/*/manifest.json`, or
   `--manifest-file PATH`: `ofti.run-manifest` v1 reproducibility manifest
   containing launch settings, OpenFOAM/build provenance, selected setup hashes,

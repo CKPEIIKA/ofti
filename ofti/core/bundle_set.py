@@ -39,6 +39,24 @@ class BundleSetManifest:
     cases: tuple[BundleSetCase, ...]
 
 
+def read_case_list(path: Path, *, root: Path) -> list[Path]:
+    """Read the one-case-per-line format used by simple HPC queue pumps."""
+    list_path = path.expanduser().resolve()
+    if not list_path.is_file():
+        raise ValueError(f"case list not found: {list_path}")
+    case_root = root.expanduser().resolve()
+    cases: list[Path] = []
+    for raw in list_path.read_text(encoding="utf-8", errors="strict").splitlines():
+        value = raw.strip()
+        if not value or value.startswith("#"):
+            continue
+        candidate = Path(value).expanduser()
+        cases.append(candidate.resolve() if candidate.is_absolute() else (case_root / candidate).resolve())
+    if not cases:
+        raise ValueError(f"case list is empty: {list_path}")
+    return cases
+
+
 def create_bundle_set(
     case_dirs: list[Path],
     output: Path,

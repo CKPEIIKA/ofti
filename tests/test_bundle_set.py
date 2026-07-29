@@ -110,6 +110,45 @@ def test_bundle_set_cli_json_round_trip(tmp_path: Path, capsys: pytest.CaptureFi
     assert extracted["next"].startswith("ofti run queue ")
 
 
+def test_bundle_set_cli_reads_hpc_case_list_from_explicit_root(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "repo"
+    first = _case(root / "runs", "first")
+    second = _case(root / "runs", "second")
+    cases_file = tmp_path / "cases.txt"
+    cases_file.write_text("# prepared campaign\nruns/first\n\nruns/second\n", encoding="utf-8")
+    archive = tmp_path / "campaign.tar.gz"
+
+    code = cli_main(
+        [
+            "bundle",
+            "set",
+            "--cases-file",
+            str(cases_file),
+            "--cases-root",
+            str(root),
+            "--output",
+            str(archive),
+            "--json",
+        ],
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert [row["name"] for row in payload["manifest"]["cases"]] == [first.name, second.name]
+    assert archive.is_file()
+
+
+def test_read_case_list_rejects_empty_input(tmp_path: Path) -> None:
+    cases_file = tmp_path / "cases.txt"
+    cases_file.write_text("# no cases\n\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="case list is empty"):
+        bundle_set.read_case_list(cases_file, root=tmp_path)
+
+
 def test_bundle_extract_rejects_case_only_options_for_sets(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

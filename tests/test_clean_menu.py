@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ofti.app.clean_menu import clean_all, foamlib_clean
+from ofti.app.clean_menu import clean_all, clean_case_menu, foamlib_clean
+from ofti.app.state import AppState, Screen
 from ofti.foamlib.adapter import FoamlibUnavailableError
 
 
@@ -15,6 +16,18 @@ class FakeScreen:
 
     def refresh(self) -> None:
         pass
+
+
+def test_clean_menu_dispatches_selected_action(tmp_path: Path, monkeypatch) -> None:
+    choices = iter((0, 6))
+    calls: list[Path] = []
+    monkeypatch.setattr("ofti.app.clean_menu.menu_choice", lambda *_a, **_k: next(choices))
+    monkeypatch.setattr("ofti.app.clean_menu.clean_all", lambda _screen, case: calls.append(case))
+
+    result = clean_case_menu(FakeScreen(), tmp_path, AppState())
+
+    assert calls == [tmp_path]
+    assert result is Screen.MAIN_MENU
 
 
 def test_clean_all_removes_processor_dirs(tmp_path: Path, monkeypatch) -> None:

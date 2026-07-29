@@ -10,19 +10,31 @@ from ofti.app.cli_help import emit_json
 from ofti.core import bundle_set, case_bundle
 from ofti.core import run_manifest as manifest_ops
 from ofti.foam.config import get_config
-from ofti.plugins import discover_plugins
+from ofti.plugins import PluginRegistry, discover_plugins
 from ofti.tools import table_render_service
 from ofti.tools.cli_tools import run as run_ops
 
 
-def _build_bundle_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    cfg = get_config()
+def _bundle_commands(
+    groups: argparse._SubParsersAction[argparse.ArgumentParser],
+    registry: PluginRegistry | None,
+) -> argparse._SubParsersAction[argparse.ArgumentParser]:
     bundle = groups.add_parser(
         "bundle",
         help="Create or extract portable case archives",
         description="Create case or campaign archives, or safely extract either archive kind.",
     )
-    commands = bundle.add_subparsers(dest="bundle_command", required=True)
+    bundle.set_defaults(plugin_registry=registry or discover_plugins())
+    return bundle.add_subparsers(dest="bundle_command", required=True)
+
+
+def _build_bundle_parser(
+    groups: argparse._SubParsersAction[argparse.ArgumentParser],
+    *,
+    registry: PluginRegistry | None = None,
+) -> None:
+    cfg = get_config()
+    commands = _bundle_commands(groups, registry)
     case = commands.add_parser(
         "case",
         help="Package one runnable case",
@@ -58,6 +70,12 @@ def _build_bundle_parser(groups: argparse._SubParsersAction[argparse.ArgumentPar
         help="Start time directory to include, or 'latest'",
     )
     case.add_argument(
+        "--run-manifest",
+        type=Path,
+        default=None,
+        help="Embed this external OFTI run manifest instead of auto-discovering one in CASE",
+    )
+    case.add_argument(
         "--smoke",
         action="store_true",
         help="After writing the archive, extract it locally and run a bounded smoke test",
@@ -89,9 +107,21 @@ def _build_bundle_parser(groups: argparse._SubParsersAction[argparse.ArgumentPar
     )
     bundle_set_parser.add_argument(
         "cases",
-        nargs="+",
+        nargs="*",
         type=Path,
         help="Case directories to include; directory names must be unique",
+    )
+    bundle_set_parser.add_argument(
+        "--cases-file",
+        type=Path,
+        default=None,
+        help="One case path per line; blank lines and # comments are ignored",
+    )
+    bundle_set_parser.add_argument(
+        "--cases-root",
+        type=Path,
+        default=Path.cwd(),
+        help="Root for relative paths in --cases-file (default: current directory)",
     )
     bundle_set_parser.add_argument("--output", "-o", required=True, type=Path, help="Bundle-set archive to write")
     bundle_set_parser.add_argument("--name", default=None, help="Campaign name stored in the manifest")
@@ -155,7 +185,11 @@ def _bundle_case(args: argparse.Namespace) -> int:
         output,
         mesh=str(args.mesh),
         time=args.time,
-        extra_warnings=plugin_bundle_hints(Path(args.case_dir)),
+        run_manifest=getattr(args, "run_manifest", None),
+        extra_warnings=plugin_bundle_hints(
+            Path(args.case_dir),
+            registry=getattr(args, "plugin_registry", None),
+        ),
     )
     payload: dict[str, object] = {
         "ok": True,
@@ -181,6 +215,8 @@ def _bundle_case(args: argparse.Namespace) -> int:
         print(f"Start time: {manifest.start_time}")
         print(f"Solver: {manifest.application}")
         print(f"OpenFOAM header: {manifest.header_version}")
+        if manifest.run_manifest:
+            print(f"Run manifest: {manifest.run_manifest}")
         _print_requirements(payload)
         _print_warnings(manifest.warnings)
         _print_bundle_smoke(payload)
@@ -191,13 +227,22 @@ def _bundle_case(args: argparse.Namespace) -> int:
 def _bundle_set(args: argparse.Namespace) -> int:
     output = _configured_bundle_path(Path(args.output))
     cases = [Path(case).expanduser().resolve() for case in args.cases]
+    cases_file = getattr(args, "cases_file", None)
+    if cases_file is not None:
+        cases.extend(bundle_set.read_case_list(Path(cases_file), root=Path(args.cases_root)))
     manifest = bundle_set.create_bundle_set(
         cases,
         output,
         name=args.name,
         mesh=str(args.mesh),
         time=str(args.time),
-        extra_warnings={case: plugin_bundle_hints(case) for case in cases},
+        extra_warnings={
+            case: plugin_bundle_hints(
+                case,
+                registry=getattr(args, "plugin_registry", None),
+            )
+            for case in cases
+        },
     )
     payload: dict[str, object] = {
         "ok": True,
@@ -329,10 +374,14 @@ def _run_extracted_case(
     return int(result.returncode)
 
 
-def plugin_bundle_hints(case_dir: Path) -> tuple[str, ...]:
-    registry = discover_plugins()
+def plugin_bundle_hints(
+    case_dir: Path,
+    *,
+    registry: PluginRegistry | None = None,
+) -> tuple[str, ...]:
+    selected = registry or discover_plugins()
     warnings: list[str] = []
-    for provider in registry.bundle_hints.values():
+    for provider in selected.bundle_hints.values():
         try:
             warnings.extend(provider.bundle_hints(case_dir))
         except Exception as exc:

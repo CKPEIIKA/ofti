@@ -5,7 +5,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ofti.core.case import read_number_of_subdomains
 from ofti.core.checkpoint import checkpoint_health
+from ofti.core.times import processor_dirs
 from ofti.tools.case_source_service import require_case_dir
 
 
@@ -18,6 +20,75 @@ def checkpoint_payload(case_dir: Path, *, expected_processors: int | None = None
         "common": True,
         **health,
     }
+
+
+def restart_plan_payload(
+    case_dir: Path,
+    *,
+    expected_processors: int | None = None,
+    target_processors: int | None = None,
+) -> dict[str, Any]:
+    """Describe a safe decomposed restart without changing the case."""
+    case_path = require_case_dir(case_dir)
+    paths = processor_dirs(case_path)
+    actual = len(paths)
+    configured = read_number_of_subdomains(case_path / "system" / "decomposeParDict")
+    expected = expected_processors or configured or actual
+    if expected <= 0:
+        raise ValueError("unable to determine current MPI size")
+    if target_processors is not None and target_processors <= 1:
+        raise ValueError("target processor count must be greater than 1")
+    health = checkpoint_health(case_path)
+    latest_common = health["latest_complete_time"]
+    partial_newer = _partial_newer_times(health["partial_times"], latest_common)
+    contiguous = [path.name for path in paths] == [f"processor{index}" for index in range(actual)]
+    mpi_consistent = actual == expected and configured in {None, expected} and contiguous
+    safe_to_apply = bool(paths and latest_common is not None and mpi_consistent)
+    unsafe_reasons = _restart_unsafe_reasons(
+        has_processors=bool(paths),
+        has_checkpoint=latest_common is not None,
+        mpi_consistent=mpi_consistent,
+    )
+    return {
+        "case": str(case_path),
+        "ok": safe_to_apply,
+        "safe_to_apply": safe_to_apply,
+        "unsafe_reasons": unsafe_reasons,
+        "latest_common_time": latest_common,
+        "partial_newer_times": partial_newer,
+        "checkpoint": health,
+        "mpi": {
+            "processor_dirs": [path.name for path in paths],
+            "actual": actual,
+            "configured": configured,
+            "expected": expected,
+            "target": target_processors,
+            "contiguous": contiguous,
+            "consistent": mpi_consistent,
+        },
+        "plan": _restart_steps(
+            case_path,
+            latest_common=latest_common,
+            partial_newer=partial_newer,
+            actual=actual,
+            target=target_processors,
+        ),
+        "mutated": False,
+    }
+
+
+def _restart_unsafe_reasons(
+    *,
+    has_processors: bool,
+    has_checkpoint: bool,
+    mpi_consistent: bool,
+) -> list[str]:
+    checks = (
+        (not has_processors, "parallel restart requires processor* directories"),
+        (not has_checkpoint, "no complete processor checkpoint is available"),
+        (not mpi_consistent, "processor directories and configured MPI size do not agree"),
+    )
+    return [reason for failed, reason in checks if failed]
 
 
 def quarantine_partial_payload(
@@ -70,6 +141,79 @@ def _quarantine_moves(
             destination = quarantine / processor.name / time_name
             moves.append({"source": str(source), "destination": str(destination)})
     return moves
+
+
+def _partial_newer_times(
+    rows: list[dict[str, Any]],
+    latest_common: str | None,
+) -> list[dict[str, Any]]:
+    if latest_common is None:
+        return list(rows)
+    common_value = float(latest_common)
+    return [row for row in rows if float(str(row["time"])) > common_value]
+
+
+def _restart_steps(
+    case_path: Path,
+    *,
+    latest_common: str | None,
+    partial_newer: list[dict[str, Any]],
+    actual: int,
+    target: int | None,
+) -> list[dict[str, object]]:
+    steps: list[dict[str, object]] = []
+    if partial_newer:
+        steps.append(
+            {
+                "action": "quarantine-partial",
+                "mutates": True,
+                "command": f"ofti knife checkpoint {case_path} --quarantine-partial --apply",
+                "times": [row["time"] for row in partial_newer],
+            },
+        )
+    steps.append(
+        {
+            "action": "reconstruct",
+            "mutates": True,
+            "command": (
+                f"reconstructPar -case {case_path} -time {latest_common}" if latest_common is not None else None
+            ),
+        },
+    )
+    if target is not None and target != actual:
+        steps.extend(
+            [
+                {
+                    "action": "set-subdomains",
+                    "mutates": True,
+                    "value": target,
+                    "file": "system/decomposeParDict",
+                },
+                {
+                    "action": "decompose",
+                    "mutates": True,
+                    "command": f"decomposePar -case {case_path} -force -latestTime",
+                },
+            ],
+        )
+    steps.extend(
+        [
+            {
+                "action": "resume-latest",
+                "mutates": True,
+                "entries": {
+                    "system/controlDict:startFrom": "latestTime",
+                    "system/controlDict:stopAt": "endTime",
+                },
+            },
+            {
+                "action": "start",
+                "mutates": False,
+                "processors": target or actual,
+            },
+        ],
+    )
+    return steps
 
 
 def _apply_moves(moves: list[dict[str, str]]) -> None:

@@ -102,18 +102,7 @@ def write_entry(file_path: Path, key: str, value: str) -> bool:
     text = _read_text(file_path)
     if text is None:
         return False
-    parts = _split_key(key)
-    if not parts:
-        return False
-    parent_parts = parts[:-1]
-    leaf = parts[-1]
-    parent_span = _find_block_span(text, parent_parts) if parent_parts else None
-    if parent_parts and parent_span is None:
-        return False
-    replacement = _normalize_value(value)
-    updated = _set_empty_block_entry(text, parent_span, leaf) if replacement == "{}" else None
-    if updated is None:
-        updated = _set_scalar_entry(text, parent_span, leaf, replacement)
+    updated = updated_entry_text(text, key, value)
     if updated is None:
         return False
     try:
@@ -121,6 +110,23 @@ def write_entry(file_path: Path, key: str, value: str) -> bool:
     except OSError:
         return False
     return True
+
+
+def updated_entry_text(text: str, key: str, value: str) -> str | None:
+    """Return a source-preserving dictionary edit without touching the file."""
+    parts = _split_key(key)
+    if not parts:
+        return None
+    parent_parts = parts[:-1]
+    leaf = parts[-1]
+    parent_span = _find_block_span(text, parent_parts) if parent_parts else None
+    if parent_parts and parent_span is None:
+        return None
+    replacement = _normalize_value(value)
+    updated = _set_empty_block_entry(text, parent_span, leaf) if replacement == "{}" else None
+    if updated is None:
+        updated = _set_scalar_entry(text, parent_span, leaf, replacement)
+    return updated
 
 
 def write_field_entry(file_path: Path, key: str, value: str) -> bool:

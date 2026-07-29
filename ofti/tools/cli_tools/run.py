@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TypedDict
 
+from ofti.core import bundle_set
 from ofti.core.case import read_number_of_subdomains
 from ofti.core.entry_io import write_entry
 from ofti.core.solver_checks import resolve_solver_name, validate_initial_fields
@@ -617,6 +618,10 @@ def parametric_case_payload(
     queue_backend: str = "process",
     prepare_parallel: bool = True,
     clean_processors: bool = False,
+    bundle_output: Path | None = None,
+    bundle_name: str | None = None,
+    bundle_mesh: str = "auto",
+    bundle_time: str = "0",
 ) -> dict[str, Any]:
     case_path = require_case_dir(case_dir)
     mode = _parametric_mode(csv_path, grid_axes)
@@ -647,6 +652,13 @@ def parametric_case_payload(
             values,
             output_root=root,
         )
+    bundle_result = _parametric_bundle(
+        created,
+        bundle_output,
+        name=bundle_name,
+        mesh=bundle_mesh,
+        time=bundle_time,
+    )
     queue_result: dict[str, Any] | None = None
     if run_solver and created:
         queue_result = queue_payload(
@@ -674,9 +686,28 @@ def parametric_case_payload(
         "created": [str(path.resolve()) for path in created],
         "run_solver": run_solver,
         "queue": queue_result,
+        "bundle": bundle_result,
         "queue_backend": queue_backend,
         "prepare_parallel": bool(prepare_parallel),
         "clean_processors": bool(clean_processors),
+    }
+
+
+def _parametric_bundle(
+    cases: list[Path],
+    output: Path | None,
+    *,
+    name: str | None,
+    mesh: str,
+    time: str,
+) -> dict[str, object] | None:
+    if output is None:
+        return None
+    archive = output.expanduser().resolve()
+    manifest = bundle_set.create_bundle_set(cases, archive, name=name, mesh=mesh, time=time)
+    return {
+        "archive": str(archive),
+        "manifest": bundle_set.manifest_payload(manifest),
     }
 
 

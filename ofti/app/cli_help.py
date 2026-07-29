@@ -220,6 +220,7 @@ _GENERIC_EXAMPLE_PREFIXES = (
     ("ofti watch", ("{prog} CASE --json", "{prog} CASE --easy-on-cpu")),
     ("ofti run", ("{prog} CASE --json", "{prog} CASE --dry-run")),
     ("ofti plot", ("{prog} CASE --table", "{prog} CASE --json")),
+    ("ofti plugins", ("{prog} --json", "{prog}")),
 )
 
 
@@ -254,6 +255,20 @@ _EXAMPLES_BY_PROG = {
         Examples:
           ofti knife physical CASE --time latest --fields p,U,rho,T --json
           ofti knife physical CASE --field rho:min=0 --field T:min=0 --fail-on-bad
+        """,
+    ),
+    "ofti knife metric": dedent(
+        """\
+        Examples:
+          ofti knife metric CASE --field p --time latest --reduction mean --json
+          ofti knife metric CASE --field wallHeatFlux --patch wall --reduction max --json
+          ofti knife metric CASE postProcessing/probes/0/p --name stagnation-p --value-column 1 --json
+          ofti knife metric CASE 'postProcessing/sets/*/line_p.xy' --name shock-x \
+            --threshold 0.3 --value-column 1 --window 20 --max-span 1e-4 --json
+
+        --field reduces internal or patch values directly. Otherwise SOURCE is
+        a table: without --threshold rows form a scalar series; with it, every
+        matched file is a profile whose crossing is tracked over time.
         """,
     ),
     "ofti knife compare-fields": dedent(
@@ -329,15 +344,33 @@ _EXAMPLES_BY_PROG = {
           ofti run solver CASE --parallel 4 --clean-processors
         """,
     ),
-    "ofti run smoke": _examples("ofti run smoke CASE --iterations 20 --timeout 5m --json"),
+    "ofti run smoke": _examples(
+        "ofti run smoke CASE --iterations 20 --timeout 5m --json",
+        "ofti run smoke CASE --parallel 4 --reconstruct --json",
+    ),
+    "ofti run restart-plan": _examples(
+        "ofti run restart-plan CASE --from 8 --to 16 --json",
+        "ofti run restart-plan CASE --to 16 --table",
+    ),
     "ofti run resize-parallel": _examples(
         "ofti run resize-parallel CASE --to 8 --dry-run --table",
     ),
     "ofti run matrix": _examples(
         "ofti run matrix CASE --param application=simpleFoam,pisoFoam --no-launch --json",
     ),
-    "ofti run parametric": _examples(
-        "ofti run parametric CASE --entry application --values simpleFoam,pisoFoam",
+    "ofti run parametric": dedent(
+        """\
+        Examples:
+          ofti run parametric CASE --entry application --values simpleFoam,pisoFoam
+          ofti run parametric CASE --grid-axis '0/include/initialConditions:velocityInlet=3604.986,4000' \\
+            --grid-axis 'constant/transportProperties:transportModel=Fick,Lewis' --output-root runs
+          ofti run parametric CASE --grid-axis 'application=simpleFoam,pisoFoam' \\
+            --output-root runs --bundle-set study.ofti-set.tar.gz
+
+        Use repeatable --grid-axis DICT:ENTRY=v1,v2 instead of clone-and-sed
+        loops. OFTI creates the Cartesian product through the shared,
+        foamlib-backed dictionary path and can queue it with --run-solver.
+        """,
     ),
     "ofti run queue": _examples("ofti run queue CASE_A CASE_B --max-parallel 1 --json"),
     "ofti run queue-summary": _examples(
@@ -378,6 +411,15 @@ _EXAMPLES_BY_PROG = {
     "ofti plot metrics": _examples("ofti plot metrics CASE --table"),
     "ofti plot criteria": _examples("ofti plot criteria CASE --table"),
     "ofti plot residuals": _examples("ofti plot residuals CASE --json"),
+    "ofti plugins": _examples(
+        "ofti plugins list --json",
+        "ofti plugins doctor --json",
+    ),
+    "ofti plugins list": _examples("ofti plugins list", "ofti plugins list --json"),
+    "ofti plugins doctor": _examples(
+        "ofti plugins doctor",
+        "ofti plugins doctor --json",
+    ),
     "ofti bundle": dedent(
         """\
         Examples:
@@ -395,6 +437,7 @@ _EXAMPLES_BY_PROG = {
           ofti bundle case CASE --output case.ofti.tar.gz --mesh auto --time 0
           ofti bundle case CASE --output case.ofti.tar.gz --mesh include-polyMesh --table
           ofti bundle case CASE --output case.ofti.tar.gz --smoke --smoke-timeout 60s
+          ofti bundle case CASE --output case.ofti.tar.gz --run-manifest RUN/manifest.json
 
         Case-bundle intent:
           Create the smallest portable archive that can run elsewhere: system/,
@@ -404,13 +447,15 @@ _EXAMPLES_BY_PROG = {
           manifests keep canonical auto/include/exclude values. Logs,
           processor* directories, postProcessing, and caches are excluded. Add
           --smoke to prove the archive can be extracted and run on the current
-          host before copying it elsewhere.
+          host before copying it elsewhere. --run-manifest embeds an explicit
+          external OFTI run manifest under a stable archive path.
         """,
     ),
     "ofti bundle set": dedent(
         """\
         Examples:
           ofti bundle set CASE_A CASE_B --output study.ofti-set.tar.gz
+          ofti bundle set --cases-file cases.txt --cases-root . --output study.ofti-set.tar.gz
           ofti bundle set runs/* --name transport-study --output study.tar.gz --json
 
         Set-bundle intent:

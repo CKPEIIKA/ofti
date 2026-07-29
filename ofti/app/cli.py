@@ -16,9 +16,12 @@ _CLI_TOOLS_GROUPS = {
     "watch",
     "run",
     "bundle",
+    "result",
+    "plugins",
     "version",
 }
 _CLI_VERSION_FLAGS = {"-V", "--version"}
+_PLAIN_FLAGS = {"--plain", "--no-tty"}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  ofti bundle case CASE --output case.ofti.tar.gz\n"
             "  ofti bundle extract case.ofti.tar.gz --to CASE_COPY --run --background\n"
             "  ofti bundle set CASE_A CASE_B --output study.ofti-set.tar.gz\n\n"
-            "Non-interactive tools: ofti knife|plot|watch|run|bundle|result ..."
+            "Non-interactive tools: ofti knife|plot|watch|run|bundle|result|plugins|version ..."
         ),
     )
     parser.add_argument(
@@ -47,6 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--debug",
         action="store_true",
         help="Enable debug logging and more verbose error reporting",
+    )
+    parser.add_argument(
+        "--plain",
+        "--no-tty",
+        action="store_true",
+        help="Never start curses; require an explicit non-interactive command",
     )
     parser.add_argument(
         "-V",
@@ -63,7 +72,8 @@ def main(argv: list[str] | None = None) -> int:
     Usage:
         ofti [--debug] [CASE_DIR]
     """
-    args_in = list(argv) if argv is not None else sys.argv[1:]
+    raw_args = list(argv) if argv is not None else sys.argv[1:]
+    args_in, plain = _strip_plain_flags(raw_args)
     use_cli_tools = args_in and (args_in[0] in _CLI_TOOLS_GROUPS or any(flag in args_in for flag in _CLI_VERSION_FLAGS))
     if use_cli_tools:
         return cli_tools_main(args_in)
@@ -72,6 +82,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(args_in)
     if bool(getattr(args, "version", False)):
         return cli_tools_main(["--version"])
+    if plain:
+        print(
+            "ofti: --plain/--no-tty requires a non-interactive command (for example: ofti knife status CASE --json)",
+            file=sys.stderr,
+        )
+        return 2
+    if not _has_interactive_terminal():
+        print(
+            "ofti: interactive TUI requires a terminal; use --plain with "
+            "a command such as `ofti knife status CASE --json`",
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         run_tui(str(args.case_dir), debug=args.debug)
@@ -81,6 +104,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ofti error: {exc}", file=sys.stderr)
         return 1
     return 0
+
+
+def _strip_plain_flags(args: list[str]) -> tuple[list[str], bool]:
+    plain = any(arg in _PLAIN_FLAGS for arg in args)
+    return [arg for arg in args if arg not in _PLAIN_FLAGS], plain
+
+
+def _has_interactive_terminal() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
 
 
 if __name__ == "__main__":

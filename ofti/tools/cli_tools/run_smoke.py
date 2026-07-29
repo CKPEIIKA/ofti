@@ -21,6 +21,8 @@ from typing import Any
 
 from ofti.core.checkpoint import checkpoint_health
 from ofti.core.entry_io import read_entry, write_entry_preserving_text
+from ofti.core.field_io import read_internal_field, resolve_field_names, resolve_time_dir
+from ofti.core.times import processor_dirs
 from ofti.tools import knife_service, runner_service
 
 from .common import require_case_dir
@@ -49,6 +51,7 @@ def smoke_payload(
     core_only: bool = False,
     prepare_parallel: bool = True,
     clean_processors: bool = False,
+    reconstruct: bool = False,
     run_physical: bool = False,
     physical_fields: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -100,6 +103,12 @@ def smoke_payload(
     )
     wall_seconds = time.time() - started
     log_text = log_path.read_text(encoding="utf-8", errors="ignore") if log_path.is_file() else ""
+    reconstruction = _smoke_reconstruction(
+        smoke_case,
+        log_text,
+        parallel=parallel,
+        requested=reconstruct,
+    )
     verification = _smoke_verification(
         smoke_case,
         log_text,
@@ -108,6 +117,7 @@ def smoke_payload(
         parallel=parallel,
         returncode=int(result.returncode),
         timed_out=timed_out,
+        reconstruction=reconstruction,
     )
     summary: dict[str, Any] = {
         "source_case": str(source.resolve()),
@@ -122,6 +132,7 @@ def smoke_payload(
         "prepare_parallel": bool(prepare_parallel),
         "clean_processors": bool(clean_processors),
         "parallel_setup": parallel_setup,
+        "reconstruction": reconstruction,
         "normalized_control": normalized,
         "returncode": int(result.returncode),
         "timed_out": bool(timed_out),
@@ -313,16 +324,25 @@ def _smoke_verification(
     parallel: int,
     returncode: int,
     timed_out: bool,
+    reconstruction: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     times_seen = _smoke_times_seen(log_text)
     completed = len(times_seen)
-    end_seen = "End" in log_text
+    end_seen = _smoke_end_seen(log_text)
     iteration_count_exact = completed == iterations
     target_time = iterations * delta_t
     target_time_reached = bool(times_seen) and _same_time(times_seen[-1], target_time)
     checkpoint = _smoke_checkpoint_evidence(
         case_path, parallel=parallel, final_time=times_seen[-1] if times_seen else None
     )
+    readability = _smoke_output_readability(
+        case_path,
+        time_name=checkpoint["checkpoint_time"],
+        parallel=parallel,
+    )
+    clean_exit = returncode == 0 and not timed_out and end_seen
+    reconstruction_required = bool(reconstruction and reconstruction["requested"])
+    reconstruction_ok = not reconstruction_required or bool(reconstruction["ok"])
     failures = _smoke_failure_reasons(
         returncode=returncode,
         timed_out=timed_out,
@@ -330,8 +350,16 @@ def _smoke_verification(
         iteration_count_exact=iteration_count_exact,
         target_time_reached=target_time_reached,
         checkpoint_ok=bool(checkpoint["checkpoint_ok"]),
+        output_readable=bool(readability["output_readable"]),
+        reconstruction_ok=reconstruction_ok,
     )
-    contract_failed = not iteration_count_exact or not target_time_reached or not checkpoint["checkpoint_ok"]
+    contract_failed = (
+        not iteration_count_exact
+        or not target_time_reached
+        or not checkpoint["checkpoint_ok"]
+        or not readability["output_readable"]
+        or not reconstruction_ok
+    )
     failure_reason = (
         "requested_iterations_or_common_checkpoint_not_reached"
         if contract_failed
@@ -345,8 +373,12 @@ def _smoke_verification(
         "target_time": target_time,
         "target_time_reached": target_time_reached,
         "end_seen": end_seen,
+        "clean_exit": clean_exit,
         "checkpoint_required": True,
         **checkpoint,
+        **readability,
+        "reconstruction_requested": reconstruction_required,
+        "reconstruction_ok": reconstruction["ok"] if reconstruction_required else None,
         "failure_reason": failure_reason,
         "failure_reasons": failures,
         "ok": not failures,
@@ -360,6 +392,7 @@ def _smoke_checkpoint_evidence(case_path: Path, *, parallel: int, final_time: fl
         return {
             "checkpoint_ok": False,
             "checkpoint_error": str(exc),
+            "checkpoint_time": None,
             "latest_complete_processor_time": None,
             "latest_written_time": None,
             "checkpoint": None,
@@ -369,6 +402,7 @@ def _smoke_checkpoint_evidence(case_path: Path, *, parallel: int, final_time: fl
     return {
         "checkpoint_ok": matched is not None and final_time is not None and final_time > 0,
         "checkpoint_error": None,
+        "checkpoint_time": matched,
         "latest_complete_processor_time": health["latest_complete_time"] if parallel > 1 else None,
         "latest_written_time": health["latest_complete_time"] if parallel > 1 else health["latest_reconstructed_time"],
         "checkpoint": health,
@@ -390,6 +424,129 @@ def _same_time(left: float, right: float) -> bool:
     return abs(left - right) <= tolerance
 
 
+def _smoke_end_seen(log_text: str) -> bool:
+    return any(line.strip() == "End" for line in log_text.splitlines())
+
+
+def _smoke_output_readability(
+    case_path: Path,
+    *,
+    time_name: object,
+    parallel: int,
+) -> dict[str, Any]:
+    if not isinstance(time_name, str) or not time_name:
+        return {
+            "output_readable": False,
+            "readable_fields": [],
+            "output_read_errors": ["no matching checkpoint time"],
+        }
+    try:
+        time_dir = _checkpoint_time_dir(case_path, time_name, parallel=parallel)
+        field_names = resolve_field_names(time_dir, None)
+    except (OSError, ValueError) as exc:
+        return {
+            "output_readable": False,
+            "readable_fields": [],
+            "output_read_errors": [str(exc)],
+        }
+    rows: list[dict[str, object]] = []
+    errors: list[str] = []
+    for field_name in field_names:
+        try:
+            field = read_internal_field(time_dir / field_name)
+        except (OSError, RuntimeError, ValueError) as exc:
+            errors.append(f"{field_name}: {exc}")
+            continue
+        rows.append(
+            {
+                "field": field_name,
+                "kind": field.kind,
+                "count": field.count,
+                "components": field.component_count,
+            },
+        )
+    if not field_names:
+        errors.append(f"no readable OpenFOAM fields at time {time_name}")
+    return {
+        "output_readable": bool(rows) and not errors,
+        "readable_fields": rows,
+        "output_read_errors": errors,
+    }
+
+
+def _checkpoint_time_dir(case_path: Path, time_name: str, *, parallel: int) -> Path:
+    if parallel <= 1:
+        return resolve_time_dir(case_path, time_name)
+    processors = processor_dirs(case_path)
+    if len(processors) != parallel:
+        raise ValueError(f"expected {parallel} processor directories, found {len(processors)}")
+    time_dir = processors[0] / time_name
+    if not time_dir.is_dir():
+        raise ValueError(f"processor checkpoint not found: {time_name}")
+    return time_dir
+
+
+def _smoke_reconstruction(
+    case_path: Path,
+    log_text: str,
+    *,
+    parallel: int,
+    requested: bool,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "requested": requested,
+        "ok": None,
+        "time": None,
+        "command": None,
+        "returncode": None,
+        "error": None,
+    }
+    if not requested:
+        return payload
+    times_seen = _smoke_times_seen(log_text)
+    final_time = times_seen[-1] if times_seen else None
+    try:
+        health = checkpoint_health(
+            case_path,
+            expected_processors=parallel if parallel > 1 else None,
+        )
+    except ValueError as exc:
+        payload.update(ok=False, error=str(exc))
+        return payload
+    time_names = health["complete_times"] if parallel > 1 else health["reconstructed_times"]
+    time_name = _matching_time(time_names, final_time)
+    payload["time"] = time_name
+    if time_name is None or final_time is None or final_time <= 0:
+        payload.update(ok=False, error="no nonzero complete checkpoint to reconstruct")
+        return payload
+    if parallel <= 1:
+        readable = _smoke_output_readability(case_path, time_name=time_name, parallel=0)
+        payload.update(ok=readable["output_readable"], output=readable)
+        return payload
+    command = ["reconstructPar", "-time", time_name]
+    payload["command"] = command
+    result = _run().execute_case_command(
+        case_path,
+        " ".join(command),
+        command,
+        background=False,
+    )
+    payload["returncode"] = int(result.returncode)
+    if int(result.returncode) != 0:
+        payload.update(
+            ok=False,
+            error=result.stderr or result.stdout or "reconstructPar failed",
+        )
+        return payload
+    readable = _smoke_output_readability(case_path, time_name=time_name, parallel=0)
+    payload.update(
+        ok=readable["output_readable"],
+        error=None if readable["output_readable"] else "reconstructed output is unreadable",
+        output=readable,
+    )
+    return payload
+
+
 def _smoke_failure_reasons(
     *,
     returncode: int,
@@ -398,21 +555,20 @@ def _smoke_failure_reasons(
     iteration_count_exact: bool,
     target_time_reached: bool,
     checkpoint_ok: bool,
+    output_readable: bool,
+    reconstruction_ok: bool,
 ) -> list[str]:
-    failures: list[str] = []
-    if returncode != 0:
-        failures.append("solver_returncode_nonzero")
-    if timed_out:
-        failures.append("solver_timeout")
-    if not end_seen:
-        failures.append("solver_end_not_seen")
-    if not iteration_count_exact:
-        failures.append("requested_iteration_count_not_met")
-    if not target_time_reached:
-        failures.append("fixed_step_target_time_not_reached")
-    if not checkpoint_ok:
-        failures.append("common_checkpoint_not_written")
-    return failures
+    checks = (
+        (returncode != 0, "solver_returncode_nonzero"),
+        (timed_out, "solver_timeout"),
+        (not end_seen, "solver_end_not_seen"),
+        (not iteration_count_exact, "requested_iteration_count_not_met"),
+        (not target_time_reached, "fixed_step_target_time_not_reached"),
+        (not checkpoint_ok, "common_checkpoint_not_written"),
+        (not output_readable, "checkpoint_output_unreadable"),
+        (not reconstruction_ok, "checkpoint_reconstruction_failed"),
+    )
+    return [reason for failed, reason in checks if failed]
 
 
 def _write_smoke_reports(payload: Mapping[str, Any], root: Path) -> None:
@@ -430,7 +586,10 @@ def _write_smoke_reports(payload: Mapping[str, Any], root: Path) -> None:
         f"- returncode: {payload.get('returncode')}",
         f"- timed_out: {payload.get('timed_out')}",
         f"- iterations: {payload.get('iterations_completed')}/{payload.get('iterations_requested')}",
+        f"- clean_exit: {payload.get('clean_exit')}",
         f"- checkpoint_ok: {payload.get('checkpoint_ok')}",
+        f"- output_readable: {payload.get('output_readable')}",
+        f"- reconstruction_ok: {payload.get('reconstruction_ok')}",
         f"- latest_written_time: {payload.get('latest_written_time')}",
         f"- failure_reason: {payload.get('failure_reason')}",
         f"- wall_seconds: {float(payload.get('wall_seconds') or 0):.3f}",

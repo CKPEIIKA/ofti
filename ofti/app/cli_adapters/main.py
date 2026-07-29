@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import argparse
 import sys
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as package_version
 from textwrap import dedent
 
+from ofti import __version__
 from ofti.app.cli_adapters.bundle import _build_bundle_parser
 from ofti.app.cli_adapters.knife_parser import _build_knife_parser
 from ofti.app.cli_adapters.plot import _build_plot_parser
+from ofti.app.cli_adapters.plugins import _build_plugins_parser
 from ofti.app.cli_adapters.result import _build_result_parser
 from ofti.app.cli_adapters.run import _build_run_parser
 from ofti.app.cli_adapters.watch import _build_watch_parser
@@ -18,9 +18,11 @@ from ofti.app.cli_help import (
     _output_mode_conflict,
     strip_json_version_args,
 )
+from ofti.plugins import PluginRegistry, discover_plugins
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(*, registry: PluginRegistry | None = None) -> argparse.ArgumentParser:
+    selected_registry = registry or discover_plugins()
     parser = argparse.ArgumentParser(
         prog="ofti",
         description=(
@@ -39,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
               ofti bundle set CASE_A CASE_B --output study.ofti-set.tar.gz
               ofti bundle extract study.ofti-set.tar.gz --to STUDY
               ofti run parametric CASE --entry application --values simpleFoam,pisoFoam
+              ofti plugins doctor
             """,
         ),
     )
@@ -57,12 +60,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.set_defaults(func=_help_handler(parser))
     groups = parser.add_subparsers(dest="group", required=False)
 
-    _build_knife_parser(groups)
+    _build_knife_parser(groups, registry=selected_registry)
     _build_plot_parser(groups)
-    _build_watch_parser(groups)
-    _build_run_parser(groups)
-    _build_bundle_parser(groups)
-    _build_result_parser(groups)
+    _build_watch_parser(groups, registry=selected_registry)
+    _build_run_parser(groups, registry=selected_registry)
+    _build_bundle_parser(groups, registry=selected_registry)
+    _build_result_parser(groups, registry=selected_registry)
+    _build_plugins_parser(groups, registry=selected_registry)
     version_cmd = groups.add_parser("version", help="Show version and exit")
     version_cmd.set_defaults(func=_version_command)
     _fill_missing_help(parser)
@@ -93,10 +97,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def ofti_version() -> str:
-    try:
-        return package_version("ofti")
-    except PackageNotFoundError:
-        return "dev"
+    return __version__
 
 
 def _version_command(_args: argparse.Namespace) -> int:
