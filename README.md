@@ -1,4 +1,4 @@
-# OFTI
+# OFTI(1)
 
 ```text
   ____  ______ _______ _____
@@ -9,7 +9,10 @@
  \____/|_|      |_|  |_____|
 ```
 
-> This is vibe-coded software. Expect rough edges.
+## DISCLAIMER
+
+This project is vibe-coded. Expect rough edges and verify behavior before
+using it on production OpenFOAM cases.
 
 OFTI is a CLI-first OpenFOAM helper with a curses interface on top. It wraps
 `foamlib` and native OpenFOAM tools for diagnostics, run/process management,
