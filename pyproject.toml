@@ -180,7 +180,7 @@ dev = [
     "jsonschema>=4.26.0",
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
-    "ruff>=0.16",
+    "ruff>=0.16.7",
     "ty>=0.0.40",
 ]
 
