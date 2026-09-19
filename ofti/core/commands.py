@@ -4,6 +4,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
+_MIN_COMMAND_PARTS = 2
+
 
 class CommandKind(StrEnum):
     QUIT = "quit"
@@ -116,7 +118,7 @@ def _tool_command(
 
 
 def _explicit_tool_command(raw: str, parts: list[str], background: bool) -> CommandAction:
-    if len(parts) < 2:
+    if len(parts) < _MIN_COMMAND_PARTS:
         return CommandAction(CommandKind.TOOLS, raw=raw, error="Usage: :tool <name>")
     return _run_tool_action(raw, " ".join(parts[1:]), background)
 
@@ -152,7 +154,7 @@ def _run_tool_action(raw: str, arg: str, background: bool) -> CommandAction:
 def _cancel_command(name: str, raw: str, parts: list[str]) -> CommandAction | None:
     if name not in ("cancel", "stop"):
         return None
-    if len(parts) < 2:
+    if len(parts) < _MIN_COMMAND_PARTS:
         return CommandAction(
             CommandKind.CANCEL,
             raw=raw,

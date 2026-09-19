@@ -603,6 +603,7 @@ def _exercise_parallel_raw_adopt(profile: RealProfile, case: Path) -> bool:
     _solver, display, command = prepared
     log_path = case / f"log.raw-adopt-{display}"
     with log_path.open("a", encoding="utf-8") as log:
+        # The test command is assembled from the controlled profile fixture.
         process = subprocess.Popen(  # noqa: S603
             command,
             cwd=case,

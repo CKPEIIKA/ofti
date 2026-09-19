@@ -5,6 +5,7 @@ import os
 import subprocess
 from collections.abc import Callable
 from contextlib import suppress
+from curses import ascii as curses_ascii
 from pathlib import Path
 from typing import Any
 
@@ -75,7 +76,7 @@ def _prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:
                 cursor += 1
             render()
             continue
-        if key == 9:  # TAB
+        if key == curses_ascii.TAB:
             pool = suggestions or []
             current = "".join(buffer)
             if current != last_buffer:
@@ -89,7 +90,7 @@ def _prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:
                 match_index += 1
                 render()
             continue
-        if 32 <= key <= 126:
+        if curses_ascii.isprint(key):
             buffer.insert(cursor, chr(key))
             cursor += 1
             render()
@@ -295,7 +296,7 @@ class Menu:
         env.pop("ENV", None)
         try:
             shell = env.get("SHELL") or "bash"
-            subprocess.run([shell], cwd=case_path, env=env)
+            subprocess.run([shell], cwd=case_path, env=env, check=False)
         except KeyboardInterrupt:
             pass
         finally:

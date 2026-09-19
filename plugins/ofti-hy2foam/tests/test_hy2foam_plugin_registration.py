@@ -1,24 +1,17 @@
-# ruff: noqa: INP001
 from __future__ import annotations
 
 import argparse
 import io
 import json
-import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any
 
 import pytest
+from ofti_hy2foam.plugin import register
 
 from ofti.app.cli_adapters.command_builder import build_spec_parser
 from ofti.plugins import PluginRegistry
-
-PLUGIN_SRC = Path(__file__).resolve().parents[1] / "src"
-if str(PLUGIN_SRC) not in sys.path:
-    sys.path.insert(0, str(PLUGIN_SRC))
-
-from ofti_hy2foam.plugin import register  # noqa: E402
 
 
 def test_hy2foam_plugin_registers_presets_profile_and_charge_command() -> None:

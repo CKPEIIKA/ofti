@@ -19,6 +19,8 @@ from ofti.tools import checkpoint_service, status_render_service, table_render_s
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import run as run_ops
 
+_MAX_COMPARE_VALUES = 40
+
 
 def _knife_doctor(args: argparse.Namespace) -> int:
     payload = knife_ops.doctor_payload(args.case_dir)
@@ -315,18 +317,18 @@ def _print_compare_diff(diff: dict[str, object], *, flat: bool) -> None:
 def _print_compare_values(diff: dict[str, object], *, flat: bool) -> None:
     if flat:
         values = cast("list[str]", diff.get("value_diffs_flat", []))
-        for value in values[:40]:
+        for value in values[:_MAX_COMPARE_VALUES]:
             print(f"  value_diff {value}")
-        if len(values) > 40:
-            print(f"  value_diff_more={len(values) - 40}")
+        if len(values) > _MAX_COMPARE_VALUES:
+            print(f"  value_diff_more={len(values) - _MAX_COMPARE_VALUES}")
         return
     values = cast("list[dict[str, object]]", diff.get("value_diffs", []))
-    for value in values[:40]:
+    for value in values[:_MAX_COMPARE_VALUES]:
         print(
             f"  value_diff {value['key']}: left={value['left']} right={value['right']}",
         )
-    if len(values) > 40:
-        print(f"  value_diff_more={len(values) - 40}")
+    if len(values) > _MAX_COMPARE_VALUES:
+        print(f"  value_diff_more={len(values) - _MAX_COMPARE_VALUES}")
 
 
 def _knife_copy(args: argparse.Namespace) -> int:

@@ -35,6 +35,8 @@ from ofti.tools.tool_catalog import tool_catalog
 
 from .common import require_case_dir
 
+_PARALLEL_SOLVER_COMMAND_MIN_PARTS = 2
+
 RunResult = runner_service.RunResult
 
 parse_duration_seconds = _run_smoke.parse_duration_seconds
@@ -294,7 +296,8 @@ def execute_solver_case_command(
             extra_env=extra_env,
         )
 
-    assert solver is not None
+    if solver is None:
+        raise ValueError("solver command does not contain a solver name")
     chosen_log = _resolve_solver_log_path(case_path, name=name, log_path=log_path)
     try:
         foamlib_runner.run_case(
@@ -489,7 +492,7 @@ def _resolve_solver_log_path(case_path: Path, *, name: str, log_path: Path | Non
 
 def _solver_token_from_command(cmd: list[str], *, parallel: int) -> str | None:
     if parallel > 1:
-        if len(cmd) >= 2 and cmd[-1] == "-parallel":
+        if len(cmd) >= _PARALLEL_SOLVER_COMMAND_MIN_PARTS and cmd[-1] == "-parallel":
             return str(cmd[-2])
         return None
     if len(cmd) == 1:
@@ -628,7 +631,8 @@ def parametric_case_payload(
     root = output_root.resolve() if output_root is not None else case_path.parent.resolve()
     created: list[Path]
     if mode == "csv":
-        assert csv_path is not None
+        if csv_path is None:
+            raise ValueError("CSV parametric mode requires a CSV path")
         created = build_parametric_cases_from_csv(
             case_path,
             csv_path,

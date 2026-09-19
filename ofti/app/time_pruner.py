@@ -6,10 +6,12 @@ from typing import Any
 from ofti.core.times import time_directories
 from ofti.ui_curses.prompts import _show_message, prompt_line
 
+_MIN_PRUNABLE_TIMES = 2
+
 
 def time_directory_pruner_screen(stdscr: Any, case_path: Path) -> None:
     times = time_directories(case_path)
-    if len(times) < 2:
+    if len(times) < _MIN_PRUNABLE_TIMES:
         _show_message(stdscr, "No time directories found to prune.")
         return
 

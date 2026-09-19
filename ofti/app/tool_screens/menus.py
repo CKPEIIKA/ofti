@@ -183,6 +183,12 @@ def case_operations_screen(
     command_handler: Callable[[str], str | None] | None = None,
     command_suggestions: Callable[[], list[str]] | None = None,
 ) -> None:
+    actions = [
+        shared_case_tools.show_preflight_screen,
+        case_doctor.case_doctor_screen,
+        shared_case_tools.show_case_status_screen,
+        shared_case_tools.compare_dictionaries_screen,
+    ]
     while True:
         choice = _case_operations_menu(
             stdscr,
@@ -191,16 +197,9 @@ def case_operations_screen(
         )
         if choice in (-1, len(_CASE_OP_LABELS) - 1):
             return
-        if choice == 0:
-            shared_case_tools.show_preflight_screen(stdscr, case_path)
+        if 0 <= choice < len(actions):
+            actions[choice](stdscr, case_path)
             continue
-        if choice == 1:
-            case_doctor.case_doctor_screen(stdscr, case_path)
-            continue
-        if choice == 2:
-            shared_case_tools.show_case_status_screen(stdscr, case_path)
-            continue
-        shared_case_tools.compare_dictionaries_screen(stdscr, case_path)
 
 
 def _tool_aliases(stdscr: Any, case_path: Path) -> dict[str, _ToolAlias]:
@@ -376,37 +375,36 @@ def tools_screen(
             continue
 
         special_index = choice - 1 - len(simple_tools)
-        if special_index == 0:
-            diagnostics_screen(
+        special_actions = [
+            partial(
+                diagnostics_screen,
                 stdscr,
                 case_path,
                 command_handler=command_handler,
                 command_suggestions=command_suggestions,
-            )
-        elif special_index == 1:
-            case_doctor.case_doctor_screen(stdscr, case_path)
-        elif special_index == 2:
-            case_operations_screen(
+            ),
+            partial(case_doctor.case_doctor_screen, stdscr, case_path),
+            partial(
+                case_operations_screen,
                 stdscr,
                 case_path,
                 command_handler=command_handler,
                 command_suggestions=command_suggestions,
-            )
-        elif special_index == 3:
-            run_shell_script_screen(stdscr, case_path)
-        elif special_index == 4:
-            clone_case(stdscr, case_path)
-        elif special_index == 5:
-            job_status_poll_screen(stdscr, case_path)
-        elif special_index == 6:
-            stop_job_screen(stdscr, case_path)
-        elif special_index == 7:
-            physics_tools_screen(
+            ),
+            partial(run_shell_script_screen, stdscr, case_path),
+            partial(clone_case, stdscr, case_path),
+            partial(job_status_poll_screen, stdscr, case_path),
+            partial(stop_job_screen, stdscr, case_path),
+            partial(
+                physics_tools_screen,
                 stdscr,
                 case_path,
                 command_handler=command_handler,
                 command_suggestions=command_suggestions,
-            )
+            ),
+        ]
+        if 0 <= special_index < len(special_actions):
+            special_actions[special_index]()
 
 
 def physics_tools_screen(

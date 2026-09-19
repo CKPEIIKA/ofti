@@ -6,6 +6,9 @@ from dataclasses import dataclass
 
 from ofti.foam.openfoam_env import detect_openfoam_version
 
+_VERSION_PREFIX_MIN_LENGTH = 3
+_LEGACY_MAJOR_CUTOFF = 3
+
 
 @dataclass(frozen=True)
 class OpenFOAMVersionInfo:
@@ -42,12 +45,12 @@ def is_legacy_version(version: str, *, fork: str | None = None) -> bool:
     value = version.strip().lower()
     if not value or value == "unknown":
         return False
-    if value.startswith("v") and len(value) > 3:
+    if value.startswith("v") and len(value) > _VERSION_PREFIX_MIN_LENGTH:
         return False
     match = re.match(r"^(\d+)(?:\.(\d+))?", value)
     if match:
         major = int(match.group(1))
-        return major < 3
+        return major < _LEGACY_MAJOR_CUTOFF
     return False
 
 

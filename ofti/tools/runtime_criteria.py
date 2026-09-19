@@ -26,6 +26,9 @@ _GENERIC_CRITERION_TOKENS = {
     "criteria",
     "criterion",
 }
+_MIN_CRITERION_TOKEN_LENGTH = 3
+_MIN_ETA_SERIES_POINTS = 3
+_MIN_ETA_SAMPLES = 2
 
 
 def to_float(text: str | None) -> float | None:
@@ -99,7 +102,7 @@ def criterion_needles(key: str) -> list[str]:
 
 def _criterion_token(token: str) -> str:
     cleaned = "".join(ch for ch in token if ch.isalnum() or ch in {"_", "+"}).strip("_")
-    if len(cleaned) < 3 or cleaned in _GENERIC_CRITERION_TOKENS:
+    if len(cleaned) < _MIN_CRITERION_TOKEN_LENGTH or cleaned in _GENERIC_CRITERION_TOKENS:
         return ""
     return cleaned
 
@@ -183,7 +186,7 @@ def criterion_eta_seconds(
     if tolerance is None:
         return None
     series = criterion_eta_series(values, use_delta=use_delta)
-    if len(series) < 3:
+    if len(series) < _MIN_ETA_SERIES_POINTS:
         return None
     sec_per_sample = average_step_seconds(execution_times)
     if sec_per_sample is None:
@@ -272,7 +275,7 @@ def eta_seconds(
         return None
     if target_time <= latest_time_value:
         return 0.0
-    if len(times) < 2 or len(execution_times) < 2:
+    if len(times) < _MIN_ETA_SAMPLES or len(execution_times) < _MIN_ETA_SAMPLES:
         return None
     window = min(len(times), len(execution_times), 8)
     time_delta = times[-1] - times[-window]

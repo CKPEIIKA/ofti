@@ -10,6 +10,9 @@ _MPI_LAUNCHERS = {"mpirun", "mpiexec", "mpiexec.hydra", "orterun", "srun"}
 _SHELL_LAUNCHERS = {"bash", "sh", "zsh", "dash", "ksh"}
 _SANDBOX_MARKERS = {"bwrap", "codex-linux-sandbox", "firejail", "flatpak-spawn"}
 _DISCOVERY_CACHE_TTL_SECONDS = 600.0
+_PROC_STAT_MIN_PARTS = 3
+_MAX_PARENT_TRAVERSAL_DEPTH = 12
+_CD_COMMAND_MIN_PARTS = 2
 
 
 @dataclass(frozen=True)
@@ -390,7 +393,7 @@ def read_proc_ppid(proc_dir: Path) -> int:
         return -1
     tail = text.split(") ", 1)[1]
     parts = tail.split()
-    if len(parts) < 3:
+    if len(parts) < _PROC_STAT_MIN_PARTS:
         return -1
     try:
         return int(parts[1])
@@ -501,7 +504,7 @@ def infer_case_path(entry: ProcEntry, table: dict[int, ProcEntry]) -> Path | Non
     checked: set[Path] = set()
     cursor: ProcEntry | None = entry
     depth = 0
-    while cursor is not None and depth < 12:
+    while cursor is not None and depth < _MAX_PARENT_TRAVERSAL_DEPTH:
         candidate = case_candidate_from_args(cursor.args, cursor.cwd)
         resolved = as_case_dir(candidate, checked=checked)
         if resolved is not None:
@@ -577,7 +580,7 @@ def _cd_path_arg(chunk: str) -> str | None:
         parts = shlex.split(chunk)
     except ValueError:
         parts = chunk.split()
-    if not parts or parts[0] != "cd" or len(parts) < 2:
+    if not parts or parts[0] != "cd" or len(parts) < _CD_COMMAND_MIN_PARTS:
         return None
     path_arg = parts[1].strip()
     return path_arg if path_arg and path_arg != "-" else None

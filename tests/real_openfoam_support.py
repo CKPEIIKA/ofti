@@ -221,6 +221,7 @@ def mpi_launcher_issue(command: list[str]) -> str | None:
     launcher = command[0]
     if shutil.which(launcher) is None:
         return f"MPI launcher is unavailable: {launcher}"
+    # The launcher is selected from the local environment and receives fixed probe arguments.
     probe = subprocess.run(  # noqa: S603
         [launcher, "-np", "1", "true"],
         check=False,

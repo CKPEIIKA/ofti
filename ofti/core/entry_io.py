@@ -12,7 +12,7 @@ def list_keywords(file_path: Path) -> list[str]:
         try:
             return foamlib_integration.list_keywords(file_path)
         except Exception:
-            pass
+            return openfoam.list_keywords(file_path)
     return openfoam.list_keywords(file_path)
 
 
@@ -21,7 +21,7 @@ def list_subkeys(file_path: Path, entry: str) -> list[str]:
         try:
             return foamlib_integration.list_subkeys(file_path, entry)
         except Exception:
-            pass
+            return openfoam.list_subkeys(file_path, entry)
     return openfoam.list_subkeys(file_path, entry)
 
 
@@ -30,7 +30,7 @@ def read_entry(file_path: Path, key: str) -> str:
         try:
             return foamlib_integration.read_entry(file_path, key)
         except Exception:
-            pass
+            return openfoam.read_entry(file_path, key)
     return openfoam.read_entry(file_path, key)
 
 
@@ -47,7 +47,7 @@ def read_field_entry(file_path: Path, key: str) -> str:
         try:
             return foamlib_integration.read_field_entry(file_path, key)
         except Exception:
-            pass
+            return openfoam.read_entry(file_path, key)
     return openfoam.read_entry(file_path, key)
 
 

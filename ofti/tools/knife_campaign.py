@@ -14,6 +14,8 @@ from typing import Any
 
 from ofti.tools import case_source_service, process_scan_service
 
+_MIN_COMPARISON_CASES = 2
+
 
 def _service() -> Any:
     from ofti.tools import knife_service
@@ -234,7 +236,7 @@ def campaign_compare_payload(
     comparisons: list[dict[str, Any]] = []
     for key in sorted(grouped):
         group_cases = sorted(grouped[key], key=str)
-        if len(group_cases) < 2:
+        if len(group_cases) < _MIN_COMPARISON_CASES:
             continue
         baseline = Path(str(group_cases[0]))
         for candidate in group_cases[1:]:

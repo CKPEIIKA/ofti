@@ -11,6 +11,8 @@ from ofti.ui_curses.help import menu_hint
 from ofti.ui_curses.menus import Menu
 from ofti.ui_curses.viewer import Viewer
 
+_TOGGLE_OPTION_COUNT = 3
+
 
 def snappy_staged_screen(stdscr: Any, case_path: Path) -> bool:
     dict_path = case_path / "system" / "snappyHexMeshDict"
@@ -36,22 +38,22 @@ def snappy_staged_screen(stdscr: Any, case_path: Path) -> bool:
             stdscr,
             "snappyHexMesh staged run",
             labels,
-            hint_provider=lambda idx: (
+            hint_provider=lambda idx, current_labels=labels: (
                 "Toggle option."
                 if idx in (0, 1, 2)
-                else menu_hint("menu:snappy_staged", labels[idx])
-                if 0 <= idx < len(labels)
+                else menu_hint("menu:snappy_staged", current_labels[idx])
+                if 0 <= idx < len(current_labels)
                 else ""
             ),
         )
         choice = menu.navigate()
         if choice in (-1, len(labels) - 1):
             return False
-        if choice in (0, 1, 2):
+        if 0 <= choice < _TOGGLE_OPTION_COUNT:
             key = list(toggles.keys())[choice]
             toggles[key] = not toggles[key]
             continue
-        if choice == 3:
+        if choice == _TOGGLE_OPTION_COUNT:
             _apply_toggles(dict_path, toggles)
             return True
 

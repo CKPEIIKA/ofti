@@ -2,6 +2,13 @@
 
 Completed work only. Record meaningful outcomes and validation evidence, newest first.
 
+## 2026-09-19
+
+- Cleared all active Ruff findings, including the project-wide `PLR2004` production/plugin debt, by replacing protocol and domain literals with named constants or structural checks; retained the root-test `PLR2004` exception for readable fixture assertions.
+- Removed global ignores for `S101`, `PLW1510`, `S110`, `S112`, `PLC0415`, `ARG001`, and `B023`; narrowed test/lazy-import exceptions and documented six controlled OpenFOAM subprocess `S603` suppressions.
+- Reduced the boolean lint suppression from all `FBT` rules to the deferred positional-boolean API rule `FBT001`; boolean positional call sites (`FBT003`) are now keyword-based.
+- Full quality gate passes: Ruff, Ruff format, Ty, and `1083 passed, 56 skipped` with 85.45% coverage.
+
 ## 2026-07-29
 
 - Removed superseded GUI, foamlib-adoption, plugin-extraction, and test-audit snapshots; current documentation now points directly to maintained contracts and the hy2Foam plugin.

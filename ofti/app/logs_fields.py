@@ -132,8 +132,8 @@ def _summarize_array_field(node: object | None) -> list[str] | None:
         size = int(getattr(node, "size", 0))
         if size > 0:
             return _summarize_array(node)
-    except Exception:
-        pass
+    except (TypeError, ValueError, OverflowError):
+        return [f"Internal field: array shape={getattr(node, 'shape', '')}"]
     return [f"Internal field: array shape={getattr(node, 'shape', '')}"]
 
 

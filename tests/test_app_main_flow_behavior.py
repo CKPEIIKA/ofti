@@ -53,7 +53,7 @@ def test_main_exits_when_case_not_selected(monkeypatch: pytest.MonkeyPatch, tmp_
     monkeypatch.setattr(app, "select_start_case", lambda *_a, **_k: None)
     monkeypatch.setattr(app, "_main_loop", lambda *_a, **_k: called.append("loop"))
 
-    app._main(_Screen(), tmp_path, False, state)
+    app._main(_Screen(), tmp_path, debug=False, state=state)
 
     assert called == []
 
@@ -67,7 +67,7 @@ def test_main_exits_when_start_chooser_quits(monkeypatch: pytest.MonkeyPatch, tm
     monkeypatch.setattr(app, "select_start_case", lambda *_a, **_k: (_ for _ in ()).throw(QuitAppError()))
     monkeypatch.setattr(app, "_main_loop", lambda *_a, **_k: called.append("loop"))
 
-    app._main(_Screen(), tmp_path, False, state)
+    app._main(_Screen(), tmp_path, debug=False, state=state)
 
     assert called == []
 
@@ -83,7 +83,7 @@ def test_main_sets_no_foam_mode_and_runs_loop(monkeypatch: pytest.MonkeyPatch, t
     monkeypatch.setattr(app, "ensure_environment", lambda: (_ for _ in ()).throw(OpenFOAMError("no env")))
     monkeypatch.setattr(app, "_main_loop", lambda *_a, **_k: called.append("loop"))
 
-    app._main(_Screen(), tmp_path, False, state)
+    app._main(_Screen(), tmp_path, debug=False, state=state)
 
     assert called == ["loop"]
     assert state.no_foam is True
@@ -101,14 +101,14 @@ def test_main_handles_errors_by_mode(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     monkeypatch.setattr(app, "show_message", lambda _s, text: messages.append(text))
 
     monkeypatch.setattr(app, "_main_loop", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("boom")))
-    app._main(_Screen(), tmp_path, False, state)
+    app._main(_Screen(), tmp_path, debug=False, state=state)
     assert "Unexpected error" in messages[-1]
 
     with pytest.raises(ValueError):
-        app._main(_Screen(), tmp_path, True, state)
+        app._main(_Screen(), tmp_path, debug=True, state=state)
 
     monkeypatch.setattr(app, "_main_loop", lambda *_a, **_k: (_ for _ in ()).throw(QuitAppError()))
-    app._main(_Screen(), tmp_path, False, state)
+    app._main(_Screen(), tmp_path, debug=False, state=state)
 
 
 def test_main_loop_handles_empty_and_dispatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

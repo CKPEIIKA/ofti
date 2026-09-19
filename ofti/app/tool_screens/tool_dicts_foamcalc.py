@@ -79,7 +79,7 @@ def foam_calc_prompt(stdscr: Any, case_path: Path) -> None:
                 status=f"Running foamCalc {op}...",
             )
             return
-        if choice == 2:
+        if choice == len(options) - 2:
             stdscr.clear()
             stdscr.addstr("foamCalc args (e.g. components U -latestTime):\n")
             stdscr.addstr(f"Tip: latest time detected = {latest}\n")

@@ -6,6 +6,10 @@ from typing import TypedDict
 
 from ofti.foamlib.logs import execution_time_deltas, parse_execution_times
 
+_RESIDUAL_FLATLINE_WINDOW = 4
+_MIN_RESIDUAL_IMPROVEMENT = 2.0
+_MIN_TREND_DELTAS = 3
+
 SHOCK_RE = re.compile(r"(?:shock|delta\s*/?\s*d)[^0-9+\-]*(?P<value>[0-9eE.+-]+)", re.IGNORECASE)
 DRAG_RE = re.compile(
     r"(?:\bcd\b|drag(?:\s+coefficient)?)\s*[:=]?\s*(?P<value>[0-9eE.+-]+)",
@@ -189,16 +193,16 @@ def thermo_out_of_range_count(lines: list[str]) -> int:
 def residual_flatline(residuals: dict[str, list[float]]) -> list[str]:
     flat: list[str] = []
     for field, values in residuals.items():
-        if len(values) < 4:
+        if len(values) < _RESIDUAL_FLATLINE_WINDOW:
             continue
-        head = max(values[:4])
-        tail_window = values[-4:]
+        head = max(values[:_RESIDUAL_FLATLINE_WINDOW])
+        tail_window = values[-_RESIDUAL_FLATLINE_WINDOW:]
         tail_max = max(tail_window)
         tail_min = min(tail_window)
         if head <= 0:
             continue
         improved = head / max(tail_max, 1e-30)
-        if improved < 2.0 or abs(tail_max - tail_min) <= max(1e-12, tail_max * 0.05):
+        if improved < _MIN_RESIDUAL_IMPROVEMENT or abs(tail_max - tail_min) <= max(1e-12, tail_max * 0.05):
             flat.append(field)
     return sorted(flat)
 
@@ -351,7 +355,7 @@ def _stability_eta(
     if sec_per_sample is None or sec_per_sample <= 0 or len(values) < window + 2:
         return None
     deltas = _window_deltas(values, window=window)
-    if len(deltas) < 3:
+    if len(deltas) < _MIN_TREND_DELTAS:
         return None
     trend_window = min(6, len(deltas) - 1)
     slope = (deltas[-1] - deltas[-(trend_window + 1)]) / trend_window

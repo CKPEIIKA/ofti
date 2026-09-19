@@ -162,7 +162,7 @@ def test_entry_browser_editor_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path:
     called: list[str] = []
     monkeypatch.setattr(eb, "apply_assignment_or_write", lambda *_a, **_k: called.append("save") or True)
     monkeypatch.setattr(eb, "refresh_entry_cache", lambda *_a, **_k: called.append("refresh"))
-    assert eb._entry_browser_external_edit(_Screen(), file_path, case, {}, "a", callbacks, True) is True
+    assert eb._entry_browser_external_edit(_Screen(), file_path, case, {}, "a", callbacks, use_cache=True) is True
     assert called == ["save", "refresh"]
 
     class FakeEditor:
@@ -184,7 +184,7 @@ def test_entry_browser_editor_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path:
         "type",
         [],
         callbacks,
-        True,
+        use_cache=True,
     )
     assert "edit" in called
 

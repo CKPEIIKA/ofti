@@ -18,6 +18,7 @@ _LOG_TAIL_POLL_MS = 500
 _LOG_TAIL_MAX_LINES = 400
 _LOG_TAIL_MAX_BYTES = 256 * 1024
 _LOG_VIEW_MAX_BYTES = 2 * 1024 * 1024
+_LOG_ANALYSIS_MENU_INDEX = 2
 
 
 def logs_screen(stdscr: Any, case_path: Path) -> None:
@@ -42,7 +43,7 @@ def logs_screen(stdscr: Any, case_path: Path) -> None:
         if choice == 1:
             log_tail_screen(stdscr, case_path)
             continue
-        if choice == 2:
+        if choice == _LOG_ANALYSIS_MENU_INDEX:
             log_analysis_screen(stdscr, case_path)
             continue
 

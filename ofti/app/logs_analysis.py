@@ -12,6 +12,8 @@ from ofti.foamlib.logs import (
 from ofti.ui_curses.prompts import _show_message
 from ofti.ui_curses.viewer import Viewer
 
+_LOG_RATIO_SCALE_THRESHOLD = 1e3
+
 
 def residual_timeline_screen(stdscr: Any, case_path: Path) -> None:
     path = _select_solver_log_file(
@@ -148,7 +150,7 @@ def _sparkline(values: list[float], width: int) -> str:
     if vmax <= 0:
         vmax = 1e-16
     ratio = vmax / vmin if vmin > 0 else vmax
-    if ratio > 1e3:
+    if ratio > _LOG_RATIO_SCALE_THRESHOLD:
         scaled = [log10(val) for val in safe]
         vmin = min(scaled)
         vmax = max(scaled)

@@ -77,7 +77,7 @@ def test_logs_screen_analysis_shortcut(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr("ofti.ui_curses.menus.Menu.navigate", lambda *_: next(choices))
     monkeypatch.setattr(
         "ofti.app.tool_screens.logs_view.log_analysis_screen",
-        lambda *_a, **_k: called.__setitem__("analysis", True),
+        lambda *_a, **_k: called.update(analysis=True),
     )
     logs_view.logs_screen(FakeScreen(), case_dir)
     assert called.get("analysis") is True

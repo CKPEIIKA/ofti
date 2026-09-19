@@ -10,6 +10,8 @@ from ofti.core.entry_io import list_subkeys, read_entry
 from ofti.foam.openfoam import OpenFOAMError
 from ofti.foamlib import adapter as foamlib_integration
 
+_KEY_VALUE_PARTS = 2
+
 
 @dataclass
 class BoundaryCell:
@@ -147,7 +149,7 @@ def _rename_field_boundary_entries(case_path: Path, old: str, new: str) -> None:
         file_path = zero_dir(case_path) / field
         try:
             foamlib_integration.rename_boundary_field_patch(file_path, old, new)
-        except Exception:
+        except (OSError, ValueError):
             continue
 
 
@@ -251,7 +253,7 @@ def update_patch_type(line: str, patch: str, patch_types: dict[str, str]) -> Non
     if "type" not in line or ";" not in line:
         return
     parts = line.replace(";", " ").split()
-    if len(parts) >= 2 and parts[0] == "type":
+    if len(parts) >= _KEY_VALUE_PARTS and parts[0] == "type":
         patch_types[patch] = parts[1]
 
 

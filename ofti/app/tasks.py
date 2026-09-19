@@ -4,6 +4,8 @@ import time
 
 from ofti.app.state import AppState
 
+_RECENT_TASK_WINDOW_SECONDS = 5.0
+
 
 def running_tasks_status(state: AppState) -> str | None:
     tasks = [task for task in state.tasks.list_tasks() if task.status in ("running", "cancelling")]
@@ -24,7 +26,9 @@ def recent_task_summary(state: AppState) -> str | None:
         (
             task
             for task in state.tasks.list_tasks()
-            if task.name != "case_meta" and task.finished_at is not None and now - task.finished_at <= 5.0
+            if task.name != "case_meta"
+            and task.finished_at is not None
+            and now - task.finished_at <= _RECENT_TASK_WINDOW_SECONDS
         ),
         key=lambda task: task.finished_at or 0.0,
         default=None,

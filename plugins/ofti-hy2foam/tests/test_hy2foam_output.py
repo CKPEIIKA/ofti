@@ -1,22 +1,18 @@
-# ruff: noqa: INP001
 from __future__ import annotations
 
 import argparse
 import io
-import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 
-PLUGIN_SRC = Path(__file__).resolve().parents[1] / "src"
-if str(PLUGIN_SRC) not in sys.path:
-    sys.path.insert(0, str(PLUGIN_SRC))
+from ofti_hy2foam.compare import _compare_check_table_lines
+from ofti_hy2foam.output import emit_payload
+from ofti_hy2foam.preflight import Hy2FoamPreflightCommand, _preflight_table_lines
 
-from ofti_hy2foam.compare import _compare_check_table_lines  # noqa: E402
-from ofti_hy2foam.output import emit_payload  # noqa: E402
-from ofti_hy2foam.preflight import Hy2FoamPreflightCommand, _preflight_table_lines  # noqa: E402
+from ofti.app.cli_adapters.command_builder import build_spec_parser
 
-from ofti.app.cli_adapters.command_builder import build_spec_parser  # noqa: E402
+_EXPECTED_USAGE_EXIT_CODE = 2
 
 
 def test_emit_payload_rejects_json_and_table(capsys) -> None:
@@ -25,7 +21,7 @@ def test_emit_payload_rejects_json_and_table(capsys) -> None:
         {"ok": True},
         text_lines=lambda _p: ["x"],
     )
-    assert code == 2
+    assert code == _EXPECTED_USAGE_EXIT_CODE
     assert "mutually exclusive" in capsys.readouterr().err
 
 

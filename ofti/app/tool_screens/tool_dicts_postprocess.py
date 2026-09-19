@@ -74,7 +74,7 @@ def post_process_prompt(stdscr: Any, case_path: Path) -> None:
                 status="Running postProcess...",
             )
             return
-        if choice == 2:
+        if choice == len(options) - 2:
             stdscr.clear()
             stdscr.addstr("postProcess args (e.g. -latestTime -funcs '(mag(U))'):\n")
             stdscr.addstr(f"Tip: latest time detected = {latest}\n")

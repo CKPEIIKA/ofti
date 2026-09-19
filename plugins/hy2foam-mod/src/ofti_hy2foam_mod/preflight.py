@@ -25,6 +25,8 @@ _AIR_SPECIES = (
     "O+",
     "e-",
 )
+_MIN_SPECIES_ORDER_SOURCES = 2
+_MIN_RECOGNIZED_SPECIES = 2
 
 
 class Hy2FoamModPreflightCommand:
@@ -62,7 +64,7 @@ def nn_preflight_payload(case_dir: Path) -> dict[str, Any]:
 
 def nn_species_order_consistency_check(case_dir: Path) -> dict[str, str]:
     orders = nn_species_order_sources(case_dir)
-    if len(orders) < 2:
+    if len(orders) < _MIN_SPECIES_ORDER_SOURCES:
         return _check("nn_species_order_consistency", "WARN", "fewer than two NN-order sources")
     reference = orders[0][2]
     mismatches = [f"{path}:{key}" for path, key, values in orders[1:] if values != reference]
@@ -88,7 +90,7 @@ def nn_species_order_sources(case_dir: Path) -> list[tuple[str, str, tuple[str, 
             text = path.read_text(encoding="utf-8", errors="ignore")
             for match in entry_re.finditer(text):
                 species = _recognized_species(match.group("body"))
-                if len(species) >= 2:
+                if len(species) >= _MIN_RECOGNIZED_SPECIES:
                     orders.append((str(path.relative_to(case_dir)), match.group("key"), species))
     return orders
 

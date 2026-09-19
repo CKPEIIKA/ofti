@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+_INLINE_PATCH_TYPE_MIN_TOKENS = 4
+_PATCH_TYPE_MIN_TOKENS = 2
+
 
 class ListNode(list[object]):
     def tolist(self) -> list[object]:
@@ -207,7 +210,7 @@ def _open_boundary_patch(
 
 def _store_inline_patch_type(name: str, line: str, patch_types: dict[str, str]) -> None:
     tokens = line.replace(";", " ").split()
-    if "type" in line and ";" in line and len(tokens) >= 4:
+    if "type" in line and ";" in line and len(tokens) >= _INLINE_PATCH_TYPE_MIN_TOKENS:
         patch_types[name] = tokens[3]
 
 
@@ -224,7 +227,7 @@ def _consume_boundary_patch_body(
 
 def _store_patch_type_from_body(patch: str, line: str, patch_types: dict[str, str]) -> None:
     tokens = line.replace(";", " ").split()
-    if "type" in line and ";" in line and len(tokens) >= 2 and tokens[0] == "type":
+    if "type" in line and ";" in line and len(tokens) >= _PATCH_TYPE_MIN_TOKENS and tokens[0] == "type":
         patch_types[patch] = tokens[1]
 
 

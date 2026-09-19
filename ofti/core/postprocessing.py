@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+_SUMMARY_HEADER_LINES = 4
+_PRESET_FIELD_COUNT = 4
+_MIN_PRESET_TOKENS = 2
+
 
 def collect_postprocessing_files(root: Path) -> list[Path]:
     return sorted(p for p in root.rglob("*") if p.is_file())
@@ -14,7 +18,7 @@ def postprocessing_summary(root: Path) -> list[str]:
         time_dirs = [d for d in subdir.iterdir() if d.is_dir() and _looks_like_time(d.name)]
         files = [p for p in subdir.rglob("*") if p.is_file()]
         lines.append(f"{subdir.name}: times={len(time_dirs)} files={len(files)}")
-    if len(lines) == 4:
+    if len(lines) == _SUMMARY_HEADER_LINES:
         lines.append("(no postProcessing subdirectories)")
     return lines
 
@@ -74,16 +78,16 @@ def _parametric_preset_fields(
 ) -> tuple[tuple[str, str, str, str], str | None]:
     if "|" in line:
         parts = [part.strip() for part in line.split("|")]
-        if len(parts) != 4:
+        if len(parts) != _PRESET_FIELD_COUNT:
             return ("", "", "", ""), f"Line {line_no}: expected 4 fields separated by |"
         return (parts[0], parts[1], parts[2], parts[3]), None
     if ":" not in line:
         return ("", "", "", ""), f"Line {line_no}: expected 'name | dict | entry | values'"
     name_part, rest = line.split(":", 1)
     tokens = rest.strip().split()
-    if len(tokens) < 2:
+    if len(tokens) < _MIN_PRESET_TOKENS:
         return ("", "", "", ""), f"Line {line_no}: expected '<dict> <entry> <values>'"
-    values_raw = " ".join(tokens[2:]) if len(tokens) > 2 else ""
+    values_raw = " ".join(tokens[_MIN_PRESET_TOKENS:]) if len(tokens) > _MIN_PRESET_TOKENS else ""
     return (name_part.strip(), tokens[0], tokens[1], values_raw), None
 
 

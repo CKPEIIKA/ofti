@@ -24,16 +24,16 @@ def ensure_dict(
     generate: bool,
 ) -> DictCreationResult:
     if path.is_file():
-        return DictCreationResult(True, None)
+        return DictCreationResult(created=True, source=None)
     if not generate:
-        return DictCreationResult(False, None)
+        return DictCreationResult(created=False, source=None)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     generated = _generate_with_helper(case_path, helper_cmd, path)
     if not generated:
         _write_stub_dict(path, name)
-        return DictCreationResult(True, "stub")
-    return DictCreationResult(True, "example")
+        return DictCreationResult(created=True, source="stub")
+    return DictCreationResult(created=True, source="example")
 
 
 def apply_assignment(

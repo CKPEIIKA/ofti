@@ -79,6 +79,22 @@ def mesh_menu(
         disabled_reasons[5] = "Reconstructions need processorN directories."
         disabled_helpers[5] = "diagnostics"
 
+    def run_snappy() -> None:
+        if snappy_staged_screen(stdscr, case_path):
+            run_tool_by_name(stdscr, case_path, "snappyHexMesh")
+
+    actions = [
+        lambda: run_tool_by_name(stdscr, case_path, "blockMesh"),
+        lambda: blockmesh_helper_screen(stdscr, case_path),
+        lambda: run_checkmesh(stdscr, case_path),
+        run_snappy,
+        lambda: run_tool_by_name(stdscr, case_path, "decomposePar"),
+        lambda: reconstruct_manager_screen(stdscr, case_path),
+        lambda: renumber_mesh_screen(stdscr, case_path),
+        lambda: transform_points_screen(stdscr, case_path),
+        lambda: cfmesh_screen(stdscr, case_path),
+    ]
+
     while True:
         choice = menu_choice(
             stdscr,
@@ -95,23 +111,5 @@ def mesh_menu(
         )
         if choice in (-1, len(options) - 1):
             return Screen.MAIN_MENU
-        if choice == 0:
-            run_tool_by_name(stdscr, case_path, "blockMesh")
-        elif choice == 1:
-            blockmesh_helper_screen(stdscr, case_path)
-        elif choice == 2:
-            run_checkmesh(stdscr, case_path)
-        elif choice == 3:
-            run_snappy = snappy_staged_screen(stdscr, case_path)
-            if run_snappy:
-                run_tool_by_name(stdscr, case_path, "snappyHexMesh")
-        elif choice == 4:
-            run_tool_by_name(stdscr, case_path, "decomposePar")
-        elif choice == 5:
-            reconstruct_manager_screen(stdscr, case_path)
-        elif choice == 6:
-            renumber_mesh_screen(stdscr, case_path)
-        elif choice == 7:
-            transform_points_screen(stdscr, case_path)
-        elif choice == 8:
-            cfmesh_screen(stdscr, case_path)
+        if 0 <= choice < len(actions):
+            actions[choice]()

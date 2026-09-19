@@ -4,6 +4,7 @@ import curses
 import os
 import shutil
 from collections.abc import Mapping
+from curses import ascii as curses_ascii
 from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
@@ -14,6 +15,8 @@ from ofti.foam.exceptions import QuitAppError
 from ofti.ui.help import menu_hint
 from ofti.ui.menu import Menu
 from ofti.ui_curses.inputs import prompt_input
+
+_CASE_CHOOSER_STATIC_ENTRY_COUNT = 3
 
 
 def option_index(options: list[str], selection: str | None) -> int:
@@ -379,7 +382,7 @@ def _case_chooser_entries(
         if query_text and query_text not in path.name.lower():
             continue
         entries.append((path.name, path))
-    if len(entries) == 3 and query_text:
+    if len(entries) == _CASE_CHOOSER_STATIC_ENTRY_COUNT and query_text:
         entries.append(("[No matches]", None))
     return entries
 
@@ -536,7 +539,7 @@ def prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:
                 cursor += 1
             render()
             continue
-        if key == 9:  # TAB
+        if key == curses_ascii.TAB:
             pool = suggestions or []
             current = "".join(buffer)
             if current != last_buffer:
@@ -550,7 +553,7 @@ def prompt_command(stdscr: Any, suggestions: list[str] | None) -> str:
                 match_index += 1
                 render()
             continue
-        if 32 <= key <= 126:
+        if curses_ascii.isprint(key):
             buffer.insert(cursor, chr(key))
             cursor += 1
             render()

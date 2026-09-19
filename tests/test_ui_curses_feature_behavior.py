@@ -91,7 +91,7 @@ def test_boundary_matrix_helpers_core(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert bm._format_cell_label(BoundaryCell("OK", "fixedValue", ""), 8).strip() == "fixedVa"
     assert bm._cell_attr(BoundaryCell("MISSING", "missing", "")) > 0
     assert bm._missing_boundary_fields(matrix) == ["p"]
-    assert "processor0" not in bm._visible_patches(matrix, True)
+    assert "processor0" not in bm._visible_patches(matrix, hide_special=True)
 
     state = bm._MatrixState(row=99, col=0, row_scroll=0, col_scroll=0, hide_special=False)
     normalized = bm._normalize_state(state, ["inlet", "wall"])
@@ -163,7 +163,16 @@ def test_boundary_matrix_draw_and_key_paths(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setattr(bm.curses, "A_REVERSE", 0x10000)
     monkeypatch.setattr(bm.curses, "A_BOLD", 0x20000)
     monkeypatch.setattr(bm.curses, "A_DIM", 0x40000)
-    bm._draw_boundary_matrix(screen, matrix, matrix.patches, 0, 0, 0, 0, False)
+    bm._draw_boundary_matrix(
+        screen,
+        matrix,
+        matrix.patches,
+        0,
+        0,
+        0,
+        0,
+        hide_special=False,
+    )
     bm._show_loading_status(screen, "loading")
     monkeypatch.setattr(bm, "build_boundary_matrix", lambda _case: matrix)
     assert bm._load_boundary_matrix(screen, tmp_path, "msg") is matrix

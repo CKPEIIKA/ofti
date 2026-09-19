@@ -145,7 +145,7 @@ def _run_csv_parametric_flow(
     stdscr: Any,
     case_path: Path,
 ) -> tuple[list[Path], bool] | None:
-    form = _parametric_csv_form(stdscr, "parametric.csv", False)
+    form = _parametric_csv_form(stdscr, "parametric.csv", run_solver=False)
     if form is None:
         return None
     csv_path, run_solver = form
@@ -157,7 +157,7 @@ def _run_grid_parametric_flow(
     stdscr: Any,
     case_path: Path,
 ) -> tuple[list[Path], bool] | None:
-    form = _parametric_grid_form(stdscr, [], False)
+    form = _parametric_grid_form(stdscr, [], run_solver=False)
     if form is None:
         return None
     axes, run_solver = form
@@ -248,7 +248,7 @@ def _parametric_form(
                 run_solver,
             )
             continue
-        if choice == 4:
+        if choice == len(handlers):
             result = _finalize_parametric(
                 stdscr,
                 dict_path,
@@ -306,7 +306,7 @@ def _parametric_csv_form(
         if choice == 1:
             run_solver = not run_solver
             continue
-        if choice == 2:
+        if choice == len(options) - 2:
             return csv_path, run_solver
 
 
@@ -323,7 +323,7 @@ def _parametric_grid_form(
             "Parametric grid study",
             state["options"],
             menu_key="menu:parametric_grid_form",
-            hint_provider=lambda idx: _grid_hint_for(state, idx),
+            hint_provider=lambda idx, current_state=state: _grid_hint_for(current_state, idx),
             disabled_indices={state["clear_idx"]} if not axes else set(),
             help_lines=_parametric_grid_help_lines(),
         )
@@ -467,7 +467,7 @@ def _split_values(raw: str) -> list[str]:
 
 def _update_parametric_dict(
     stdscr: Any,
-    dict_path: str,
+    _dict_path: str,
     entry: str,
     values: list[str],
     run_solver: bool,

@@ -173,7 +173,8 @@ def build_parametric_cases_from_csv(
     _require_preprocessing(
         "CSV studies require foamlib preprocessing extras. Install 'foamlib[preprocessing]'.",
     )
-    assert csv_generator is not None
+    if csv_generator is None:
+        raise RuntimeError("foamlib CSV generator is unavailable")
     output_root = output_root or case_path.parent
     csv_file = csv_path if csv_path.is_absolute() else case_path / csv_path
     if not csv_file.is_file():
@@ -198,12 +199,8 @@ def build_parametric_cases_from_grid(
     )
     if not axes:
         raise ValueError("Grid study requires at least one axis.")
-    assert (
-        GridParameter is not None
-        and GridCaseParameter is not None
-        and FoamDictInstruction is not None
-        and grid_generator is not None
-    )
+    if GridParameter is None or GridCaseParameter is None or FoamDictInstruction is None or grid_generator is None:
+        raise RuntimeError("foamlib grid generator is unavailable")
     output_root = output_root or case_path.parent
     parameters: list[GridParameter] = []
     for axis in axes:

@@ -70,6 +70,20 @@ def postprocessing_menu(
             5,
             "PostProcessing tables requires foamlib postprocessing extras.",
         )
+    actions = [
+        lambda: reconstruct_manager_screen(stdscr, case_path),
+        lambda: logs_screen(stdscr, case_path),
+        lambda: open_paraview_screen(stdscr, case_path),
+        lambda: residual_timeline_screen(stdscr, case_path),
+        lambda: postprocessing_browser_screen(stdscr, case_path),
+        lambda: postprocessing_tables_screen(stdscr, case_path),
+        lambda: field_summary_screen(stdscr, case_path),
+        lambda: sampling_sets_screen(stdscr, case_path),
+        lambda: probes_viewer_screen(stdscr, case_path),
+        lambda: yplus_screen(stdscr, case_path),
+        lambda: foam_calc_prompt(stdscr, case_path),
+        lambda: run_shell_script_screen(stdscr, case_path),
+    ]
     while True:
         choice = menu_choice(
             stdscr,
@@ -86,27 +100,5 @@ def postprocessing_menu(
         )
         if choice in (-1, len(options) - 1):
             return Screen.MAIN_MENU
-        if choice == 0:
-            reconstruct_manager_screen(stdscr, case_path)
-        elif choice == 1:
-            logs_screen(stdscr, case_path)
-        elif choice == 2:
-            open_paraview_screen(stdscr, case_path)
-        elif choice == 3:
-            residual_timeline_screen(stdscr, case_path)
-        elif choice == 4:
-            postprocessing_browser_screen(stdscr, case_path)
-        elif choice == 5:
-            postprocessing_tables_screen(stdscr, case_path)
-        elif choice == 6:
-            field_summary_screen(stdscr, case_path)
-        elif choice == 7:
-            sampling_sets_screen(stdscr, case_path)
-        elif choice == 8:
-            probes_viewer_screen(stdscr, case_path)
-        elif choice == 9:
-            yplus_screen(stdscr, case_path)
-        elif choice == 10:
-            foam_calc_prompt(stdscr, case_path)
-        elif choice == 11:
-            run_shell_script_screen(stdscr, case_path)
+        if 0 <= choice < len(actions):
+            actions[choice]()

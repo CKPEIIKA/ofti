@@ -448,14 +448,14 @@ def test_parametric_helpers_and_screen_error_paths(
     parametric_tools.foamlib_parametric_study_screen(_Screen(), case)
     assert "Failures:" in shown[-1]
 
-    assert parametric_tools._finalize_parametric(_Screen(), "system/controlDict", "", ["a"], False) is None
-    assert parametric_tools._finalize_parametric(_Screen(), "system/controlDict", "entry", [], False) is None
+    assert parametric_tools._finalize_parametric(_Screen(), "system/controlDict", "", ["a"], run_solver=False) is None
+    assert parametric_tools._finalize_parametric(_Screen(), "system/controlDict", "entry", [], run_solver=False) is None
     ok = parametric_tools._finalize_parametric(
         _Screen(),
         "system/controlDict",
         "entry",
         ["a"],
-        False,
+        run_solver=False,
     )
     assert ok == ("system/controlDict", "entry", ["a"], False)
 

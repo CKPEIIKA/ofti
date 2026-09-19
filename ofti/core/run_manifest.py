@@ -23,6 +23,7 @@ MANIFEST_KIND = "ofti_run_manifest"
 LEGACY_RECEIPT_KIND = "ofti_run_receipt"
 SUPPORTED_MANIFEST_KINDS = {MANIFEST_KIND, LEGACY_RECEIPT_KIND}
 DEFAULT_INPUT_ROOTS = ("system", "constant", "0")
+_GIT_STATUS_PREFIX_LENGTH = 3
 _OF_ENV_KEYS = (
     "WM_PROJECT",
     "WM_PROJECT_DIR",
@@ -705,7 +706,7 @@ def _git_info(case_path: Path) -> dict[str, Any]:
     if status["ok"] and status["stdout"]:
         dirty = True
         for line in str(status["stdout"]).splitlines():
-            token = line[3:].strip() if len(line) > 3 else line.strip()
+            token = line[_GIT_STATUS_PREFIX_LENGTH:].strip() if len(line) > _GIT_STATUS_PREFIX_LENGTH else line.strip()
             if token:
                 dirty_files.append(token)
     return {

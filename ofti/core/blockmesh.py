@@ -3,12 +3,16 @@ from __future__ import annotations
 import re
 from typing import Any
 
+_VECTOR_COMPONENT_COUNT = 3
+_BLOCK_VERTEX_COUNT = 8
+_MIN_BLOCK_PARTS = 2
+
 
 def parse_vertices_text(text: str) -> list[tuple[float, float, float]]:
     vectors: list[tuple[float, float, float]] = []
     for match in re.finditer(r"\(([^()]+)\)", text):
         parts = match.group(1).split()
-        if len(parts) != 3:
+        if len(parts) != _VECTOR_COMPONENT_COUNT:
             continue
         try:
             x, y, z = (float(part) for part in parts)
@@ -23,7 +27,7 @@ def parse_vertices_node(node: Any) -> list[tuple[float, float, float]]:
     if not isinstance(node, (list, tuple)):
         return vectors
     for item in node:
-        if isinstance(item, (list, tuple)) and len(item) == 3:
+        if isinstance(item, (list, tuple)) and len(item) == _VECTOR_COMPONENT_COUNT:
             try:
                 x, y, z = (float(val) for val in item)
             except (TypeError, ValueError):
@@ -37,7 +41,7 @@ def parse_blocks_text(text: str) -> list[tuple[str, list[int]]]:
     for match in re.finditer(r"(\w+)\s*\(\s*([0-9\s]+)\s*\)", text):
         block_type = match.group(1)
         indices = _parse_int_list(match.group(2))
-        if len(indices) == 8:
+        if len(indices) == _BLOCK_VERTEX_COUNT:
             blocks.append((block_type, indices))
     return blocks
 
@@ -47,7 +51,7 @@ def parse_blocks_node(node: Any) -> list[tuple[str, list[int]]]:
     if not isinstance(node, (list, tuple)):
         return blocks
     for item in node:
-        if not isinstance(item, (list, tuple)) or len(item) < 2:
+        if not isinstance(item, (list, tuple)) or len(item) < _MIN_BLOCK_PARTS:
             continue
         block_type = item[0]
         verts = item[1]
@@ -57,7 +61,7 @@ def parse_blocks_node(node: Any) -> list[tuple[str, list[int]]]:
             indices = [int(v) for v in verts]
         except (TypeError, ValueError):
             continue
-        if len(indices) == 8:
+        if len(indices) == _BLOCK_VERTEX_COUNT:
             blocks.append((block_type, indices))
     return blocks
 

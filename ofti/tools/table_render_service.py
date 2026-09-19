@@ -5,6 +5,8 @@ from typing import Any
 
 from ofti.core.table import render_kv, render_table
 
+_MAX_ISSUE_ROWS = 20
+
 
 def preflight_table_lines(payload: Mapping[str, Any]) -> list[str]:
     lines = render_kv(
@@ -39,8 +41,8 @@ def doctor_table_lines(payload: Mapping[str, Any]) -> list[str]:
             ("warnings", len(warnings)),
         ],
     )
-    issue_rows = [{"level": "error", "message": item} for item in errors[:20]] + [
-        {"level": "warning", "message": item} for item in warnings[:20]
+    issue_rows = [{"level": "error", "message": item} for item in errors[:_MAX_ISSUE_ROWS]] + [
+        {"level": "warning", "message": item} for item in warnings[:_MAX_ISSUE_ROWS]
     ]
     if issue_rows:
         lines.extend(
@@ -50,10 +52,10 @@ def doctor_table_lines(payload: Mapping[str, Any]) -> list[str]:
                 *render_table(issue_rows, [("level", "Level"), ("message", "Message")]),
             ],
         )
-    if len(errors) > 20:
-        lines.append(f"errors_more={len(errors) - 20}")
-    if len(warnings) > 20:
-        lines.append(f"warnings_more={len(warnings) - 20}")
+    if len(errors) > _MAX_ISSUE_ROWS:
+        lines.append(f"errors_more={len(errors) - _MAX_ISSUE_ROWS}")
+    if len(warnings) > _MAX_ISSUE_ROWS:
+        lines.append(f"warnings_more={len(warnings) - _MAX_ISSUE_ROWS}")
     if not errors and not warnings:
         lines.append("OK: no issues found.")
     return lines

@@ -183,7 +183,7 @@ def _read_binary_field(path: Path, payload: bytes, *, patch: str | None) -> Fiel
     if end > len(payload) or not payload[end:].lstrip().startswith(b");"):
         raise ValueError(f"invalid_binary_field_payload: truncated internalField for {path.name}")
     values = _unpack_binary_rows(payload[start:end], endian, scalar_code, components)
-    return FieldData(path.name, path, _field_kind_from_list(values), values, count, False)
+    return FieldData(path.name, path, _field_kind_from_list(values), values, count, uniform=False)
 
 
 def _read_binary_uniform_field(path: Path, payload: bytes) -> FieldData:

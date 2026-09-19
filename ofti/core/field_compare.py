@@ -15,6 +15,8 @@ from ofti.core.field_io import (
 )
 from ofti.core.times import processor_dirs, time_directories
 
+_MIN_POSITIVE_MAGNITUDE = 1e-300
+
 
 def compare_fields_payload(
     left_case: Path,
@@ -26,7 +28,7 @@ def compare_fields_payload(
     fields: list[str] | None = None,
     preset: str | None = None,
     patch: str | None = None,
-    abs_tol: float = 1e-300,
+    abs_tol: float = _MIN_POSITIVE_MAGNITUDE,
     rel_tol: float = 1e-12,
 ) -> dict[str, Any]:
     selected_left, selected_right, time_policy = _comparison_times(
@@ -156,7 +158,7 @@ def compare_field_data(
                 nonfinite += 1
                 continue
             diff = abs(left_value - right_value)
-            denom = max(abs(left_value), abs(right_value), 1e-300)
+            denom = max(abs(left_value), abs(right_value), _MIN_POSITIVE_MAGNITUDE)
             max_abs = max(max_abs, diff)
             rel = diff / denom
             rel_linf = max(rel_linf, rel)
@@ -164,7 +166,7 @@ def compare_field_data(
             rel_l2_den += left_value * left_value
             if abs(left_value) > significant_floor:
                 rel_linf_significant = max(rel_linf_significant, rel)
-            if abs(left_value) > 1e-300:
+            if abs(left_value) > _MIN_POSITIVE_MAGNITUDE:
                 ratios.append(right_value / left_value)
     return {
         "field": left.name,

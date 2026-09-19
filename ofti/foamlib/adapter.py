@@ -6,6 +6,9 @@ from typing import Any, cast
 
 from ofti.foamlib import fallback
 
+_DIMENSION_COMPONENT_COUNT = 7
+_KEY_VALUE_PARTS = 2
+
 
 class FoamlibUnavailableError(RuntimeError):
     def __init__(self) -> None:
@@ -45,8 +48,10 @@ try:  # pragma: no cover - optional richer type helpers
     from foamlib.typing import Dimensioned as FoamlibDimensioned
     from foamlib.typing import DimensionSet as FoamlibDimensionSet
     from foamlib.typing import Field as FoamlibField
+
+    FOAMLIB_TYPING_AVAILABLE = True
 except Exception:  # pragma: no cover - foamlib missing or changed
-    pass
+    FOAMLIB_TYPING_AVAILABLE = False
 
 
 def available() -> bool:
@@ -198,7 +203,7 @@ def _numeric_sequence_label(raw_values: list[object] | tuple[object, ...]) -> st
         floats.append(float(item))
     if len(raw_values) in (2, 3):
         return "vector"
-    if len(raw_values) == 7 and all(float(value).is_integer() for value in floats):
+    if len(raw_values) == _DIMENSION_COMPONENT_COUNT and all(float(value).is_integer() for value in floats):
         return "dimensions"
     return None
 
@@ -597,7 +602,7 @@ def _dump_entry_value(key_name: str, node: object) -> str:
     if len(lines) == 1 and key_name:
         line = lines[0].strip()
         parts = line.split(None, 1)
-        if parts and parts[0] == key_name and len(parts) == 2:
+        if parts and parts[0] == key_name and len(parts) == _KEY_VALUE_PARTS:
             return parts[1].strip()
     return text
 
@@ -623,7 +628,7 @@ def parse_boundary_file(path: Path) -> tuple[list[str], dict[str, str]]:
 
 
 def _boundary_entry_row(item: object) -> tuple[str, str | None] | None:
-    if not isinstance(item, tuple) or len(item) != 2:
+    if not isinstance(item, tuple) or len(item) != _KEY_VALUE_PARTS:
         return None
     name, data = item
     if not isinstance(name, str):
@@ -644,7 +649,7 @@ def rename_boundary_patch(path: Path, old: str, new: str) -> bool:
     updated: list[tuple[object, object]] = []
     found = False
     for item in entries:
-        if not isinstance(item, tuple) or len(item) != 2:
+        if not isinstance(item, tuple) or len(item) != _KEY_VALUE_PARTS:
             updated.append(item)
             continue
         name, data = item
@@ -670,7 +675,7 @@ def change_boundary_patch_type(path: Path, patch: str, new_type: str) -> bool:
     updated: list[tuple[object, object]] = []
     found = False
     for item in entries:
-        if not isinstance(item, tuple) or len(item) != 2:
+        if not isinstance(item, tuple) or len(item) != _KEY_VALUE_PARTS:
             updated.append(item)
             continue
         name, data = item

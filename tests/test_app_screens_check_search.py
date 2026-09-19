@@ -216,7 +216,7 @@ def test_check_syntax_screen_foreground_path(monkeypatch, tmp_path: Path) -> Non
     monkeypatch.setattr(
         check,
         "check_syntax_menu",
-        lambda *_args, **_kwargs: called.__setitem__("menu", True),
+        lambda *_args, **_kwargs: called.update(menu=True),
     )
 
     check.check_syntax_screen(

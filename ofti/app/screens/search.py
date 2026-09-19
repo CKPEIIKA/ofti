@@ -19,6 +19,8 @@ from ofti.foam.subprocess_utils import resolve_executable
 from ofti.ui.status import status_message
 from ofti.ui_curses.entry_browser import BrowserCallbacks, entry_browser_screen
 
+_SEARCH_RESULT_PART_COUNT = 2
+
 
 def global_search_screen(
     stdscr: Any,
@@ -83,7 +85,7 @@ def _run_global_search(
         return
 
     parts = selected.split("\t", 1)
-    if len(parts) != 2:
+    if len(parts) != _SEARCH_RESULT_PART_COUNT:
         return
     rel_str, full_key = parts
     file_path = case_path / rel_str
@@ -356,7 +358,7 @@ def _start_full_index_build(case_path: Path, state: AppState) -> None:
                 file_path = case_path / rel
                 try:
                     keys = _collect_search_keys(file_path)
-                except Exception:
+                except (OSError, ValueError):
                     continue
                 entries.extend((rel, key) for key in keys)
             entries = _dedupe_entries(entries)

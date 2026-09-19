@@ -20,6 +20,7 @@ TRANSPORT_FIELDS = ("qDiff", "wallHeatFlux")
 # and only checked for finiteness. Species mass fractions are bounded to [0, 1].
 NONNEGATIVE_PREFIXES = ("Dmix", "rhoD")
 _FRACTION_TOL = 1e-8
+_MIN_SPECIES_FIELDS = 2
 
 
 class Hy2FoamPhysicalProfile:
@@ -47,7 +48,7 @@ class Hy2FoamPhysicalProfile:
         species = tuple(name for name in AIR11_SPECIES if (time_dir / name).is_file())
         species_sum: dict[str, Any] = (
             species_sum_diagnostic(time_dir, species)
-            if len(species) >= 2
+            if len(species) >= _MIN_SPECIES_FIELDS
             else {"checked": False, "reason": "fewer than two species fields"}
         )
         two_temperature = two_temperature_diagnostic(time_dir, tv_tt_min=0.02, tv_tt_max=50.0)
@@ -142,7 +143,7 @@ def _field_summary_violations(name: str, summary: dict[str, Any]) -> list[dict[s
 
 
 def _species_sum_violations(species_sum: dict[str, Any]) -> list[dict[str, Any]]:
-    if species_sum["checked"] and species_sum.get("max_abs_deviation", 0.0) > 1e-8:
+    if species_sum["checked"] and species_sum.get("max_abs_deviation", 0.0) > _FRACTION_TOL:
         return [{"field": "sum(Y)", "kind": "species_sum", **species_sum}]
     return []
 

@@ -14,6 +14,8 @@ from ofti.core.mesh_info import mesh_counts
 from ofti.core.times import latest_time
 from ofti.foam.openfoam_env import detect_openfoam_version
 
+_BYTES_PER_BINARY_UNIT = 1024.0
+
 
 def case_metadata(case_path: Path) -> dict[str, str]:
     latest = latest_time(case_path)
@@ -84,7 +86,7 @@ def _format_bytes(size: int) -> str:
     units = ["B", "KB", "MB", "GB", "TB"]
     value = float(size)
     for unit in units:
-        if value < 1024.0 or unit == units[-1]:
+        if value < _BYTES_PER_BINARY_UNIT or unit == units[-1]:
             return f"{value:.1f}{unit}" if unit != "B" else f"{int(value)}B"
-        value /= 1024.0
+        value /= _BYTES_PER_BINARY_UNIT
     return f"{value:.1f}{units[-1]}"

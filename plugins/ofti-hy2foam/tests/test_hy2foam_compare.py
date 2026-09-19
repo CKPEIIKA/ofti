@@ -1,18 +1,14 @@
-# ruff: noqa: INP001
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
-PLUGIN_SRC = Path(__file__).resolve().parents[1] / "src"
-if str(PLUGIN_SRC) not in sys.path:
-    sys.path.insert(0, str(PLUGIN_SRC))
-
-from ofti_hy2foam.compare import (  # noqa: E402
+from ofti_hy2foam.compare import (
     compare_preflight_payload,
     latest_common_time,
     patch_compare_payload,
 )
+
+_EXPECTED_MAX_ABS = 2.0
 
 
 def _case(path: Path, *, mesh_marker: str) -> Path:
@@ -75,4 +71,4 @@ def test_patch_compare_uses_latest_common_time_and_patch_values(tmp_path: Path) 
     assert payload["time"] == "0.5"
     assert payload["patch"] == "wall"
     assert payload["same"] is False
-    assert payload["fields"][0]["max_abs"] == 2.0
+    assert payload["fields"][0]["max_abs"] == _EXPECTED_MAX_ABS

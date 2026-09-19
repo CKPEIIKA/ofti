@@ -10,6 +10,7 @@ from ofti.foam.subprocess_utils import run_trusted
 PIPELINE_FILENAME = "Allrun"
 PIPELINE_HEADER = "# OFTI-PIPELINE"
 PIPELINE_SET_COMMAND = "ofti:set"
+_MIN_PIPELINE_SET_PARTS = 4
 
 
 def read_pipeline_commands(path: Path) -> tuple[list[list[str]], list[str]]:
@@ -129,7 +130,7 @@ def _pipeline_stream_lines(label: str, text: str) -> list[str]:
 
 
 def _run_pipeline_set(case_path: Path, cmd: list[str]) -> list[str]:
-    if len(cmd) < 4:
+    if len(cmd) < _MIN_PIPELINE_SET_PARTS:
         return [
             f"$ {' '.join(cmd)}",
             "status: ERROR (missing file/key/value)",

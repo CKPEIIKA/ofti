@@ -14,6 +14,8 @@ from ofti.foam.openfoam import OpenFOAMError
 from ofti.ui_curses.entry_editor import EntryEditor
 from ofti.ui_curses.menus import Menu
 
+_MIN_JANAF_COEFFICIENTS = 7
+
 THERMO_SLOT_TEMPLATES: dict[str, list[tuple[str, str]]] = {
     "type": [
         ("hePsiThermo", "hePsiThermo"),
@@ -96,7 +98,11 @@ def thermophysical_wizard_screen(stdscr: Any, case_path: Path) -> None:
             editor = EntryEditor(
                 stdscr,
                 entry,
-                on_save=lambda value, k=key: _write_value(dict_path, _entry_path_for(k), value),
+                on_save=lambda value, k=key, current_path=dict_path: _write_value(
+                    current_path,
+                    _entry_path_for(k),
+                    value,
+                ),
                 validator=_slot_validator,
                 type_label="scalar",
                 case_label=case_path.name,
@@ -148,7 +154,7 @@ def _slot_validator(value: str) -> str | None:
     lowered = value.lower()
     if "janaf" in lowered or "coeffs" in lowered:
         numbers = re.findall(r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?", value)
-        if len(numbers) < 7:
+        if len(numbers) < _MIN_JANAF_COEFFICIENTS:
             return "Janaf/coeffs section looks too short (expected >= 7 numbers)."
     return None
 

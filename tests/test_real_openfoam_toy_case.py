@@ -671,6 +671,7 @@ def test_real_toy_case_adopts_untracked_solver_and_stops_it(real_case: RealTutor
     display, command = run_ops.solver_command(case)
     log_path = case / f"log.raw-{display}"
     with log_path.open("a", encoding="utf-8", errors="ignore") as log:
+        # The test command is assembled from the controlled toy-case fixture.
         process = subprocess.Popen(  # noqa: S603
             command,
             cwd=case,
@@ -713,6 +714,7 @@ def test_real_toy_case_adopts_raw_parallel_mpirun_as_one_tracked_run(
     _require_working_parallel_launcher(command)
     log_path = case / f"log.raw-{display}"
     with log_path.open("a", encoding="utf-8", errors="ignore") as log:
+        # The test command is assembled from the controlled toy-case fixture.
         process = subprocess.Popen(  # noqa: S603
             command,
             cwd=case,
@@ -1118,6 +1120,7 @@ def _resize_parallel_args(case: Path) -> list[str]:
 def _require_working_parallel_launcher(command: list[str]) -> None:
     if not command:
         pytest.skip("MPI launcher unavailable")
+    # The launcher is selected from the local environment and receives fixed probe arguments.
     probe = subprocess.run(  # noqa: S603
         [command[0], "-np", "1", "true"],
         check=False,

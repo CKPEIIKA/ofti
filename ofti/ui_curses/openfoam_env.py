@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import curses
 import os
+from curses import ascii as curses_ascii
 from pathlib import Path
 from typing import Any
 
@@ -65,7 +66,7 @@ def _prompt_text(stdscr: Any, prompt: str) -> str:
                 cursor += 1
             render()
             continue
-        if 32 <= key <= 126:
+        if curses_ascii.isprint(key):
             buffer.insert(cursor, chr(key))
             cursor += 1
             render()

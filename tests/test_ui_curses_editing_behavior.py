@@ -57,8 +57,8 @@ def test_snappy_toggle_missing_and_helpers(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(snappy_toggle, "_show_message", lambda _screen, message: messages.append(message))
     assert snappy_toggle.snappy_staged_screen(Screen(), case) is False
     assert messages == ["Missing system/snappyHexMeshDict."]
-    assert snappy_toggle._toggle_label("snap", True) == "[x] snap"
-    assert snappy_toggle._toggle_label("snap", False) == "[ ] snap"
+    assert snappy_toggle._toggle_label("snap", enabled=True) == "[x] snap"
+    assert snappy_toggle._toggle_label("snap", enabled=False) == "[ ] snap"
 
     path = case / "dict"
     path.write_text("x")

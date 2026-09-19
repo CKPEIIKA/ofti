@@ -15,6 +15,8 @@ from .output import emit_payload
 from .physical import AIR11_SPECIES
 
 REQUIRED_FIELDS = ("Tt", "Tv", "p", "U")
+_MIN_SPECIES_ORDER_SOURCES = 2
+_MIN_RECOGNIZED_SPECIES = 2
 
 
 class Hy2FoamPreflightCommand:
@@ -140,7 +142,7 @@ def _species_patch_consistency_check(case_dir: Path, *, time_name: str) -> dict[
 
 def _species_order_consistency_check(case_dir: Path) -> dict[str, str]:
     orders = _species_orders(case_dir)
-    if len(orders) < 2:
+    if len(orders) < _MIN_SPECIES_ORDER_SOURCES:
         return _check("species_order_consistency", "WARN", "fewer than two species-order sources")
     reference = orders[0][2]
     mismatches = [f"{path}:{key}" for path, key, values in orders[1:] if values != reference]
@@ -209,7 +211,7 @@ def _species_order_entries(text: str) -> list[tuple[str, tuple[str, ...]]]:
     keys = r"(?:species|speciesOrder)"
     for match in re.finditer(rf"\b(?P<key>{keys})\s*\((?P<body>[^)]*)\)\s*;", text, re.DOTALL):
         species = _recognized_species(match.group("body"))
-        if len(species) >= 2:
+        if len(species) >= _MIN_RECOGNIZED_SPECIES:
             entries.append((match.group("key"), species))
     return entries
 

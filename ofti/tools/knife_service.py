@@ -60,6 +60,7 @@ stability_payload = _runtime.stability_payload
 _DELTA_T_RE = runtime_control_service.DELTA_T_RE
 _END_TIME_RE = runtime_control_service.END_TIME_RE
 _stop_untracked_solver_processes = _stop.stop_untracked_solver_processes
+_MIN_SOLVER_ENTRY_PARTS = 2
 
 
 def doctor_payload(case_dir: Path) -> dict[str, Any]:
@@ -845,7 +846,7 @@ def _fallback_solver(control_dict_path: Path) -> str | None:
         if not line or not line.startswith("application"):
             continue
         parts = line.replace(";", " ").split()
-        if len(parts) >= 2:
+        if len(parts) >= _MIN_SOLVER_ENTRY_PARTS:
             return parts[1]
     return None
 

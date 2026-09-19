@@ -13,6 +13,7 @@ Handler = Callable[[argparse.Namespace], int]
 _EASY_ON_CPU_TAIL_BYTES = 256 * 1024
 _EASY_ON_CPU_MIN_POLL_INTERVAL = 1.0
 _JSON_VERSION_ENV = "OFTI_JSON_VERSION"
+_JSON_VERSION_V2 = 2
 
 
 def emit_json(payload: object, args: argparse.Namespace, *, file: TextIO | None = None) -> None:
@@ -33,7 +34,7 @@ def json_version(args: argparse.Namespace) -> int:
         version = int(str(value))
     except ValueError:
         return 1
-    return 2 if version == 2 else 1
+    return _JSON_VERSION_V2 if version == _JSON_VERSION_V2 else 1
 
 
 def strip_json_version_args(argv: list[str]) -> tuple[list[str], int | None]:

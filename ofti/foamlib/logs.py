@@ -9,6 +9,8 @@ from pathlib import Path
 
 from ofti.foam.subprocess_utils import run_trusted
 
+_MIN_EXECUTION_TIMES = 2
+
 _RESIDUAL_RE = re.compile(
     r"Solving for\s+(?P<field>[^,\s]+).*?Initial residual = (?P<res>[0-9eE.+-]+)",
 )
@@ -177,7 +179,7 @@ def _append_residual_value(line: str, residuals: dict[str, list[float]]) -> None
 
 
 def execution_time_deltas(execution_times: list[float]) -> list[float]:
-    if len(execution_times) < 2:
+    if len(execution_times) < _MIN_EXECUTION_TIMES:
         return []
     deltas: list[float] = []
     prev = execution_times[0]

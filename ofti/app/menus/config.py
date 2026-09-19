@@ -52,6 +52,21 @@ def config_menu(
     original_search = list(cfg.keys.get("search", []))
     if "s" not in original_search:
         cfg.keys["search"] = [*original_search, "s"]
+    actions = [
+        lambda: editor_screen(stdscr, case_path, state),
+        lambda: create_missing_config_screen(stdscr, case_path),
+        lambda: show_preflight_screen(stdscr, case_path),
+        lambda: case_doctor_screen(stdscr, case_path),
+        lambda: show_case_status_screen(stdscr, case_path),
+        lambda: show_initial_fields_screen(stdscr, case_path),
+        lambda: set_dictionary_entry_screen(stdscr, case_path),
+        lambda: compare_dictionaries_screen(stdscr, case_path),
+        lambda: clone_case(stdscr, case_path),
+        lambda: openfoam_env_screen(stdscr),
+        lambda: check_syntax_screen(stdscr, case_path, state),
+    ]
+    if has_fzf:
+        actions.append(lambda: global_search_screen(stdscr, case_path, state))
     try:
         while True:
             choice = menu_choice(
@@ -66,29 +81,7 @@ def config_menu(
             )
             if choice in (-1, len(options) - 1):
                 return Screen.MAIN_MENU
-            if choice == 0:
-                editor_screen(stdscr, case_path, state)
-            elif choice == 1:
-                create_missing_config_screen(stdscr, case_path)
-            elif choice == 2:
-                show_preflight_screen(stdscr, case_path)
-            elif choice == 3:
-                case_doctor_screen(stdscr, case_path)
-            elif choice == 4:
-                show_case_status_screen(stdscr, case_path)
-            elif choice == 5:
-                show_initial_fields_screen(stdscr, case_path)
-            elif choice == 6:
-                set_dictionary_entry_screen(stdscr, case_path)
-            elif choice == 7:
-                compare_dictionaries_screen(stdscr, case_path)
-            elif choice == 8:
-                clone_case(stdscr, case_path)
-            elif choice == 9:
-                openfoam_env_screen(stdscr)
-            elif choice == 10:
-                check_syntax_screen(stdscr, case_path, state)
-            elif has_fzf and choice == 11:
-                global_search_screen(stdscr, case_path, state)
+            if 0 <= choice < len(actions):
+                actions[choice]()
     finally:
         cfg.keys["search"] = original_search

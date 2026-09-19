@@ -28,6 +28,8 @@ from ofti.core.times import latest_time
 
 MeshPolicy = Literal["auto", "include", "exclude"]
 ArchiveFormat = Literal["gztar", "zstdtar"]
+_MAX_SYNTAX_WARNINGS = 20
+_MIN_PATH_PARTS = 2
 BundleKind = Literal["case", "set"]
 MANIFEST_PATH = ".ofti/bundle.json"
 BUNDLE_SET_MANIFEST_PATH = ".ofti/bundle-set.json"
@@ -443,8 +445,8 @@ def _syntax_warnings(case_dir: Path, rels: list[Path]) -> tuple[str, ...]:
         if not _should_lint_bundle_file(rel):
             continue
         warnings.extend(_file_syntax_warnings(case_dir, rel))
-        if len(warnings) >= 20:
-            return (*warnings[:20], "syntax warning limit reached")
+        if len(warnings) >= _MAX_SYNTAX_WARNINGS:
+            return (*warnings[:_MAX_SYNTAX_WARNINGS], "syntax warning limit reached")
     return tuple(warnings)
 
 
@@ -459,7 +461,7 @@ def _file_syntax_warnings(case_dir: Path, rel: Path) -> list[str]:
 
 def _should_lint_bundle_file(rel: Path) -> bool:
     parts = rel.parts
-    if len(parts) >= 2 and parts[:2] == ("constant", "polyMesh"):
+    if len(parts) >= _MIN_PATH_PARTS and parts[:_MIN_PATH_PARTS] == ("constant", "polyMesh"):
         return False
     return bool(parts and parts[0] in {"system", "constant", "0", "0.orig"})
 
@@ -656,7 +658,15 @@ def _include_file(rel: Path, *, mesh: MeshPolicy) -> bool:
         return False
     if any(part in _EXCLUDED_DIRS for part in parts):
         return False
-    if mesh == "exclude" and len(parts) >= 2 and parts[:2] == ("constant", "polyMesh"):
+    if (
+        mesh == "exclude"
+        and len(parts) >= _MIN_PATH_PARTS
+        and parts[:_MIN_PATH_PARTS]
+        == (
+            "constant",
+            "polyMesh",
+        )
+    ):
         return False
     return not rel.name.startswith(_EXCLUDED_FILE_PREFIXES)
 

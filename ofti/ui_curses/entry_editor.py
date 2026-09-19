@@ -4,6 +4,7 @@ import curses
 import os
 from collections.abc import Callable
 from contextlib import suppress
+from curses import ascii as curses_ascii
 from curses import textpad
 from typing import Any
 
@@ -98,7 +99,7 @@ class EntryEditor:
                     self._cursor += 1
                 continue
 
-            if 32 <= key <= 126:
+            if curses_ascii.isprint(key):
                 ch = chr(key)
                 self._buffer = self._buffer[: self._cursor] + ch + self._buffer[self._cursor :]
                 self._cursor += 1

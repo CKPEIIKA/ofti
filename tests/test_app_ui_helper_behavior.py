@@ -110,9 +110,9 @@ def test_app_helpers_extra(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     assert helpers.menu_scroll(current=10, scroll=0, stdscr=_Screen(height=5), total=100, header_rows=1) >= 0
 
     state = types.SimpleNamespace(no_foam=False, no_foam_reason=None)
-    helpers.set_no_foam_mode(state, True, "x")
+    helpers.set_no_foam_mode(state, enabled=True, reason="x")
     assert state.no_foam is True
-    helpers.set_no_foam_mode(state, False, None)
+    helpers.set_no_foam_mode(state, enabled=False, reason=None)
     assert state.no_foam is False
 
 

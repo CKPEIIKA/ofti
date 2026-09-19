@@ -276,6 +276,7 @@ def _run_smoke_command(
     env.pop("ENV", None)
     try:
         # Command is built by solver_command(), not shell text; timeout keeps smoke runs bounded.
+        # Solver command is built by the trusted command builder and runs without a shell.
         result = subprocess.run(  # noqa: S603
             command,
             cwd=case_path,

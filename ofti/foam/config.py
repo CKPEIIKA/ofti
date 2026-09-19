@@ -4,6 +4,7 @@ import contextlib
 import importlib
 import os
 import shutil
+from curses import ascii as curses_ascii
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -138,7 +139,7 @@ def key_in(key: int, labels: list[str]) -> bool:
         if not label:
             continue
         if label.upper() == "ESC":
-            if key == 27:
+            if key == curses_ascii.ESC:
                 return True
             continue
         if label == "\n":

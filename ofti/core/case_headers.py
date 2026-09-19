@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+_MIN_HEADER_PARTS = 2
+
 
 def detect_case_header_version(case_path: Path) -> str:
     control_dict = case_path / "system" / "controlDict"
@@ -68,7 +70,7 @@ def parse_foamfile_block_version(text: str) -> str | None:
             break
         if inside_block and lower.startswith("version"):
             parts = stripped.split()
-            if len(parts) >= 2:
+            if len(parts) >= _MIN_HEADER_PARTS:
                 value = parts[1].rstrip(";")
                 if value:
                     return value

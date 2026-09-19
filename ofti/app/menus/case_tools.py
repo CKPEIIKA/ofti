@@ -9,6 +9,9 @@ from ofti.tools.cli_tools import knife as knife_ops
 from ofti.ui_curses.prompts import prompt_line
 from ofti.ui_curses.viewer import Viewer
 
+_MAX_UNTRACKED_PROCESS_ROWS = 40
+_MAX_VALUE_DIFF_ROWS = 20
+
 
 def show_preflight_screen(stdscr: Any, case_path: Path) -> None:
     try:
@@ -67,10 +70,10 @@ def show_current_jobs_screen(stdscr: Any, case_path: Path, *, live: bool = True)
             f"- pid={row.get('pid')} role={row.get('role')} "
             f"solver={row.get('solver')} launcher_pid={row.get('launcher_pid')} "
             f"cmd={row.get('command')}"
-            for row in untracked[:40]
+            for row in untracked[:_MAX_UNTRACKED_PROCESS_ROWS]
         )
-        if len(untracked) > 40:
-            lines.append(f"... {len(untracked) - 40} more")
+        if len(untracked) > _MAX_UNTRACKED_PROCESS_ROWS:
+            lines.append(f"... {len(untracked) - _MAX_UNTRACKED_PROCESS_ROWS} more")
     Viewer(stdscr, "\n".join(lines)).display()
 
 
@@ -134,9 +137,11 @@ def compare_lines(payload: dict[str, Any]) -> list[str]:
         if diff.get("missing_in_right"):
             lines.append(f"  missing_in_right: {', '.join(diff['missing_in_right'])}")
         value_diffs = list(diff.get("value_diffs", []))
-        lines.extend(f"  {row['key']}: left={row['left']} right={row['right']}" for row in value_diffs[:20])
-        if len(value_diffs) > 20:
-            lines.append(f"  value_diff_more={len(value_diffs) - 20}")
+        lines.extend(
+            f"  {row['key']}: left={row['left']} right={row['right']}" for row in value_diffs[:_MAX_VALUE_DIFF_ROWS]
+        )
+        if len(value_diffs) > _MAX_VALUE_DIFF_ROWS:
+            lines.append(f"  value_diff_more={len(value_diffs) - _MAX_VALUE_DIFF_ROWS}")
     return lines
 
 

@@ -94,7 +94,7 @@ def _check_mesh(case_path: Path, errors: list[str]) -> None:
 
 def _check_initial_conditions(
     case_path: Path,
-    errors: list[str],
+    _errors: list[str],
     warnings: list[str],
 ) -> None:
     zero_dir = case_path / "0"

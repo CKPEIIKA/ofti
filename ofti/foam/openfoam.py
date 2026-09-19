@@ -101,7 +101,7 @@ def get_entry_comments(file_path: Path, key: str) -> list[str]:
     return comments
 
 
-def get_entry_info(file_path: Path, key: str) -> list[str]:
+def get_entry_info(_file_path: Path, _key: str) -> list[str]:
     """Try to obtain additional information about an entry using foamlib.
 
     Returns the output lines (if any), or an empty list when the
@@ -110,7 +110,7 @@ def get_entry_info(file_path: Path, key: str) -> list[str]:
     return []
 
 
-def get_entry_enum_values(file_path: Path, key: str) -> list[str]:
+def get_entry_enum_values(_file_path: Path, _key: str) -> list[str]:
     """Try to obtain a set of allowed values for an entry.
 
     Returns the values (if any), or an empty list when the command

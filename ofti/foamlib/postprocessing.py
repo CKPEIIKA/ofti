@@ -26,7 +26,8 @@ def availability_error() -> str | None:
 
 def list_table_sources(case_path: Path) -> list[dict[str, Any]]:
     _require_postprocessing()
-    assert list_function_objects is not None
+    if list_function_objects is None:
+        raise RuntimeError("foamlib postprocessing source discovery is unavailable")
     case_root = case_path.resolve()
     discovered = list_function_objects(case_root)
     rows: list[dict[str, Any]] = []
@@ -54,7 +55,8 @@ def load_table_source(
     preview_rows: int = 20,
 ) -> dict[str, Any]:
     _require_postprocessing()
-    assert list_function_objects is not None and load_tables is not None
+    if list_function_objects is None or load_tables is None:
+        raise RuntimeError("foamlib postprocessing table loading is unavailable")
     case_root = case_path.resolve()
     discovered = list_function_objects(case_root)
     source = discovered.get(source_id)

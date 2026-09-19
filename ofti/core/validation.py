@@ -2,6 +2,9 @@ from collections.abc import Callable
 
 from ofti.foamlib import adapter as foamlib_integration
 
+_DIMENSION_COMPONENT_COUNT = 7
+_MIN_VALUE_PARTS = 2
+
 
 def non_empty(value: str) -> str | None:
     if not value.strip():
@@ -71,7 +74,7 @@ def dimension_set_values(value: str) -> str | None:
     parsed = _parse_dimension_set(value)
     if parsed is None:
         return "Dimensions must be in brackets, e.g. [0 1 -2 0 0 0 0]."
-    if len(parsed) != 7:
+    if len(parsed) != _DIMENSION_COMPONENT_COUNT:
         return "Dimensions must contain exactly 7 integers."
     for part in parsed:
         if not float(part).is_integer():
@@ -114,7 +117,7 @@ def _dimensioned_value_precheck(text: str) -> str | None:
 
 def normalize_dimension_set(value: str) -> str | None:
     parsed = _parse_dimension_set(value)
-    if parsed is None or len(parsed) != 7:
+    if parsed is None or len(parsed) != _DIMENSION_COMPONENT_COUNT:
         return None
     normalized = [str(int(val)) if float(val).is_integer() else str(val) for val in parsed]
     return f"[{' '.join(normalized)}]"
@@ -214,7 +217,7 @@ def normalize_field_value(value: str) -> str | None:
     if not text:
         return None
     parts = text.split(None, 1)
-    if len(parts) < 2 or parts[0].lower() != "uniform":
+    if len(parts) < _MIN_VALUE_PARTS or parts[0].lower() != "uniform":
         return None
     payload = parts[1].strip()
     if not payload:
@@ -242,7 +245,7 @@ def field_value(value: str) -> str | None:
     lower = text.lower()
     if lower.startswith("uniform"):
         parts = text.split(None, 1)
-        if len(parts) < 2 or not parts[1].strip():
+        if len(parts) < _MIN_VALUE_PARTS or not parts[1].strip():
             return "Uniform field requires a value."
         return None
     if lower.startswith("nonuniform"):

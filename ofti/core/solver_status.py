@@ -9,6 +9,9 @@ from typing import Any
 from ofti.core.checkmesh import extract_last_courant
 from ofti.foamlib.logs import parse_residuals
 
+_TIME_SPLIT_PARTS = 2
+_SPARKLINE_SCALE_RATIO = 1e3
+
 
 @dataclass(frozen=True)
 class SolverJobSummary:
@@ -63,7 +66,7 @@ def last_solver_time(lines: Iterable[str]) -> str | None:
     for line in reversed(list(lines)):
         if "Time =" in line:
             parts = line.split("Time =", 1)
-            if len(parts) == 2:
+            if len(parts) == _TIME_SPLIT_PARTS:
                 return parts[1].strip().split()[0]
     return None
 
@@ -140,7 +143,7 @@ def _sparkline_scale(values: list[float]) -> tuple[list[float], float, float]:
     vmin = min(values)
     vmax = max(*values, 1e-16)
     ratio = vmax / vmin if vmin > 0 else vmax
-    if ratio <= 1e3:
+    if ratio <= _SPARKLINE_SCALE_RATIO:
         return values, vmin, vmax
     scaled = [log10(val) for val in values]
     return scaled, min(scaled), max(scaled)

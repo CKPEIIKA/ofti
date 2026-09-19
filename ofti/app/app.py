@@ -45,7 +45,7 @@ from ofti.ui_curses.openfoam_env import openfoam_env_screen
 from ofti.ui_curses.viewer import Viewer
 
 
-def run_tui(case_dir: str, debug: bool = False) -> None:
+def run_tui(case_dir: str, *, debug: bool = False) -> None:
     """Run the TUI on the given OpenFOAM case directory."""
     logging.basicConfig(
         level=logging.DEBUG if debug else logging.INFO,
@@ -94,7 +94,7 @@ def _main(stdscr: Any, case_path: Path, debug: bool, state: AppState) -> None:
     try:
         ensure_environment()
     except OpenFOAMError as exc:
-        set_no_foam_mode(state, True, str(exc))
+        set_no_foam_mode(state, enabled=True, reason=str(exc))
 
     try:
         _main_loop(stdscr, case_path, state)
@@ -272,10 +272,11 @@ def _run_terminal(stdscr: Any, case_path: Path, command: str | None) -> None:
                 ["bash", "--noprofile", "--norc", "-c", shell_cmd],
                 cwd=case_path,
                 env=env,
+                check=False,
             )
         else:
             shell = env.get("SHELL") or "bash"
-            subprocess.run([shell], cwd=case_path, env=env)
+            subprocess.run([shell], cwd=case_path, env=env, check=False)
     except KeyboardInterrupt:
         pass
     finally:

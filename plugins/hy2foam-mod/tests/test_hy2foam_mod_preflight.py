@@ -1,17 +1,11 @@
-# ruff: noqa: INP001
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
-MOD_SRC = Path(__file__).resolve().parents[1] / "src"
-if str(MOD_SRC) not in sys.path:
-    sys.path.insert(0, str(MOD_SRC))
+from ofti_hy2foam_mod.plugin import register
+from ofti_hy2foam_mod.preflight import nn_preflight_payload
 
-from ofti_hy2foam_mod.plugin import register  # noqa: E402
-from ofti_hy2foam_mod.preflight import nn_preflight_payload  # noqa: E402
-
-from ofti.plugins import PluginRegistry  # noqa: E402
+from ofti.plugins import PluginRegistry
 
 
 def _case(path: Path) -> Path:

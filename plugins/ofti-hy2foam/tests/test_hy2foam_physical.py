@@ -1,23 +1,18 @@
-# ruff: noqa: INP001
 from __future__ import annotations
 
 import math
-import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
-
-PLUGIN_SRC = Path(__file__).resolve().parents[1] / "src"
-if str(PLUGIN_SRC) not in sys.path:
-    sys.path.insert(0, str(PLUGIN_SRC))
-
-from ofti_hy2foam.physical import (  # noqa: E402
+from ofti_hy2foam.physical import (
     Hy2FoamPhysicalProfile,
     physical_diagnostics_payload,
     species_sum_diagnostic,
     two_temperature_diagnostic,
 )
+
+_EXPECTED_PATCH_TEMPERATURE = 1200.0
 
 
 def _case(path: Path) -> Path:
@@ -149,4 +144,4 @@ def test_physical_payload_reports_patch_ranges(tmp_path: Path) -> None:
     patches = payload["diagnostics"]["patch_ranges"]
     assert patches[0]["field"] == "Tt"
     assert patches[0]["patch"] == "wall"
-    assert patches[0]["min"] == 1200.0
+    assert patches[0]["min"] == _EXPECTED_PATCH_TEMPERATURE

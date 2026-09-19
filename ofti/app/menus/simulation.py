@@ -92,6 +92,27 @@ def simulation_menu(
     status_line = solver_status_line(case_path)
     if solver_running:
         status_line = "Solver running (see logs)"
+    actions = [
+        lambda: pipeline_editor_screen(stdscr, case_path),
+        lambda: pipeline_runner_screen(stdscr, case_path),
+        lambda: run_current_solver_live(stdscr, case_path),
+        lambda: run_current_solver_live_custom_log(stdscr, case_path),
+        lambda: run_current_solver_parallel(stdscr, case_path),
+        lambda: show_case_status_screen(stdscr, case_path),
+        lambda: show_current_jobs_screen(stdscr, case_path, live=True),
+        lambda: show_runtime_criteria_screen(stdscr, case_path),
+        lambda: show_eta_forecast_screen(stdscr, case_path),
+        lambda: show_runtime_report_screen(stdscr, case_path),
+        lambda: run_convergence_check_screen(stdscr, case_path),
+        lambda: run_stability_check_screen(stdscr, case_path),
+        lambda: adopt_untracked_screen(stdscr, case_path),
+        lambda: stop_job_screen(stdscr, case_path),
+        lambda: pause_job_screen(stdscr, case_path),
+        lambda: resume_job_screen(stdscr, case_path),
+        lambda: safe_stop_screen(stdscr, case_path),
+        lambda: solver_resurrection_screen(stdscr, case_path),
+        lambda: foamlib_parametric_study_screen(stdscr, case_path),
+    ]
     while True:
         choice = menu_choice(
             stdscr,
@@ -109,41 +130,5 @@ def simulation_menu(
         )
         if choice in (-1, len(options) - 1):
             return Screen.MAIN_MENU
-        if choice == 0:
-            pipeline_editor_screen(stdscr, case_path)
-        elif choice == 1:
-            pipeline_runner_screen(stdscr, case_path)
-        elif choice == 2:
-            run_current_solver_live(stdscr, case_path)
-        elif choice == 3:
-            run_current_solver_live_custom_log(stdscr, case_path)
-        elif choice == 4:
-            run_current_solver_parallel(stdscr, case_path)
-        elif choice == 5:
-            show_case_status_screen(stdscr, case_path)
-        elif choice == 6:
-            show_current_jobs_screen(stdscr, case_path, live=True)
-        elif choice == 7:
-            show_runtime_criteria_screen(stdscr, case_path)
-        elif choice == 8:
-            show_eta_forecast_screen(stdscr, case_path)
-        elif choice == 9:
-            show_runtime_report_screen(stdscr, case_path)
-        elif choice == 10:
-            run_convergence_check_screen(stdscr, case_path)
-        elif choice == 11:
-            run_stability_check_screen(stdscr, case_path)
-        elif choice == 12:
-            adopt_untracked_screen(stdscr, case_path)
-        elif choice == 13:
-            stop_job_screen(stdscr, case_path)
-        elif choice == 14:
-            pause_job_screen(stdscr, case_path)
-        elif choice == 15:
-            resume_job_screen(stdscr, case_path)
-        elif choice == 16:
-            safe_stop_screen(stdscr, case_path)
-        elif choice == 17:
-            solver_resurrection_screen(stdscr, case_path)
-        elif choice == 18:
-            foamlib_parametric_study_screen(stdscr, case_path)
+        if 0 <= choice < len(actions):
+            actions[choice]()

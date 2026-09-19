@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import curses
 from contextlib import suppress
+from curses import ascii as curses_ascii
 from typing import Any
 
 
@@ -40,7 +41,7 @@ def prompt_input(stdscr: Any, prompt: str) -> str | None:
     try:
         while True:
             key = stdscr.getch()
-            if key == 27:  # ESC
+            if key == curses_ascii.ESC:
                 return None
             if key in (curses.KEY_ENTER, 10, 13):
                 return "".join(buffer).strip()
@@ -54,7 +55,7 @@ def prompt_input(stdscr: Any, prompt: str) -> str | None:
             elif key == curses.KEY_RIGHT:
                 if cursor < len(buffer):
                     cursor += 1
-            elif 32 <= key <= 126:
+            elif curses_ascii.isprint(key):
                 buffer.insert(cursor, chr(key))
                 cursor += 1
             with suppress(curses.error):

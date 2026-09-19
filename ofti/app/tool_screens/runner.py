@@ -28,6 +28,7 @@ class LastToolRun:
 
 _LAST_TOOL_RUN: LastToolRun | None = None
 _LAST_TOOL_STATUS: tuple[str, str, float] | None = None
+_TOOL_STATUS_RETENTION_SECONDS = 8.0
 
 
 def _no_foam_active() -> bool:
@@ -65,7 +66,7 @@ def last_tool_status_line() -> str | None:
     if _LAST_TOOL_STATUS is None:
         return None
     name, status, timestamp = _LAST_TOOL_STATUS
-    if time.time() - timestamp > 8.0:
+    if time.time() - timestamp > _TOOL_STATUS_RETENTION_SECONDS:
         return None
     return f"last tool: {name} {status}"
 

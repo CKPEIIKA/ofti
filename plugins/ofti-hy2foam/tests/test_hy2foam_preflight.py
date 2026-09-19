@@ -1,16 +1,9 @@
-# ruff: noqa: INP001
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
-
-PLUGIN_SRC = Path(__file__).resolve().parents[1] / "src"
-if str(PLUGIN_SRC) not in sys.path:
-    sys.path.insert(0, str(PLUGIN_SRC))
-
-from ofti_hy2foam.preflight import preflight_payload  # noqa: E402
+from ofti_hy2foam.preflight import preflight_payload
 
 
 def _case(path: Path) -> Path:

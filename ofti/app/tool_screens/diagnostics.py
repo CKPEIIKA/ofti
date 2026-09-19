@@ -23,6 +23,8 @@ from ofti.ui_curses.help import diagnostics_help
 from ofti.ui_curses.prompts import prompt_line
 from ofti.ui_curses.viewer import Viewer
 
+_BYTES_PER_BINARY_UNIT = 1024.0
+
 run_trusted = _run_trusted
 
 
@@ -188,9 +190,9 @@ def _human_size(size: int) -> str:
     units = ["B", "KB", "MB", "GB", "TB"]
     value = float(size)
     for unit in units:
-        if value < 1024.0 or unit == units[-1]:
+        if value < _BYTES_PER_BINARY_UNIT or unit == units[-1]:
             return f"{value:.1f} {unit}"
-        value /= 1024.0
+        value /= _BYTES_PER_BINARY_UNIT
     return f"{value:.1f} {units[-1]}"
 
 
