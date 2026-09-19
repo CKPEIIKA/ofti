@@ -578,7 +578,7 @@ def menu_scroll(
     return min(scroll, max_scroll)
 
 
-def set_no_foam_mode(state: Any, enabled: bool, reason: str | None = None) -> None:
+def set_no_foam_mode(state: Any, *, enabled: bool, reason: str | None = None) -> None:
     state.no_foam = enabled
     state.no_foam_reason = reason
     if enabled:

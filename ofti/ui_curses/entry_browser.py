@@ -135,7 +135,7 @@ def entry_browser_screen(
                 cache,
                 full_key,
                 callbacks,
-                use_cache,
+                use_cache=use_cache,
             ):
                 last_key = None
                 last_meta = None
@@ -172,7 +172,7 @@ def entry_browser_screen(
                 type_label,
                 subkeys,
                 callbacks,
-                use_cache,
+                use_cache=use_cache,
             )
             last_key = None
             last_meta = None
@@ -395,6 +395,7 @@ def _entry_browser_external_edit(
     cache: dict[str, tuple[str, str, list[str], list[str], list[str]]],
     full_key: str,
     callbacks: BrowserCallbacks,
+    *,
     use_cache: bool,
 ) -> bool:
     try:
@@ -428,6 +429,7 @@ def _entry_browser_inline_edit(
     type_label: str,
     subkeys: list[str],
     callbacks: BrowserCallbacks,
+    *,
     use_cache: bool,
 ) -> None:
     _ = callbacks

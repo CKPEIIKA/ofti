@@ -32,7 +32,7 @@ def boundary_matrix_screen(stdscr: Any, case_path: Path) -> None:
     state = _MatrixState()
 
     while True:
-        patches = _visible_patches(matrix, state.hide_special)
+        patches = _visible_patches(matrix, hide_special=state.hide_special)
         if not patches:
             patches = list(matrix.patches)
             state.hide_special = False
@@ -45,7 +45,7 @@ def boundary_matrix_screen(stdscr: Any, case_path: Path) -> None:
             state.col,
             state.row_scroll,
             state.col_scroll,
-            state.hide_special,
+            hide_special=state.hide_special,
         )
         key = stdscr.getch()
         action = _handle_boundary_key(
@@ -60,7 +60,7 @@ def boundary_matrix_screen(stdscr: Any, case_path: Path) -> None:
             return
         if action == "reload":
             matrix = _load_boundary_matrix(stdscr, case_path, "Reloading boundary matrix...")
-            state = _normalize_state(state, _visible_patches(matrix, state.hide_special))
+            state = _normalize_state(state, _visible_patches(matrix, hide_special=state.hide_special))
             continue
         state = action
 
@@ -101,12 +101,13 @@ def _draw_boundary_matrix(
     col: int,
     row_scroll: int,
     col_scroll: int,
+    *,
     hide_special: bool,
 ) -> None:
     stdscr.clear()
     height, width = stdscr.getmaxyx()
     layout = _boundary_matrix_layout(width)
-    fields = _draw_boundary_header(stdscr, matrix, col_scroll, layout, width, hide_special)
+    fields = _draw_boundary_header(stdscr, matrix, col_scroll, layout, width, hide_special=hide_special)
     _draw_boundary_warnings(stdscr, matrix, width)
     _draw_boundary_rows(
         stdscr,
@@ -121,7 +122,7 @@ def _draw_boundary_matrix(
         height,
         width,
     )
-    _draw_boundary_status(stdscr, matrix, patches, row, col, height, width, hide_special)
+    _draw_boundary_status(stdscr, matrix, patches, row, col, height, width, hide_special=hide_special)
     stdscr.refresh()
 
 
@@ -319,6 +320,7 @@ def _draw_boundary_header(
     col_scroll: int,
     layout: _BoundaryLayout,
     width: int,
+    *,
     hide_special: bool,
 ) -> list[str]:
     back_hint = key_hint("back", "h")
@@ -431,6 +433,7 @@ def _draw_boundary_status(
     col: int,
     height: int,
     width: int,
+    *,
     hide_special: bool,
 ) -> None:
     patch = patches[row] if patches else ""
@@ -537,7 +540,7 @@ def _show_message(stdscr: Any, message: str) -> None:
         raise QuitAppError()
 
 
-def _visible_patches(matrix: BoundaryMatrix, hide_special: bool) -> list[str]:
+def _visible_patches(matrix: BoundaryMatrix, *, hide_special: bool) -> list[str]:
     if not hide_special:
         return list(matrix.patches)
     hidden_types = {"processor", "empty"}

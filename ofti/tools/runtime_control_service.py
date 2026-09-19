@@ -209,7 +209,7 @@ def control_dict_edit_payload(
         return error
     rows = _control_edit_rows(control_dict, updates)
     diff = _control_edit_diff(rows)
-    snapshot_path, error = _control_edit_snapshot(case_path, write_snapshot)
+    snapshot_path, error = _control_edit_snapshot(case_path, write_snapshot=write_snapshot)
     if error is not None:
         return _control_edit_error(case_path, error, updates=rows, diff=diff)
     blocked = bool(apply and snapshot_path is None)
@@ -259,7 +259,7 @@ def _control_edit_rows(control_dict: Path, updates: dict[str, str]) -> list[dict
     ]
 
 
-def _control_edit_snapshot(case_path: Path, write_snapshot: bool) -> tuple[Path | None, str | None]:
+def _control_edit_snapshot(case_path: Path, *, write_snapshot: bool) -> tuple[Path | None, str | None]:
     if not write_snapshot:
         return None, None
     try:

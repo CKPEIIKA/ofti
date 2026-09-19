@@ -383,7 +383,7 @@ def _command_callbacks() -> CommandCallbacks:
             stdscr,
             path,
             app_state,
-            has_fzf,
+            has_fzf=has_fzf,
             editor_screen=editor_screen_wrapper,
             check_syntax_screen=check_screen_wrapper,
             openfoam_env_screen=openfoam_env_screen,

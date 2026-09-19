@@ -28,9 +28,9 @@ def snappy_staged_screen(stdscr: Any, case_path: Path) -> bool:
 
     while True:
         labels = [
-            _toggle_label("castellatedMesh", toggles["castellatedMesh"]),
-            _toggle_label("snap", toggles["snap"]),
-            _toggle_label("addLayers", toggles["addLayers"]),
+            _toggle_label("castellatedMesh", enabled=toggles["castellatedMesh"]),
+            _toggle_label("snap", enabled=toggles["snap"]),
+            _toggle_label("addLayers", enabled=toggles["addLayers"]),
             "Run snappyHexMesh",
             "Back",
         ]
@@ -58,7 +58,7 @@ def snappy_staged_screen(stdscr: Any, case_path: Path) -> bool:
             return True
 
 
-def _toggle_label(label: str, enabled: bool) -> str:
+def _toggle_label(label: str, *, enabled: bool) -> str:
     mark = "x" if enabled else " "
     return f"[{mark}] {label}"
 

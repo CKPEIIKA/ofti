@@ -21,7 +21,7 @@ def _show_help(stdscr: Any, title: str, lines: list[str]) -> None:
     Viewer(stdscr, text).display()
 
 
-def _default_hint_provider(has_command: bool) -> Callable[[int], str]:
+def _default_hint_provider(*, has_command: bool) -> Callable[[int], str]:
     def hint(_idx: int) -> str:
         parts = ["Enter: select", "h/esc: back", "?: help", "! term"]
         if has_command:
@@ -169,7 +169,7 @@ class Menu:
         self.command_handler = command_handler
         self.command_suggestions = command_suggestions
         self.hint_provider = hint_provider or _default_hint_provider(
-            command_handler is not None,
+            has_command=command_handler is not None,
         )
         self.status_line = status_line
         self.disabled_indices = disabled_indices or set()

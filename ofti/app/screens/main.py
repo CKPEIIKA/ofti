@@ -130,7 +130,7 @@ def main_menu_screen(
             stdscr,
             case_path,
             state,
-            has_fzf,
+            has_fzf=has_fzf,
             editor_screen=editor_screen,
             check_syntax_screen=check_syntax_screen,
             openfoam_env_screen=openfoam_env_screen,

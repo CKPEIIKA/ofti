@@ -52,7 +52,7 @@ def foamlib_parametric_study_screen(
     if flow is None:
         return
     created, run_solver = flow
-    _show_parametric_results(stdscr, created, run_solver)
+    _show_parametric_results(stdscr, created, run_solver=run_solver)
 
 
 def _select_parametric_mode(
@@ -111,7 +111,7 @@ def _select_parametric_mode(
         hint_provider=hint_for,
         disabled_indices=disabled,
         status_line=status,
-        help_lines=_parametric_mode_help_lines(preprocessing_ready),
+        help_lines=_parametric_mode_help_lines(preprocessing_ready=preprocessing_ready),
     )
     choice = menu.navigate()
     if choice in (-1, len(labels) - 1):
@@ -128,7 +128,7 @@ def _run_single_parametric_flow(
     entry = preset.entry if preset else ""
     values = list(preset.values) if preset else []
     run_solver = False
-    form = _parametric_form(stdscr, dict_input, entry, values, run_solver)
+    form = _parametric_form(stdscr, dict_input, entry, values, run_solver=run_solver)
     if form is None:
         return None
     dict_input, entry, values, run_solver = form
@@ -165,7 +165,12 @@ def _run_grid_parametric_flow(
     return created, run_solver
 
 
-def _show_parametric_results(stdscr: Any, created: list[Path], run_solver: bool) -> None:
+def _show_parametric_results(
+    stdscr: Any,
+    created: list[Path],
+    *,
+    run_solver: bool,
+) -> None:
     failures: list[Path] = []
     if run_solver:
         failures = run_cases(created, check=False)
@@ -195,6 +200,7 @@ def _parametric_form(
     dict_path: str,
     entry: str,
     values: list[str],
+    *,
     run_solver: bool,
 ) -> tuple[str, str, list[str], bool] | None:
     while True:
@@ -245,7 +251,7 @@ def _parametric_form(
                 dict_path,
                 entry,
                 values,
-                run_solver,
+                run_solver=run_solver,
             )
             continue
         if choice == len(handlers):
@@ -254,7 +260,7 @@ def _parametric_form(
                 dict_path,
                 entry,
                 values,
-                run_solver,
+                run_solver=run_solver,
             )
             if result is not None:
                 return result
@@ -263,6 +269,7 @@ def _parametric_form(
 def _parametric_csv_form(
     stdscr: Any,
     csv_path: str,
+    *,
     run_solver: bool,
 ) -> tuple[str, bool] | None:
     while True:
@@ -313,10 +320,11 @@ def _parametric_csv_form(
 def _parametric_grid_form(
     stdscr: Any,
     axes: list[dict[str, Any]],
+    *,
     run_solver: bool,
 ) -> tuple[list[dict[str, Any]], bool] | None:
     while True:
-        state = _grid_menu_state(axes, run_solver)
+        state = _grid_menu_state(axes, run_solver=run_solver)
 
         menu = build_menu(
             stdscr,
@@ -328,7 +336,7 @@ def _parametric_grid_form(
             help_lines=_parametric_grid_help_lines(),
         )
         choice = menu.navigate()
-        action = _apply_grid_choice(stdscr, axes, run_solver, choice, state)
+        action = _apply_grid_choice(stdscr, axes, run_solver=run_solver, choice=choice, state=state)
         if action is None:
             return None
         if action["done"]:
@@ -337,7 +345,7 @@ def _parametric_grid_form(
         run_solver = action["run_solver"]
 
 
-def _grid_menu_state(axes: list[dict[str, Any]], run_solver: bool) -> dict[str, Any]:
+def _grid_menu_state(axes: list[dict[str, Any]], *, run_solver: bool) -> dict[str, Any]:
     axis_labels = [_axis_label(idx, axis) for idx, axis in enumerate(axes)]
     add_idx = len(axis_labels)
     clear_idx = add_idx + 1
@@ -380,6 +388,7 @@ def _grid_hint_for(state: dict[str, Any], idx: int) -> str:
 def _apply_grid_choice(
     stdscr: Any,
     axes: list[dict[str, Any]],
+    *,
     run_solver: bool,
     choice: int,
     state: dict[str, Any],
@@ -470,6 +479,7 @@ def _update_parametric_dict(
     _dict_path: str,
     entry: str,
     values: list[str],
+    *,
     run_solver: bool,
 ) -> tuple[str, str, list[str], bool]:
     updated = _prompt_line(
@@ -484,6 +494,7 @@ def _update_parametric_entry(
     dict_path: str,
     entry: str,
     values: list[str],
+    *,
     run_solver: bool,
 ) -> tuple[str, str, list[str], bool]:
     updated = _prompt_line(
@@ -498,6 +509,7 @@ def _update_parametric_values(
     dict_path: str,
     entry: str,
     values: list[str],
+    *,
     run_solver: bool,
 ) -> tuple[str, str, list[str], bool]:
     updated = _prompt_line(
@@ -514,6 +526,7 @@ def _toggle_parametric_run(
     dict_path: str,
     entry: str,
     values: list[str],
+    *,
     run_solver: bool,
 ) -> tuple[str, str, list[str], bool]:
     _ = stdscr
@@ -525,6 +538,7 @@ def _finalize_parametric(
     dict_path: str,
     entry: str,
     values: list[str],
+    *,
     run_solver: bool,
 ) -> tuple[str, str, list[str], bool] | None:
     if not entry:
@@ -562,7 +576,7 @@ def _parametric_form_help_lines() -> list[str]:
     ]
 
 
-def _parametric_mode_help_lines(preprocessing_ready: bool) -> list[str]:
+def _parametric_mode_help_lines(*, preprocessing_ready: bool) -> list[str]:
     lines = [
         "Single entry: one dictionary key with multiple values.",
         "Presets come from ofti.parametric when available.",

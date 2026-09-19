@@ -146,12 +146,12 @@ def _collect_required_entries(info_lines: Sequence[str]) -> list[str]:
     required: list[str] = []
     capture_block = False
     for raw in info_lines:
-        capture_block, entries = _required_entries_from_line(raw.strip(), capture_block)
+        capture_block, entries = _required_entries_from_line(raw.strip(), capture_block=capture_block)
         required.extend(entries)
     return required
 
 
-def _required_entries_from_line(line: str, capture_block: bool) -> tuple[bool, list[str]]:
+def _required_entries_from_line(line: str, *, capture_block: bool) -> tuple[bool, list[str]]:
     if not line:
         return False, []
     lower = line.lower()

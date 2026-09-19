@@ -5,7 +5,7 @@ def find_suspicious_lines(content: str) -> list[str]:
     warnings: list[str] = []
     state = _SyntaxState(lines=content.splitlines())
     for idx, raw in enumerate(state.lines, 1):
-        state.header_done, skip = _consume_header_line(raw.strip(), state.header_done)
+        state.header_done, skip = _consume_header_line(raw.strip(), done=state.header_done)
         if skip:
             continue
         line = state.code_line(raw)
@@ -40,13 +40,13 @@ class _SyntaxState:
         return None
 
     def code_line(self, raw: str) -> str:
-        line, self.in_block_comment = _strip_block_comments(raw, self.in_block_comment)
+        line, self.in_block_comment = _strip_block_comments(raw, in_block=self.in_block_comment)
         if self.in_block_comment:
             return ""
         return _strip_line_comment(line).strip()
 
 
-def _consume_header_line(stripped: str, done: bool) -> tuple[bool, bool]:
+def _consume_header_line(stripped: str, *, done: bool) -> tuple[bool, bool]:
     if done:
         return True, False
     if not stripped or stripped.startswith(("/*", "*", "|", "\\", "//")):
@@ -56,7 +56,7 @@ def _consume_header_line(stripped: str, done: bool) -> tuple[bool, bool]:
     return True, False
 
 
-def _strip_block_comments(line: str, in_block: bool) -> tuple[str, bool]:
+def _strip_block_comments(line: str, *, in_block: bool) -> tuple[str, bool]:
     cleaned = ""
     remainder = line
     while remainder:
