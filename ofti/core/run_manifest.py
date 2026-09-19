@@ -7,6 +7,7 @@ import platform
 import shlex
 import shutil
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -49,30 +50,35 @@ _OF_ENV_KEYS = (
 )
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RunManifestOptions:
+    name: str
+    command: str
+    background: bool
+    detached: bool
+    parallel: int
+    mpi: str | None
+    sync_subdomains: bool
+    prepare_parallel: bool
+    clean_processors: bool
+    extra_env: dict[str, str] | None = None
+    log_path: Path | None = None
+    pid: int | None = None
+    returncode: int | None = None
+    record_inputs_copy: bool = False
+    solver_name: str | None = None
+
+
 def build_run_manifest(
     case_path: Path,
     *,
-    name: str,
-    command: str,
-    background: bool,
-    detached: bool,
-    parallel: int,
-    mpi: str | None,
-    sync_subdomains: bool,
-    prepare_parallel: bool,
-    clean_processors: bool,
-    extra_env: dict[str, str] | None = None,
-    log_path: Path | None = None,
-    pid: int | None = None,
-    returncode: int | None = None,
-    recorded_inputs_copy: bool = False,
-    solver_name: str | None = None,
+    options: RunManifestOptions,
 ) -> dict[str, Any]:
     case_dir = case_path.expanduser().resolve()
     bashrc = resolve_openfoam_bashrc()
     snapshot = build_case_snapshot(case_dir)
     input_rows = collect_case_inputs(case_dir)
-    chosen_solver = solver_name or detect_solver(case_dir)
+    chosen_solver = options.solver_name or detect_solver(case_dir)
     build = _build_provenance(chosen_solver, bashrc=bashrc)
     created_at = _utc_now()
     return {
@@ -89,19 +95,19 @@ def build_run_manifest(
             "parallel": detect_parallel_settings(case_dir),
         },
         "launch": {
-            "name": name,
-            "command": command,
-            "background": bool(background),
-            "detached": bool(detached),
-            "parallel": int(parallel),
-            "mpi": mpi,
-            "sync_subdomains": bool(sync_subdomains),
-            "prepare_parallel": bool(prepare_parallel),
-            "clean_processors": bool(clean_processors),
-            "extra_env": dict(sorted((extra_env or {}).items())),
-            "log_path": str(log_path.resolve()) if log_path is not None else None,
-            "pid": pid,
-            "returncode": returncode,
+            "name": options.name,
+            "command": options.command,
+            "background": bool(options.background),
+            "detached": bool(options.detached),
+            "parallel": int(options.parallel),
+            "mpi": options.mpi,
+            "sync_subdomains": bool(options.sync_subdomains),
+            "prepare_parallel": bool(options.prepare_parallel),
+            "clean_processors": bool(options.clean_processors),
+            "extra_env": dict(sorted((options.extra_env or {}).items())),
+            "log_path": str(options.log_path.resolve()) if options.log_path is not None else None,
+            "pid": options.pid,
+            "returncode": options.returncode,
         },
         "openfoam": {
             "bashrc": str(bashrc.resolve()) if bashrc is not None else None,
@@ -122,7 +128,7 @@ def build_run_manifest(
             "files": input_rows,
             "tree_hash": _tree_hash(input_rows),
             "mesh_hash": _mesh_hash(input_rows),
-            "recorded_inputs_copy": bool(recorded_inputs_copy),
+            "recorded_inputs_copy": bool(options.record_inputs_copy),
             "inputs_copy_path": None,
         },
     }
@@ -152,46 +158,18 @@ def write_run_manifest(
 def write_case_run_manifest(
     case_path: Path,
     *,
-    name: str,
-    command: str,
-    background: bool,
-    detached: bool,
-    parallel: int,
-    mpi: str | None,
-    sync_subdomains: bool,
-    prepare_parallel: bool,
-    clean_processors: bool,
-    extra_env: dict[str, str] | None = None,
-    log_path: Path | None = None,
-    pid: int | None = None,
-    returncode: int | None = None,
+    options: RunManifestOptions,
     output: Path | None = None,
-    record_inputs_copy: bool = False,
-    solver_name: str | None = None,
 ) -> Path:
     manifest = build_run_manifest(
         case_path,
-        name=name,
-        command=command,
-        background=background,
-        detached=detached,
-        parallel=parallel,
-        mpi=mpi,
-        sync_subdomains=sync_subdomains,
-        prepare_parallel=prepare_parallel,
-        clean_processors=clean_processors,
-        extra_env=extra_env,
-        log_path=log_path,
-        pid=pid,
-        returncode=returncode,
-        recorded_inputs_copy=record_inputs_copy,
-        solver_name=solver_name,
+        options=options,
     )
     return write_run_manifest(
         case_path,
         manifest,
         output=output,
-        record_inputs_copy=record_inputs_copy,
+        record_inputs_copy=options.record_inputs_copy,
     )
 
 

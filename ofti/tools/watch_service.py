@@ -46,9 +46,11 @@ external_watch_start_payload = _watch_external.external_watch_start_payload
 external_watch_status_payload = _watch_external.external_watch_status_payload
 external_watch_stop_payload = _watch_external.external_watch_stop_payload
 normalize_external_command = _watch_external.normalize_external_command
+ExternalWatchMode = _watch_external.ExternalWatchMode
+ExternalWatchOptions = _watch_external.ExternalWatchOptions
+ExternalWatchStartOptions = _watch_external.ExternalWatchStartOptions
 
 signal = _signal
-ExternalWatchMode = Literal["run", "start", "status", "attach", "stop"]
 WatchOutputProfile = Literal["brief", "detailed"]
 _WATCH_SETTINGS_DEFAULT_INTERVAL = 0.25
 _WATCH_SETTINGS_DEFAULT_OUTPUT: WatchOutputProfile = "detailed"

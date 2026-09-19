@@ -111,9 +111,11 @@ def test_watch_external_mode_and_dispatch(monkeypatch: pytest.MonkeyPatch, tmp_p
     )
     payload = watch.external_watch_mode_payload(
         case,
-        mode="run",
-        command=["python"],
-        dry_run=True,
+        options=watch.ExternalWatchOptions(
+            mode="run",
+            command=["python"],
+            dry_run=True,
+        ),
     )
     assert payload["ok"] is True
 
@@ -135,11 +137,13 @@ def test_watch_external_start_status_attach_stop(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(watch_service, "register_job", lambda *_a, **_k: "job-ext-1")
     started = watch.external_watch_start_payload(
         case,
-        command=["python", "watcher.py", "--x"],
-        dry_run=False,
-        name="watch.external",
-        detached=True,
-        log_file=str(ext_log),
+        options=watch.ExternalWatchStartOptions(
+            command=["python", "watcher.py", "--x"],
+            dry_run=False,
+            name="watch.external",
+            detached=True,
+            log_file=str(ext_log),
+        ),
     )
     assert started["pid"] == 777
     assert started["job_id"] == "job-ext-1"

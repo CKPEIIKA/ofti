@@ -9,6 +9,7 @@ import shlex
 import shutil
 import subprocess
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -39,6 +40,8 @@ from .common import require_case_dir
 _PARALLEL_SOLVER_COMMAND_MIN_PARTS = 2
 
 RunResult = runner_service.RunResult
+QueueOptions = _run_queue.QueueOptions
+SmokeOptions = _run_smoke.SmokeOptions
 
 parse_duration_seconds = _run_smoke.parse_duration_seconds
 smoke_payload = _run_smoke.smoke_payload
@@ -62,6 +65,29 @@ class GridAxis(TypedDict):
     dict_path: str
     entry: str
     values: list[str]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ParametricCaseOptions:
+    dict_path: str = "system/controlDict"
+    entry: str | None = None
+    values: list[str] = field(default_factory=list)
+    csv_path: Path | None = None
+    grid_axes: list[GridAxis] = field(default_factory=list)
+    output_root: Path | None = None
+    run_solver: bool = False
+    solver: str | None = None
+    parallel: int = 0
+    mpi: str | None = None
+    max_parallel: int = 1
+    poll_interval: float = 0.25
+    queue_backend: str = "process"
+    prepare_parallel: bool = True
+    clean_processors: bool = False
+    bundle_output: Path | None = None
+    bundle_name: str | None = None
+    bundle_mesh: str = "auto"
+    bundle_time: str = "0"
 
 
 def normalize_tool_name(value: str) -> str:
@@ -616,94 +642,78 @@ def parse_grid_axes(raw_axes: list[str], *, default_dict: str) -> list[GridAxis]
 def parametric_case_payload(
     case_dir: Path,
     *,
-    dict_path: str,
-    entry: str | None,
-    values: list[str],
-    csv_path: Path | None,
-    grid_axes: list[GridAxis],
-    output_root: Path | None = None,
-    run_solver: bool = False,
-    solver: str | None = None,
-    parallel: int = 0,
-    mpi: str | None = None,
-    max_parallel: int = 1,
-    poll_interval: float = 0.25,
-    queue_backend: str = "process",
-    prepare_parallel: bool = True,
-    clean_processors: bool = False,
-    bundle_output: Path | None = None,
-    bundle_name: str | None = None,
-    bundle_mesh: str = "auto",
-    bundle_time: str = "0",
+    options: ParametricCaseOptions,
 ) -> dict[str, Any]:
     case_path = require_case_dir(case_dir)
-    mode = _parametric_mode(csv_path, grid_axes)
-    root = output_root.resolve() if output_root is not None else case_path.parent.resolve()
+    mode = _parametric_mode(options.csv_path, options.grid_axes)
+    root = options.output_root.resolve() if options.output_root is not None else case_path.parent.resolve()
     created: list[Path]
     if mode == "csv":
-        if csv_path is None:
+        if options.csv_path is None:
             raise ValueError("CSV parametric mode requires a CSV path")
         created = build_parametric_cases_from_csv(
             case_path,
-            csv_path,
+            options.csv_path,
             output_root=root,
         )
     elif mode == "grid":
         created = build_parametric_cases_from_grid(
             case_path,
-            list(grid_axes),
+            list(options.grid_axes),
             output_root=root,
         )
     else:
-        if not entry:
+        if not options.entry:
             raise ValueError("--entry is required for single-entry parametric mode")
-        if not values:
+        if not options.values:
             raise ValueError("--values is required for single-entry parametric mode")
         created = build_parametric_cases(
             case_path,
-            Path(dict_path),
-            entry,
-            values,
+            Path(options.dict_path),
+            options.entry,
+            options.values,
             output_root=root,
         )
     bundle_result = _parametric_bundle(
         created,
-        bundle_output,
-        name=bundle_name,
-        mesh=bundle_mesh,
-        time=bundle_time,
+        options.bundle_output,
+        name=options.bundle_name,
+        mesh=options.bundle_mesh,
+        time=options.bundle_time,
     )
     queue_result: dict[str, Any] | None = None
-    if run_solver and created:
+    if options.run_solver and created:
         queue_result = queue_payload(
             cases=created,
-            solver=solver,
-            parallel=parallel,
-            mpi=mpi,
-            max_parallel=max_parallel,
-            poll_interval=poll_interval,
-            dry_run=False,
-            backend=queue_backend,
-            prepare_parallel=prepare_parallel,
-            clean_processors=clean_processors,
+            options=QueueOptions(
+                solver=options.solver,
+                parallel=options.parallel,
+                mpi=options.mpi,
+                max_parallel=options.max_parallel,
+                poll_interval=options.poll_interval,
+                dry_run=False,
+                backend=options.queue_backend,
+                prepare_parallel=options.prepare_parallel,
+                clean_processors=options.clean_processors,
+            ),
         )
     return {
         "case": str(case_path.resolve()),
         "mode": mode,
-        "dict_path": dict_path,
-        "entry": entry,
-        "values": list(values),
-        "csv_path": str(csv_path) if csv_path is not None else None,
-        "grid_axes": list(grid_axes),
+        "dict_path": options.dict_path,
+        "entry": options.entry,
+        "values": list(options.values),
+        "csv_path": str(options.csv_path) if options.csv_path is not None else None,
+        "grid_axes": list(options.grid_axes),
         "output_root": str(root),
         "created_count": len(created),
         "created": [str(path.resolve()) for path in created],
-        "run_solver": run_solver,
+        "run_solver": options.run_solver,
         "queue": queue_result,
         "bundle": bundle_result,
-        "queue_backend": queue_backend,
-        "prepare_parallel": bool(prepare_parallel),
-        "clean_processors": bool(clean_processors),
+        "queue_backend": options.queue_backend,
+        "prepare_parallel": bool(options.prepare_parallel),
+        "clean_processors": bool(options.clean_processors),
     }
 
 

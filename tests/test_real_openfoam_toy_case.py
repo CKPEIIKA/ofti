@@ -85,17 +85,19 @@ def test_real_toy_case_prelaunch_diagnostics_and_manifest(real_case: RealTutoria
 
     written = run_manifest.write_case_run_manifest(
         case,
-        name=display,
-        command=manifest,
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
+        options=run_manifest.RunManifestOptions(
+            name=display,
+            command=manifest,
+            background=False,
+            detached=False,
+            parallel=0,
+            mpi=None,
+            sync_subdomains=True,
+            prepare_parallel=True,
+            clean_processors=False,
+            record_inputs_copy=True,
+        ),
         output=manifest_path,
-        record_inputs_copy=True,
     )
     assert written == manifest_path.resolve()
     assert run_manifest.verify_run_manifest(written, case_path=case)["ok"] is True
@@ -131,10 +133,12 @@ def test_real_toy_case_transactional_dictionary_edit(
     assert "endTime 0.01;" in Path(case, "system", "controlDict").read_text(encoding="utf-8")
     smoke = run_ops.smoke_payload(
         case,
-        iterations=2,
-        timeout=60,
-        output_root=tmp_path / "transaction-smoke",
-        core_only=True,
+        options=run_ops.SmokeOptions(
+            iterations=2,
+            timeout=60,
+            output_root=tmp_path / "transaction-smoke",
+            core_only=True,
+        ),
     )
     assert smoke["ok"] is True, smoke
     assert smoke["output_readable"] is True
@@ -152,10 +156,12 @@ def test_real_toy_case_foamlib_control_round_trip_remains_runnable(
 
     smoke = run_ops.smoke_payload(
         case,
-        iterations=2,
-        timeout=60,
-        output_root=tmp_path / "foamlib-round-trip-smoke",
-        core_only=True,
+        options=run_ops.SmokeOptions(
+            iterations=2,
+            timeout=60,
+            output_root=tmp_path / "foamlib-round-trip-smoke",
+            core_only=True,
+        ),
     )
     assert smoke["ok"] is True, smoke
     assert smoke["iterations_completed"] == 2
@@ -173,14 +179,24 @@ def test_real_toy_case_binary_scalar_and_vector_fields_are_physical(real_case: R
     pressure = field_io.read_internal_field(case / time_name / "p")
     velocity = field_io.read_internal_field(case / time_name / "U")
     physical = knife_service.physical_payload(case, time_name="latest", fields=["p", "U"])
-    pressure_mean = sample_metric_service.field_metric_payload(case, "p", reduction="mean")
-    velocity_max = sample_metric_service.field_metric_payload(case, "U", reduction="max")
+    pressure_mean = sample_metric_service.field_metric_payload(
+        case,
+        "p",
+        options=sample_metric_service.FieldMetricOptions(reduction="mean"),
+    )
+    velocity_max = sample_metric_service.field_metric_payload(
+        case,
+        "U",
+        options=sample_metric_service.FieldMetricOptions(reduction="max"),
+    )
     moving_wall = sample_metric_service.field_metric_payload(
         case,
         "U",
-        time_name="0",
-        patch="movingWall",
-        reduction="max",
+        options=sample_metric_service.FieldMetricOptions(
+            time_name="0",
+            patch="movingWall",
+            reduction="max",
+        ),
     )
 
     assert pressure.count == 400
@@ -249,17 +265,19 @@ def test_real_toy_case_run_manifest_restore_is_runnable(
     manifest_path = tmp_path / "restore-manifest.json"
     written = run_manifest.write_case_run_manifest(
         case,
-        name=display,
-        command=run_ops.dry_run_command(command),
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
+        options=run_manifest.RunManifestOptions(
+            name=display,
+            command=run_ops.dry_run_command(command),
+            background=False,
+            detached=False,
+            parallel=0,
+            mpi=None,
+            sync_subdomains=True,
+            prepare_parallel=True,
+            clean_processors=False,
+            record_inputs_copy=True,
+        ),
         output=manifest_path,
-        record_inputs_copy=True,
     )
     restored = tmp_path / "manifest-restored"
 
@@ -282,29 +300,33 @@ def test_real_toy_case_manifest_restore_executes_solver(
     display, command = run_ops.solver_command(case)
     manifest_path = run_manifest.write_case_run_manifest(
         case,
-        name=display,
-        command=run_ops.dry_run_command(command),
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
+        options=run_manifest.RunManifestOptions(
+            name=display,
+            command=run_ops.dry_run_command(command),
+            background=False,
+            detached=False,
+            parallel=0,
+            mpi=None,
+            sync_subdomains=True,
+            prepare_parallel=True,
+            clean_processors=False,
+            record_inputs_copy=True,
+        ),
         output=tmp_path / "executable-restore-manifest.json",
-        record_inputs_copy=True,
     )
     restored = tmp_path / "executable-manifest-restore"
     run_manifest.restore_run_manifest(manifest_path, restored)
 
     smoke = run_ops.smoke_payload(
         restored,
-        solver=display,
-        iterations=2,
-        timeout=60,
-        output_root=restored,
-        in_place=True,
-        core_only=True,
+        options=run_ops.SmokeOptions(
+            solver=display,
+            iterations=2,
+            timeout=60,
+            output_root=restored,
+            in_place=True,
+            core_only=True,
+        ),
     )
 
     assert smoke["ok"] is True, smoke
@@ -317,15 +339,17 @@ def test_real_toy_case_bundle_extract_status(real_case: RealTutorialCase, tmp_pa
     display, command = run_ops.solver_command(case)
     external_manifest = run_manifest.write_case_run_manifest(
         case,
-        name=display,
-        command=run_ops.dry_run_command(command),
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
+        options=run_manifest.RunManifestOptions(
+            name=display,
+            command=run_ops.dry_run_command(command),
+            background=False,
+            detached=False,
+            parallel=0,
+            mpi=None,
+            sync_subdomains=True,
+            prepare_parallel=True,
+            clean_processors=False,
+        ),
         output=tmp_path / "external-run-manifest.json",
     )
     archive = tmp_path / "real-case.ofti.tar.gz"
@@ -361,11 +385,13 @@ def test_real_toy_case_extracted_smoke_run_is_watchable(
 
     smoke = run_ops.smoke_payload(
         restored,
-        iterations=2,
-        timeout=60,
-        output_root=restored,
-        in_place=True,
-        core_only=True,
+        options=run_ops.SmokeOptions(
+            iterations=2,
+            timeout=60,
+            output_root=restored,
+            in_place=True,
+            core_only=True,
+        ),
     )
     status = knife_service.status_payload(restored, lightweight=True, tail_bytes=256 * 1024)
 
@@ -396,11 +422,13 @@ def test_real_toy_case_bundle_set_restores_and_runs_every_case(
         case = restored / entry.name
         smoke = run_ops.smoke_payload(
             case,
-            iterations=2,
-            timeout=60,
-            output_root=case,
-            in_place=True,
-            core_only=True,
+            options=run_ops.SmokeOptions(
+                iterations=2,
+                timeout=60,
+                output_root=case,
+                in_place=True,
+                core_only=True,
+            ),
         )
         assert smoke["ok"] is True, smoke
         assert smoke["iterations_completed"] == 2
@@ -425,10 +453,12 @@ def test_real_toy_case_smoke_forces_exact_steps_from_adaptive_source(
 
     smoke = run_ops.smoke_payload(
         case,
-        iterations=5,
-        timeout=60,
-        output_root=tmp_path / "adaptive-source-smoke",
-        core_only=True,
+        options=run_ops.SmokeOptions(
+            iterations=5,
+            timeout=60,
+            output_root=tmp_path / "adaptive-source-smoke",
+            core_only=True,
+        ),
     )
 
     assert smoke["ok"] is True, smoke
@@ -457,13 +487,15 @@ def test_real_toy_case_parallel_smoke_writes_common_final_checkpoint(
 
     smoke = run_ops.smoke_payload(
         case,
-        iterations=5,
-        timeout=90,
-        parallel=2,
-        output_root=tmp_path / "parallel-exact-smoke",
-        core_only=True,
-        clean_processors=True,
-        reconstruct=True,
+        options=run_ops.SmokeOptions(
+            iterations=5,
+            timeout=90,
+            parallel=2,
+            output_root=tmp_path / "parallel-exact-smoke",
+            core_only=True,
+            clean_processors=True,
+            reconstruct=True,
+        ),
     )
 
     assert smoke["ok"] is True, smoke
@@ -484,11 +516,13 @@ def test_real_toy_case_smoke_result_pack_round_trip(
     case = real_case.case
     smoke = run_ops.smoke_payload(
         case,
-        iterations=2,
-        timeout=60,
-        output_root=case,
-        in_place=True,
-        core_only=True,
+        options=run_ops.SmokeOptions(
+            iterations=2,
+            timeout=60,
+            output_root=case,
+            in_place=True,
+            core_only=True,
+        ),
     )
     assert smoke["ok"] is True, smoke
     archive = tmp_path / "real-results.tar.gz"
@@ -801,11 +835,13 @@ def test_real_toy_case_sequential_queue_reports_terminal_outcomes(
 
     payload = run_ops.queue_payload(
         cases=[case_a, case_b],
-        solver=solver,
-        max_parallel=1,
-        backend="process",
-        poll_interval=0.1,
-        queue_root=tmp_path,
+        options=run_ops.QueueOptions(
+            solver=solver,
+            max_parallel=1,
+            backend="process",
+            poll_interval=0.1,
+            queue_root=tmp_path,
+        ),
     )
 
     assert payload["ok"] is True, payload
@@ -841,11 +877,13 @@ def test_real_toy_case_queue_continues_after_crashed_case(
 
     payload = run_ops.queue_payload(
         cases=[bad_case, good_case],
-        solver=solver,
-        max_parallel=1,
-        backend="process",
-        poll_interval=0.1,
-        queue_root=tmp_path,
+        options=run_ops.QueueOptions(
+            solver=solver,
+            max_parallel=1,
+            backend="process",
+            poll_interval=0.1,
+            queue_root=tmp_path,
+        ),
     )
 
     assert payload["ok"] is False, payload
@@ -872,11 +910,13 @@ def test_real_toy_case_queue_classifier_uses_explicit_criterion_evidence(
     assert knife_service.set_entry_payload(case, "system/controlDict", "endTime", "0.005")["ok"]
     queued = run_ops.queue_payload(
         cases=[case],
-        solver=solver,
-        max_parallel=1,
-        backend="process",
-        poll_interval=0.1,
-        queue_root=tmp_path,
+        options=run_ops.QueueOptions(
+            solver=solver,
+            max_parallel=1,
+            backend="process",
+            poll_interval=0.1,
+            queue_root=tmp_path,
+        ),
     )
     assert queued["finished"][0]["returncode"] == 0
     assert knife_service.set_entry_payload(case, "system/controlDict", "endTime", "1000")["ok"]
@@ -919,12 +959,14 @@ def test_real_toy_case_criteria_reads_explicit_runtime_evidence(real_case: RealT
     )
     smoke = run_ops.smoke_payload(
         case,
-        solver=solver,
-        iterations=2,
-        timeout=60,
-        output_root=case,
-        in_place=True,
-        core_only=True,
+        options=run_ops.SmokeOptions(
+            solver=solver,
+            iterations=2,
+            timeout=60,
+            output_root=case,
+            in_place=True,
+            core_only=True,
+        ),
     )
     assert smoke["ok"] is True, smoke
     log_path = Path(str(smoke["log_path"]))
@@ -950,23 +992,27 @@ def test_real_toy_case_compare_reconstructed_parallel_to_serial(
 
     serial = run_ops.smoke_payload(
         serial_case,
-        solver=solver,
-        iterations=2,
-        timeout=60,
-        output_root=tmp_path / "serial-smoke",
-        in_place=True,
-        core_only=True,
+        options=run_ops.SmokeOptions(
+            solver=solver,
+            iterations=2,
+            timeout=60,
+            output_root=tmp_path / "serial-smoke",
+            in_place=True,
+            core_only=True,
+        ),
     )
     parallel = run_ops.smoke_payload(
         parallel_case,
-        solver=solver,
-        iterations=2,
-        timeout=90,
-        parallel=2,
-        output_root=tmp_path / "parallel-smoke",
-        in_place=True,
-        core_only=True,
-        clean_processors=True,
+        options=run_ops.SmokeOptions(
+            solver=solver,
+            iterations=2,
+            timeout=90,
+            parallel=2,
+            output_root=tmp_path / "parallel-smoke",
+            in_place=True,
+            core_only=True,
+            clean_processors=True,
+        ),
     )
     assert serial["ok"] is True, serial
     assert parallel["ok"] is True, parallel
@@ -979,7 +1025,7 @@ def test_real_toy_case_compare_reconstructed_parallel_to_serial(
     direct = knife_service.compare_fields_payload(
         serial_case,
         parallel_case,
-        fields=["p", "U"],
+        options=knife_service.FieldCompareOptions(fields=["p", "U"]),
     )
     assert direct["ok"] is True, direct
     assert direct["time_policy"] == "latest-common"
@@ -999,9 +1045,11 @@ def test_real_toy_case_compare_reconstructed_parallel_to_serial(
     compared = knife_service.compare_fields_payload(
         serial_case,
         parallel_case,
-        reference_time=latest_time(serial_case),
-        candidate_time=reconstructed_time,
-        fields=["p", "U"],
+        options=knife_service.FieldCompareOptions(
+            reference_time=latest_time(serial_case),
+            candidate_time=reconstructed_time,
+            fields=["p", "U"],
+        ),
         out_dir=tmp_path / "serial-vs-parallel-compare",
     )
 
@@ -1112,7 +1160,10 @@ def _prepare_parallel_resize_source(real_case: RealTutorialCase) -> None:
     _prepare_parallel_case(case)
     _require_working_parallel_launcher(run_ops.solver_command(case, parallel=2)[1], case=case)
     assert (case / "processor0").is_dir()
-    dry_plan = parallel_resize_service.parallel_resize_payload(case, from_ranks=2, to_ranks=3, dry_run=True)
+    dry_plan = parallel_resize_service.parallel_resize_payload(
+        case,
+        options=parallel_resize_service.ParallelResizeOptions(from_ranks=2, to_ranks=3, dry_run=True),
+    )
     assert dry_plan["ok"] is True
     assert dry_plan["restart_plan"]["safe_to_apply"] is True
     assert any(row["step"] == "decompose" for row in dry_plan["steps"])

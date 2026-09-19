@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -13,6 +14,7 @@ from ofti.app.cli_adapters import plot as plot_adapter
 from ofti.app.cli_adapters import run as run_adapter
 from ofti.app.cli_adapters import watch as watch_adapter
 from ofti.tools.cli_tools.run import RunResult
+from ofti.tools.cli_tools.watch import ExternalWatchOptions
 
 
 def _ns(**kwargs: object) -> argparse.Namespace:
@@ -971,7 +973,8 @@ def test_watch_external_handler_start_status_attach_stop_modes(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     def _payload(*_a: object, **kwargs: object) -> dict[str, object]:
-        mode = str(kwargs.get("mode"))
+        options = cast("ExternalWatchOptions", kwargs["options"])
+        mode = options.mode
         if mode == "start":
             return {
                 "case": "/case",

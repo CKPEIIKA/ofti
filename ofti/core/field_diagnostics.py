@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ofti.core.field_compare import compare_fields_payload
+from ofti.core.field_compare import FieldCompareOptions, compare_fields_payload
 from ofti.core.field_io import (
     FieldData,
     field_summary_row,
@@ -31,6 +31,7 @@ def split_field_list(values: list[str] | None) -> list[str] | None:
 
 __all__ = [
     "FIELD_PRESETS",
+    "FieldCompareOptions",
     "FieldData",
     "FieldRule",
     "compare_fields_payload",

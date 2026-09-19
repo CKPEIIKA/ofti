@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from ofti.app.cli_adapters.common import planned_manifest_path
 from ofti.core import run_manifest, run_receipt
 from ofti.core.run_manifest import (
+    RunManifestOptions,
     build_run_manifest,
     resolve_manifest_file,
     restore_run_manifest,
@@ -28,6 +30,36 @@ def _make_case(path: Path) -> Path:
     return path
 
 
+def _manifest_options(**overrides: object) -> RunManifestOptions:
+    values: dict[str, object] = {
+        "name": "simpleFoam",
+        "command": "simpleFoam",
+        "background": False,
+        "detached": False,
+        "parallel": 0,
+        "mpi": None,
+        "sync_subdomains": True,
+        "prepare_parallel": True,
+        "clean_processors": False,
+        "record_inputs_copy": False,
+        "solver_name": None,
+    }
+    values.update(overrides)
+    return RunManifestOptions(
+        name=cast("str", values["name"]),
+        command=cast("str", values["command"]),
+        background=cast("bool", values["background"]),
+        detached=cast("bool", values["detached"]),
+        parallel=cast("int", values["parallel"]),
+        mpi=cast("str | None", values["mpi"]),
+        sync_subdomains=cast("bool", values["sync_subdomains"]),
+        prepare_parallel=cast("bool", values["prepare_parallel"]),
+        clean_processors=cast("bool", values["clean_processors"]),
+        record_inputs_copy=cast("bool", values["record_inputs_copy"]),
+        solver_name=cast("str | None", values["solver_name"]),
+    )
+
+
 def test_write_manifest_with_recorded_inputs_copy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -37,16 +69,7 @@ def test_write_manifest_with_recorded_inputs_copy(
 
     manifest_path = write_case_run_manifest(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
-        record_inputs_copy=True,
+        options=_manifest_options(record_inputs_copy=True),
     )
 
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -69,15 +92,7 @@ def test_verify_manifest_detects_changed_and_extra_files(
     monkeypatch.chdir(tmp_path)
     manifest_path = write_case_run_manifest(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
+        options=_manifest_options(),
     )
 
     (case / "system" / "controlDict").write_text("application pisoFoam;\n", encoding="utf-8")
@@ -97,15 +112,7 @@ def test_restore_manifest_requires_recorded_inputs_copy(
     monkeypatch.chdir(tmp_path)
     manifest_path = write_case_run_manifest(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
+        options=_manifest_options(),
     )
 
     with pytest.raises(ValueError, match="does not include recorded inputs"):
@@ -120,16 +127,7 @@ def test_restore_manifest_copies_case_inputs(
     monkeypatch.chdir(tmp_path)
     manifest_path = write_case_run_manifest(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
-        record_inputs_copy=True,
+        options=_manifest_options(record_inputs_copy=True),
     )
 
     payload = restore_run_manifest(manifest_path, tmp_path / "restored")
@@ -148,16 +146,7 @@ def test_restore_manifest_rejects_unsafe_inputs_copy_path(
     monkeypatch.chdir(tmp_path)
     manifest_path = write_case_run_manifest(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
-        record_inputs_copy=True,
+        options=_manifest_options(record_inputs_copy=True),
     )
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     payload["inputs"]["inputs_copy_path"] = "../inputs"
@@ -175,16 +164,7 @@ def test_restore_manifest_only_selected_roots(
     monkeypatch.chdir(tmp_path)
     manifest_path = write_case_run_manifest(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
-        record_inputs_copy=True,
+        options=_manifest_options(record_inputs_copy=True),
     )
 
     payload = restore_run_manifest(
@@ -208,16 +188,7 @@ def test_restore_manifest_skip_selected_roots(
     monkeypatch.chdir(tmp_path)
     manifest_path = write_case_run_manifest(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
-        record_inputs_copy=True,
+        options=_manifest_options(record_inputs_copy=True),
     )
 
     payload = restore_run_manifest(
@@ -241,16 +212,7 @@ def test_restore_manifest_rejects_empty_selection(
     monkeypatch.chdir(tmp_path)
     manifest_path = write_case_run_manifest(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
-        record_inputs_copy=True,
+        options=_manifest_options(record_inputs_copy=True),
     )
 
     with pytest.raises(ValueError, match="selection is empty"):
@@ -267,16 +229,11 @@ def test_build_manifest_marks_recorded_inputs_copy_flag(tmp_path: Path) -> None:
 
     manifest = build_run_manifest(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=True,
-        detached=True,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
-        recorded_inputs_copy=True,
+        options=_manifest_options(
+            background=True,
+            detached=True,
+            record_inputs_copy=True,
+        ),
     )
 
     assert manifest["launch"]["background"] is True
@@ -288,15 +245,7 @@ def test_run_receipt_compat_aliases_point_to_manifest_api(tmp_path: Path) -> Non
 
     manifest = run_receipt.build_run_receipt(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
+        options=_manifest_options(),
     )
 
     assert run_receipt.MANIFEST_KIND == run_manifest.MANIFEST_KIND
@@ -342,16 +291,7 @@ def test_build_manifest_records_solver_binary_libs_and_env(
 
     manifest = build_run_manifest(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
-        solver_name="simpleFoam",
+        options=_manifest_options(solver_name="simpleFoam"),
     )
 
     assert manifest["build"]["solver"]["sha256"] == "solver-hash"
@@ -378,16 +318,7 @@ def test_verify_manifest_reports_build_drift(
     )
     manifest_path = write_case_run_manifest(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
-        solver_name="simpleFoam",
+        options=_manifest_options(solver_name="simpleFoam"),
     )
     monkeypatch.setattr(
         run_manifest,
@@ -428,16 +359,8 @@ def test_relative_manifest_output_resolves_from_launch_directory(
 
     manifest_path = write_case_run_manifest(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
         output=Path("manifests/run-a"),
+        options=_manifest_options(),
     )
 
     assert manifest_path == (launch_dir / "manifests" / "run-a" / "manifest.json").resolve()
@@ -450,15 +373,7 @@ def test_verify_manifest_accepts_case_directory(
 
     manifest_path = write_case_run_manifest(
         case,
-        name="simpleFoam",
-        command="simpleFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
+        options=_manifest_options(),
     )
     assert manifest_path.is_relative_to(case / "runs")
 

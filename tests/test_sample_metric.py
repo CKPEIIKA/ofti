@@ -7,7 +7,12 @@ import pytest
 
 from ofti.app import cli_tools
 from ofti.core.sample_metric import read_numeric_rows, threshold_crossing
-from ofti.tools.sample_metric_service import field_metric_payload, metric_payload
+from ofti.tools.sample_metric_service import (
+    FieldMetricOptions,
+    MetricOptions,
+    field_metric_payload,
+    metric_payload,
+)
 
 
 def _write_field(path: Path) -> None:
@@ -56,10 +61,7 @@ def test_series_metric_reports_recent_span_and_maturity(tmp_path: Path) -> None:
     payload = metric_payload(
         case,
         "postProcessing/probes/0/p",
-        name="stagnation-p",
-        value_column=1,
-        window=2,
-        max_span=0.1,
+        options=MetricOptions(name="stagnation-p", value_column=1, window=2, max_span=0.1),
     )
 
     assert payload["mode"] == "series"
@@ -81,11 +83,13 @@ def test_crossing_metric_tracks_profiles_by_numeric_time(tmp_path: Path) -> None
     payload = metric_payload(
         case,
         "postProcessing/sets/*/line_p.xy",
-        name="shock-x",
-        value_column=1,
-        threshold=0.5,
-        window=2,
-        max_span=0.1,
+        options=MetricOptions(
+            name="shock-x",
+            value_column=1,
+            threshold=0.5,
+            window=2,
+            max_span=0.1,
+        ),
     )
 
     assert payload["mode"] == "crossing"
@@ -101,7 +105,7 @@ def test_metric_requires_explicit_stationarity_limit(tmp_path: Path) -> None:
     case.mkdir()
     source.write_text("0 1\n1 1\n", encoding="utf-8")
 
-    payload = metric_payload(case, "probe.dat", value_column=1, window=2)
+    payload = metric_payload(case, "probe.dat", options=MetricOptions(value_column=1, window=2))
 
     assert payload["mature"] is None
     assert payload["maturity_reason"] == "not evaluated; set --max-span"
@@ -111,12 +115,12 @@ def test_metric_rejects_source_escape_and_nonfinite_data(tmp_path: Path) -> None
     case = tmp_path / "case"
     case.mkdir()
     with pytest.raises(ValueError, match="case-relative"):
-        metric_payload(case, "../outside.dat")
+        metric_payload(case, "../outside.dat", options=MetricOptions())
 
     source = case / "probe.dat"
     source.write_text("0 nan\n", encoding="utf-8")
     with pytest.raises(ValueError, match="nonfinite"):
-        metric_payload(case, "probe.dat")
+        metric_payload(case, "probe.dat", options=MetricOptions())
 
 
 def test_threshold_crossing_supports_direction_and_pick(tmp_path: Path) -> None:
@@ -187,8 +191,8 @@ def test_field_metric_reduces_internal_and_patch_values(tmp_path: Path) -> None:
     case = tmp_path / "case"
     _write_field(case / "2" / "p")
 
-    internal = field_metric_payload(case, "p", reduction="mean")
-    patch = field_metric_payload(case, "p", patch="wall", reduction="max")
+    internal = field_metric_payload(case, "p", options=FieldMetricOptions(reduction="mean"))
+    patch = field_metric_payload(case, "p", options=FieldMetricOptions(patch="wall", reduction="max"))
 
     assert internal["mode"] == "field"
     assert internal["time"] == "2"
@@ -210,8 +214,12 @@ def test_field_metric_selects_vector_magnitude_or_component(tmp_path: Path) -> N
         encoding="utf-8",
     )
 
-    magnitude = field_metric_payload(case, "U", reduction="mean")
-    component = field_metric_payload(case, "U", reduction="max", component="2")
+    magnitude = field_metric_payload(case, "U", options=FieldMetricOptions(reduction="mean"))
+    component = field_metric_payload(
+        case,
+        "U",
+        options=FieldMetricOptions(reduction="max", component="2"),
+    )
 
     assert magnitude["component"] == "magnitude"
     assert magnitude["value"] == pytest.approx(8.5)

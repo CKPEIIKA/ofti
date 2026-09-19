@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.command_spec import ArgumentSpec, CommandSpec, OptionSpec
-from ofti.core.field_compare import compare_fields_payload
+from ofti.core.field_compare import FieldCompareOptions, compare_fields_payload
 from ofti.core.output_contract import command_name, stamp_payload
 from ofti.core.table import render_table
 from ofti.core.times import time_directories
@@ -146,12 +146,14 @@ def patch_compare_payload(
     payload = compare_fields_payload(
         left_case,
         right_case,
-        time_name=str(selected_time),
-        fields=fields,
-        preset=None if fields else preset,
-        patch=patch,
-        abs_tol=abs_tol,
-        rel_tol=rel_tol,
+        options=FieldCompareOptions(
+            time_name=str(selected_time),
+            fields=fields,
+            preset=None if fields else preset,
+            patch=patch,
+            abs_tol=abs_tol,
+            rel_tol=rel_tol,
+        ),
     )
     payload["preset"] = preset
     payload["preflight"] = preflight

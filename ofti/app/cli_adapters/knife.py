@@ -262,15 +262,17 @@ def _knife_compare_fields(args: argparse.Namespace) -> int:
     payload = knife_ops.compare_fields_payload(
         left_case,
         right_case,
-        time_name=str(getattr(args, "time", "latest")),
-        reference_time=getattr(args, "reference_time", None),
-        candidate_time=getattr(args, "candidate_time", None),
-        fields=split_field_list(list(getattr(args, "fields", []))),
-        preset=getattr(args, "preset", None),
-        patch=getattr(args, "patch", None),
+        options=knife_ops.FieldCompareOptions(
+            time_name=str(getattr(args, "time", "latest")),
+            reference_time=getattr(args, "reference_time", None),
+            candidate_time=getattr(args, "candidate_time", None),
+            fields=split_field_list(list(getattr(args, "fields", []))),
+            preset=getattr(args, "preset", None),
+            patch=getattr(args, "patch", None),
+            abs_tol=float(getattr(args, "abs_tol", 1e-300)),
+            rel_tol=float(getattr(args, "rel_tol", 1e-12)),
+        ),
         out_dir=getattr(args, "out", None),
-        abs_tol=float(getattr(args, "abs_tol", 1e-300)),
-        rel_tol=float(getattr(args, "rel_tol", 1e-12)),
     )
     if args.json:
         emit_json(payload, args)
@@ -369,18 +371,20 @@ def _knife_manifest_write(args: argparse.Namespace) -> int:
     command = run_ops.dry_run_command(cmd)
     manifest_path = manifest_ops.write_case_run_manifest(
         Path(args.case_dir),
-        name=display,
-        command=command,
-        background=False,
-        detached=False,
-        parallel=parallel,
-        mpi=args.mpi,
-        sync_subdomains=sync_subdomains,
-        prepare_parallel=prepare_parallel,
-        clean_processors=clean_processors,
+        options=manifest_ops.RunManifestOptions(
+            name=display,
+            command=command,
+            background=False,
+            detached=False,
+            parallel=parallel,
+            mpi=args.mpi,
+            sync_subdomains=sync_subdomains,
+            prepare_parallel=prepare_parallel,
+            clean_processors=clean_processors,
+            record_inputs_copy=bool(getattr(args, "record_inputs_copy", False)),
+            solver_name=solver_name_for_manifest(cmd, parallel=parallel),
+        ),
         output=planned_manifest_path(args.case_dir, getattr(args, "manifest_file", None)),
-        record_inputs_copy=bool(getattr(args, "record_inputs_copy", False)),
-        solver_name=solver_name_for_manifest(cmd, parallel=parallel),
     )
     payload = {
         "case": str(Path(args.case_dir).resolve()),

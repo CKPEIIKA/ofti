@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -18,37 +19,42 @@ from ofti.core.times import processor_dirs, time_directories
 _MIN_POSITIVE_MAGNITUDE = 1e-300
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FieldCompareOptions:
+    time_name: str = "latest"
+    reference_time: str | None = None
+    candidate_time: str | None = None
+    fields: list[str] | None = None
+    preset: str | None = None
+    patch: str | None = None
+    abs_tol: float = _MIN_POSITIVE_MAGNITUDE
+    rel_tol: float = 1e-12
+
+
 def compare_fields_payload(
     left_case: Path,
     right_case: Path,
     *,
-    time_name: str = "latest",
-    reference_time: str | None = None,
-    candidate_time: str | None = None,
-    fields: list[str] | None = None,
-    preset: str | None = None,
-    patch: str | None = None,
-    abs_tol: float = _MIN_POSITIVE_MAGNITUDE,
-    rel_tol: float = 1e-12,
+    options: FieldCompareOptions,
 ) -> dict[str, Any]:
     selected_left, selected_right, time_policy = _comparison_times(
         left_case,
         right_case,
-        time_name=time_name,
-        reference_time=reference_time,
-        candidate_time=candidate_time,
+        time_name=options.time_name,
+        reference_time=options.reference_time,
+        candidate_time=options.candidate_time,
     )
     left_time = resolve_time_dir(left_case, selected_left)
     right_time = resolve_time_dir(right_case, selected_right)
     mesh = _mesh_identity(left_case, right_case)
-    names = resolve_field_names(left_time, fields, preset=preset)
+    names = resolve_field_names(left_time, options.fields, preset=options.preset)
     rows: list[dict[str, Any]] = []
     errors: list[str] = []
     for name in names:
         try:
-            left = read_field_values(left_time / name, patch=patch)
-            right = read_field_values(right_time / name, patch=patch)
-            row = compare_field_data(left, right, abs_tol=abs_tol, rel_tol=rel_tol)
+            left = read_field_values(left_time / name, patch=options.patch)
+            right = read_field_values(right_time / name, patch=options.patch)
+            row = compare_field_data(left, right, abs_tol=options.abs_tol, rel_tol=options.rel_tol)
         except (OSError, ValueError) as exc:
             row = {"field": name, "ok": False, "error": str(exc)}
             errors.append(f"{name}: {exc}")
@@ -64,8 +70,8 @@ def compare_fields_payload(
         "candidate_time": right_time.name,
         "time_policy": time_policy,
         "mesh": mesh,
-        "preset": preset,
-        "patch": patch,
+        "preset": options.preset,
+        "patch": options.patch,
         "fields_requested": names,
         "field_count": len(rows),
         "ok": not errors,

@@ -348,19 +348,21 @@ def _run_extracted_case(
     command_text = run_ops.dry_run_command(command)
     manifest_path = manifest_ops.write_case_run_manifest(
         destination,
-        name=name,
-        command=command_text,
-        background=background,
-        detached=background,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
-        log_path=result.log_path,
-        pid=result.pid,
-        returncode=result.returncode,
-        solver_name=args.solver or name,
+        options=manifest_ops.RunManifestOptions(
+            name=name,
+            command=command_text,
+            background=background,
+            detached=background,
+            parallel=0,
+            mpi=None,
+            sync_subdomains=True,
+            prepare_parallel=True,
+            clean_processors=False,
+            log_path=result.log_path,
+            pid=result.pid,
+            returncode=result.returncode,
+            solver_name=args.solver or name,
+        ),
     )
     payload["run"] = {
         "command": command_text,
@@ -397,12 +399,14 @@ def _smoke_bundle_archive(args: argparse.Namespace, archive: Path) -> dict[str, 
     return dict(
         run_ops.smoke_payload(
             restored,
-            solver=getattr(args, "smoke_solver", None),
-            iterations=int(getattr(args, "smoke_iterations", 5)),
-            timeout=timeout,
-            output_root=root / "run",
-            in_place=True,
-            core_only=True,
+            options=run_ops.SmokeOptions(
+                solver=getattr(args, "smoke_solver", None),
+                iterations=int(getattr(args, "smoke_iterations", 5)),
+                timeout=timeout,
+                output_root=root / "run",
+                in_place=True,
+                core_only=True,
+            ),
         ),
     )
 

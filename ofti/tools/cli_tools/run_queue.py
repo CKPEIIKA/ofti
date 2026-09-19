@@ -13,6 +13,7 @@ import os
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -26,6 +27,20 @@ QUEUE_FORMAT = "ofti.queue-record"
 QUEUE_FORMAT_VERSION = 1
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class QueueOptions:
+    solver: str | None = None
+    parallel: int = 0
+    mpi: str | None = None
+    max_parallel: int = 1
+    poll_interval: float = 0.25
+    dry_run: bool = False
+    backend: str = "process"
+    prepare_parallel: bool = True
+    clean_processors: bool = False
+    queue_root: Path | None = None
+
+
 def _run() -> Any:
     from ofti.tools.cli_tools import run
 
@@ -35,54 +50,32 @@ def _run() -> Any:
 def queue_payload(
     *,
     cases: list[Path],
-    solver: str | None = None,
-    parallel: int = 0,
-    mpi: str | None = None,
-    max_parallel: int = 1,
-    poll_interval: float = 0.25,
-    dry_run: bool = False,
-    backend: str = "process",
-    prepare_parallel: bool = True,
-    clean_processors: bool = False,
-    queue_root: Path | None = None,
+    options: QueueOptions,
 ) -> dict[str, Any]:
-    _validate_queue_options(max_parallel=max_parallel, backend=backend)
+    _validate_queue_options(max_parallel=options.max_parallel, backend=options.backend)
     normalized_cases = [require_case_dir(path) for path in cases]
-    plan = _queue_plan(normalized_cases, solver=solver, parallel=parallel, mpi=mpi)
+    plan = _queue_plan(
+        normalized_cases,
+        solver=options.solver,
+        parallel=options.parallel,
+        mpi=options.mpi,
+    )
     payload = _queue_payload_init(
         plan=plan,
         normalized_cases=normalized_cases,
-        max_parallel=max_parallel,
-        parallel=parallel,
-        poll_interval=poll_interval,
-        dry_run=dry_run,
-        backend=backend,
-        prepare_parallel=prepare_parallel,
-        clean_processors=clean_processors,
-        queue_root=queue_root,
+        options=options,
     )
     _queue_plan_parallel_setup(
         plan,
-        parallel=parallel,
-        prepare_parallel=prepare_parallel,
-        clean_processors=clean_processors,
+        parallel=options.parallel,
+        prepare_parallel=options.prepare_parallel,
+        clean_processors=options.clean_processors,
     )
     _queue_write_record(payload)
     _queue_write_event(payload, "created")
-    if dry_run:
+    if options.dry_run:
         return payload
-    _run_queue_backend(
-        payload,
-        plan=plan,
-        solver=solver,
-        parallel=parallel,
-        mpi=mpi,
-        max_parallel=max_parallel,
-        poll_interval=poll_interval,
-        backend=backend,
-        prepare_parallel=prepare_parallel,
-        clean_processors=clean_processors,
-    )
+    _run_queue_backend(payload, plan=plan, options=options)
     _queue_mark_complete(payload)
     return payload
 
@@ -141,46 +134,26 @@ def _run_queue_backend(
     payload: dict[str, Any],
     *,
     plan: list[dict[str, Any]],
-    solver: str | None,
-    parallel: int,
-    mpi: str | None,
-    max_parallel: int,
-    poll_interval: float,
-    backend: str,
-    prepare_parallel: bool,
-    clean_processors: bool,
+    options: QueueOptions,
 ) -> None:
-    if backend == "process":
-        if max_parallel == 1:
+    if options.backend == "process":
+        if options.max_parallel == 1:
             _queue_sequential_process_backend(
                 payload,
                 plan=plan,
-                solver=solver,
-                parallel=parallel,
-                mpi=mpi,
-                prepare_parallel=prepare_parallel,
-                clean_processors=clean_processors,
+                options=options,
             )
         else:
             _queue_process_backend(
                 payload,
                 plan=plan,
-                solver=solver,
-                parallel=parallel,
-                mpi=mpi,
-                poll_interval=poll_interval,
-                prepare_parallel=prepare_parallel,
-                clean_processors=clean_processors,
+                options=options,
             )
     else:
         _queue_foamlib_backend(
             payload,
             plan=plan,
-            parallel=parallel,
-            max_parallel=max_parallel,
-            backend=backend,
-            prepare_parallel=prepare_parallel,
-            clean_processors=clean_processors,
+            options=options,
         )
 
 
@@ -188,36 +161,29 @@ def _queue_payload_init(
     *,
     plan: list[dict[str, Any]],
     normalized_cases: list[Path],
-    max_parallel: int,
-    parallel: int,
-    poll_interval: float,
-    dry_run: bool,
-    backend: str,
-    prepare_parallel: bool,
-    clean_processors: bool,
-    queue_root: Path | None,
+    options: QueueOptions,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "queue_id": None,
         "queue_root": None,
         "queue_path": None,
         "count": len(plan),
-        "max_parallel": max_parallel,
-        "parallel": parallel,
-        "poll_interval": poll_interval,
-        "dry_run": dry_run,
-        "backend": backend,
-        "prepare_parallel": bool(prepare_parallel),
-        "clean_processors": bool(clean_processors),
+        "max_parallel": options.max_parallel,
+        "parallel": options.parallel,
+        "poll_interval": options.poll_interval,
+        "dry_run": options.dry_run,
+        "backend": options.backend,
+        "prepare_parallel": bool(options.prepare_parallel),
+        "clean_processors": bool(options.clean_processors),
         "planned": plan,
         "started": [],
         "finished": [],
         "failed_to_start": [],
         "ok": True,
     }
-    if dry_run:
+    if options.dry_run:
         return payload
-    queue_record = _queue_record_path(normalized_cases, queue_root=queue_root)
+    queue_record = _queue_record_path(normalized_cases, queue_root=options.queue_root)
     payload["queue_id"] = queue_record.stem
     payload["queue_root"] = str(queue_record.parent.parent.resolve())
     payload["queue_path"] = str(queue_record.resolve())
@@ -231,34 +197,30 @@ def _queue_sequential_process_backend(
     payload: dict[str, Any],
     *,
     plan: list[dict[str, Any]],
-    solver: str | None,
-    parallel: int,
-    mpi: str | None,
-    prepare_parallel: bool,
-    clean_processors: bool,
+    options: QueueOptions,
 ) -> None:
     for row in plan:
         case_path = Path(str(row["case"]))
         try:
             name, command = _run().solver_command(
                 case_path,
-                solver=solver,
-                parallel=parallel,
-                mpi=mpi,
+                solver=options.solver,
+                parallel=options.parallel,
+                mpi=options.mpi,
             )
-            if parallel > 1 and "-parallel" in command and prepare_parallel:
+            if options.parallel > 1 and "-parallel" in command and options.prepare_parallel:
                 _run().prepare_parallel_case(
                     case_path,
-                    parallel=parallel,
-                    clean_processors=clean_processors,
+                    parallel=options.parallel,
+                    clean_processors=options.clean_processors,
                     dry_run=False,
                 )
             result = _run().execute_solver_case_command(
                 case_path,
                 name,
                 command,
-                parallel=parallel,
-                mpi=mpi,
+                parallel=options.parallel,
+                mpi=options.mpi,
                 background=False,
                 log_path=Path(f"log.{runner_service.safe_name(name)}"),
             )
@@ -298,12 +260,7 @@ def _queue_process_backend(
     payload: dict[str, Any],
     *,
     plan: list[dict[str, Any]],
-    solver: str | None,
-    parallel: int,
-    mpi: str | None,
-    poll_interval: float,
-    prepare_parallel: bool,
-    clean_processors: bool,
+    options: QueueOptions,
 ) -> None:
     pending = list(plan)
     active: list[dict[str, Any]] = []
@@ -312,15 +269,11 @@ def _queue_process_backend(
             payload,
             pending=pending,
             active=active,
-            solver=solver,
-            parallel=parallel,
-            mpi=mpi,
-            prepare_parallel=prepare_parallel,
-            clean_processors=clean_processors,
+            options=options,
         )
         if not active:
             break
-        time.sleep(max(0.05, poll_interval))
+        time.sleep(max(0.05, options.poll_interval))
         active[:] = _queue_poll_active(payload, active)
 
 
@@ -329,22 +282,14 @@ def _queue_launch_until_full(
     *,
     pending: list[dict[str, Any]],
     active: list[dict[str, Any]],
-    solver: str | None,
-    parallel: int,
-    mpi: str | None,
-    prepare_parallel: bool,
-    clean_processors: bool,
+    options: QueueOptions,
 ) -> None:
     while pending and len(active) < int(payload["max_parallel"]):
         row = pending.pop(0)
         started = _queue_start_background_row(
             payload,
             row,
-            solver=solver,
-            parallel=parallel,
-            mpi=mpi,
-            prepare_parallel=prepare_parallel,
-            clean_processors=clean_processors,
+            options=options,
         )
         if started:
             active.append(started)
@@ -354,21 +299,20 @@ def _queue_start_background_row(
     payload: dict[str, Any],
     row: dict[str, Any],
     *,
-    solver: str | None,
-    parallel: int,
-    mpi: str | None,
-    prepare_parallel: bool,
-    clean_processors: bool,
+    options: QueueOptions,
 ) -> dict[str, Any] | None:
     case_path = Path(str(row["case"]))
-    name, command = _run().solver_command(case_path, solver=solver, parallel=parallel, mpi=mpi)
+    name, command = _run().solver_command(
+        case_path,
+        solver=options.solver,
+        parallel=options.parallel,
+        mpi=options.mpi,
+    )
     try:
         _prepare_queue_parallel_case(
             case_path,
             command,
-            parallel=parallel,
-            prepare_parallel=prepare_parallel,
-            clean_processors=clean_processors,
+            options=options,
         )
         result = _run().execute_case_command(
             case_path,
@@ -400,16 +344,14 @@ def _prepare_queue_parallel_case(
     case_path: Path,
     command: list[str],
     *,
-    parallel: int,
-    prepare_parallel: bool,
-    clean_processors: bool,
+    options: QueueOptions,
 ) -> None:
-    if parallel <= 1 or "-parallel" not in command or not prepare_parallel:
+    if options.parallel <= 1 or "-parallel" not in command or not options.prepare_parallel:
         return
     _run().prepare_parallel_case(
         case_path,
-        parallel=parallel,
-        clean_processors=clean_processors,
+        parallel=options.parallel,
+        clean_processors=options.clean_processors,
         dry_run=False,
     )
 
@@ -444,26 +386,20 @@ def _queue_foamlib_backend(
     payload: dict[str, Any],
     *,
     plan: list[dict[str, Any]],
-    parallel: int,
-    max_parallel: int,
-    backend: str,
-    prepare_parallel: bool,
-    clean_processors: bool,
+    options: QueueOptions,
 ) -> None:
     by_solver, ready_cases = _queue_collect_foamlib_cases(
         payload,
         plan=plan,
-        parallel=parallel,
-        prepare_parallel=prepare_parallel,
-        clean_processors=clean_processors,
+        options=options,
     )
     for solver_cmd, case_group in by_solver.items():
         failures, error = _queue_run_foamlib_group(
             case_group,
             solver_cmd=solver_cmd,
-            parallel=parallel,
-            max_parallel=max_parallel,
-            backend=backend,
+            parallel=options.parallel,
+            max_parallel=options.max_parallel,
+            backend=options.backend,
         )
         if error is not None:
             for case_path in case_group:
@@ -482,9 +418,7 @@ def _queue_collect_foamlib_cases(
     payload: dict[str, Any],
     *,
     plan: list[dict[str, Any]],
-    parallel: int,
-    prepare_parallel: bool,
-    clean_processors: bool,
+    options: QueueOptions,
 ) -> tuple[dict[str, list[Path]], list[Path]]:
     by_solver: dict[str, list[Path]] = {}
     ready_cases: list[Path] = []
@@ -501,12 +435,12 @@ def _queue_collect_foamlib_cases(
             _queue_write_record(payload)
             _queue_write_event(payload, "failed_to_start", row=failed_row)
             continue
-        if prepare_parallel and parallel > 1:
+        if options.prepare_parallel and options.parallel > 1:
             try:
                 _run().prepare_parallel_case(
                     case_path,
-                    parallel=parallel,
-                    clean_processors=clean_processors,
+                    parallel=options.parallel,
+                    clean_processors=options.clean_processors,
                     dry_run=False,
                 )
             except ValueError as exc:

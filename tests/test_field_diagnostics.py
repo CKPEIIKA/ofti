@@ -146,7 +146,11 @@ def test_compare_fields_handles_uniform_vs_nonuniform_and_vectors(
     _write_vector(left / "0" / "U", [(1.0, 0.0, 0.0)])
     _write_vector(right / "0" / "U", [(1.0, 0.0, 0.0)])
 
-    payload = diag.compare_fields_payload(left, right, time_name="0", fields=["p", "U"])
+    payload = diag.compare_fields_payload(
+        left,
+        right,
+        options=diag.FieldCompareOptions(time_name="0", fields=["p", "U"]),
+    )
 
     rows = {row["field"]: row for row in payload["fields"]}
     assert payload["ok"] is True
@@ -163,7 +167,11 @@ def test_compare_fields_reports_count_mismatch(tmp_path: Path, monkeypatch) -> N
     _write_scalar(left / "0" / "p", [1.0, 2.0])
     _write_scalar(right / "0" / "p", [1.0, 2.0, 3.0])
 
-    payload = diag.compare_fields_payload(left, right, time_name="0", fields=["p"])
+    payload = diag.compare_fields_payload(
+        left,
+        right,
+        options=diag.FieldCompareOptions(time_name="0", fields=["p"]),
+    )
 
     assert payload["ok"] is False
     assert "field count mismatch" in payload["errors"][0]
@@ -181,7 +189,7 @@ def test_compare_fields_latest_common_matches_numeric_time_names(
     _write_scalar(left / "1" / "p", [1.0])
     _write_scalar(right / "1.0" / "p", [1.0])
 
-    payload = diag.compare_fields_payload(left, right, fields=["p"])
+    payload = diag.compare_fields_payload(left, right, options=diag.FieldCompareOptions(fields=["p"]))
 
     assert payload["time_policy"] == "latest-common"
     assert payload["reference_time"] == "1"
@@ -203,8 +211,16 @@ def test_compare_fields_reports_component_mismatch_and_nonfinite_pairs(
     _write_vector(left / "0" / "V", [(1.0, float("inf"), 0.0)])
     _write_vector(right / "0" / "V", [(1.0, 2.0, 0.0)])
 
-    mismatch = diag.compare_fields_payload(left, right, time_name="0", fields=["U"])
-    nonfinite = diag.compare_fields_payload(left, right, time_name="0", fields=["V"])
+    mismatch = diag.compare_fields_payload(
+        left,
+        right,
+        options=diag.FieldCompareOptions(time_name="0", fields=["U"]),
+    )
+    nonfinite = diag.compare_fields_payload(
+        left,
+        right,
+        options=diag.FieldCompareOptions(time_name="0", fields=["V"]),
+    )
 
     assert mismatch["ok"] is False
     assert "component mismatch" in mismatch["errors"][0]
@@ -376,12 +392,14 @@ def test_compare_fields_reference_candidate_times_patch_and_reports(tmp_path: Pa
     payload = diag.compare_fields_payload(
         left,
         right,
-        time_name="latest",
-        reference_time="1",
-        candidate_time="2",
-        fields=["p"],
-        patch="outlet",
-        rel_tol=1e-9,
+        options=diag.FieldCompareOptions(
+            time_name="latest",
+            reference_time="1",
+            candidate_time="2",
+            fields=["p"],
+            patch="outlet",
+            rel_tol=1e-9,
+        ),
     )
     outputs = diag.write_compare_report(payload, out)
 

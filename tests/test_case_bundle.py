@@ -5,6 +5,7 @@ import json
 import tarfile
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -12,6 +13,7 @@ from ofti.app.cli_adapters import bundle as bundle_adapter
 from ofti.app.cli_tools import main as cli_main
 from ofti.core import case_bundle
 from ofti.plugins import PluginRegistry
+from ofti.tools.cli_tools.run import SmokeOptions
 from ofti.tools.runner_service import RunResult
 
 
@@ -446,8 +448,9 @@ def test_bundle_cli_smoke_validates_archive_copy(
     def fake_smoke_payload(case_dir: Path, **kwargs: object) -> dict[str, object]:
         smoke_cases.append(case_dir)
         assert (case_dir / "system" / "controlDict").is_file()
-        assert kwargs["in_place"] is True
-        assert kwargs["core_only"] is True
+        options = cast("SmokeOptions", kwargs["options"])
+        assert options.in_place is True
+        assert options.core_only is True
         return {
             "ok": True,
             "case": str(case_dir),

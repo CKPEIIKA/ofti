@@ -688,17 +688,19 @@ def _watch_external(args: argparse.Namespace) -> int:
         return 2
     payload = watch_ops.external_watch_mode_payload(
         args.case_dir,
-        mode=mode,
-        command=command,
-        dry_run=bool(getattr(args, "dry_run", False)),
-        name=str(getattr(args, "name", "watch.external")),
-        detached=not bool(getattr(args, "no_detach", False)),
-        log_file=getattr(args, "log_file", None),
-        job_id=getattr(args, "job_id", None),
-        include_all=bool(getattr(args, "all", False)),
-        all_jobs=bool(getattr(args, "all", False)),
-        lines=int(getattr(args, "lines", 40)),
-        signal_name=str(getattr(args, "signal", "TERM")),
+        options=watch_ops.ExternalWatchOptions(
+            mode=mode,
+            command=command,
+            dry_run=bool(getattr(args, "dry_run", False)),
+            name=str(getattr(args, "name", "watch.external")),
+            detached=not bool(getattr(args, "no_detach", False)),
+            log_file=getattr(args, "log_file", None),
+            job_id=getattr(args, "job_id", None),
+            include_all=bool(getattr(args, "all", False)),
+            all_jobs=bool(getattr(args, "all", False)),
+            lines=int(getattr(args, "lines", 40)),
+            signal_name=str(getattr(args, "signal", "TERM")),
+        ),
     )
     return _watch_external_render(args, mode, payload)
 

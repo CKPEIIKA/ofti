@@ -647,12 +647,11 @@ def test_run_parametric_helpers_and_payload(
     monkeypatch.setattr(run, "build_parametric_cases", lambda *_a, **_k: [case.parent / "single_1"])
     single = run.parametric_case_payload(
         case,
-        dict_path="system/controlDict",
-        entry="application",
-        values=["simpleFoam"],
-        csv_path=None,
-        grid_axes=[],
-        run_solver=False,
+        options=run.ParametricCaseOptions(
+            dict_path="system/controlDict",
+            entry="application",
+            values=["simpleFoam"],
+        ),
     )
     assert single["mode"] == "single"
     assert single["created_count"] == 1
@@ -660,12 +659,7 @@ def test_run_parametric_helpers_and_payload(
     monkeypatch.setattr(run, "build_parametric_cases_from_csv", lambda *_a, **_k: [case.parent / "csv_1"])
     csv_payload = run.parametric_case_payload(
         case,
-        dict_path="system/controlDict",
-        entry=None,
-        values=[],
-        csv_path=Path("study.csv"),
-        grid_axes=[],
-        run_solver=False,
+        options=run.ParametricCaseOptions(csv_path=Path("study.csv")),
     )
     assert csv_payload["mode"] == "csv"
 
@@ -687,12 +681,10 @@ def test_run_parametric_helpers_and_payload(
     )
     grid_payload = run.parametric_case_payload(
         case,
-        dict_path="system/controlDict",
-        entry=None,
-        values=[],
-        csv_path=None,
-        grid_axes=[{"dict_path": "system/controlDict", "entry": "application", "values": ["simpleFoam"]}],
-        run_solver=True,
+        options=run.ParametricCaseOptions(
+            grid_axes=[{"dict_path": "system/controlDict", "entry": "application", "values": ["simpleFoam"]}],
+            run_solver=True,
+        ),
     )
     assert grid_payload["mode"] == "grid"
     assert cast("dict[str, object]", grid_payload["queue"])["ok"] is True
@@ -700,11 +692,12 @@ def test_run_parametric_helpers_and_payload(
     with pytest.raises(ValueError, match="choose only one mode"):
         run.parametric_case_payload(
             case,
-            dict_path="system/controlDict",
-            entry="application",
-            values=["simpleFoam"],
-            csv_path=Path("study.csv"),
-            grid_axes=[{"dict_path": "system/controlDict", "entry": "application", "values": ["x"]}],
+            options=run.ParametricCaseOptions(
+                entry="application",
+                values=["simpleFoam"],
+                csv_path=Path("study.csv"),
+                grid_axes=[{"dict_path": "system/controlDict", "entry": "application", "values": ["x"]}],
+            ),
         )
 
 
@@ -722,13 +715,13 @@ def test_run_parametric_can_bundle_generated_cases_for_handoff(
 
     payload = run.parametric_case_payload(
         template,
-        dict_path="system/controlDict",
-        entry="application",
-        values=["simpleFoam", "pisoFoam"],
-        csv_path=None,
-        grid_axes=[],
-        bundle_output=archive,
-        bundle_name="handoff",
+        options=run.ParametricCaseOptions(
+            dict_path="system/controlDict",
+            entry="application",
+            values=["simpleFoam", "pisoFoam"],
+            bundle_output=archive,
+            bundle_name="handoff",
+        ),
     )
 
     bundle = cast("dict[str, object]", payload["bundle"])
@@ -747,8 +740,7 @@ def test_run_queue_payload_dry_run_and_active_flow(
     monkeypatch.setattr(run, "solver_command", lambda _case, **_k: ("simpleFoam", ["simpleFoam"]))
     dry = run.queue_payload(
         cases=[case_a, case_b],
-        max_parallel=2,
-        dry_run=True,
+        options=run.QueueOptions(max_parallel=2, dry_run=True),
     )
     assert dry["count"] == 2
     assert dry["planned"][0]["name"] == "simpleFoam"
@@ -787,8 +779,7 @@ def test_run_queue_payload_dry_run_and_active_flow(
 
     queue = run.queue_payload(
         cases=[case_a, case_b],
-        max_parallel=2,
-        dry_run=False,
+        options=run.QueueOptions(max_parallel=2, dry_run=False),
     )
     assert queue["ok"] is True
     assert len(queue["started"]) == 2
@@ -825,7 +816,7 @@ def test_run_queue_sequential_records_returncode_and_outcome(
         }
 
     monkeypatch.setattr(run, "status_row_payload", _status)
-    payload = run.queue_payload(cases=[case_a, case_b], max_parallel=1)
+    payload = run.queue_payload(cases=[case_a, case_b], options=run.QueueOptions(max_parallel=1))
 
     assert payload["ok"] is False
     finished = cast("list[dict[str, object]]", payload["finished"])
@@ -865,7 +856,10 @@ def test_run_queue_writes_durable_queue_record(
         },
     )
 
-    payload = run.queue_payload(cases=[case_a, case_b], max_parallel=1, queue_root=tmp_path)
+    payload = run.queue_payload(
+        cases=[case_a, case_b],
+        options=run.QueueOptions(max_parallel=1, queue_root=tmp_path),
+    )
 
     queue_path = Path(cast("str", payload["queue_path"]))
     assert queue_path.is_file()
@@ -994,7 +988,7 @@ def test_run_queue_and_case_set_error_branches(
 ) -> None:
     case = _make_case(tmp_path / "case")
     with pytest.raises(ValueError, match="max_parallel must be > 0"):
-        run.queue_payload(cases=[case], max_parallel=0)
+        run.queue_payload(cases=[case], options=run.QueueOptions(max_parallel=0))
 
     monkeypatch.setattr(run, "solver_command", lambda _case, **_k: ("simpleFoam", ["simpleFoam"]))
     monkeypatch.setattr(
@@ -1003,7 +997,7 @@ def test_run_queue_and_case_set_error_branches(
         lambda *_a, **_k: (_ for _ in ()).throw(ValueError("start failed")),
     )
     monkeypatch.setattr(run_queue.time, "sleep", lambda _sec: None)
-    failed = run.queue_payload(cases=[case], max_parallel=2, dry_run=False)
+    failed = run.queue_payload(cases=[case], options=run.QueueOptions(max_parallel=2, dry_run=False))
     assert failed["ok"] is False
     assert failed["failed_to_start"][0]["error"] == "start failed"
 
@@ -1012,7 +1006,7 @@ def test_run_queue_and_case_set_error_branches(
         "execute_case_command",
         lambda *_a, **_k: run.RunResult(0, "", "", pid=None, log_path=None),
     )
-    missing_pid = run.queue_payload(cases=[case], max_parallel=2, dry_run=False)
+    missing_pid = run.queue_payload(cases=[case], options=run.QueueOptions(max_parallel=2, dry_run=False))
     assert missing_pid["ok"] is False
     assert "missing background pid" in missing_pid["failed_to_start"][0]["error"]
 
@@ -1036,7 +1030,7 @@ def test_run_queue_backend_validation_and_foamlib_async_flow(
     case_a = _make_case(tmp_path / "caseA")
     case_b = _make_case(tmp_path / "caseB")
     with pytest.raises(ValueError, match="backend must be one of"):
-        run.queue_payload(cases=[case_a], max_parallel=1, backend="bad")
+        run.queue_payload(cases=[case_a], options=run.QueueOptions(max_parallel=1, backend="bad"))
 
     monkeypatch.setattr(run, "solver_command", lambda _case, **_k: ("simpleFoam", ["simpleFoam"]))
     seen: dict[str, object] = {}
@@ -1060,9 +1054,7 @@ def test_run_queue_backend_validation_and_foamlib_async_flow(
     )
     payload = run.queue_payload(
         cases=[case_a, case_b],
-        max_parallel=2,
-        backend="foamlib-async",
-        dry_run=False,
+        options=run.QueueOptions(max_parallel=2, backend="foamlib-async", dry_run=False),
     )
     assert payload["backend"] == "foamlib-async"
     assert len(cast("list[object]", payload["started"])) == 2
@@ -1090,10 +1082,12 @@ def test_run_queue_backend_prepare_parallel_failure_records_error(
     )
     payload = run.queue_payload(
         cases=[case],
-        parallel=2,
-        max_parallel=1,
-        backend="foamlib-async",
-        dry_run=False,
+        options=run.QueueOptions(
+            parallel=2,
+            max_parallel=1,
+            backend="foamlib-async",
+            dry_run=False,
+        ),
     )
     assert payload["ok"] is False
     assert cast("list[dict[str, str]]", payload["failed_to_start"])[0]["error"] == "bad decompose"

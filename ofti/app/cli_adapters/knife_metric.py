@@ -18,16 +18,18 @@ def _knife_metric(args: argparse.Namespace) -> int:
         else knife_ops.metric_payload(
             args.case_dir,
             str(source),
-            name=str(args.name or "metric"),
-            coordinate_column=int(args.coordinate_column),
-            value_column=int(args.value_column),
-            threshold=getattr(args, "threshold", None),
-            direction=str(args.direction),
-            pick=str(args.pick),
-            window=int(args.window),
-            max_span=getattr(args, "max_span", None),
-            scale=float(args.scale),
-            offset=float(args.offset),
+            options=knife_ops.MetricOptions(
+                name=str(args.name or "metric"),
+                coordinate_column=int(args.coordinate_column),
+                value_column=int(args.value_column),
+                threshold=getattr(args, "threshold", None),
+                direction=str(args.direction),
+                pick=str(args.pick),
+                window=int(args.window),
+                max_span=getattr(args, "max_span", None),
+                scale=float(args.scale),
+                offset=float(args.offset),
+            ),
         )
     )
     if bool(getattr(args, "json", False)):
@@ -48,13 +50,15 @@ def _field_metric(args: argparse.Namespace, field: str) -> dict[str, object]:
     return knife_ops.field_metric_payload(
         args.case_dir,
         field,
-        time_name=str(args.time),
-        patch=getattr(args, "patch", None),
-        reduction=str(args.reduction),
-        component=str(args.component),
-        name=str(args.name) if args.name else None,
-        scale=float(args.scale),
-        offset=float(args.offset),
+        options=knife_ops.FieldMetricOptions(
+            time_name=str(args.time),
+            patch=getattr(args, "patch", None),
+            reduction=str(args.reduction),
+            component=str(args.component),
+            name=str(args.name) if args.name else None,
+            scale=float(args.scale),
+            offset=float(args.offset),
+        ),
     )
 
 

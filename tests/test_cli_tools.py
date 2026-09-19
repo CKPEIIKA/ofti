@@ -15,7 +15,7 @@ from ofti.core.command_spec import CommandSpec
 from ofti.plugins import PluginRegistry, ProfileMatch, SpecCommandProvider
 from ofti.tools.cli_tools import knife as knife_ops
 from ofti.tools.cli_tools import watch as watch_ops
-from ofti.tools.cli_tools.run import RunResult
+from ofti.tools.cli_tools.run import ParametricCaseOptions, QueueOptions, RunResult
 from ofti.tools.job_registry import load_jobs, register_job, save_jobs
 
 
@@ -328,7 +328,8 @@ def test_run_queue_explicit_case_does_not_force_set_dir_as_queue_root(
     monkeypatch.setattr(run_adapter.run_ops, "resolve_case_set", lambda **_k: [case])
 
     def _queue_payload(**kwargs: object) -> dict[str, object]:
-        seen["queue_root"] = kwargs.get("queue_root")
+        options = cast("QueueOptions", kwargs["options"])
+        seen["queue_root"] = options.queue_root
         return {
             "max_parallel": 1,
             "backend": "process",
@@ -420,10 +421,11 @@ def test_run_matrix_easy_on_cpu_forces_min_poll_interval(monkeypatch, capsys) ->
 
     def _queue_payload(**kwargs: object) -> dict[str, object]:
         seen.update(kwargs)
+        options = cast("QueueOptions", kwargs["options"])
         return {
             "count": 1,
             "max_parallel": 1,
-            "poll_interval": kwargs["poll_interval"],
+            "poll_interval": options.poll_interval,
             "dry_run": False,
             "planned": [],
             "started": [],
@@ -448,7 +450,8 @@ def test_run_matrix_easy_on_cpu_forces_min_poll_interval(monkeypatch, capsys) ->
     )
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
-    assert seen["poll_interval"] == pytest.approx(1.0)
+    options = cast("QueueOptions", seen["options"])
+    assert options.poll_interval == pytest.approx(1.0)
     assert payload["queue"]["poll_interval"] == pytest.approx(1.0)
 
 
@@ -466,7 +469,8 @@ def test_run_parametric_easy_on_cpu_forces_min_poll_interval(monkeypatch, capsys
     )
 
     def _parametric_case_payload(*_args: object, **kwargs: object) -> dict[str, object]:
-        seen.update(kwargs)
+        options = cast("ParametricCaseOptions", kwargs["options"])
+        seen["poll_interval"] = options.poll_interval
         return {
             "case": "/case",
             "mode": "single",
@@ -1842,11 +1846,12 @@ def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monk
 
     def _queue_payload(**kwargs: object) -> dict[str, object]:
         seen.update(kwargs)
+        options = cast("QueueOptions", kwargs["options"])
         return {
             "count": 1,
             "max_parallel": 1,
             "dry_run": False,
-            "backend": kwargs.get("backend", "process"),
+            "backend": options.backend,
             "queue_path": str(root / ".ofti" / "queues" / "queue.json"),
             "planned": [],
             "started": [],
@@ -1877,11 +1882,12 @@ def test_run_queue_cli_forwards_backend_and_prepare_flags(tmp_path, capsys, monk
     )
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
-    assert seen["backend"] == "foamlib-async"
-    assert seen["prepare_parallel"] is False
-    assert seen["clean_processors"] is True
-    assert seen["queue_root"] == root
-    assert seen["poll_interval"] == pytest.approx(1.0)
+    options = cast("QueueOptions", seen["options"])
+    assert options.backend == "foamlib-async"
+    assert options.prepare_parallel is False
+    assert options.clean_processors is True
+    assert options.queue_root == root
+    assert options.poll_interval == pytest.approx(1.0)
     assert payload["backend"] == "foamlib-async"
 
 

@@ -21,6 +21,7 @@ adopt_payload = service.adopt_payload
 compare_payload = service.compare_payload
 physical_payload = service.physical_payload
 compare_fields_payload = service.compare_fields_payload
+FieldCompareOptions = service.FieldCompareOptions
 copy_payload = service.copy_payload
 initials_payload = service.initials_payload
 status_payload = service.status_payload
@@ -44,6 +45,8 @@ parse_edit_specs = transactions.parse_edit_specs
 set_entries_payload = transactions.set_entries_payload
 metric_payload = sample_metric_service.metric_payload
 field_metric_payload = sample_metric_service.field_metric_payload
+MetricOptions = sample_metric_service.MetricOptions
+FieldMetricOptions = sample_metric_service.FieldMetricOptions
 
 _fallback_solver = service._fallback_solver
 _running_job_pids = processes._running_job_pids

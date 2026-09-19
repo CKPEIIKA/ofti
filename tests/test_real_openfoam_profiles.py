@@ -121,11 +121,13 @@ def test_real_profiles_smoke_command_runs_bounded_copy(
         prepare_case(case)
         payload = run.smoke_payload(
             case,
-            solver=solver,
-            iterations=int(os.environ.get("OFTI_REAL_SMOKE_ITERATIONS", "1")),
-            timeout=float(os.environ.get("OFTI_REAL_SMOKE_TIMEOUT", "60")),
-            output_root=tmp_path / f"smoke-{profile.name}",
-            run_physical=True,
+            options=run.SmokeOptions(
+                solver=solver,
+                iterations=int(os.environ.get("OFTI_REAL_SMOKE_ITERATIONS", "1")),
+                timeout=float(os.environ.get("OFTI_REAL_SMOKE_TIMEOUT", "60")),
+                output_root=tmp_path / f"smoke-{profile.name}",
+                run_physical=True,
+            ),
         )
         assert payload["ok"] is True, payload
         assert payload["copied"] is True
@@ -154,8 +156,7 @@ def test_real_physical_and_compare_fields_use_real_time_dirs(
         compared = knife_service.compare_fields_payload(
             case_a,
             case_b,
-            fields=field_names,
-            time_name="latest",
+            options=knife_service.FieldCompareOptions(fields=field_names, time_name="latest"),
             out_dir=tmp_path / f"{profile.name}-compare",
         )
         assert compared["ok"] is True, compared
@@ -257,7 +258,11 @@ def test_real_decomposed_checkpoint_and_direct_field_compare(
         if not fields:
             continue
         shutil.rmtree(decomposed / "0")
-        compared = knife_service.compare_fields_payload(serial, decomposed, fields=fields)
+        compared = knife_service.compare_fields_payload(
+            serial,
+            decomposed,
+            options=knife_service.FieldCompareOptions(fields=fields),
+        )
         assert compared["ok"] is True, compared
         assert compared["time_policy"] == "latest-common"
         assert compared["mesh"]["same"] is True
@@ -322,7 +327,10 @@ def test_real_sequential_queue_runs_cases_and_summarizes_outcomes(
             prepare_case(case)
             write_short_run(case, solver)
 
-        payload = run.queue_payload(cases=[case_a, case_b], solver=solver, max_parallel=1, backend="process")
+        payload = run.queue_payload(
+            cases=[case_a, case_b],
+            options=run.QueueOptions(solver=solver, max_parallel=1, backend="process"),
+        )
 
         assert payload["ok"] is True, payload
         assert len(payload["started"]) == 2
@@ -359,9 +367,7 @@ def test_real_queue_records_crashes_without_blocking_later_cases(
         write_short_run(good_case, solver)
         payload = run.queue_payload(
             cases=[bad_case, good_case],
-            solver=solver,
-            max_parallel=1,
-            backend="process",
+            options=run.QueueOptions(solver=solver, max_parallel=1, backend="process"),
         )
         assert payload["ok"] is False, payload
         assert payload["failed_to_start"] == [], payload
@@ -389,7 +395,10 @@ def test_real_queue_criterion_evidence_and_crash_cleanup(
         case = copy_case_directory(source_case, tmp_path / f"{profile.name}-queue-criteria")
         prepare_case(case)
         write_short_run(case, solver)
-        queued = run.queue_payload(cases=[case], solver=solver, max_parallel=1, backend="process")
+        queued = run.queue_payload(
+            cases=[case],
+            options=run.QueueOptions(solver=solver, max_parallel=1, backend="process"),
+        )
         if not queued["finished"] or queued["finished"][0]["returncode"] != 0:
             continue
         knife_service.set_entry_payload(case, "system/controlDict", "endTime", "1e30")
@@ -497,7 +506,10 @@ def test_real_parallel_resize_dry_run_profiles(real_profiles: list[tuple[RealPro
         write_scotch_decompose_dict(case, ranks=2)
         result = run.execute_case_command(case, "decomposePar", ["decomposePar", "-force"], background=False)
         assert result.returncode == 0, f"{profile.name}: {result.stderr or result.stdout}"
-        payload = parallel_resize_service.parallel_resize_payload(case, to_ranks=2, dry_run=True)
+        payload = parallel_resize_service.parallel_resize_payload(
+            case,
+            options=parallel_resize_service.ParallelResizeOptions(to_ranks=2, dry_run=True),
+        )
         assert payload["ok"] is True
         assert payload["restart_plan"]["safe_to_apply"] is True
         assert any(row["step"] == "reconstruct" for row in payload["steps"])
@@ -522,10 +534,12 @@ def test_real_parallel_resize_executes_on_stopped_decomposed_profile(
         assert result.returncode == 0, f"{profile.name}: {result.stderr or result.stdout}"
         payload = parallel_resize_service.parallel_resize_payload(
             case,
-            from_ranks=from_ranks,
-            to_ranks=to_ranks,
-            start=False,
-            write_now=False,
+            options=parallel_resize_service.ParallelResizeOptions(
+                from_ranks=from_ranks,
+                to_ranks=to_ranks,
+                start=False,
+                write_now=False,
+            ),
         )
         assert payload["ok"] is True, f"{profile.name}: {payload.get('error')}"
         assert payload["decomposed"] is True

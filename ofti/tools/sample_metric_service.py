@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from ofti.core.field_io import read_field_values, resolve_time_dir
@@ -16,60 +17,76 @@ from ofti.core.sample_metric import (
 from ofti.tools.case_source_service import require_case_dir
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MetricOptions:
+    name: str = "metric"
+    coordinate_column: int = 0
+    value_column: int = -1
+    threshold: float | None = None
+    direction: str = "any"
+    pick: str = "first"
+    window: int = 10
+    max_span: float | None = None
+    scale: float = 1.0
+    offset: float = 0.0
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FieldMetricOptions:
+    time_name: str = "latest"
+    patch: str | None = None
+    reduction: str = "mean"
+    component: str = "magnitude"
+    name: str | None = None
+    scale: float = 1.0
+    offset: float = 0.0
+
+
 def metric_payload(
     case_dir: Path,
     source: str,
     *,
-    name: str = "metric",
-    coordinate_column: int = 0,
-    value_column: int = -1,
-    threshold: float | None = None,
-    direction: str = "any",
-    pick: str = "first",
-    window: int = 10,
-    max_span: float | None = None,
-    scale: float = 1.0,
-    offset: float = 0.0,
+    options: MetricOptions,
 ) -> dict[str, object]:
     case = require_case_dir(case_dir)
     files = _source_files(case, source)
     warnings: list[str] = []
-    if threshold is None:
+    if options.threshold is None:
         samples = _series_files(
             case,
             files,
-            coordinate_column=coordinate_column,
-            value_column=value_column,
-            scale=scale,
-            offset=offset,
+            coordinate_column=options.coordinate_column,
+            value_column=options.value_column,
+            scale=options.scale,
+            offset=options.offset,
         )
         mode = "series"
     else:
         samples = _crossing_files(
             case,
             files,
-            coordinate_column=coordinate_column,
-            value_column=value_column,
-            threshold=threshold,
-            direction=direction,
-            pick=pick,
-            scale=scale,
-            offset=offset,
+            coordinate_column=options.coordinate_column,
+            value_column=options.value_column,
+            threshold=options.threshold,
+            direction=options.direction,
+            pick=options.pick,
+            scale=options.scale,
+            offset=options.offset,
             warnings=warnings,
         )
         mode = "crossing"
-    payload = summarize_metric(name, samples, window=window, max_span=max_span)
+    payload = summarize_metric(options.name, samples, window=options.window, max_span=options.max_span)
     payload.update(
         {
             "case": str(case),
             "source": source,
             "files": [path.relative_to(case).as_posix() for path in files],
             "mode": mode,
-            "threshold": threshold,
-            "coordinate_column": coordinate_column,
-            "value_column": value_column,
-            "scale": scale,
-            "offset": offset,
+            "threshold": options.threshold,
+            "coordinate_column": options.coordinate_column,
+            "value_column": options.value_column,
+            "scale": options.scale,
+            "offset": options.offset,
             "warnings": warnings,
             "ok": True,
         },
@@ -81,39 +98,33 @@ def field_metric_payload(
     case_dir: Path,
     field: str,
     *,
-    time_name: str = "latest",
-    patch: str | None = None,
-    reduction: str = "mean",
-    component: str = "magnitude",
-    name: str | None = None,
-    scale: float = 1.0,
-    offset: float = 0.0,
+    options: FieldMetricOptions,
 ) -> dict[str, object]:
     case = require_case_dir(case_dir)
     field_name = _field_name(field)
-    time_dir = resolve_time_dir(case, time_name)
-    data = read_field_values(time_dir / field_name, patch=patch)
+    time_dir = resolve_time_dir(case, options.time_name)
+    data = read_field_values(time_dir / field_name, patch=options.patch)
     payload = summarize_field_values(
         data.values,
-        reduction=_reduction(reduction),
-        component=component,
-        scale=scale,
-        offset=offset,
+        reduction=_reduction(options.reduction),
+        component=options.component,
+        scale=options.scale,
+        offset=options.offset,
     )
     payload.update(
         {
             "case": str(case),
-            "name": name or field_name,
+            "name": options.name or field_name,
             "source": (time_dir / field_name).relative_to(case).as_posix(),
             "mode": "field",
             "field": field_name,
             "time": time_dir.name,
-            "patch": patch,
+            "patch": options.patch,
             "kind": data.kind,
             "components": data.component_count,
             "uniform": data.uniform,
-            "scale": scale,
-            "offset": offset,
+            "scale": options.scale,
+            "offset": options.offset,
             "warnings": [],
         },
     )

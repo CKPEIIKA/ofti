@@ -4,6 +4,13 @@ Completed work only. Record meaningful outcomes and validation evidence, newest 
 
 ## 2026-09-19
 
+- Grouped cohesive configuration for parametric, smoke, run-manifest, metric,
+  parallel-resize, field-comparison, queue, and external-watch operations into
+  frozen typed option records without changing CLI payloads. The unignored
+  `PLR0913` inventory fell from 117 to 98; the remaining findings are mostly
+  UI callbacks, dependency-injection seams, process-inspection APIs, and test
+  fixtures. Ruff, format, Ty, and the full suite pass with `1087 passed, 56
+  skipped` at 85.44% coverage.
 - Replaced 18 useful `TRY003` raises at the OpenFOAM, case-source/copy, and checkpoint boundaries with typed exception factories while preserving `ValueError` compatibility and existing messages. The remaining 236 findings are one-off archive, CLI, UI, optional-integration, script, and test diagnostics that would gain noise from forced exception classes.
 - Removed the deferred `FBT001` ignore: the curses callback now receives its boolean debug flag by keyword, and stdlib-compatible `Path.resolve` test doubles use generic forwarding arguments. Aligning Ruff with Python 3.12 also removed the remaining `TypeAlias` compatibility form; active Ruff, formatting, and Ty checks pass.
 - Assessed `../hy2foam-mod/docs/OFTI_INTEGRATION.md` against installed OFTI 0.9.4. Current copy safety, manifest locality, exact-step smoke, and serial/decomposed binary-field toy checks pass on macOS; the documented hy2Foam sampling deadlock cannot be reproduced because its retained case is absent and `hy2Foam` is unavailable. The host-level OpenFOAM MPI dry-run timeout is reproducible and remains an explicit skip.

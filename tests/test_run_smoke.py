@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import cast
 
 from ofti.app import cli_tools
 from ofti.tools.cli_tools import run, run_smoke
@@ -67,11 +68,13 @@ def test_smoke_payload_runs_real_solver_script_on_copied_case(
 
     payload = run.smoke_payload(
         case,
-        iterations=1,
-        timeout=5,
-        output_root=tmp_path / "smoke",
-        run_physical=True,
-        physical_fields=["p"],
+        options=run.SmokeOptions(
+            iterations=1,
+            timeout=5,
+            output_root=tmp_path / "smoke",
+            run_physical=True,
+            physical_fields=["p"],
+        ),
     )
 
     assert payload["ok"] is True
@@ -128,7 +131,8 @@ def test_run_smoke_cli_forwards_reconstruction_request(
     captured: dict[str, object] = {}
 
     def smoke_payload(case_dir: Path, **kwargs: object) -> dict[str, object]:
-        captured.update(kwargs)
+        options = cast("run_smoke.SmokeOptions", kwargs["options"])
+        captured["reconstruct"] = options.reconstruct
         return {"case": str(case_dir), "ok": True}
 
     monkeypatch.setattr(run, "smoke_payload", smoke_payload)
@@ -157,10 +161,12 @@ def test_smoke_normalization_preserves_unrelated_numeric_text(tmp_path: Path, mo
 
     payload = run.smoke_payload(
         case,
-        iterations=1,
-        timeout=5,
-        output_root=tmp_path / "smoke",
-        core_only=True,
+        options=run.SmokeOptions(
+            iterations=1,
+            timeout=5,
+            output_root=tmp_path / "smoke",
+            core_only=True,
+        ),
     )
 
     normalized = payload["normalized_control"]
@@ -196,7 +202,10 @@ def test_smoke_requires_exact_iterations_and_written_checkpoint(tmp_path: Path, 
     solver.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
 
-    payload = run.smoke_payload(case, iterations=5, timeout=5, output_root=tmp_path / "smoke")
+    payload = run.smoke_payload(
+        case,
+        options=run.SmokeOptions(iterations=5, timeout=5, output_root=tmp_path / "smoke"),
+    )
 
     assert payload["ok"] is True
     assert payload["iterations_completed"] == 5
@@ -215,7 +224,10 @@ def test_smoke_rejects_zero_exit_without_requested_iterations_or_checkpoint(tmp_
     solver.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
 
-    payload = run.smoke_payload(case, iterations=5, timeout=5, output_root=tmp_path / "smoke")
+    payload = run.smoke_payload(
+        case,
+        options=run.SmokeOptions(iterations=5, timeout=5, output_root=tmp_path / "smoke"),
+    )
 
     assert payload["returncode"] == 0
     assert payload["end_seen"] is True

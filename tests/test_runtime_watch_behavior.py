@@ -181,8 +181,17 @@ def test_watch_service_branch_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path:
         watch_service._tail_payload_from_log(log_path, lines=5)
 
     with pytest.raises(ValueError, match="external watcher command is required"):
-        watch_service.external_watch_start_payload(case, command=[], dry_run=False)
-    assert watch_service.external_watch_start_payload(case, command=[], dry_run=True)["ok"] is True
+        watch_service.external_watch_start_payload(
+            case,
+            options=watch_service.ExternalWatchStartOptions(command=[], dry_run=False),
+        )
+    assert (
+        watch_service.external_watch_start_payload(
+            case,
+            options=watch_service.ExternalWatchStartOptions(command=[], dry_run=True),
+        )["ok"]
+        is True
+    )
 
     for mode in ("start", "status", "attach", "stop"):
 
@@ -190,7 +199,10 @@ def test_watch_service_branch_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path:
             return {"mode": _mode}
 
         monkeypatch.setattr(watch_service, f"external_watch_{mode}_payload", _payload)
-        payload = watch_service.external_watch_mode_payload(case, mode=mode, command=["x"], dry_run=True)
+        payload = watch_service.external_watch_mode_payload(
+            case,
+            options=watch_service.ExternalWatchOptions(mode=mode, command=["x"], dry_run=True),
+        )
         assert payload["mode"] == mode
 
 

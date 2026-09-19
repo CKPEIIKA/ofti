@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -16,6 +17,30 @@ from ofti.tools import case_source_service, job_control_service
 
 ExternalWatchMode = Literal["run", "start", "status", "attach", "stop"]
 _WATCHER_KIND = "watcher"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ExternalWatchStartOptions:
+    command: list[str]
+    dry_run: bool
+    name: str = "watch.external"
+    detached: bool = True
+    log_file: str | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ExternalWatchOptions:
+    mode: ExternalWatchMode
+    command: list[str]
+    dry_run: bool
+    name: str = "watch.external"
+    detached: bool = True
+    log_file: str | None = None
+    job_id: str | None = None
+    include_all: bool = False
+    all_jobs: bool = False
+    lines: int = 40
+    signal_name: str = "TERM"
 
 
 def _ws() -> Any:
@@ -80,101 +105,89 @@ def normalize_external_command(command: list[str]) -> list[str]:
 def external_watch_mode_payload(
     case_dir: Path,
     *,
-    mode: ExternalWatchMode,
-    command: list[str],
-    dry_run: bool,
-    name: str = "watch.external",
-    detached: bool = True,
-    log_file: str | None = None,
-    job_id: str | None = None,
-    include_all: bool = False,
-    all_jobs: bool = False,
-    lines: int = 40,
-    signal_name: str = "TERM",
+    options: ExternalWatchOptions,
 ) -> dict[str, Any]:
-    if mode == "start":
+    if options.mode == "start":
         return _ws().external_watch_start_payload(
             case_dir,
-            command=command,
-            dry_run=dry_run,
-            name=name,
-            detached=detached,
-            log_file=log_file,
+            options=ExternalWatchStartOptions(
+                command=options.command,
+                dry_run=options.dry_run,
+                name=options.name,
+                detached=options.detached,
+                log_file=options.log_file,
+            ),
         )
-    if mode == "status":
+    if options.mode == "status":
         return _ws().external_watch_status_payload(
             case_dir,
-            job_id=job_id,
-            name=name,
-            include_all=include_all,
+            job_id=options.job_id,
+            name=options.name,
+            include_all=options.include_all,
         )
-    if mode == "attach":
+    if options.mode == "attach":
         return _ws().external_watch_attach_payload(
             case_dir,
-            lines=lines,
-            job_id=job_id,
-            name=name,
+            lines=options.lines,
+            job_id=options.job_id,
+            name=options.name,
         )
-    if mode == "stop":
+    if options.mode == "stop":
         return _ws().external_watch_stop_payload(
             case_dir,
-            job_id=job_id,
-            name=name,
-            all_jobs=all_jobs,
-            signal_name=signal_name,
+            job_id=options.job_id,
+            name=options.name,
+            all_jobs=options.all_jobs,
+            signal_name=options.signal_name,
         )
     return external_watch_payload(
         case_dir,
-        command=command,
-        dry_run=dry_run,
+        command=options.command,
+        dry_run=options.dry_run,
     )
 
 
 def external_watch_start_payload(
     case_dir: Path,
     *,
-    command: list[str],
-    dry_run: bool,
-    name: str = "watch.external",
-    detached: bool = True,
-    log_file: str | None = None,
+    options: ExternalWatchStartOptions,
 ) -> dict[str, Any]:
     case_path = case_source_service.require_case_dir(case_dir)
-    if not command and not dry_run:
+    if not options.command and not options.dry_run:
         raise ValueError("external watcher command is required")
-    log_path = _external_log_path(case_path, name=name, raw=log_file)
+    log_path = _external_log_path(case_path, name=options.name, raw=options.log_file)
     payload: dict[str, Any] = {
         "case": str(case_path),
-        "command": command,
-        "name": name,
-        "detached": detached,
+        "command": options.command,
+        "name": options.name,
+        "detached": options.detached,
         "log_path": str(log_path),
-        "dry_run": dry_run,
+        "dry_run": options.dry_run,
     }
-    if dry_run:
+    if options.dry_run:
         payload["ok"] = True
         return payload
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     handle = log_path.open("a", encoding="utf-8", errors="ignore")
     process = subprocess.Popen(
-        command,
+        options.command,
         cwd=case_path,
         stdout=handle,
         stderr=handle,
         text=True,
-        start_new_session=detached,
+        start_new_session=options.detached,
     )
     handle.close()
     payload["pid"] = process.pid
     job_id = _ws().register_job(
         case_path,
-        name,
+        options.name,
         int(process.pid),
-        " ".join(command),
+        " ".join(options.command),
         log_path,
         kind=_WATCHER_KIND,
-        detached=detached,
+        detached=options.detached,
     )
     payload["job_id"] = job_id
     payload["ok"] = True

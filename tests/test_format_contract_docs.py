@@ -106,15 +106,17 @@ def test_actual_persisted_writers_validate_against_published_schemas(tmp_path: P
     )
     manifest_path = run_manifest.write_case_run_manifest(
         case,
-        name="icoFoam",
-        command="icoFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
+        options=run_manifest.RunManifestOptions(
+            name="icoFoam",
+            command="icoFoam",
+            background=False,
+            detached=False,
+            parallel=0,
+            mpi=None,
+            sync_subdomains=True,
+            prepare_parallel=True,
+            clean_processors=False,
+        ),
         output=tmp_path / "manifest.json",
     )
     _validate_payload(json.loads(manifest_path.read_text(encoding="utf-8")), "ofti.run-manifest.v1.schema.json")
@@ -194,15 +196,17 @@ def test_persisted_readers_reject_unknown_format_versions(tmp_path: Path) -> Non
 
     manifest_path = run_manifest.write_case_run_manifest(
         case,
-        name="icoFoam",
-        command="icoFoam",
-        background=False,
-        detached=False,
-        parallel=0,
-        mpi=None,
-        sync_subdomains=True,
-        prepare_parallel=True,
-        clean_processors=False,
+        options=run_manifest.RunManifestOptions(
+            name="icoFoam",
+            command="icoFoam",
+            background=False,
+            detached=False,
+            parallel=0,
+            mpi=None,
+            sync_subdomains=True,
+            prepare_parallel=True,
+            clean_processors=False,
+        ),
         output=tmp_path / "manifest.json",
     )
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))

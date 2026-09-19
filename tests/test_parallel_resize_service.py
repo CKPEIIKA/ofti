@@ -71,9 +71,7 @@ def _case(tmp_path: Path) -> Path:
 def test_parallel_resize_dry_run_plans_safe_steps(tmp_path: Path) -> None:
     payload = parallel_resize_service.parallel_resize_payload(
         _case(tmp_path),
-        from_ranks=2,
-        to_ranks=4,
-        dry_run=True,
+        options=parallel_resize_service.ParallelResizeOptions(from_ranks=2, to_ranks=4, dry_run=True),
     )
 
     assert payload["ok"] is True
@@ -132,7 +130,10 @@ def test_parallel_resize_executes_reconstruct_decompose_and_restart(
         lambda *_a, **_k: SimpleNamespace(pid=123, log_path=case / "log.simpleFoam"),
     )
 
-    payload = parallel_resize_service.parallel_resize_payload(case, from_ranks=2, to_ranks=4)
+    payload = parallel_resize_service.parallel_resize_payload(
+        case,
+        options=parallel_resize_service.ParallelResizeOptions(from_ranks=2, to_ranks=4),
+    )
 
     assert payload["ok"] is True
     assert payload["pid"] == 123
@@ -188,9 +189,7 @@ def test_parallel_resize_discards_incomplete_latest_processor_time(
 
     payload = parallel_resize_service.parallel_resize_payload(
         case,
-        from_ranks=2,
-        to_ranks=4,
-        start=False,
+        options=parallel_resize_service.ParallelResizeOptions(from_ranks=2, to_ranks=4, start=False),
     )
 
     assert payload["ok"] is True
@@ -227,9 +226,7 @@ def test_parallel_resize_keeps_processors_when_reconstruct_output_is_missing(
 
     payload = parallel_resize_service.parallel_resize_payload(
         case,
-        from_ranks=2,
-        to_ranks=4,
-        start=False,
+        options=parallel_resize_service.ParallelResizeOptions(from_ranks=2, to_ranks=4, start=False),
     )
 
     assert payload["ok"] is False
@@ -251,9 +248,7 @@ def test_parallel_resize_stop_timeout_reports_rollback(tmp_path: Path, monkeypat
 
     payload = parallel_resize_service.parallel_resize_payload(
         case,
-        from_ranks=2,
-        to_ranks=4,
-        stop_timeout=0.0,
+        options=parallel_resize_service.ParallelResizeOptions(from_ranks=2, to_ranks=4, stop_timeout=0.0),
     )
 
     assert payload["ok"] is False
@@ -274,8 +269,7 @@ def test_parallel_resize_requires_decomposed_case_for_execution(tmp_path: Path, 
 
     payload = parallel_resize_service.parallel_resize_payload(
         case,
-        from_ranks=2,
-        to_ranks=4,
+        options=parallel_resize_service.ParallelResizeOptions(from_ranks=2, to_ranks=4),
     )
 
     assert payload["ok"] is False

@@ -16,6 +16,7 @@ import subprocess
 import time
 from collections.abc import Mapping
 from contextlib import suppress
+from dataclasses import dataclass
 from difflib import unified_diff
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,25 @@ from .common import require_case_dir
 _TIME_RE = re.compile(r"^\s*Time\s*=\s*(?P<time>[-+0-9.eE]+)\s*$", re.MULTILINE)
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SmokeOptions:
+    solver: str | None = None
+    iterations: int = 20
+    timeout: float = 300.0
+    parallel: int = 0
+    mpi: str | None = None
+    output_root: Path | None = None
+    in_place: bool = False
+    delta_t: float | None = None
+    preserve_delta_t: bool = False
+    core_only: bool = False
+    prepare_parallel: bool = True
+    clean_processors: bool = False
+    reconstruct: bool = False
+    run_physical: bool = False
+    physical_fields: list[str] | None = None
+
+
 def _run() -> Any:
     from ofti.tools.cli_tools import run
 
@@ -41,58 +61,48 @@ def _run() -> Any:
 def smoke_payload(
     case_dir: Path,
     *,
-    solver: str | None = None,
-    iterations: int = 20,
-    timeout: float = 300.0,
-    parallel: int = 0,
-    mpi: str | None = None,
-    output_root: Path | None = None,
-    in_place: bool = False,
-    delta_t: float | None = None,
-    preserve_delta_t: bool = False,
-    core_only: bool = False,
-    prepare_parallel: bool = True,
-    clean_processors: bool = False,
-    reconstruct: bool = False,
-    run_physical: bool = False,
-    physical_fields: list[str] | None = None,
+    options: SmokeOptions,
 ) -> dict[str, Any]:
     """Run a bounded solver smoke test on a copied case by default."""
-    if iterations <= 0:
+    if options.iterations <= 0:
         raise ValueError("iterations must be > 0")
-    if timeout <= 0:
+    if options.timeout <= 0:
         raise ValueError("timeout must be > 0")
     source = require_case_dir(case_dir)
-    root = _smoke_output_root(source, output_root=output_root)
-    smoke_case = source if in_place else root / "case"
-    if not in_place:
+    root = _smoke_output_root(source, output_root=options.output_root)
+    smoke_case = source if options.in_place else root / "case"
+    if not options.in_place:
         if smoke_case.exists():
             raise ValueError(f"smoke output case already exists: {smoke_case}")
         shutil.copytree(source, smoke_case, ignore=shutil.ignore_patterns(".ofti"))
     else:
         root.mkdir(parents=True, exist_ok=True)
     control = smoke_case / "system" / "controlDict"
-    chosen_delta_t = _smoke_delta_t(control, delta_t=delta_t, preserve_delta_t=preserve_delta_t)
+    chosen_delta_t = _smoke_delta_t(
+        control,
+        delta_t=options.delta_t,
+        preserve_delta_t=options.preserve_delta_t,
+    )
     normalized = _normalize_smoke_control_dict(
         control,
-        iterations=iterations,
+        iterations=options.iterations,
         delta_t=chosen_delta_t,
-        preserve_delta_t=preserve_delta_t,
-        core_only=core_only,
+        preserve_delta_t=options.preserve_delta_t,
+        core_only=options.core_only,
     )
-    chosen_solver = solver or _read_control_word(control, "application")
+    chosen_solver = options.solver or _read_control_word(control, "application")
     display, command = _run().solver_command(
         smoke_case,
         solver=chosen_solver,
-        parallel=parallel,
-        mpi=mpi,
+        parallel=options.parallel,
+        mpi=options.mpi,
     )
     parallel_setup: dict[str, Any] | None = None
-    if parallel > 1 and prepare_parallel:
+    if options.parallel > 1 and options.prepare_parallel:
         parallel_setup = _run().prepare_parallel_case(
             smoke_case,
-            parallel=parallel,
-            clean_processors=clean_processors,
+            parallel=options.parallel,
+            clean_processors=options.clean_processors,
             dry_run=False,
         )
     started = time.time()
@@ -100,7 +110,7 @@ def smoke_payload(
     result, timed_out = _run_smoke_command(
         smoke_case,
         command,
-        timeout=timeout,
+        timeout=options.timeout,
         log_path=log_path,
     )
     wall_seconds = time.time() - started
@@ -108,15 +118,15 @@ def smoke_payload(
     reconstruction = _smoke_reconstruction(
         smoke_case,
         log_text,
-        parallel=parallel,
-        requested=reconstruct,
+        parallel=options.parallel,
+        requested=options.reconstruct,
     )
     verification = _smoke_verification(
         smoke_case,
         log_text,
-        iterations=iterations,
+        iterations=options.iterations,
         delta_t=chosen_delta_t,
-        parallel=parallel,
+        parallel=options.parallel,
         returncode=int(result.returncode),
         timed_out=timed_out,
         reconstruction=reconstruction,
@@ -125,14 +135,14 @@ def smoke_payload(
         "source_case": str(source.resolve()),
         "case": str(smoke_case.resolve()),
         "output_root": str(root.resolve()),
-        "copied": not in_place,
+        "copied": not options.in_place,
         "solver": display,
         "command": _run().dry_run_command(command),
-        "iterations_requested": int(iterations),
-        "timeout_seconds": float(timeout),
-        "parallel": int(parallel),
-        "prepare_parallel": bool(prepare_parallel),
-        "clean_processors": bool(clean_processors),
+        "iterations_requested": int(options.iterations),
+        "timeout_seconds": float(options.timeout),
+        "parallel": int(options.parallel),
+        "prepare_parallel": bool(options.prepare_parallel),
+        "clean_processors": bool(options.clean_processors),
         "parallel_setup": parallel_setup,
         "reconstruction": reconstruction,
         "normalized_control": normalized,
@@ -142,11 +152,11 @@ def smoke_payload(
         "log_path": str(log_path.resolve()),
         **verification,
     }
-    if run_physical:
+    if options.run_physical:
         summary["physical"] = knife_service.physical_payload(
             smoke_case,
             time_name="latest",
-            fields=physical_fields,
+            fields=options.physical_fields,
             out_dir=root,
         )
     _write_smoke_reports(summary, root)

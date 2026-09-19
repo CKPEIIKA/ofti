@@ -11,14 +11,13 @@ from ofti.core.case_copy import copy_case_directory
 from ofti.core.dict_compare import compare_case_dicts
 from ofti.core.entry_io import display_entry_value, list_subkeys, read_entry, write_entry
 from ofti.core.field_diagnostics import (
-    compare_fields_payload as compare_fields_core_payload,
-)
-from ofti.core.field_diagnostics import (
+    FieldCompareOptions,
     field_sanity_payload,
     parse_field_rules,
     write_compare_report,
     write_physical_report,
 )
+from ofti.core.field_diagnostics import compare_fields_payload as compare_fields_core_payload
 from ofti.core.solver_checks import resolve_solver_name
 from ofti.core.solver_status import latest_solver_job, solver_status_text
 from ofti.foam.times import latest_time
@@ -544,29 +543,15 @@ def compare_fields_payload(
     left_case: Path,
     right_case: Path,
     *,
-    time_name: str = "latest",
-    reference_time: str | None = None,
-    candidate_time: str | None = None,
-    fields: list[str] | None = None,
-    preset: str | None = None,
-    patch: str | None = None,
+    options: FieldCompareOptions,
     out_dir: Path | None = None,
-    abs_tol: float = 1e-300,
-    rel_tol: float = 1e-12,
 ) -> dict[str, Any]:
     left = case_source_service.require_case_dir(left_case)
     right = case_source_service.require_case_dir(right_case)
     payload = compare_fields_core_payload(
         left,
         right,
-        time_name=time_name,
-        reference_time=reference_time,
-        candidate_time=candidate_time,
-        fields=fields,
-        preset=preset,
-        patch=patch,
-        abs_tol=abs_tol,
-        rel_tol=rel_tol,
+        options=options,
     )
     if out_dir is not None:
         payload["outputs"] = write_compare_report(payload, out_dir)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import shutil
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -23,29 +24,34 @@ _SUBDOMAINS_RE = re.compile(
 )
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ParallelResizeOptions:
+    to_ranks: int
+    from_ranks: int | None = None
+    dry_run: bool = False
+    start: bool = True
+    write_now: bool = True
+    force_stop: bool = False
+    clean_processors: bool = True
+    stop_timeout: float = _DEFAULT_STOP_TIMEOUT
+
+
 def parallel_resize_payload(
     case_dir: Path,
     *,
-    to_ranks: int,
-    from_ranks: int | None = None,
-    dry_run: bool = False,
-    start: bool = True,
-    write_now: bool = True,
-    force_stop: bool = False,
-    clean_processors: bool = True,
-    stop_timeout: float = _DEFAULT_STOP_TIMEOUT,
+    options: ParallelResizeOptions,
 ) -> dict[str, Any]:
     """Safely move a decomposed case to a new MPI rank count."""
     case_path = case_source_service.require_case_dir(case_dir)
-    if to_ranks <= 1:
+    if options.to_ranks <= 1:
         raise ValueError("--to must be greater than 1 for a parallel resize")
     decompose_dict = case_path / "system" / "decomposeParDict"
     if not decompose_dict.is_file():
         raise ValueError("system/decomposeParDict is required for parallel resize")
     current_ranks = read_number_of_subdomains(decompose_dict)
-    if from_ranks is not None and current_ranks not in {None, from_ranks}:
+    if options.from_ranks is not None and current_ranks not in {None, options.from_ranks}:
         raise ValueError(
-            f"--from={from_ranks} does not match decomposeParDict={current_ranks}",
+            f"--from={options.from_ranks} does not match decomposeParDict={current_ranks}",
         )
 
     steps: list[dict[str, Any]] = []
@@ -53,20 +59,20 @@ def parallel_resize_payload(
     payload = _parallel_resize_initial_payload(
         case_path,
         current_ranks=current_ranks,
-        to_ranks=to_ranks,
-        dry_run=dry_run,
-        start=start,
+        to_ranks=options.to_ranks,
+        dry_run=options.dry_run,
+        start=options.start,
         processor_dirs=processor_dirs,
         steps=steps,
     )
-    _add_plan_steps(steps, to_ranks=to_ranks, start=start, write_now=write_now)
+    _add_plan_steps(steps, to_ranks=options.to_ranks, start=options.start, write_now=options.write_now)
     if _finish_restart_planning(
         payload,
         case_path,
         steps,
-        expected_processors=from_ranks or current_ranks,
-        target_processors=to_ranks,
-        dry_run=dry_run,
+        expected_processors=options.from_ranks or current_ranks,
+        target_processors=options.to_ranks,
+        dry_run=options.dry_run,
     ):
         return payload
 
@@ -77,12 +83,12 @@ def parallel_resize_payload(
             payload,
             processor_dirs,
             steps,
-            to_ranks=to_ranks,
-            start=start,
-            write_now=write_now,
-            force_stop=force_stop,
-            clean_processors=clean_processors,
-            stop_timeout=stop_timeout,
+            to_ranks=options.to_ranks,
+            start=options.start,
+            write_now=options.write_now,
+            force_stop=options.force_stop,
+            clean_processors=options.clean_processors,
+            stop_timeout=options.stop_timeout,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         payload["ok"] = False

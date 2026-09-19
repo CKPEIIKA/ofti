@@ -27,6 +27,26 @@ def interval_with_cpu_mode(args: argparse.Namespace, interval: float) -> float:
     return value
 
 
+def queue_options_from_args(
+    args: argparse.Namespace,
+    *,
+    poll_interval: float,
+    queue_root: Path | None = None,
+) -> run_ops.QueueOptions:
+    return run_ops.QueueOptions(
+        solver=getattr(args, "solver", None),
+        parallel=int(getattr(args, "parallel", 0)),
+        mpi=getattr(args, "mpi", None),
+        max_parallel=int(getattr(args, "max_parallel", 1)),
+        poll_interval=poll_interval,
+        dry_run=bool(getattr(args, "dry_run", False)),
+        backend=str(getattr(args, "backend", "process")),
+        prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
+        clean_processors=bool(getattr(args, "clean_processors", False)),
+        queue_root=queue_root,
+    )
+
+
 def planned_manifest_path(case_dir: Path, manifest_file: object) -> Path:
     output = manifest_file if isinstance(manifest_file, Path) else _configured_manifest_root()
     return manifest_ops.resolve_manifest_output(Path(case_dir), output)

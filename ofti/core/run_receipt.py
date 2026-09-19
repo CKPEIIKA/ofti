@@ -12,6 +12,7 @@ MANIFEST_KIND = _run_manifest.MANIFEST_KIND
 LEGACY_RECEIPT_KIND = _run_manifest.LEGACY_RECEIPT_KIND
 SUPPORTED_MANIFEST_KINDS = _run_manifest.SUPPORTED_MANIFEST_KINDS
 DEFAULT_INPUT_ROOTS = _run_manifest.DEFAULT_INPUT_ROOTS
+RunManifestOptions = _run_manifest.RunManifestOptions
 
 build_run_receipt = _run_manifest.build_run_manifest
 write_run_receipt = _run_manifest.write_run_manifest
@@ -28,6 +29,7 @@ __all__ = [
     "MANIFEST_KIND",
     "SCHEMA_VERSION",
     "SUPPORTED_MANIFEST_KINDS",
+    "RunManifestOptions",
     "build_run_receipt",
     "collect_case_inputs",
     "load_run_receipt",

@@ -10,6 +10,7 @@ from ofti.app.cli_adapters.common import (
     interval_with_cpu_mode,
     parse_env_assignments,
     planned_manifest_path,
+    queue_options_from_args,
     solver_name_for_manifest,
     tail_bytes_with_cpu_mode,
 )
@@ -515,15 +516,7 @@ def _run_matrix(args: argparse.Namespace) -> int:
         poll_interval = interval_with_cpu_mode(args, float(getattr(args, "poll_interval", 0.25)))
         queue_result = run_ops.queue_payload(
             cases=case_paths,
-            solver=getattr(args, "solver", None),
-            parallel=int(getattr(args, "parallel", 0)),
-            mpi=getattr(args, "mpi", None),
-            max_parallel=int(getattr(args, "max_parallel", 1)),
-            poll_interval=poll_interval,
-            dry_run=bool(getattr(args, "dry_run", False)),
-            backend=str(getattr(args, "backend", "process")),
-            prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
-            clean_processors=bool(getattr(args, "clean_processors", False)),
+            options=queue_options_from_args(args, poll_interval=poll_interval),
         )
     payload: dict[str, object] = {
         **generated,
@@ -567,16 +560,11 @@ def _run_queue(args: argparse.Namespace) -> int:
     )
     payload = run_ops.queue_payload(
         cases=cases,
-        solver=getattr(args, "solver", None),
-        parallel=int(getattr(args, "parallel", 0)),
-        mpi=getattr(args, "mpi", None),
-        max_parallel=int(getattr(args, "max_parallel", 1)),
-        poll_interval=poll_interval,
-        dry_run=bool(getattr(args, "dry_run", False)),
-        backend=str(getattr(args, "backend", "process")),
-        prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
-        clean_processors=bool(getattr(args, "clean_processors", False)),
-        queue_root=_queue_root_for_args(args, explicit_cases=bool(explicit_cases)),
+        options=queue_options_from_args(
+            args,
+            poll_interval=poll_interval,
+            queue_root=_queue_root_for_args(args, explicit_cases=bool(explicit_cases)),
+        ),
     )
     if bool(getattr(args, "json", False)):
         emit_json(payload, args)
@@ -615,21 +603,23 @@ def _run_smoke(args: argparse.Namespace) -> int:
         timeout = run_ops.parse_duration_seconds(getattr(args, "timeout", "300s"))
         payload = run_ops.smoke_payload(
             args.case_dir,
-            solver=getattr(args, "solver", None),
-            iterations=int(getattr(args, "iterations", 20)),
-            timeout=timeout,
-            parallel=int(getattr(args, "parallel", 0)),
-            mpi=getattr(args, "mpi", None),
-            output_root=getattr(args, "output_root", None),
-            in_place=bool(getattr(args, "in_place", False)),
-            delta_t=getattr(args, "delta_t", None),
-            preserve_delta_t=bool(getattr(args, "preserve_deltaT", False)),
-            core_only=bool(getattr(args, "core_only", False)),
-            prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
-            clean_processors=bool(getattr(args, "clean_processors", False)),
-            reconstruct=bool(getattr(args, "reconstruct", False)),
-            run_physical=bool(getattr(args, "physical", False)),
-            physical_fields=split_field_list(getattr(args, "fields", None)),
+            options=run_ops.SmokeOptions(
+                solver=getattr(args, "solver", None),
+                iterations=int(getattr(args, "iterations", 20)),
+                timeout=timeout,
+                parallel=int(getattr(args, "parallel", 0)),
+                mpi=getattr(args, "mpi", None),
+                output_root=getattr(args, "output_root", None),
+                in_place=bool(getattr(args, "in_place", False)),
+                delta_t=getattr(args, "delta_t", None),
+                preserve_delta_t=bool(getattr(args, "preserve_deltaT", False)),
+                core_only=bool(getattr(args, "core_only", False)),
+                prepare_parallel=bool(getattr(args, "prepare_parallel", True)),
+                clean_processors=bool(getattr(args, "clean_processors", False)),
+                reconstruct=bool(getattr(args, "reconstruct", False)),
+                run_physical=bool(getattr(args, "physical", False)),
+                physical_fields=split_field_list(getattr(args, "fields", None)),
+            ),
         )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
@@ -686,14 +676,16 @@ def _run_status(args: argparse.Namespace) -> int:
 def _run_resize_parallel(args: argparse.Namespace) -> int:
     payload = parallel_resize_service.parallel_resize_payload(
         args.case_dir,
-        to_ranks=int(args.to_ranks),
-        from_ranks=getattr(args, "from_ranks", None),
-        dry_run=bool(getattr(args, "dry_run", False)),
-        start=bool(getattr(args, "start", True)),
-        write_now=bool(getattr(args, "write_now", True)),
-        force_stop=bool(getattr(args, "force_stop", False)),
-        clean_processors=bool(getattr(args, "clean_processors", True)),
-        stop_timeout=float(getattr(args, "stop_timeout", 45.0)),
+        options=parallel_resize_service.ParallelResizeOptions(
+            to_ranks=int(args.to_ranks),
+            from_ranks=getattr(args, "from_ranks", None),
+            dry_run=bool(getattr(args, "dry_run", False)),
+            start=bool(getattr(args, "start", True)),
+            write_now=bool(getattr(args, "write_now", True)),
+            force_stop=bool(getattr(args, "force_stop", False)),
+            clean_processors=bool(getattr(args, "clean_processors", True)),
+            stop_timeout=float(getattr(args, "stop_timeout", 45.0)),
+        ),
     )
     if bool(getattr(args, "json", False)):
         emit_json(payload, args)
@@ -956,22 +948,24 @@ def _run_solver_execute(
     if write_manifest:
         written_manifest = manifest_ops.write_case_run_manifest(
             Path(args.case_dir),
-            name=display,
-            command=run_ops.dry_run_command(cmd),
-            background=background,
-            detached=detached if background else False,
-            parallel=parallel,
-            mpi=args.mpi,
-            sync_subdomains=sync_subdomains,
-            prepare_parallel=prepare_parallel,
-            clean_processors=clean_processors,
-            extra_env=extra_env,
-            log_path=result.log_path,
-            pid=result.pid,
-            returncode=result.returncode,
+            options=manifest_ops.RunManifestOptions(
+                name=display,
+                command=run_ops.dry_run_command(cmd),
+                background=background,
+                detached=detached if background else False,
+                parallel=parallel,
+                mpi=args.mpi,
+                sync_subdomains=sync_subdomains,
+                prepare_parallel=prepare_parallel,
+                clean_processors=clean_processors,
+                extra_env=extra_env,
+                log_path=result.log_path,
+                pid=result.pid,
+                returncode=result.returncode,
+                record_inputs_copy=bool(getattr(args, "record_inputs_copy", False)),
+                solver_name=solver_name_for_manifest(cmd, parallel=parallel),
+            ),
             output=manifest_output,
-            record_inputs_copy=bool(getattr(args, "record_inputs_copy", False)),
-            solver_name=solver_name_for_manifest(cmd, parallel=parallel),
         )
     if getattr(args, "json", False):
         payload: dict[str, object] = {
