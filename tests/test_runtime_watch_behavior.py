@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -274,10 +275,10 @@ def test_watch_service_settings_and_log_fallback_paths(monkeypatch: pytest.Monke
 
     orig_resolve = Path.resolve
 
-    def _resolve_fail(self: Path, strict: bool = False) -> Path:
+    def _resolve_fail(self: Path, *args: Any, **kwargs: Any) -> Path:
         if self.name == "bad.log":
             raise OSError("boom")
-        return orig_resolve(self, strict=strict)
+        return orig_resolve(self, *args, **kwargs)
 
     monkeypatch.setattr(Path, "resolve", _resolve_fail)
     assert watch_service._job_log_path(case, {"log": "bad.log"}) == str(case / "bad.log")

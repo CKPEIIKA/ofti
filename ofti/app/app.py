@@ -61,12 +61,12 @@ def run_tui(case_dir: str, *, debug: bool = False) -> None:
     start_path = input_path.parent if input_path.is_file() else input_path
     state = AppState()
     try:
-        curses.wrapper(_main, start_path, debug, state)
+        curses.wrapper(_main, start_path, debug=debug, state=state)
     except curses.error as exc:
         raise RuntimeError(f"failed to initialize terminal UI: {exc}") from exc
 
 
-def _main(stdscr: Any, case_path: Path, debug: bool, state: AppState) -> None:
+def _main(stdscr: Any, case_path: Path, *, debug: bool, state: AppState) -> None:
     curses.start_color()
     cfg = get_config()
     fg = _color_from_name(cfg.colors.get("focus_fg", "black"), curses.COLOR_BLACK)

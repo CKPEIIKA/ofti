@@ -6,6 +6,7 @@ import subprocess
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -424,10 +425,10 @@ def test_process_scan_scan_and_discovery_edge_branches(
 
     original_resolve = Path.resolve
 
-    def _raise_for_cwd(self: Path, strict: bool = False) -> Path:
+    def _raise_for_cwd(self: Path, *args: Any, **kwargs: Any) -> Path:
         if self.name == "cwd":
             raise OSError(errno.EACCES, "permission denied")
-        return original_resolve(self, strict=strict)
+        return original_resolve(self, *args, **kwargs)
 
     monkeypatch.setattr(Path, "resolve", _raise_for_cwd)
     assert scan.proc_cwd_with_error(proc_dir) == (None, "permission denied")

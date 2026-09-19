@@ -27,7 +27,7 @@ ofti = "ofti.app.cli:main"
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 exclude = ["refs"]
 fix = false
 unsafe-fixes = false
@@ -73,8 +73,9 @@ select = [
 ignore = [
   # Ruff's formatter owns trailing-comma layout; COM812 conflicts with it.
   "COM812",
-  "FBT001",
+  # Deferred API refactor: service and adapter signatures need cohesive request records.
   "PLR0913",
+  # Deferred exception-hierarchy cleanup: move repeated contextual messages into domain exceptions.
   "TRY003",
 ]
 fixable = ["ALL"]

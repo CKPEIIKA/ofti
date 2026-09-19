@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TypeAlias, TypedDict
+from typing import Any, TypedDict
 
 from ofti.core.progress import progress_evidence
 from ofti.foam.config import get_config
 from ofti.tools import plugin_service, process_scan_service
 
-SolverProcessRow: TypeAlias = process_scan_service.ProcRow
+type SolverProcessRow = process_scan_service.ProcRow
 
 
 class CurrentPayload(TypedDict):

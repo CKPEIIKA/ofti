@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import pytest
 
@@ -356,7 +356,7 @@ def test_show_check_result_actions(
     monkeypatch: pytest.MonkeyPatch,
     result: FileCheckResult,
     key: int,
-    expected: bool,
+    expected: Literal[False, True],
 ) -> None:
     fixed: list[Path] = []
     monkeypatch.setattr(check, "get_config", _check_config)
