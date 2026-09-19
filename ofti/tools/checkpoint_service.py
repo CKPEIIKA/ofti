@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ofti.core.case import read_number_of_subdomains
-from ofti.core.checkpoint import checkpoint_health
+from ofti.core.checkpoint import CheckpointError, checkpoint_health
 from ofti.core.times import processor_dirs
 from ofti.tools.case_source_service import require_case_dir
 
@@ -35,9 +35,9 @@ def restart_plan_payload(
     configured = read_number_of_subdomains(case_path / "system" / "decomposeParDict")
     expected = expected_processors or configured or actual
     if expected <= 0:
-        raise ValueError("unable to determine current MPI size")
+        raise CheckpointError.mpi_size_unknown()
     if target_processors is not None and target_processors <= 1:
-        raise ValueError("target processor count must be greater than 1")
+        raise CheckpointError.resize_target_invalid()
     health = checkpoint_health(case_path)
     latest_common = health["latest_complete_time"]
     partial_newer = _partial_newer_times(health["partial_times"], latest_common)
@@ -115,7 +115,7 @@ def quarantine_partial_payload(
     if not apply or not moves:
         return payload
     if not safe_to_apply:
-        raise ValueError("refusing to quarantine partial times without a complete checkpoint")
+        raise CheckpointError.partial_quarantine_unsafe()
     _apply_moves(moves)
     payload["applied"] = True
     payload["checkpoint_after"] = checkpoint_health(
@@ -233,7 +233,7 @@ def _apply_moves(moves: list[dict[str, str]]) -> None:
 
 def _require_available_destination(destination: Path) -> None:
     if destination.exists():
-        raise ValueError(f"quarantine destination already exists: {destination}")
+        raise CheckpointError.quarantine_destination_exists(destination)
 
 
 def _rollback_moves(completed: list[tuple[Path, Path]]) -> None:

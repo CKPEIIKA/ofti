@@ -12,6 +12,24 @@ from ofti.foamlib import adapter as foamlib_integration
 
 class OpenFOAMError(RuntimeError):
     @classmethod
+    def keyword_parser_failed(cls, path: str, exc: Exception) -> OpenFOAMError:
+        return cls(
+            f"Failed to list keywords for '{path}': parser error ({exc}). "
+            "Try opening this file in Config Editor and checking for unsupported dictionary syntax.",
+        )
+
+    @classmethod
+    def invalid_dictionary(cls, path: str) -> OpenFOAMError:
+        return cls(
+            f"Failed to list keywords for '{path}': file is not recognized as an OpenFOAM dictionary "
+            "(missing/invalid FoamFile header).",
+        )
+
+    @classmethod
+    def entry_read_failed(cls, key: str) -> OpenFOAMError:
+        return cls(f"Failed to read entry {key}.")
+
+    @classmethod
     def missing_openfoam_tools(cls) -> OpenFOAMError:
         return cls(
             "OpenFOAM tools were not found in the active or discoverable environment. "
@@ -46,17 +64,8 @@ def list_keywords(file_path: Path) -> list[str]:
             parse_error = exc
     rel = file_path.as_posix()
     if parse_error is not None:
-        raise OpenFOAMError(
-            (
-                f"Failed to list keywords for '{rel}': parser error ({parse_error}). "
-                "Try opening this file in Config Editor and checking for unsupported "
-                "dictionary syntax."
-            ),
-        )
-    raise OpenFOAMError(
-        f"Failed to list keywords for '{rel}': file is not recognized as an OpenFOAM dictionary "
-        "(missing/invalid FoamFile header).",
-    )
+        raise OpenFOAMError.keyword_parser_failed(rel, parse_error)
+    raise OpenFOAMError.invalid_dictionary(rel)
 
 
 def list_subkeys(file_path: Path, entry: str) -> list[str]:
@@ -231,7 +240,7 @@ def read_entry(file_path: Path, key: str) -> str:
             raise OpenFOAMError(str(exc)) from exc
         except Exception as exc:
             logging.debug("foamlib read_entry failed: %s", exc)
-    raise OpenFOAMError(f"Failed to read entry {key}.")
+    raise OpenFOAMError.entry_read_failed(key)
 
 
 def write_entry(file_path: Path, key: str, value: str) -> bool:

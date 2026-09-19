@@ -6,15 +6,43 @@ from typing import Any
 from ofti.core.times import processor_dirs
 
 
+class CheckpointError(ValueError):
+    @classmethod
+    def invalid_processor_count(cls) -> CheckpointError:
+        return cls("expected processor count must be positive")
+
+    @classmethod
+    def processor_count_mismatch(cls, expected: int, actual: int) -> CheckpointError:
+        return cls(f"expected {expected} processor directories, found {actual}")
+
+    @classmethod
+    def no_complete_time(cls) -> CheckpointError:
+        return cls("no complete decomposed processor time is available to reconstruct")
+
+    @classmethod
+    def mpi_size_unknown(cls) -> CheckpointError:
+        return cls("unable to determine current MPI size")
+
+    @classmethod
+    def resize_target_invalid(cls) -> CheckpointError:
+        return cls("target processor count must be greater than 1")
+
+    @classmethod
+    def partial_quarantine_unsafe(cls) -> CheckpointError:
+        return cls("refusing to quarantine partial times without a complete checkpoint")
+
+    @classmethod
+    def quarantine_destination_exists(cls, path: Path) -> CheckpointError:
+        return cls(f"quarantine destination already exists: {path}")
+
+
 def checkpoint_health(case_dir: Path, *, expected_processors: int | None = None) -> dict[str, Any]:
     """Describe decomposed checkpoint completeness without changing the case."""
     processor_paths = processor_dirs(case_dir)
     if expected_processors is not None and expected_processors <= 0:
-        raise ValueError("expected processor count must be positive")
+        raise CheckpointError.invalid_processor_count()
     if expected_processors is not None and len(processor_paths) != expected_processors:
-        raise ValueError(
-            f"expected {expected_processors} processor directories, found {len(processor_paths)}",
-        )
+        raise CheckpointError.processor_count_mismatch(expected_processors, len(processor_paths))
     per_processor = {path.name: _processor_times(path) for path in processor_paths}
     all_times = sorted(
         {time_name for values in per_processor.values() for time_name in values},
@@ -47,7 +75,7 @@ def safe_reconstruct_time(health: dict[str, Any]) -> str:
     latest_complete = health.get("latest_complete_time")
     if isinstance(latest_complete, str) and latest_complete:
         return latest_complete
-    raise ValueError("no complete decomposed processor time is available to reconstruct")
+    raise CheckpointError.no_complete_time()
 
 
 def _processor_times(processor_dir: Path) -> list[str]:

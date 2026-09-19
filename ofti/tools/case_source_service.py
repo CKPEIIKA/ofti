@@ -5,10 +5,28 @@ from pathlib import Path
 from ofti.core.solver_checks import resolve_solver_name
 
 
+class CaseSourceError(ValueError):
+    @classmethod
+    def case_not_found(cls, path: Path) -> CaseSourceError:
+        return cls(f"case directory not found: {path}")
+
+    @classmethod
+    def read_failed(cls, path: Path, exc: OSError) -> CaseSourceError:
+        return cls(f"failed to read {path}: {exc}")
+
+    @classmethod
+    def log_source_not_found(cls, path: Path) -> CaseSourceError:
+        return cls(f"log source not found: {path}")
+
+    @classmethod
+    def no_logs_found(cls, path: Path) -> CaseSourceError:
+        return cls(f"no log.* files found in {path}")
+
+
 def require_case_dir(path: Path) -> Path:
     resolved = path.expanduser().resolve()
     if not resolved.is_dir():
-        raise ValueError(f"case directory not found: {resolved}")
+        raise CaseSourceError.case_not_found(resolved)
     return resolved
 
 
@@ -16,7 +34,7 @@ def read_text(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8", errors="ignore")
     except OSError as exc:
-        raise ValueError(f"failed to read {path}: {exc}") from exc
+        raise CaseSourceError.read_failed(path, exc) from exc
 
 
 def solver_log_path(case_path: Path) -> Path | None:
@@ -34,7 +52,7 @@ def resolve_log_source(source: Path) -> Path:
     if target.is_file():
         return target
     if not target.is_dir():
-        raise ValueError(f"log source not found: {target}")
+        raise CaseSourceError.log_source_not_found(target)
     solver_log = solver_log_path(target)
     if solver_log is not None:
         return solver_log
@@ -46,5 +64,5 @@ def resolve_log_source(source: Path) -> Path:
         ),
     )
     if not logs:
-        raise ValueError(f"no log.* files found in {target}")
+        raise CaseSourceError.no_logs_found(target)
     return logs[-1]

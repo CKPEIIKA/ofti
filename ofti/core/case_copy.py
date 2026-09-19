@@ -7,6 +7,24 @@ from pathlib import Path
 _RUNTIME_DIR_NAMES = {"postProcessing", ".ofti", "__pycache__"}
 
 
+class CaseCopyError(ValueError):
+    @classmethod
+    def source_not_found(cls, path: Path) -> CaseCopyError:
+        return cls(f"source case directory not found: {path}")
+
+    @classmethod
+    def missing_control_dict(cls, path: Path) -> CaseCopyError:
+        return cls(f"source case is missing system/controlDict: {path}")
+
+    @classmethod
+    def destination_exists(cls, path: Path) -> CaseCopyError:
+        return cls(f"destination already exists: {path}")
+
+    @classmethod
+    def destination_inside_source(cls, path: Path) -> CaseCopyError:
+        return cls(f"destination must be outside source case: {path}")
+
+
 def copy_case_directory(
     source_case: Path,
     destination: Path,
@@ -29,21 +47,21 @@ def copy_case_directory(
 def _resolve_copy_paths(source_case: Path, destination: Path) -> tuple[Path, Path]:
     source_path = source_case.expanduser().resolve()
     if not source_path.is_dir():
-        raise ValueError(f"source case directory not found: {source_path}")
+        raise CaseCopyError.source_not_found(source_path)
     if not (source_path / "system" / "controlDict").is_file():
-        raise ValueError(f"source case is missing system/controlDict: {source_path}")
+        raise CaseCopyError.missing_control_dict(source_path)
 
     dest_path = destination.expanduser()
     if not dest_path.is_absolute():
         dest_path = source_path.parent / dest_path
     dest_path = dest_path.resolve()
     if dest_path.exists():
-        raise ValueError(f"destination already exists: {dest_path}")
+        raise CaseCopyError.destination_exists(dest_path)
     try:
         dest_path.relative_to(source_path)
     except ValueError:
         return source_path, dest_path
-    raise ValueError(f"destination must be outside source case: {dest_path}")
+    raise CaseCopyError.destination_inside_source(dest_path)
 
 
 def _build_copy_ignore(
