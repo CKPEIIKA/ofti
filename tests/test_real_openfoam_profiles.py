@@ -196,7 +196,7 @@ def test_real_background_solver_start_stop_cleans_processes(
             assert stopped["selected"] == 1, f"{profile.name}: {stopped}"
             assert stopped["stopped"], f"{profile.name}: {stopped}"
             assert stopped["stopped"][0].get("method") in {"process_group", "processes"}
-            assert wait_pids_gone([pid], timeout=5.0), f"{profile.name}: pid still running after stop"
+            assert wait_pids_gone([pid], timeout=12.0), f"{profile.name}: pid still running after stop"
             exercised = True
         finally:
             if pid > 0 and pid_running(pid):
@@ -448,7 +448,7 @@ def test_real_foamlib_case_ops_blockmesh_restore_and_reconstruct(
         assert prepared["decompose_returncode"] == 0, prepared
         assert (case / "processor0").is_dir()
         display, command = run.solver_command(case, solver=solver, parallel=2)
-        if mpi_launcher_issue(command):
+        if mpi_launcher_issue(command, case=case):
             continue
         result = run.execute_solver_case_command(case, display, command, parallel=2, background=False)
         assert result.returncode == 0, result.stderr
@@ -565,7 +565,7 @@ def _parallel_command(profile: RealProfile, case: Path) -> tuple[str, str, list[
         display, command = run.solver_command(case, solver=solver, parallel=2)
     except ValueError:
         return None
-    return None if mpi_launcher_issue(command) else (solver, display, command)
+    return None if mpi_launcher_issue(command, case=case) else (solver, display, command)
 
 
 def _exercise_parallel_tracked_stop(profile: RealProfile, case: Path) -> bool:

@@ -10,17 +10,16 @@ readme = "README.md"
 authors = [{name = "OpenFOAM Terminal Interface maintainers"}]
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 keywords = ["OpenFOAM", "CLI", "TUI", "curses"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Operating System :: POSIX :: Linux",
 ]
 dependencies = [
-    "foamlib[postprocessing,preprocessing]==1.6.2",
+    "foamlib[postprocessing,preprocessing]==1.8.1",
 ]
 
 [project.scripts]
@@ -165,7 +164,7 @@ markers = [
 source = ["ofti"]
 
 [tool.ty.environment]
-python-version = "3.11"
+python-version = "3.12"
 # Plugin packages live under plugins/*/src and are not installed in the dev env;
 # point ty at them so plugin tests/modules resolve their imports.
 extra-paths = ["plugins/ofti-hy2foam/src", "plugins/hy2foam-mod/src"]

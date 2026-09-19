@@ -24,8 +24,9 @@ OFTI_ENABLE_REAL_CASE_TESTS=1 uv run pytest --runslow tests/test_real_openfoam_t
 ```
 
 The process tests use `/proc` on Linux and fall back to macOS `ps`/`lsof`
-process metadata when `/proc` is unavailable or restricted. MPI tests still
-require a launcher that can create its local sockets.
+process metadata when `/proc` is unavailable or restricted. MPI tests probe a
+prepared solver with a bounded dry-run, so a launcher that can run `true` but
+cannot initialize OpenFOAM ranks is skipped without leaving child processes.
 
 The real-toy module collects 30 service tests for the default cavity profile;
 the generated/external profile module adds 16 reusable profile tests.
@@ -34,7 +35,7 @@ that the public CLI can start, list, and stop a tracked real solver, and that
 real OpenFOAM binary scalar/vector fields remain readable before and after
 two-way decomposition. These paths pass with OpenFOAM 2512 sourced; the
 queue/runtime/parallel-prepare subset also passes.
-The generated-profile matrix reports `11 passed, 4 skipped`; three skips are
+The generated-profile matrix reports `12 passed, 4 skipped`; three skips are
 host-capability paths (MPI/foamlib parallel execution) and one is optional HPC.
 (MPI launcher present but unusable in the sandbox network namespace).
 

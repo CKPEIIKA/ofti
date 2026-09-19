@@ -6,10 +6,10 @@ import shutil
 import signal
 import subprocess
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
-from ofti.app.tool_screens.run import blockmesh_once
 from ofti.core import entry_io
 from ofti.foam.openfoam_env import resolve_openfoam_command, with_bashrc
 from ofti.tools.cli_tools import run
@@ -110,8 +110,8 @@ def prepare_case(case: Path) -> None:
     block_mesh_dict = case / "system" / "blockMeshDict"
     if poly_mesh.is_dir() or not block_mesh_dict.is_file():
         return
-    ok, message = blockmesh_once(case)
-    assert ok, message
+    result = run.execute_case_command(case, "blockMesh", ["blockMesh"], background=False)
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def ensure_zero_orig(case: Path) -> None:
@@ -194,7 +194,16 @@ def pid_running(pid: int) -> bool:
     try:
         stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="ignore")
     except OSError:
-        pass
+        ps_executable = shutil.which("ps")
+        if ps_executable is not None:
+            process = subprocess.run(  # noqa: S603
+                [ps_executable, "-o", "stat=", "-p", str(pid)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if process.returncode == 0 and process.stdout.strip().startswith("Z"):
+                return False
     else:
         if ") Z " in stat:
             return False
@@ -229,27 +238,47 @@ def kill_leftovers(pids: list[int]) -> None:
             os.kill(process_id, signal.SIGKILL)
 
 
-def mpi_launcher_issue(command: list[str]) -> str | None:
+def mpi_launcher_issue(command: list[str], *, case: Path | None = None) -> str | None:
     if not command:
         return "parallel solver command is empty"
     launcher = command[0]
     if resolve_openfoam_command(launcher) is None:
         return f"MPI launcher is unavailable: {launcher}"
-    # The launcher is selected from the local environment and receives fixed probe arguments.
-    probe_command = with_bashrc(shlex.join([launcher, "-np", "1", "true"]))
+    # A launcher can run `true` while OpenFOAM's parallel initialization still cannot create its
+    # local sockets. Use a prepared case and the solver's bounded dry-run when one is available.
+    probe_args = [launcher, "-np", "1", "true"] if case is None else [*command, "-dry-run"]
+    return _run_mpi_probe(probe_args, case=case, launcher=launcher)
+
+
+def _run_mpi_probe(probe_args: list[str], *, case: Path | None, launcher: str) -> str | None:
+    probe_command = with_bashrc(shlex.join(probe_args))
     try:
-        probe = subprocess.run(  # noqa: S603
+        probe = subprocess.Popen(  # noqa: S603
             ["/bin/bash", "--noprofile", "--norc", "-c", probe_command],
-            check=False,
-            capture_output=True,
+            cwd=case,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=10.0,
+            start_new_session=True,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except OSError as exc:
         return str(exc)
+    try:
+        stdout, stderr = probe.communicate(timeout=10.0)
+    except subprocess.TimeoutExpired:
+        with suppress(ProcessLookupError):
+            os.killpg(probe.pid, signal.SIGKILL)
+        stdout, stderr = probe.communicate()
+        if case is not None:
+            return "parallel OpenFOAM dry-run timed out after 10 seconds"
+        return "MPI launcher probe timed out after 10 seconds"
+    finally:
+        if probe.poll() is None:
+            with suppress(ProcessLookupError):
+                os.killpg(probe.pid, signal.SIGKILL)
     if probe.returncode == 0:
         return None
-    detail = (probe.stderr or probe.stdout).strip().splitlines()
+    detail = (stderr or stdout).strip().splitlines()
     return detail[0] if detail else f"{launcher} probe returned {probe.returncode}"
 
 

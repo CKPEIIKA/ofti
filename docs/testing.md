@@ -58,8 +58,9 @@ The current service matrix lives in `docs/real_case_coverage.md`.
 `tests/test_real_openfoam_profiles.py` accepts external cases through
 `OFTI_REAL_PROFILES`. With `OFTI_ENABLE_REAL_CASE_TESTS=1` and no external
 profiles, it generates fresh canonical tutorial cases instead. MPI scenarios
-probe the launcher first and skip with its concrete failure reason when the
-host or sandbox cannot launch ranks.
+probe the launcher first and, after a case is prepared, run a bounded solver
+dry-run. They skip with the concrete failure reason when the host or sandbox
+cannot initialize OpenFOAM ranks.
 
 Native commands are resolved from the current environment, `OFTI_BASHRC`, or
 the standard macOS OpenFOAM app layout. Use `OFTI_BASHRC` when the local app or

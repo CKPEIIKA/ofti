@@ -25,7 +25,7 @@ from ofti.tools import (
 )
 from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.cli_tools import run_queue
-from tests.real_openfoam_support import openfoam_command_available, openfoam_shell_command
+from tests.real_openfoam_support import mpi_launcher_issue, openfoam_command_available, openfoam_shell_command
 from tests.real_openfoam_tutorials import (
     RealTutorialCase,
     TutorialProfile,
@@ -452,7 +452,8 @@ def test_real_toy_case_parallel_smoke_writes_common_final_checkpoint(
         pytest.skip("MPI launcher unavailable")
     case = real_case.case
     real_case.ensure_parallel_dict(2)
-    _require_working_parallel_launcher(run_ops.solver_command(case, parallel=2)[1])
+    _prepare_parallel_case(case)
+    _require_working_parallel_launcher(run_ops.solver_command(case, parallel=2)[1], case=case)
 
     smoke = run_ops.smoke_payload(
         case,
@@ -718,10 +719,9 @@ def test_real_toy_case_adopts_raw_parallel_mpirun_as_one_tracked_run(
 
     case = real_case.case
     real_case.ensure_parallel_dict(2)
-    prepared = run_ops.prepare_parallel_case(case, parallel=2, clean_processors=True)
-    assert prepared["decompose_returncode"] == 0
+    _prepare_parallel_case(case)
     display, command = run_ops.solver_command(case, parallel=2)
-    _require_working_parallel_launcher(command)
+    _require_working_parallel_launcher(command, case=case)
     log_path = case / f"log.raw-{display}"
     with log_path.open("a", encoding="utf-8", errors="ignore") as log:
         # The test command is assembled from the controlled toy-case fixture.
@@ -946,14 +946,7 @@ def test_real_toy_case_compare_reconstructed_parallel_to_serial(
     if not openfoam_command_available("mpirun") and not openfoam_command_available("mpiexec"):
         pytest.skip("MPI launcher unavailable")
 
-    source = real_case.case
-    solver, _command = run_ops.solver_command(source)
-    serial_case = tmp_path / "compare-serial"
-    parallel_case = tmp_path / "compare-parallel"
-    shutil.copytree(source, serial_case, ignore=shutil.ignore_patterns(".ofti"))
-    shutil.copytree(source, parallel_case, ignore=shutil.ignore_patterns(".ofti"))
-    _ensure_parallel_dict(parallel_case, 2)
-    _require_working_parallel_launcher(run_ops.solver_command(parallel_case, parallel=2)[1])
+    solver, serial_case, parallel_case = _prepare_compare_cases(real_case, tmp_path)
 
     serial = run_ops.smoke_payload(
         serial_case,
@@ -1018,6 +1011,19 @@ def test_real_toy_case_compare_reconstructed_parallel_to_serial(
     for row in compared["fields"]:
         assert row["count"] > 0
         assert row["nonfinite_pairs"] == 0
+
+
+def _prepare_compare_cases(real_case: RealTutorialCase, tmp_path: Path) -> tuple[str, Path, Path]:
+    source = real_case.case
+    solver, _command = run_ops.solver_command(source)
+    serial_case = tmp_path / "compare-serial"
+    parallel_case = tmp_path / "compare-parallel"
+    shutil.copytree(source, serial_case, ignore=shutil.ignore_patterns(".ofti"))
+    shutil.copytree(source, parallel_case, ignore=shutil.ignore_patterns(".ofti"))
+    _ensure_parallel_dict(parallel_case, 2)
+    _prepare_parallel_case(parallel_case)
+    _require_working_parallel_launcher(run_ops.solver_command(parallel_case, parallel=2)[1], case=parallel_case)
+    return solver, serial_case, parallel_case
 
 
 def test_real_toy_case_prepare_parallel_extra_rank_profile(real_case: RealTutorialCase) -> None:
@@ -1103,9 +1109,8 @@ def test_real_toy_case_parallel_prepare_run_stop_resize_plan(
 def _prepare_parallel_resize_source(real_case: RealTutorialCase) -> None:
     case = real_case.case
     real_case.ensure_parallel_dict(2)
-    _require_working_parallel_launcher(run_ops.solver_command(case, parallel=2)[1])
-    prepared = run_ops.prepare_parallel_case(case, parallel=2, clean_processors=True)
-    assert prepared["decompose_returncode"] == 0
+    _prepare_parallel_case(case)
+    _require_working_parallel_launcher(run_ops.solver_command(case, parallel=2)[1], case=case)
     assert (case / "processor0").is_dir()
     dry_plan = parallel_resize_service.parallel_resize_payload(case, from_ranks=2, to_ranks=3, dry_run=True)
     assert dry_plan["ok"] is True
@@ -1137,19 +1142,17 @@ def _resize_parallel_args(case: Path) -> list[str]:
     ]
 
 
-def _require_working_parallel_launcher(command: list[str]) -> None:
+def _require_working_parallel_launcher(command: list[str], *, case: Path) -> None:
     if not command:
         pytest.skip("MPI launcher unavailable")
-    # The launcher is selected from the local environment and receives fixed probe arguments.
-    probe = subprocess.run(  # noqa: S603
-        [command[0], "-np", "1", "true"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if probe.returncode != 0:
-        detail = (probe.stderr or probe.stdout).strip().splitlines()[:1]
-        pytest.skip(f"MPI launcher unusable in this environment: {' '.join(detail)}")
+    issue = mpi_launcher_issue(command, case=case)
+    if issue:
+        pytest.skip(f"MPI launcher unusable for OpenFOAM in this environment: {issue}")
+
+
+def _prepare_parallel_case(case: Path) -> None:
+    prepared = run_ops.prepare_parallel_case(case, parallel=2, clean_processors=True)
+    assert prepared["decompose_returncode"] == 0, prepared
 
 
 def _ensure_parallel_dict(case: Path, ranks: int) -> None:

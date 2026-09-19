@@ -1,12 +1,13 @@
-# Foamlib Survey (checked against installed 1.6.2)
+# Foamlib Survey (checked against installed 1.8.1)
 
-Foamlib is installed in `.venv` (version 1.6.2). The notes below are based on
-local introspection of the package and the current OFTI adapter.
+Foamlib 1.8.1 is installed in `.venv` on Python 3.13. The notes below are
+based on local introspection of the package and the current OFTI adapter.
 
-The current release pins foamlib 1.6.2. Adapter/unit coverage and real OpenFOAM
-controlDict round-trip execution are release gates for this upgrade.
+OFTI pins foamlib 1.8.1 and supports Python 3.12 or newer because foamlib 1.8.x
+dropped Python 3.11 support. Adapter/unit coverage and real OpenFOAM controlDict
+round-trip execution are release gates for this upgrade.
 
-## Core API (foamlib 1.6.2)
+## Core API (foamlib 1.8.1)
 
 - `FoamFile(path)`: read/write OpenFOAM dictionaries with dict-like access.
 - `FoamFieldFile(path)`: field file support with `dimensions`, `internal_field`,
@@ -59,16 +60,16 @@ cleanup, log/runtime hygiene around run preparation, and safety snapshots before
 destructive workflows. This keeps foamlib's useful heuristic helper separate
 from OFTI's predictable CLI behavior.
 
-## Still not covered by foamlib 1.6.2 / remaining TODO
+## Still not covered by foamlib 1.8.1 / remaining TODO
 
-- Mesh stats (cells/faces/points) extraction without `checkMesh`: foamlib 1.6.2
+- Mesh stats (cells/faces/points) extraction without `checkMesh`: foamlib 1.8.1
   exposes `TimeDirectory.cell_centers()` but not a complete cheap mesh-info API.
 - Dictionary AST/formatting guarantees for exact round-trip stability: OFTI uses
   foamlib for semantic writes, but uses a narrow text-preserving writer for smoke
   control normalization so unrelated precision and source text cannot be
   reserialized.
 - Binary internal-field decoding: OFTI owns the small reader for declared
-  OpenFOAM scalar/vector/tensor layouts because foamlib 1.6.2 does not expose a
+  OpenFOAM scalar/vector/tensor layouts because foamlib 1.8.1 does not expose a
   reliable binary-field path for this diagnostic. Unknown layouts fail
   explicitly instead of using the ASCII fallback.
 - Runtime process ownership, adopt/stop, queues, and live process discovery:

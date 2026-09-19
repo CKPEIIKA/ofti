@@ -21,7 +21,7 @@ reproducibility manifests. CLI and TUI adapters reuse the same services.
 
 ## Install
 
-Python 3.11 or newer is required. From a checkout:
+Python 3.12 or newer is required. From a checkout:
 
 ```bash
 uv tool install .

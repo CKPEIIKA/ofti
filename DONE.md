@@ -4,6 +4,11 @@ Completed work only. Record meaningful outcomes and validation evidence, newest 
 
 ## 2026-09-19
 
+- Upgraded the pinned `foamlib` integration from 1.6.2 to 1.8.1 and raised the
+  supported Python floor to 3.12, matching the upstream release. Ruff, format,
+  Ty, and the full suite pass on macOS with Python 3.13.13; the native
+  OpenFOAM-v2512 toy suite passes `26 passed, 4 skipped` after a bounded solver
+  dry-run skips the host's unusable MPI path.
 - Made opt-in real OpenFOAM tests work with the native macOS OpenFOAM app: tools
   resolve through `OFTI_BASHRC` or the standard app layout, smoke/background
   commands source that environment, and process discovery falls back from
