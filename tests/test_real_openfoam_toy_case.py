@@ -1195,10 +1195,13 @@ def _resize_parallel_args(case: Path) -> list[str]:
 
 def _require_working_parallel_launcher(command: list[str], *, case: Path) -> None:
     if not command:
-        pytest.skip("MPI launcher unavailable")
+        pytest.fail("OFTI could not build a parallel OpenFOAM command", pytrace=False)
     issue = mpi_launcher_issue(command, case=case)
     if issue:
-        pytest.skip(f"MPI launcher unusable for OpenFOAM in this environment: {issue}")
+        pytest.fail(
+            f"MPI launcher unusable for OpenFOAM in this environment: {issue}",
+            pytrace=False,
+        )
 
 
 def _prepare_parallel_case(case: Path) -> None:

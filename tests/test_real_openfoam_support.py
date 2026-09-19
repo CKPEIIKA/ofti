@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
+from tests import real_openfoam_support as support
 from tests.real_openfoam_support import parse_profile_specs, scenario_enabled
 
 
@@ -35,3 +37,31 @@ def test_scenario_enabled_accepts_empty_all_and_named(monkeypatch) -> None:
     assert scenario_enabled("hpc") is False
     monkeypatch.setenv("OFTI_REAL_SCENARIOS", "all")
     assert scenario_enabled("hpc") is True
+
+
+def test_pid_running_falls_back_when_process_tools_are_denied(monkeypatch) -> None:
+    class UnreadableProcPath:
+        def __init__(self, _value: str) -> None:
+            pass
+
+        def read_text(self, **_kwargs: object) -> str:
+            raise PermissionError("/proc unavailable")
+
+    def denied_run(*_args: object, **_kwargs: object) -> object:
+        raise PermissionError("ps unavailable")
+
+    monkeypatch.setattr(support, "Path", UnreadableProcPath)
+    monkeypatch.setattr(support.subprocess, "run", denied_run)
+
+    assert support.pid_running(os.getpid()) is True
+
+
+def test_kill_leftovers_ignores_process_exit_race(monkeypatch) -> None:
+    monkeypatch.setattr(support, "pid_running", lambda _pid: True)
+
+    def already_gone(_pid: int, _signal: int) -> None:
+        raise ProcessLookupError
+
+    monkeypatch.setattr(support.os, "kill", already_gone)
+
+    support.kill_leftovers([1234])

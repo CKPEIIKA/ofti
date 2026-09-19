@@ -191,27 +191,37 @@ def write_scotch_decompose_dict(case: Path, *, ranks: int) -> None:
 
 
 def pid_running(pid: int) -> bool:
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        ps_executable = shutil.which("ps")
-        if ps_executable is not None:
-            process = subprocess.run(  # noqa: S603
-                [ps_executable, "-o", "stat=", "-p", str(pid)],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            if process.returncode == 0 and process.stdout.strip().startswith("Z"):
-                return False
-    else:
-        if ") Z " in stat:
-            return False
+    if _process_is_zombie(pid):
+        return False
     try:
         os.kill(pid, 0)
     except OSError:
         return False
     return True
+
+
+def _process_is_zombie(pid: int) -> bool:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return _ps_reports_zombie(pid)
+    return ") Z " in stat
+
+
+def _ps_reports_zombie(pid: int) -> bool:
+    ps_executable = shutil.which("ps")
+    if ps_executable is None:
+        return False
+    try:
+        process = subprocess.run(  # noqa: S603
+            [ps_executable, "-o", "stat=", "-p", str(pid)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return False
+    return process.returncode == 0 and process.stdout.strip().startswith("Z")
 
 
 def wait_pid_running(pid: int, *, timeout: float) -> bool:
@@ -235,7 +245,10 @@ def wait_pids_gone(pids: list[int], *, timeout: float) -> bool:
 def kill_leftovers(pids: list[int]) -> None:
     for process_id in sorted(set(pids)):
         if pid_running(process_id):
-            os.kill(process_id, signal.SIGKILL)
+            try:
+                os.kill(process_id, signal.SIGKILL)
+            except ProcessLookupError:
+                continue
 
 
 def mpi_launcher_issue(command: list[str], *, case: Path | None = None) -> str | None:

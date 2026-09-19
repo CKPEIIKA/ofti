@@ -24,9 +24,12 @@ OFTI_ENABLE_REAL_CASE_TESTS=1 uv run pytest --runslow tests/test_real_openfoam_t
 ```
 
 The process tests use `/proc` on Linux and fall back to macOS `ps`/`lsof`
-process metadata when `/proc` is unavailable or restricted. MPI tests probe a
-prepared solver with a bounded dry-run, so a launcher that can run `true` but
-cannot initialize OpenFOAM ranks is skipped without leaving child processes.
+process metadata when `/proc` is unavailable or restricted. If a constrained
+runner also denies `ps`, process liveness falls back to `os.kill` and cleanup
+tolerates a process exiting between inspection and termination. MPI tests probe
+a prepared solver with a bounded dry-run, so a launcher that can run `true` but
+cannot initialize OpenFOAM ranks fails the parallel test with a bounded,
+actionable diagnostic; the probe still cleans up child processes.
 
 The real-toy module collects 30 service tests for the default cavity profile;
 the generated/external profile module adds 16 reusable profile tests.

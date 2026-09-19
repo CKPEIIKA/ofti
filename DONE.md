@@ -4,11 +4,18 @@ Completed work only. Record meaningful outcomes and validation evidence, newest 
 
 ## 2026-09-19
 
+- Hardened the real OpenFOAM test cleanup for constrained macOS hosts: denied
+  `/proc`/`ps` access now falls back to `os.kill`, and PID exit races do not
+  fail teardown. Parallel OpenFOAM probe failures are now reported as test
+  failures instead of skips. The bundled OpenMPI 5.0.8/PRRTE PMIx runtime on
+  this macOS host blocks inside `MPI_Init_thread`; this reproduces with a
+  minimal MPI program outside the sandbox and is an external runtime blocker.
 - Added regression coverage for the documented OFTI boundary contracts: smoke
   validation, in-place/copy behavior, bounded timeouts, reconstruction failure,
   malformed checkpoint fields, and high-level physical checks over decomposed
-  binary fields. Bumped the package to 0.9.5; the full gate passes with
-  `1093 passed, 56 skipped` at 85.54% coverage.
+  binary fields. Bumped the package to 0.9.5; the source distribution and wheel
+  verify as `0.9.5` with `GPL-3.0-or-later`. The full gate passes with `1095
+  passed, 56 skipped` at 85.54% coverage.
 - Grouped cohesive configuration for parametric, smoke, run-manifest, metric,
   parallel-resize, field-comparison, queue, and external-watch operations into
   frozen typed option records without changing CLI payloads. The unignored
