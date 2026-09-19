@@ -61,6 +61,10 @@ profiles, it generates fresh canonical tutorial cases instead. MPI scenarios
 probe the launcher first and skip with its concrete failure reason when the
 host or sandbox cannot launch ranks.
 
+Native commands are resolved from the current environment, `OFTI_BASHRC`, or
+the standard macOS OpenFOAM app layout. Use `OFTI_BASHRC` when the local app or
+installation is mounted in a non-standard location.
+
 ## Full-project coverage policy
 
 Coverage includes `ofti/app/screens/` and `ofti/ui_curses/`; there is no UI

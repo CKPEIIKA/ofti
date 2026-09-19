@@ -29,6 +29,7 @@ def test_ensure_environment_raises_when_missing(monkeypatch) -> None:
     monkeypatch.delenv("FOAM_VERSION", raising=False)
     with (
         mock.patch("ofti.foam.openfoam_env.shutil.which", return_value=None),
+        mock.patch("ofti.foam.openfoam_env.resolve_openfoam_bashrc", return_value=None),
         pytest.raises(OpenFOAMError),
     ):
         ensure_environment()

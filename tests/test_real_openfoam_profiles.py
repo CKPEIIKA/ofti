@@ -31,6 +31,8 @@ from tests.real_openfoam_support import (
     ensure_zero_orig,
     kill_leftovers,
     mpi_launcher_issue,
+    openfoam_command_available,
+    openfoam_shell_command,
     pid_running,
     prepare_case,
     resolve_solver,
@@ -210,7 +212,7 @@ def test_real_parallel_watch_stop_cleans_launcher_and_solver_ranks(
 ) -> None:
     if not scenario_enabled("parallel-stop"):
         pytest.skip("parallel-stop real scenario disabled by OFTI_REAL_SCENARIOS")
-    if shutil.which("decomposePar") is None:
+    if not openfoam_command_available("decomposePar"):
         pytest.skip("parallel watch stop requires OpenFOAM decomposePar on PATH.")
     exercised = False
     for profile, case in real_profiles:
@@ -391,7 +393,13 @@ def test_real_queue_criterion_evidence_and_crash_cleanup(
         if not queued["finished"] or queued["finished"][0]["returncode"] != 0:
             continue
         knife_service.set_entry_payload(case, "system/controlDict", "endTime", "1e30")
-        knife_service.set_entry_payload(case, "system/controlDict", "residualTolerance", "1e30")
+        knife_service.set_entry_payload(
+            case,
+            "system/controlDict",
+            "residualTolerance",
+            "1e30",
+            allow_insert=True,
+        )
         log_path = max(case.glob("log.*"), key=lambda path: path.stat().st_mtime)
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write("\nrunTimeControl: residualTolerance satisfied\n")
@@ -417,7 +425,7 @@ def test_real_foamlib_case_ops_blockmesh_restore_and_reconstruct(
 ) -> None:
     if not scenario_enabled("foamlib-ops"):
         pytest.skip("foamlib-ops real scenario disabled by OFTI_REAL_SCENARIOS")
-    if shutil.which("blockMesh") is None:
+    if not openfoam_command_available("blockMesh"):
         pytest.skip("foamlib case-op execution requires OpenFOAM tools on PATH.")
     for profile, source_case in real_profiles:
         case = copy_case_directory(source_case, tmp_path / f"{profile.name}-foamlib-ops")
@@ -605,7 +613,7 @@ def _exercise_parallel_raw_adopt(profile: RealProfile, case: Path) -> bool:
     with log_path.open("a", encoding="utf-8") as log:
         # The test command is assembled from the controlled profile fixture.
         process = subprocess.Popen(  # noqa: S603
-            command,
+            openfoam_shell_command(command),
             cwd=case,
             stdout=log,
             stderr=log,

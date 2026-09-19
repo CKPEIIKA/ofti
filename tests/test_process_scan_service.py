@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ofti.tools import process_scan_service as svc
 
 
@@ -265,6 +267,34 @@ def test_proc_table_excludes_zombie_processes(tmp_path: Path) -> None:
     assert 501 not in table  # zombie is not counted as a running process
     assert 502 in table
     assert svc.read_proc_state(proc_root / "501") == "Z"
+
+
+def test_ps_table_falls_back_to_lsof_process_records(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(svc, "_read_ps_output", lambda: (None, "operation not permitted"))
+    monkeypatch.setattr(
+        svc,
+        "_read_lsof_output",
+        lambda: "p101\ncicoFoam\nfcwd\nn/private/tmp/case\np102\ncmpirun\nfcwd\nn/private/tmp/case\n",
+    )
+
+    table = svc._ps_proc_table()
+
+    assert table[101] == svc.ProcEntry(
+        pid=101,
+        ppid=-1,
+        args=["icoFoam"],
+        cwd=Path("/private/tmp/case"),
+    )
+    assert table[102].args == ["mpirun"]
+    assert table[102].cwd == Path("/private/tmp/case")
+
+
+def test_lsof_records_ignore_processes_without_cwd() -> None:
+    records = svc._parse_lsof_records(
+        "p101\ncicoFoam\nfcwd\nn/private/tmp/case\np102\ncmpirun\n",
+    )
+
+    assert records == [(101, "icoFoam", Path("/private/tmp/case"))]
 
 
 def test_scan_processes_reports_unknown_case_with_explicit_error(tmp_path: Path) -> None:

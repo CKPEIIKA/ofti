@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import signal
 import subprocess
@@ -10,6 +11,7 @@ from pathlib import Path
 
 from ofti.app.tool_screens.run import blockmesh_once
 from ofti.core import entry_io
+from ofti.foam.openfoam_env import resolve_openfoam_command, with_bashrc
 from ofti.tools.cli_tools import run
 
 
@@ -75,6 +77,18 @@ def scenario_enabled(name: str) -> bool:
         return True
     enabled = {part.strip() for part in raw.split(",") if part.strip()}
     return name in enabled or "all" in enabled
+
+
+def openfoam_command_available(command: str) -> bool:
+    return resolve_openfoam_command(command) is not None
+
+
+def openfoam_shell_command(command: list[str]) -> list[str]:
+    command_text = shlex.join(command)
+    shell_cmd = with_bashrc(command_text)
+    if shell_cmd.endswith(command_text):
+        shell_cmd = f"{shell_cmd[: -len(command_text)]}exec {command_text}"
+    return ["/bin/bash", "--noprofile", "--norc", "-c", shell_cmd]
 
 
 def resolve_solver(profile: RealProfile, case: Path) -> str | None:
@@ -219,15 +233,20 @@ def mpi_launcher_issue(command: list[str]) -> str | None:
     if not command:
         return "parallel solver command is empty"
     launcher = command[0]
-    if shutil.which(launcher) is None:
+    if resolve_openfoam_command(launcher) is None:
         return f"MPI launcher is unavailable: {launcher}"
     # The launcher is selected from the local environment and receives fixed probe arguments.
-    probe = subprocess.run(  # noqa: S603
-        [launcher, "-np", "1", "true"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    probe_command = with_bashrc(shlex.join([launcher, "-np", "1", "true"]))
+    try:
+        probe = subprocess.run(  # noqa: S603
+            ["/bin/bash", "--noprofile", "--norc", "-c", probe_command],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10.0,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return str(exc)
     if probe.returncode == 0:
         return None
     detail = (probe.stderr or probe.stdout).strip().splitlines()

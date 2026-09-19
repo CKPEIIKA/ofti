@@ -44,6 +44,8 @@ def execute_case_command(
 ) -> RunResult:
     command_text = " ".join(shlex.quote(part) for part in cmd)
     shell_cmd = with_bashrc_fn(command_text)
+    if background:
+        shell_cmd = _exec_command(shell_cmd, command_text)
     env = os.environ.copy()
     env.pop("BASH_ENV", None)
     env.pop("ENV", None)
@@ -111,6 +113,13 @@ def execute_case_command(
 def dry_run_command(cmd: list[str], *, with_bashrc_fn: Callable[[str], str]) -> str:
     command_text = " ".join(shlex.quote(part) for part in cmd)
     return with_bashrc_fn(command_text)
+
+
+def _exec_command(shell_cmd: str, command_text: str) -> str:
+    if not shell_cmd.endswith(command_text):
+        return shell_cmd
+    prefix = shell_cmd[: -len(command_text)]
+    return f"{prefix}exec {command_text}"
 
 
 def safe_name(value: str) -> str:

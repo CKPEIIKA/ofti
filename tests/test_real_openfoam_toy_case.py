@@ -25,6 +25,7 @@ from ofti.tools import (
 )
 from ofti.tools.cli_tools import run as run_ops
 from ofti.tools.cli_tools import run_queue
+from tests.real_openfoam_support import openfoam_command_available, openfoam_shell_command
 from tests.real_openfoam_tutorials import (
     RealTutorialCase,
     TutorialProfile,
@@ -411,7 +412,16 @@ def test_real_toy_case_smoke_forces_exact_steps_from_adaptive_source(
     tmp_path: Path,
 ) -> None:
     case = real_case.case
-    assert knife_service.set_entry_payload(case, "system/controlDict", "adjustTimeStep", "yes")["ok"] is True
+    assert (
+        knife_service.set_entry_payload(
+            case,
+            "system/controlDict",
+            "adjustTimeStep",
+            "yes",
+            allow_insert=True,
+        )["ok"]
+        is True
+    )
 
     smoke = run_ops.smoke_payload(
         case,
@@ -438,7 +448,7 @@ def test_real_toy_case_parallel_smoke_writes_common_final_checkpoint(
 ) -> None:
     if not real_case.profile.supports_parallel:
         pytest.skip(f"{real_case.profile.name} does not support parallel scenario")
-    if shutil.which("mpirun") is None and shutil.which("mpiexec") is None:
+    if not openfoam_command_available("mpirun") and not openfoam_command_available("mpiexec"):
         pytest.skip("MPI launcher unavailable")
     case = real_case.case
     real_case.ensure_parallel_dict(2)
@@ -673,7 +683,7 @@ def test_real_toy_case_adopts_untracked_solver_and_stops_it(real_case: RealTutor
     with log_path.open("a", encoding="utf-8", errors="ignore") as log:
         # The test command is assembled from the controlled toy-case fixture.
         process = subprocess.Popen(  # noqa: S603
-            command,
+            openfoam_shell_command(command),
             cwd=case,
             stdout=log,
             stderr=log,
@@ -703,7 +713,7 @@ def test_real_toy_case_adopts_raw_parallel_mpirun_as_one_tracked_run(
 ) -> None:
     if not real_case.profile.supports_parallel:
         pytest.skip(f"{real_case.profile.name} does not support parallel scenario")
-    if shutil.which("mpirun") is None and shutil.which("mpiexec") is None:
+    if not openfoam_command_available("mpirun") and not openfoam_command_available("mpiexec"):
         pytest.skip("MPI launcher unavailable")
 
     case = real_case.case
@@ -716,7 +726,7 @@ def test_real_toy_case_adopts_raw_parallel_mpirun_as_one_tracked_run(
     with log_path.open("a", encoding="utf-8", errors="ignore") as log:
         # The test command is assembled from the controlled toy-case fixture.
         process = subprocess.Popen(  # noqa: S603
-            command,
+            openfoam_shell_command(command),
             cwd=case,
             stdout=log,
             stderr=log,
@@ -875,6 +885,7 @@ def test_real_toy_case_queue_classifier_uses_explicit_criterion_evidence(
         "system/controlDict",
         "residualTolerance",
         "1e9",
+        allow_insert=True,
     )["ok"]
     log_path = max(case.glob("log.*"), key=lambda path: path.stat().st_mtime)
     with log_path.open("a", encoding="utf-8") as handle:
@@ -896,7 +907,16 @@ def test_real_toy_case_queue_classifier_uses_explicit_criterion_evidence(
 def test_real_toy_case_criteria_reads_explicit_runtime_evidence(real_case: RealTutorialCase) -> None:
     case = real_case.case
     solver, _command = run_ops.solver_command(case)
-    assert knife_service.set_entry_payload(case, "system/controlDict", "residualTolerance", "1e-1")["ok"] is True
+    assert (
+        knife_service.set_entry_payload(
+            case,
+            "system/controlDict",
+            "residualTolerance",
+            "1e-1",
+            allow_insert=True,
+        )["ok"]
+        is True
+    )
     smoke = run_ops.smoke_payload(
         case,
         solver=solver,
@@ -923,7 +943,7 @@ def test_real_toy_case_compare_reconstructed_parallel_to_serial(
 ) -> None:
     if not real_case.profile.supports_parallel:
         pytest.skip(f"{real_case.profile.name} does not support parallel scenario")
-    if shutil.which("mpirun") is None and shutil.which("mpiexec") is None:
+    if not openfoam_command_available("mpirun") and not openfoam_command_available("mpiexec"):
         pytest.skip("MPI launcher unavailable")
 
     source = real_case.case
@@ -1054,7 +1074,7 @@ def test_real_toy_case_parallel_prepare_run_stop_resize_plan(
 ) -> None:
     if not real_case.profile.supports_parallel:
         pytest.skip(f"{real_case.profile.name} does not support parallel scenario")
-    if shutil.which("mpirun") is None and shutil.which("mpiexec") is None:
+    if not openfoam_command_available("mpirun") and not openfoam_command_available("mpiexec"):
         pytest.skip("MPI launcher unavailable")
 
     case = real_case.case

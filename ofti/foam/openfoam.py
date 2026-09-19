@@ -14,7 +14,8 @@ class OpenFOAMError(RuntimeError):
     @classmethod
     def missing_openfoam_tools(cls) -> OpenFOAMError:
         return cls(
-            "OpenFOAM tools not found on PATH. Please source your OpenFOAM bashrc before running ofti.",
+            "OpenFOAM tools were not found in the active or discoverable environment. "
+            "Source the OpenFOAM bashrc or set OFTI_BASHRC before running ofti.",
         )
 
     @classmethod

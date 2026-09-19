@@ -272,13 +272,13 @@ def test_run_prepare_parallel_case_reports_decompose_failure(
 def test_run_detect_mpi_launcher_tries_multiple(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[str] = []
 
-    def fake_resolve(candidate: str) -> str:
+    def fake_resolve(candidate: str) -> str | None:
         seen.append(candidate)
         if candidate == "mpirun":
-            raise FileNotFoundError(candidate)
+            return None
         return "/usr/bin/mpiexec"
 
-    monkeypatch.setattr(run, "resolve_executable", fake_resolve)
+    monkeypatch.setattr(run, "resolve_openfoam_command", fake_resolve)
     assert run.detect_mpi_launcher() == "/usr/bin/mpiexec"
     assert seen == ["mpirun", "mpiexec"]
 
@@ -1198,6 +1198,7 @@ def test_run_execute_solver_case_command_foamlib_success(
         seen["kwargs"] = kwargs
 
     monkeypatch.setattr(run.foamlib_runner, "run_case", _run_case)
+    monkeypatch.setattr(run, "resolve_openfoam_command", lambda _name: None)
 
     result = run.execute_solver_case_command(
         case,
@@ -1218,6 +1219,7 @@ def test_run_execute_solver_case_command_fallback_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
+    monkeypatch.setattr(run, "resolve_openfoam_command", lambda _name: None)
     seen: dict[str, object] = {}
 
     def _fallback(*args: object, **kwargs: object) -> run.RunResult:
@@ -1256,6 +1258,7 @@ def test_run_execute_solver_case_command_maps_called_process_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
+    monkeypatch.setattr(run, "resolve_openfoam_command", lambda _name: None)
 
     def _run_case(*_args: object, **_kwargs: object) -> None:
         raise subprocess.CalledProcessError(7, ["simpleFoam"])

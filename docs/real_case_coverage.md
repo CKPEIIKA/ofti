@@ -6,12 +6,26 @@ system-agnostic toy-case/profile adapters in `tests/real_openfoam_tutorials.py`
 and `tests/real_openfoam_support.py`; they must not depend on local absolute
 paths or host-specific scripts.
 
-Run the slow suite explicitly:
+Run the slow suite explicitly after activating a native OpenFOAM environment.
+On a Linux installation:
 
 ```bash
 source /usr/lib/openfoam/openfoam2512/etc/bashrc
 OFTI_ENABLE_REAL_CASE_TESTS=1 uv run pytest --runslow tests/test_real_openfoam_toy_case.py
 ```
+
+The macOS OpenFOAM app can be used directly. OFTI discovers the standard app
+layout when its `openfoam` launcher is on `PATH`; `OFTI_BASHRC` is the
+explicit override for a non-standard installation:
+
+```bash
+OFTI_BASHRC=/Applications/OpenFOAM-v2512.app/Contents/Resources/etc/bashrc \
+OFTI_ENABLE_REAL_CASE_TESTS=1 uv run pytest --runslow tests/test_real_openfoam_toy_case.py
+```
+
+The process tests use `/proc` on Linux and fall back to macOS `ps`/`lsof`
+process metadata when `/proc` is unavailable or restricted. MPI tests still
+require a launcher that can create its local sockets.
 
 The real-toy module collects 30 service tests for the default cavity profile;
 the generated/external profile module adds 16 reusable profile tests.

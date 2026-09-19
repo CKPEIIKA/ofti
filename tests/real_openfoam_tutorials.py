@@ -14,7 +14,7 @@ from ofti.core.case import detect_solver
 from ofti.foam.subprocess_utils import run_trusted
 from ofti.tools import knife_service, watch_service
 from ofti.tools.cli_tools import run as run_ops
-from tests.real_openfoam_support import kill_leftovers
+from tests.real_openfoam_support import kill_leftovers, openfoam_command_available
 
 
 @dataclass(frozen=True)
@@ -65,7 +65,9 @@ def selected_tutorial_profiles() -> list[TutorialProfile]:
 def require_tutorial_template(profile: TutorialProfile) -> Path:
     if os.environ.get("OFTI_ENABLE_REAL_CASE_TESTS") != "1":
         pytest.skip("Set OFTI_ENABLE_REAL_CASE_TESTS=1 to run tutorial OpenFOAM tests.")
-    missing = [cmd for cmd in ("blockMesh", "checkMesh", *profile.required_commands) if shutil.which(cmd) is None]
+    missing = [
+        cmd for cmd in ("blockMesh", "checkMesh", *profile.required_commands) if not openfoam_command_available(cmd)
+    ]
     if missing:
         pytest.skip(f"Missing tutorial test tools: {', '.join(missing)}")
     template = _tutorial_template(profile)
@@ -74,7 +76,7 @@ def require_tutorial_template(profile: TutorialProfile) -> Path:
             f"Set OFTI_TOY_CASE_TEMPLATE, OFTI_REAL_CASE_ROOT, or FOAM_TUTORIALS for profile {profile.name}.",
         )
     solver = detect_solver(template)
-    if solver and solver != "unknown" and shutil.which(solver) is None:
+    if solver and solver != "unknown" and not openfoam_command_available(solver):
         pytest.skip(f"Missing tutorial solver on PATH: {solver}")
     return template
 

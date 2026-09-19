@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import time
@@ -24,6 +25,7 @@ from ofti.core.entry_io import read_entry, write_entry_preserving_text
 from ofti.core.field_io import read_internal_field, resolve_field_names, resolve_time_dir
 from ofti.core.times import processor_dirs
 from ofti.tools import knife_service, runner_service
+from ofti.tools.helpers import with_bashrc
 
 from .common import require_case_dir
 
@@ -274,11 +276,14 @@ def _run_smoke_command(
     env = os.environ.copy()
     env.pop("BASH_ENV", None)
     env.pop("ENV", None)
+    shell_cmd = with_bashrc(shlex.join(command))
+    shell_command = ["/bin/bash", "--noprofile", "--norc", "-c", shell_cmd]
     try:
         # Command is built by solver_command(), not shell text; timeout keeps smoke runs bounded.
-        # Solver command is built by the trusted command builder and runs without a shell.
+        # The shell is a fixed bash boundary so sourced OpenFOAM app environments
+        # work on macOS as well as already-sourced Linux installations.
         result = subprocess.run(  # noqa: S603
-            command,
+            shell_command,
             cwd=case_path,
             capture_output=True,
             text=True,

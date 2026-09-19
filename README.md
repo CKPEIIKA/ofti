@@ -36,8 +36,10 @@ uv tool install "git+https://github.com/CKPEIIKA/ofti.git@vX.Y.Z"
 ```
 
 The project depends on `foamlib[preprocessing,postprocessing]`. Read-only
-operations work without a loaded OpenFOAM environment; running native tools
-requires their commands on `PATH`.
+operations work without a loaded OpenFOAM environment. Native tools may be
+available on `PATH`, through `OFTI_BASHRC`, or through the standard macOS
+OpenFOAM app/launcher layout; set `OFTI_BASHRC` explicitly for unusual
+installations.
 
 Optional manual page:
 

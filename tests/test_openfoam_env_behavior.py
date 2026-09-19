@@ -5,6 +5,7 @@ from ofti.foam.openfoam_env import (
     detect_openfoam_version,
     ensure_environment,
     resolve_openfoam_bashrc,
+    resolve_openfoam_command,
     with_bashrc,
     wm_project_dir_from_bashrc,
 )
@@ -25,6 +26,27 @@ def test_wm_project_dir_from_bashrc(tmp_path: Path) -> None:
     bashrc.parent.mkdir(parents=True)
     bashrc.write_text("")
     assert wm_project_dir_from_bashrc(bashrc) == str(bashrc.parent.parent)
+
+
+def test_wm_project_dir_from_macos_app_wrapper_is_unknown(tmp_path: Path) -> None:
+    bashrc = tmp_path / "OpenFOAM.app" / "Contents" / "Resources" / "etc" / "bashrc"
+    bashrc.parent.mkdir(parents=True)
+    bashrc.write_text("")
+    assert wm_project_dir_from_bashrc(bashrc) is None
+
+
+def test_resolve_openfoam_command_from_bashrc(tmp_path: Path, monkeypatch) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    command = bin_dir / "blockMesh"
+    command.write_text("#!/bin/sh\n")
+    command.chmod(0o755)
+    bashrc = tmp_path / "etc" / "bashrc"
+    bashrc.parent.mkdir()
+    bashrc.write_text(f'PATH="{bin_dir}:$PATH"\n')
+    monkeypatch.setenv("OFTI_BASHRC", str(bashrc))
+
+    assert resolve_openfoam_command("blockMesh") == str(command)
 
 
 def test_detect_openfoam_version_from_env(monkeypatch) -> None:

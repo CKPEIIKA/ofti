@@ -16,7 +16,8 @@ from ofti.core import bundle_set
 from ofti.core.case import read_number_of_subdomains
 from ofti.core.entry_io import write_entry
 from ofti.core.solver_checks import resolve_solver_name, validate_initial_fields
-from ofti.foam.subprocess_utils import resolve_executable, run_trusted
+from ofti.foam.openfoam_env import resolve_openfoam_command
+from ofti.foam.subprocess_utils import run_trusted
 from ofti.foam.times import latest_time
 from ofti.foamlib import runner as foamlib_runner
 from ofti.foamlib.adapter import FoamlibUnavailableError
@@ -338,10 +339,9 @@ def dry_run_command(cmd: list[str]) -> str:
 
 def detect_mpi_launcher() -> str | None:
     for candidate in ("mpirun", "mpiexec"):
-        try:
-            return resolve_executable(candidate)
-        except FileNotFoundError:
-            continue
+        resolved = resolve_openfoam_command(candidate)
+        if resolved is not None:
+            return resolved
     return None
 
 
@@ -508,8 +508,18 @@ def _requires_solver_subprocess(
     mpi: str | None,
     solver: str | None,
 ) -> bool:
+    environment_command = resolve_openfoam_command(solver) if solver else None
+    current_command = shutil.which(solver) if solver else None
+    sourced_environment_needed = bool(
+        solver and environment_command is not None and current_command != environment_command
+    )
     return bool(
-        background or extra_env or bool(os.environ.get("OFTI_BASHRC")) or (parallel > 1 and mpi) or not solver,
+        background
+        or extra_env
+        or bool(os.environ.get("OFTI_BASHRC"))
+        or sourced_environment_needed
+        or (parallel > 1 and mpi)
+        or not solver,
     )
 
 

@@ -4,6 +4,12 @@ Completed work only. Record meaningful outcomes and validation evidence, newest 
 
 ## 2026-09-19
 
+- Made opt-in real OpenFOAM tests work with the native macOS OpenFOAM app: tools
+  resolve through `OFTI_BASHRC` or the standard app layout, smoke/background
+  commands source that environment, and process discovery falls back from
+  `/proc`/`ps` to `lsof` for constrained macOS hosts. The bundled Mac toy suite
+  passes `26 passed, 4 skipped` (MPI socket capability skips); the full gate
+  passes with `1087 passed, 56 skipped` at 85.34% coverage.
 - Cleared all active Ruff findings, including the project-wide `PLR2004` production/plugin debt, by replacing protocol and domain literals with named constants or structural checks; retained the root-test `PLR2004` exception for readable fixture assertions.
 - Removed global ignores for `S101`, `PLW1510`, `S110`, `S112`, `PLC0415`, `ARG001`, and `B023`; narrowed test/lazy-import exceptions and documented six controlled OpenFOAM subprocess `S603` suppressions.
 - Reduced the boolean lint suppression from all `FBT` rules to the deferred positional-boolean API rule `FBT001`; boolean positional call sites (`FBT003`) are now keyword-based.

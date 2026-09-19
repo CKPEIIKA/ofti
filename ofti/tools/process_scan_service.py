@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import shlex
+import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +15,9 @@ _DISCOVERY_CACHE_TTL_SECONDS = 600.0
 _PROC_STAT_MIN_PARTS = 3
 _MAX_PARENT_TRAVERSAL_DEPTH = 12
 _CD_COMMAND_MIN_PARTS = 2
+_PROCESS_COMMAND_TIMEOUT_SECONDS = 2.0
+_PS_CWD_BATCH_SIZE = 128
+_PS_FIELD_COUNT = 4
 
 
 @dataclass(frozen=True)
@@ -76,6 +81,19 @@ def running_job_pids(jobs: list[dict[str, Any]]) -> list[int]:
 
 
 def proc_access_warning(proc_root: Path = Path("/proc")) -> str | None:
+    if proc_root == Path("/proc") and not proc_root.is_dir():
+        return _process_listing_warning()
+    return _procfs_access_warning(proc_root)
+
+
+def _process_listing_warning() -> str | None:
+    _output, error = _read_ps_output()
+    if error and _lsof_executable() is None:
+        return f"process listing unavailable: {error}"
+    return None
+
+
+def _procfs_access_warning(proc_root: Path) -> str | None:
     try:
         entries = list(proc_root.iterdir())
     except OSError as exc:
@@ -164,7 +182,10 @@ def _proc_solver_row(
         launcher_pids=launcher_pids,
     ):
         return None
-    if role == "launcher" and not launcher_has_solver_descendant(entry.pid, table, solver_name):
+    if role == "launcher" and not (
+        launcher_has_solver_descendant(entry.pid, table, solver_name)
+        or _launcher_has_solver_in_case(entry, table, solver_name, case_root)
+    ):
         return None
     return _proc_row(
         entry,
@@ -222,7 +243,10 @@ def _proc_row(
         "launcher_pid": discovery.launcher_pid,
     }
     if role == "launcher":
-        row["solver_pids"] = solver_descendant_pids(entry.pid, table, solver_name)
+        solver_pids = solver_descendant_pids(entry.pid, table, solver_name)
+        if not solver_pids and entry.ppid < 0:
+            solver_pids = _solver_pids_in_case(table, discovery.case, solver_name, exclude=entry.pid)
+        row["solver_pids"] = solver_pids
     return row
 
 
@@ -243,6 +267,8 @@ def _entry_tracked(
 
 
 def proc_table(proc_root: Path) -> dict[int, ProcEntry]:
+    if proc_root == Path("/proc") and not proc_root.is_dir():
+        return _ps_proc_table()
     table: dict[int, ProcEntry] = {}
     try:
         entries = list(proc_root.iterdir())
@@ -264,6 +290,199 @@ def proc_table(proc_root: Path) -> dict[int, ProcEntry]:
     return table
 
 
+def _ps_proc_table() -> dict[int, ProcEntry]:
+    output, _error = _read_ps_output()
+    if output is None:
+        return _lsof_proc_table()
+    parsed = [_parse_ps_entry(line) for line in output.splitlines()]
+    entries = [entry for entry in parsed if entry is not None]
+    cwd_pids = [entry.pid for entry in entries if _needs_process_cwd(entry.args)]
+    cwd_map = _ps_cwd_map(cwd_pids)
+    return {
+        entry.pid: ProcEntry(
+            pid=entry.pid,
+            ppid=entry.ppid,
+            args=entry.args,
+            cwd=cwd_map.get(entry.pid),
+            cwd_error=None if entry.pid in cwd_map else "process working directory unavailable",
+        )
+        for entry in entries
+    }
+
+
+def _lsof_proc_table() -> dict[int, ProcEntry]:
+    output = _read_lsof_output()
+    if output is None:
+        return {}
+    return {
+        pid: ProcEntry(pid=pid, ppid=-1, args=[command], cwd=cwd) for pid, command, cwd in _parse_lsof_records(output)
+    }
+
+
+def _parse_lsof_records(output: str) -> list[tuple[int, str, Path]]:
+    records: list[tuple[int, str, Path]] = []
+    current_pid: int | None = None
+    current_command: str | None = None
+    current_cwd: Path | None = None
+    for line in [*output.splitlines(), "p"]:
+        if line.startswith("p"):
+            record = _lsof_record(current_pid, current_command, current_cwd)
+            if record is not None:
+                records.append(record)
+            try:
+                current_pid = int(line[1:])
+            except ValueError:
+                current_pid = None
+            current_command = None
+            current_cwd = None
+        elif line.startswith("c"):
+            current_command = line[1:]
+        elif line.startswith("n") and current_pid is not None:
+            current_cwd = Path(line[1:])
+    return records
+
+
+def _lsof_record(
+    pid: int | None,
+    command: str | None,
+    cwd: Path | None,
+) -> tuple[int, str, Path] | None:
+    if pid is None or not command or cwd is None:
+        return None
+    return pid, command, cwd
+
+
+def _read_ps_output() -> tuple[str | None, str | None]:
+    executable = shutil.which("ps")
+    if executable is None:
+        return None, "ps executable not found"
+    try:
+        result = subprocess.run(  # noqa: S603
+            [executable, "-axo", "pid=,ppid=,state=,command="],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=_PROCESS_COMMAND_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, str(exc)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        return None, detail or f"ps returned {result.returncode}"
+    return result.stdout, None
+
+
+def _read_lsof_output() -> str | None:
+    executable = _lsof_executable()
+    if executable is None:
+        return None
+    try:
+        result = subprocess.run(  # noqa: S603
+            [executable, "-a", "-d", "cwd", "-Fpcfn"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=_PROCESS_COMMAND_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def _parse_ps_entry(line: str) -> ProcEntry | None:
+    fields = line.strip().split(maxsplit=3)
+    if len(fields) < _PS_FIELD_COUNT:
+        return None
+    try:
+        pid = int(fields[0])
+        ppid = int(fields[1])
+    except ValueError:
+        return None
+    if fields[2].startswith("Z"):
+        return None
+    args = _parse_ps_command(fields[3])
+    if not args:
+        return None
+    return ProcEntry(pid=pid, ppid=ppid, args=args, cwd=None)
+
+
+def _parse_ps_command(command: str) -> list[str]:
+    try:
+        return shlex.split(command)
+    except ValueError:
+        return command.split()
+
+
+def _needs_process_cwd(args: list[str]) -> bool:
+    if not args:
+        return False
+    base = Path(args[0]).name.lower()
+    return base in _MPI_LAUNCHERS or _shell_command_has_any_solver(args) or looks_like_solver_args(args)
+
+
+def _ps_cwd_map(pids: list[int]) -> dict[int, Path]:
+    executable = _lsof_executable()
+    if executable is None:
+        return {}
+    paths: dict[int, Path] = {}
+    for batch in _batched(pids, _PS_CWD_BATCH_SIZE):
+        paths.update(_read_lsof_cwds(executable, batch))
+    return paths
+
+
+def _batched(values: list[int], size: int) -> list[list[int]]:
+    return [values[index : index + size] for index in range(0, len(values), size)]
+
+
+def _read_lsof_cwds(executable: str, pids: list[int]) -> dict[int, Path]:
+    if not pids:
+        return {}
+    output = _read_lsof_cwd_output(executable, pids)
+    if output is None:
+        return {}
+    return _parse_lsof_cwds(output)
+
+
+def _lsof_executable() -> str | None:
+    executable = shutil.which("lsof")
+    if executable is not None:
+        return executable
+    fallback = Path("/usr/sbin/lsof")
+    return str(fallback) if fallback.is_file() else None
+
+
+def _read_lsof_cwd_output(executable: str, pids: list[int]) -> str | None:
+    try:
+        result = subprocess.run(  # noqa: S603
+            [executable, "-a", "-p", ",".join(str(pid) for pid in pids), "-d", "cwd", "-Fn"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=_PROCESS_COMMAND_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def _parse_lsof_cwds(output: str) -> dict[int, Path]:
+    paths: dict[int, Path] = {}
+    current_pid: int | None = None
+    for line in output.splitlines():
+        if line.startswith("p"):
+            try:
+                current_pid = int(line[1:])
+            except ValueError:
+                current_pid = None
+        elif line.startswith("n") and current_pid is not None:
+            paths[current_pid] = Path(line[1:])
+    return paths
+
+
 def launcher_pids_for_case(
     table: dict[int, ProcEntry],
     solver: str | None,
@@ -278,7 +497,10 @@ def launcher_pids_for_case(
             case_path,
             case_root_is_case=case_root_is_case,
         )
-        if targets_case and _launcher_matches_solver(entry, table, solver):
+        if targets_case and (
+            _launcher_matches_solver(entry, table, solver)
+            or _launcher_has_solver_in_case(entry, table, solver, case_path)
+        ):
             launcher_pids.add(entry.pid)
     return launcher_pids
 
@@ -322,6 +544,39 @@ def launcher_has_solver_descendant(
         if process_role(child.args, solver) == "solver":
             return True
     return False
+
+
+def _launcher_has_solver_in_case(
+    entry: ProcEntry,
+    table: dict[int, ProcEntry],
+    solver: str | None,
+    case_path: Path,
+) -> bool:
+    if entry.ppid >= 0:
+        return False
+    return bool(_solver_pids_in_case(table, case_path, solver, exclude=entry.pid))
+
+
+def _solver_pids_in_case(
+    table: dict[int, ProcEntry],
+    case_path: Path | None,
+    solver: str | None,
+    *,
+    exclude: int,
+) -> list[int]:
+    if case_path is None:
+        return []
+    resolved_case = case_path.resolve()
+    pids = [
+        entry.pid
+        for entry in table.values()
+        if entry.pid != exclude
+        and process_role(entry.args, solver) == "solver"
+        and entry.cwd is not None
+        and entry.cwd.resolve() == resolved_case
+    ]
+    pids.sort()
+    return pids
 
 
 def solver_descendant_pids(
