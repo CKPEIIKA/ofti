@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import struct
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -37,6 +38,16 @@ def _write_vector(path: Path, values: list[tuple[float, float, float]]) -> None:
         f"internalField nonuniform List<vector>\n{len(values)}\n(\n{body}\n);\n"
         "boundaryField{}\n",
         encoding="utf-8",
+    )
+
+
+def _write_binary_scalar(path: Path, values: Sequence[float]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(
+        b'FoamFile { format binary; arch "LSB;label=32;scalar=64"; class volScalarField; }\n'
+        + f"internalField nonuniform List<scalar> {len(values)}\n(".encode()
+        + struct.pack(f"<{len(values)}d", *values)
+        + b");\nboundaryField {}\n",
     )
 
 
@@ -285,6 +296,22 @@ def test_resolve_and_read_decomposed_time_directories(tmp_path: Path, monkeypatc
     assert payload["fields"][0]["count"] == 4
     assert payload["fields"][0]["nonfinite_count"] == 1
     assert payload["hard_errors"] == ["p: nonfinite values=1"]
+
+
+def test_decomposed_binary_physical_payload_aggregates_ranks(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(diag.foamlib_integration, "available", lambda: False)
+    case = _make_case(tmp_path / "case")
+    for processor, values in (("processor0", [1.0, 2.0]), ("processor1", [3.0, 4.0])):
+        _write_binary_scalar(case / processor / "1e-06" / "rho", values)
+
+    payload = diag.field_sanity_payload(case, time_name="1e-06", fields=["rho"])
+
+    row = payload["fields"][0]
+    assert payload["ok"] is True
+    assert payload["physical_ok"] is True
+    assert row["count"] == 4
+    assert row["min"] == 1.0
+    assert row["max"] == 4.0
 
 
 def test_decomposed_field_rejects_missing_processor_value(tmp_path: Path, monkeypatch) -> None:

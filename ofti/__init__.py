@@ -4,4 +4,4 @@ OFTI provides CLI-first OpenFOAM case utilities plus a curses TUI that reuses
 the same shared services.
 """
 
-__version__ = "0.9.4"
+__version__ = "0.9.5"

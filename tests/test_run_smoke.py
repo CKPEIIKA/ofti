@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from ofti.app import cli_tools
 from ofti.tools.cli_tools import run, run_smoke
 
@@ -95,6 +97,41 @@ def test_smoke_payload_runs_real_solver_script_on_copied_case(
     assert "physical" in payload
 
 
+def test_smoke_validates_bounds_and_existing_output(tmp_path: Path) -> None:
+    case = _make_case(tmp_path / "case")
+
+    with pytest.raises(ValueError, match="iterations must be > 0"):
+        run.smoke_payload(case, options=run.SmokeOptions(iterations=0))
+    with pytest.raises(ValueError, match="timeout must be > 0"):
+        run.smoke_payload(case, options=run.SmokeOptions(timeout=0))
+
+    output_root = tmp_path / "smoke"
+    (output_root / "case").mkdir(parents=True)
+    with pytest.raises(ValueError, match="smoke output case already exists"):
+        run.smoke_payload(case, options=run.SmokeOptions(output_root=output_root))
+
+
+def test_smoke_in_place_reports_source_case_without_copying(tmp_path: Path, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case")
+    _install_fake_solver(tmp_path / "bin")
+    monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
+
+    payload = run.smoke_payload(
+        case,
+        options=run.SmokeOptions(
+            iterations=1,
+            timeout=5,
+            output_root=tmp_path / "smoke",
+            in_place=True,
+        ),
+    )
+
+    assert payload["ok"] is True
+    assert payload["copied"] is False
+    assert Path(str(payload["case"])) == case.resolve()
+    assert (case / "2" / "p").is_file()
+
+
 def test_run_smoke_cli_json_uses_real_subprocess(tmp_path: Path, monkeypatch, capsys) -> None:
     case = _make_case(tmp_path / "case")
     _install_fake_solver(tmp_path / "bin")
@@ -120,6 +157,31 @@ def test_run_smoke_cli_json_uses_real_subprocess(tmp_path: Path, monkeypatch, ca
     assert payload["ok"] is True
     assert payload["returncode"] == 0
     assert Path(payload["log_path"]).read_text(encoding="utf-8").count("Time =") == 1
+
+
+def test_smoke_command_maps_timeout_to_bounded_result(tmp_path: Path, monkeypatch) -> None:
+    def timed_run(*_args: object, **_kwargs: object) -> object:
+        raise run_smoke.subprocess.TimeoutExpired(
+            ["fakeFoam"],
+            timeout=0.1,
+            output=b"partial stdout\n",
+            stderr=b"partial stderr\n",
+        )
+
+    monkeypatch.setattr(run_smoke.subprocess, "run", timed_run)
+
+    result, timed_out = run_smoke._run_smoke_command(
+        tmp_path,
+        ["fakeFoam"],
+        timeout=0.1,
+        log_path=tmp_path / "log.fakeFoam",
+    )
+
+    assert timed_out is True
+    assert result.returncode == 124
+    assert result.stdout == "partial stdout\n"
+    assert result.stderr == "partial stderr\n"
+    assert (tmp_path / "log.fakeFoam").read_text(encoding="utf-8") == ("partial stdout\npartial stderr\n")
 
 
 def test_run_smoke_cli_forwards_reconstruction_request(
@@ -354,3 +416,59 @@ def test_parallel_smoke_reconstruction_verifies_reconstructed_fields(
     assert payload["time"] == "10"
     assert payload["returncode"] == 0
     assert payload["output"]["output_readable"] is True
+
+
+def test_parallel_smoke_reconstruction_reports_solver_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    case = tmp_path / "case"
+    for processor in ("processor0", "processor1"):
+        _write_field(case / processor / "10" / "p")
+
+    def reconstruct(
+        _case_path: Path,
+        _display: str,
+        command: list[str],
+        *,
+        background: bool,
+    ) -> run.RunResult:
+        assert command == ["reconstructPar", "-time", "10"]
+        assert background is False
+        return run.RunResult(7, "", "reconstruct failed")
+
+    monkeypatch.setattr(run, "execute_case_command", reconstruct)
+
+    payload = run_smoke._smoke_reconstruction(
+        case,
+        "Time = 10\nEnd\n",
+        parallel=2,
+        requested=True,
+    )
+
+    assert payload["ok"] is False
+    assert payload["time"] == "10"
+    assert payload["returncode"] == 7
+    assert payload["error"] == "reconstruct failed"
+
+
+def test_smoke_output_readability_reports_malformed_field(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    _write_field(case / "2" / "p")
+    (case / "2" / "broken").write_text(
+        "FoamFile{ class volScalarField; }\ninternalField uniform nope;\n",
+        encoding="utf-8",
+    )
+
+    payload = run_smoke._smoke_output_readability(case, time_name="2", parallel=0)
+
+    assert payload["output_readable"] is False
+    assert payload["readable_fields"] == [
+        {
+            "field": "p",
+            "kind": "scalar",
+            "count": 1,
+            "components": 1,
+        }
+    ]
+    assert payload["output_read_errors"] == ["broken: internalField has no numeric values: broken"]

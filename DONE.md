@@ -4,6 +4,11 @@ Completed work only. Record meaningful outcomes and validation evidence, newest 
 
 ## 2026-09-19
 
+- Added regression coverage for the documented OFTI boundary contracts: smoke
+  validation, in-place/copy behavior, bounded timeouts, reconstruction failure,
+  malformed checkpoint fields, and high-level physical checks over decomposed
+  binary fields. Bumped the package to 0.9.5; the full gate passes with
+  `1093 passed, 56 skipped` at 85.54% coverage.
 - Grouped cohesive configuration for parametric, smoke, run-manifest, metric,
   parallel-resize, field-comparison, queue, and external-watch operations into
   frozen typed option records without changing CLI payloads. The unignored
