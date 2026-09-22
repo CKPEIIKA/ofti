@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import gzip
 import math
 import re
 import struct
+import zlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,9 +82,10 @@ def resolve_field_names(
         requested.extend(fields)
     if requested:
         return unique(requested)
-    return sorted(
-        path.name for path in time_dir.iterdir() if path.is_file() and foamlib_integration.is_field_file(path)
-    )
+    names = {
+        _field_name(path) for path in time_dir.iterdir() if path.is_file() and foamlib_integration.is_field_file(path)
+    }
+    return sorted(names)
 
 
 def read_internal_field(path: Path) -> FieldData:
@@ -90,10 +93,22 @@ def read_internal_field(path: Path) -> FieldData:
 
 
 def read_field_values(path: Path, *, patch: str | None = None) -> FieldData:
+    path = _resolve_field_path(path)
     proc_paths = _decomposed_field_paths(path)
     if proc_paths is not None:
-        return _read_field_aggregate(path.name, proc_paths, patch=patch)
+        return _read_field_aggregate(_field_name(path), proc_paths, patch=patch)
     return _read_field_single(path, patch=patch)
+
+
+def _resolve_field_path(path: Path) -> Path:
+    if path.is_file() or path.suffix == ".gz":
+        return path
+    compressed = path.with_name(f"{path.name}.gz")
+    return compressed if compressed.is_file() else path
+
+
+def _field_name(path: Path) -> str:
+    return path.name.removesuffix(".gz")
 
 
 def _decomposed_field_paths(path: Path) -> list[Path] | None:
@@ -102,8 +117,8 @@ def _decomposed_field_paths(path: Path) -> list[Path] | None:
         return None
     case_root = proc_dir.parent
     time_name = path.parent.name
-    field_rel = path.name
-    matches = [proc / time_name / field_rel for proc in processor_dirs(case_root)]
+    field_rel = _field_name(path)
+    matches = [_resolve_field_path(proc / time_name / field_rel) for proc in processor_dirs(case_root)]
     existing = [candidate for candidate in matches if candidate.is_file()]
     if existing and len(existing) != len(matches):
         missing = [candidate.parent.parent.name for candidate in matches if not candidate.is_file()]
@@ -144,22 +159,46 @@ def _read_field_aggregate(
 
 
 def _read_field_single(path: Path, *, patch: str | None = None) -> FieldData:
+    path = _resolve_field_path(path)
     if not path.is_file():
-        raise ValueError(f"field not found: {path.name}")
+        raise ValueError(f"field not found: {_field_name(path)}")
+    if path.suffix == ".gz":
+        return _read_compressed_field(path, patch=patch)
+    return _read_uncompressed_field(path, patch=patch)
+
+
+def _read_compressed_field(path: Path, *, patch: str | None) -> FieldData:
+    node_data = _field_from_foamlib(path, patch=patch)
+    if node_data is not None:
+        return node_data
+    try:
+        payload = gzip.decompress(path.read_bytes())
+    except (OSError, EOFError, zlib.error) as exc:
+        raise ValueError(f"invalid compressed field: {path.name}") from exc
+    return _read_field_payload(path, payload, patch=patch)
+
+
+def _read_uncompressed_field(path: Path, *, patch: str | None) -> FieldData:
     payload = path.read_bytes()
     if _binary_field(payload):
         return _read_binary_field(path, payload, patch=patch)
     node_data = _field_from_foamlib(path, patch=patch)
     if node_data is not None:
         return node_data
-    text = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"))
+    return _read_field_payload(path, payload, patch=patch)
+
+
+def _read_field_payload(path: Path, payload: bytes, *, patch: str | None) -> FieldData:
+    if _binary_field(payload):
+        return _read_binary_field(path, payload, patch=patch)
+    text = _strip_comments(payload.decode("utf-8", errors="ignore"))
     if patch:
         text = _patch_value_text(text, patch)
     text_match = _field_text_match(text, patch=patch)
     if text_match is not None:
         return _field_data_from_match(path, text_match)
     label = f"boundaryField.{patch}.value" if patch else "internalField"
-    raise ValueError(f"unsupported or missing {label}: {path.name}")
+    raise ValueError(f"unsupported or missing {label}: {_field_name(path)}")
 
 
 def _binary_field(payload: bytes) -> bool:
@@ -169,7 +208,7 @@ def _binary_field(payload: bytes) -> bool:
 
 def _read_binary_field(path: Path, payload: bytes, *, patch: str | None) -> FieldData:
     if patch is not None:
-        raise ValueError(f"unsupported_binary_format: boundary patch values are not supported for {path.name}")
+        raise ValueError(f"unsupported_binary_format: boundary patch values are not supported for {_field_name(path)}")
     match = _BINARY_INTERNAL_RE.search(payload)
     if match is None:
         return _read_binary_uniform_field(path, payload)
@@ -181,16 +220,16 @@ def _read_binary_field(path: Path, payload: bytes, *, patch: str | None) -> Fiel
     start = match.end()
     end = start + byte_count
     if end > len(payload) or not payload[end:].lstrip().startswith(b");"):
-        raise ValueError(f"invalid_binary_field_payload: truncated internalField for {path.name}")
+        raise ValueError(f"invalid_binary_field_payload: truncated internalField for {_field_name(path)}")
     values = _unpack_binary_rows(payload[start:end], endian, scalar_code, components)
-    return FieldData(path.name, path, _field_kind_from_list(values), values, count, uniform=False)
+    return FieldData(_field_name(path), path, _field_kind_from_list(values), values, count, uniform=False)
 
 
 def _read_binary_uniform_field(path: Path, payload: bytes) -> FieldData:
     text = _strip_comments(payload.decode("utf-8", errors="ignore"))
     match = _UNIFORM_RE.search(text)
     if match is None:
-        raise ValueError(f"unsupported_binary_format: internalField layout for {path.name}")
+        raise ValueError(f"unsupported_binary_format: internalField layout for {_field_name(path)}")
     return _uniform_field_data(path, match.group("value"))
 
 
@@ -198,18 +237,18 @@ def _binary_scalar_layout(path: Path, payload: bytes) -> tuple[str, str, int]:
     header = _BINARY_HEADER_RE.search(payload)
     arch = _BINARY_ARCH_RE.search(header.group("body")) if header else None
     if arch is None:
-        raise ValueError(f"unsupported_binary_format: missing arch metadata for {path.name}")
+        raise ValueError(f"unsupported_binary_format: missing arch metadata for {_field_name(path)}")
     entries = _binary_arch_entries(arch.group("arch").decode("ascii", errors="strict"))
     byte_order = entries.get("byte_order")
     if byte_order not in {"LSB", "MSB"} or entries.get("label") not in {"32", "64"}:
-        raise ValueError(f"unsupported_binary_format: arch metadata for {path.name}")
+        raise ValueError(f"unsupported_binary_format: arch metadata for {_field_name(path)}")
     endian = "<" if byte_order == "LSB" else ">"
     scalar_bits = entries.get("scalar")
     if scalar_bits == "32":
         return endian, "f", 4
     if scalar_bits == "64":
         return endian, "d", 8
-    raise ValueError(f"unsupported_binary_format: scalar size {scalar_bits!r} for {path.name}")
+    raise ValueError(f"unsupported_binary_format: scalar size {scalar_bits!r} for {_field_name(path)}")
 
 
 def _binary_arch_entries(arch: str) -> dict[str, str]:
@@ -222,7 +261,7 @@ def _binary_arch_entries(arch: str) -> dict[str, str]:
 def _binary_component_count(path: Path, kind: str) -> int:
     components = _BINARY_COMPONENTS.get(kind.lower())
     if components is None:
-        raise ValueError(f"unsupported_binary_format: List<{kind}> for {path.name}")
+        raise ValueError(f"unsupported_binary_format: List<{kind}> for {_field_name(path)}")
     return components
 
 
@@ -250,9 +289,9 @@ def _field_data_from_match(path: Path, match: re.Match[str]) -> FieldData:
 def _uniform_field_data(path: Path, raw_value: str) -> FieldData:
     values = _parse_value(raw_value)
     if not values:
-        raise ValueError(f"internalField has no numeric values: {path.name}")
+        raise ValueError(f"internalField has no numeric values: {_field_name(path)}")
     return FieldData(
-        name=path.name,
+        name=_field_name(path),
         path=path,
         kind=_field_kind(values),
         values=[values],
@@ -266,10 +305,10 @@ def _nonuniform_field_data(path: Path, match: re.Match[str]) -> FieldData:
     declared = int(match.group("count"))
     if declared != len(values):
         raise ValueError(
-            f"internalField count mismatch for {path.name}: declared {declared}, parsed {len(values)}",
+            f"internalField count mismatch for {_field_name(path)}: declared {declared}, parsed {len(values)}",
         )
     return FieldData(
-        name=path.name,
+        name=_field_name(path),
         path=path,
         kind=_field_kind_from_list(values),
         values=values,
@@ -325,7 +364,7 @@ def _field_from_foamlib(path: Path, *, patch: str | None) -> FieldData | None:
     if _looks_like_scalar_list_ambiguous(path, values):
         return None
     return FieldData(
-        name=path.name,
+        name=_field_name(path),
         path=path,
         kind=_field_kind_from_list(values),
         values=values,
@@ -378,9 +417,15 @@ def _looks_like_scalar_list_ambiguous(path: Path, values: list[tuple[float, ...]
     if len(values) != 1 or len(values[0]) <= 1:
         return False
     try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
+        if path.suffix == ".gz":
+            with gzip.open(path, "rb") as handle:
+                payload = handle.read(8192)
+        else:
+            with path.open("rb") as handle:
+                payload = handle.read(8192)
+    except (OSError, EOFError):
         return False
+    text = payload.decode("utf-8", errors="ignore")
     return "nonuniform" in text and "List<scalar>" in text
 
 

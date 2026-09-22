@@ -2,6 +2,19 @@
 
 Completed work only. Record meaningful outcomes and validation evidence, newest first.
 
+## 2026-09-23 — OFTI 0.9.6
+
+- OFTI field discovery and reads now accept gzip-compressed ASCII and binary
+  fields; exact-step smoke verification preserves case output settings instead
+  of disabling compression. Regression tests cover compressed binary reads,
+  manifests, and native OpenFOAM binary smoke output. Targeted regressions
+  improve coverage in `core.boundary` from 84% to 86% and `core.field_io` from
+  90% to 92%. Ruff, format, Ty, and the full suite pass (`1113 passed, 57
+  skipped`, 85.57% overall coverage); the opt-in native OpenFOAM 2512 binary
+  smoke test passes on macOS. That OpenFOAM build disables compression for
+  binary output, but OFTI and foamlib both read compressed-binary fields in
+  regression tests.
+
 ## 2026-09-19
 
 - Hardened the real OpenFOAM test cleanup for constrained macOS hosts: denied

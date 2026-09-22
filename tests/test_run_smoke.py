@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import gzip
 import json
 import os
+import struct
 from pathlib import Path
 from typing import cast
 
@@ -65,6 +67,8 @@ def test_smoke_payload_runs_real_solver_script_on_copied_case(
     monkeypatch,
 ) -> None:
     case = _make_case(tmp_path / "case")
+    source_control = case / "system" / "controlDict"
+    source_control.write_text(source_control.read_text() + "writeCompression on;\n", encoding="utf-8")
     _install_fake_solver(tmp_path / "bin")
     monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
 
@@ -93,8 +97,70 @@ def test_smoke_payload_runs_real_solver_script_on_copied_case(
     assert (smoke_case / "2" / "p").is_file()
     control_text = (smoke_case / "system" / "controlDict").read_text()
     assert any(f"adjustTimeStep {value};" in control_text for value in ("false", "no"))
+    assert "writeCompression on;" in control_text
+    assert "writeCompression on;" in source_control.read_text(encoding="utf-8")
     assert (tmp_path / "smoke" / "summary.json").is_file()
     assert "physical" in payload
+
+
+def test_smoke_verifies_compressed_binary_checkpoint_fields(tmp_path: Path, monkeypatch) -> None:
+    case = _make_case(tmp_path / "case")
+    control = case / "system" / "controlDict"
+    control.write_text(control.read_text() + "writeFormat binary;\nwriteCompression on;\n", encoding="utf-8")
+    fields = {
+        "p": ("volScalarField", "scalar", [(1.25,), (-2.5,)]),
+        "U": ("volVectorField", "vector", [(1.0, 2.0, 3.0), (-4.0, 5.0, -6.0)]),
+    }
+    for name, (class_name, kind, values) in fields.items():
+        source = case / "0" / name
+        source.unlink()
+        flattened = [component for row in values for component in row]
+        payload = (
+            f'FoamFile {{ format binary; arch "LSB;label=32;scalar=64"; class {class_name}; }}\n'.encode()
+            + f"internalField nonuniform List<{kind}> {len(values)}\n(".encode()
+            + struct.pack(f"<{len(flattened)}d", *flattened)
+            + b");\nboundaryField {}\n"
+        )
+        with gzip.open(source.with_name(f"{name}.gz"), "wb") as compressed:
+            compressed.write(payload)
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    solver = bin_dir / "fakeFoam"
+    solver.write_text(
+        "#!/bin/sh\n"
+        "echo 'Time = 2'\n"
+        "echo 'Solving for p, Initial residual = 1e-3, Final residual = 1e-6'\n"
+        "mkdir -p 2\n"
+        "cp 0/p.gz 2/p.gz\n"
+        "cp 0/U.gz 2/U.gz\n"
+        "echo 'End'\n",
+        encoding="utf-8",
+    )
+    solver.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+
+    payload = run.smoke_payload(
+        case,
+        options=run.SmokeOptions(
+            iterations=1,
+            timeout=5,
+            output_root=tmp_path / "smoke",
+            run_physical=True,
+            physical_fields=["p"],
+        ),
+    )
+
+    assert payload["ok"] is True, payload
+    assert payload["output_readable"] is True, payload
+    assert {row["field"] for row in payload["readable_fields"]} == {"p", "U"}
+    assert payload["physical"]["ok"] is True
+    output_case = Path(str(payload["case"]))
+    assert (output_case / "2" / "p.gz").is_file()
+    assert (output_case / "2" / "U.gz").is_file()
+    smoke_control = (output_case / "system" / "controlDict").read_text(encoding="utf-8")
+    assert "writeFormat binary;" in smoke_control
+    assert "writeCompression on;" in smoke_control
 
 
 def test_smoke_validates_bounds_and_existing_output(tmp_path: Path) -> None:

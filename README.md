@@ -58,6 +58,9 @@ ofti CASE
 ofti --plain knife preflight CASE --json
 ofti knife status CASE --table
 
+# Exact-step smoke test
+ofti run smoke CASE --iterations 20 --json
+
 # Start, inspect, and stop a tracked solver
 ofti watch start CASE --background
 ofti watch jobs CASE --table

@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
-from ofti.core.boundary import list_field_files, read_optional, zero_dir
+from ofti.core.boundary import field_file_path, list_field_files, read_optional, zero_dir
 from ofti.core.case_copy import copy_case_directory
 from ofti.core.dict_compare import compare_case_dicts
 from ofti.core.entry_io import display_entry_value, list_subkeys, read_entry, write_entry
@@ -592,7 +592,7 @@ def initials_payload(case_dir: Path) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     all_patches: set[str] = set()
     for field in fields:
-        field_path = initial_dir / field
+        field_path = field_file_path(initial_dir, field)
         patches: dict[str, dict[str, str | None]] = {}
         try:
             patch_names = sorted(set(list_subkeys(field_path, "boundaryField")))

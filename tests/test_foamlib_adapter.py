@@ -1,10 +1,18 @@
+import gzip
 import shutil
+import struct
 import warnings
 from pathlib import Path
 
 import pytest
 
+from ofti.core import field_io
 from ofti.foamlib import adapter as foamlib_integration
+
+
+def _require_foamlib_field_reader() -> None:
+    if not foamlib_integration.FOAMLIB_AVAILABLE:
+        pytest.skip("foamlib field parser is unavailable in this test process")
 
 
 def test_foamlib_integration_available() -> None:
@@ -84,6 +92,57 @@ def test_foamlib_node_type_details_for_field_vectors() -> None:
     # array; some environments parse "uniform (1 0 0)" to a plain tuple. Assert
     # the stable contract instead of the numpy-specific enrichment.
     assert any(line.startswith("python type:") for line in details)
+
+
+def test_foamlib_reads_compressed_binary_field(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _require_foamlib_field_reader()
+    field_path = tmp_path / "p.gz"
+    payload = (
+        b'FoamFile { format binary; arch "LSB;label=32;scalar=64"; class volScalarField; }\n'
+        b"internalField nonuniform List<scalar> 2\n(" + struct.pack("<2d", 1.25, -2.5) + b");\nboundaryField {}\n"
+    )
+    with gzip.open(field_path, "wb") as compressed:
+        compressed.write(payload)
+
+    original_read = foamlib_integration.read_field_entry_node
+    calls: list[tuple[Path, str]] = []
+
+    def read_field_entry(path: Path, key: str) -> object:
+        calls.append((path, key))
+        return original_read(path, key)
+
+    monkeypatch.setattr(foamlib_integration, "read_field_entry_node", read_field_entry)
+
+    assert foamlib_integration.is_field_file(field_path) is True
+    data = field_io.read_field_values(field_path)
+
+    assert calls == [(field_path, "internalField")]
+    assert data.values == [(1.25,), (-2.5,)]
+
+
+def test_foamlib_reads_compressed_binary_boundary_value(tmp_path: Path) -> None:
+    _require_foamlib_field_reader()
+    field_path = tmp_path / "p.gz"
+    payload = (
+        b'FoamFile { format binary; arch "LSB;label=32;scalar=64"; class volScalarField; }\n'
+        b"internalField nonuniform List<scalar> 1 ("
+        + struct.pack("<d", 1.25)
+        + b");\nboundaryField { inlet { type fixedValue; value uniform 2.5; } }\n"
+    )
+    with gzip.open(field_path, "wb") as compressed:
+        compressed.write(payload)
+
+    value = foamlib_integration.read_field_entry_node(field_path, "boundaryField.inlet.value")
+
+    assert value == 2.5
+
+
+def test_foamlib_field_detection_rejects_invalid_gzip(tmp_path: Path) -> None:
+    field_path = tmp_path / "p.gz"
+    field_path.write_bytes(b"invalid gzip header")
+
+    assert foamlib_integration.is_foam_file(field_path) is False
+    assert foamlib_integration.is_field_file(field_path) is False
 
 
 def test_foamlib_file_dict_uses_case_relative_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import gzip
 import json
 import os
+import re
 import shutil
 import subprocess
 from collections.abc import Iterator
@@ -470,6 +472,53 @@ def test_real_toy_case_smoke_forces_exact_steps_from_adaptive_source(
     assert smoke["latest_written_time"] != "0"
     control_text = Path(str(smoke["case"]), "system", "controlDict").read_text(encoding="utf-8")
     assert any(f"adjustTimeStep {value};" in control_text for value in ("false", "no"))
+
+
+def test_real_toy_case_binary_smoke_output_is_readable(
+    real_case: RealTutorialCase,
+    tmp_path: Path,
+) -> None:
+    _require_cavity_profile(real_case)
+    case = real_case.case
+    _configure_binary_single_step(case)
+    assert (
+        knife_service.set_entry_payload(
+            case,
+            "system/controlDict",
+            "writeCompression",
+            "true",
+            allow_insert=True,
+        )["ok"]
+        is True
+    )
+
+    smoke = run_ops.smoke_payload(
+        case,
+        options=run_ops.SmokeOptions(
+            iterations=1,
+            timeout=60,
+            output_root=tmp_path / "binary-smoke",
+            core_only=True,
+        ),
+    )
+
+    assert smoke["ok"] is True, smoke
+    assert smoke["output_readable"] is True, smoke
+    assert {row["field"] for row in smoke["readable_fields"]} >= {"p", "U"}
+    output_case = Path(str(smoke["case"]))
+    written_time = str(smoke["latest_written_time"])
+    for field in ("p", "U"):
+        output = output_case / written_time / field
+        if not output.is_file():
+            compressed = output.with_name(f"{field}.gz")
+            assert compressed.is_file()
+            header = gzip.decompress(compressed.read_bytes())[:1024]
+            assert re.search(rb"\bformat\s+binary\s*;", header)
+        else:
+            assert re.search(rb"\bformat\s+binary\s*;", output.read_bytes()[:1024])
+    control_text = (output_case / "system" / "controlDict").read_text(encoding="utf-8")
+    assert "writeFormat binary;" in control_text
+    assert any(f"writeCompression {value};" in control_text for value in ("yes", "true", "on"))
 
 
 def test_real_toy_case_parallel_smoke_writes_common_final_checkpoint(

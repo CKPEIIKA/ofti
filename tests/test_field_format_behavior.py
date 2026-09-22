@@ -8,6 +8,7 @@ fields, patch values, and missing-patch handling.
 
 from __future__ import annotations
 
+import gzip
 import struct
 from pathlib import Path
 
@@ -46,6 +47,11 @@ def test_scalar_field_is_read_as_one_component(tmp_path: Path) -> None:
     assert data.kind == "scalar"
     assert data.component_count == 1
     assert data.count == 3
+
+
+def test_resolve_time_dir_reports_missing_time(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match=r"time directory not found: 10"):
+        field_io.resolve_time_dir(tmp_path, "10")
 
 
 def test_vector_field_groups_three_components(tmp_path: Path) -> None:
@@ -148,6 +154,112 @@ def test_binary_internal_field_respects_big_endian_float_layout(tmp_path: Path) 
     data = field_io.read_field_values(path)
 
     assert data.values == [(1.5,), (-2.25,)]
+
+
+def test_binary_uniform_field_is_read(tmp_path: Path) -> None:
+    path = tmp_path / "p"
+    path.write_bytes(
+        b'FoamFile { format binary; arch "LSB;label=32;scalar=64"; class volScalarField; }\n'
+        b"internalField uniform -3.25;\nboundaryField {}\n",
+    )
+
+    data = field_io.read_field_values(path)
+
+    assert data.values == [(-3.25,)]
+    assert data.uniform is True
+
+
+@pytest.mark.parametrize(
+    ("field_name", "class_name", "kind", "values"),
+    [
+        ("p", "volScalarField", "scalar", [(1.25,), (-2.5,)]),
+        ("U", "volVectorField", "vector", [(1.0, 2.0, 3.0), (-4.0, 5.0, -6.0)]),
+    ],
+)
+def test_compressed_binary_fields_are_discovered_and_read(
+    tmp_path: Path,
+    field_name: str,
+    class_name: str,
+    kind: str,
+    values: list[tuple[float, ...]],
+) -> None:
+    time_dir = tmp_path / "1"
+    path = time_dir / f"{field_name}.gz"
+    path.parent.mkdir(parents=True)
+    flattened = [component for row in values for component in row]
+    payload = (
+        f'FoamFile {{ format binary; arch "LSB;label=32;scalar=64"; class {class_name}; }}\n'.encode()
+        + f"internalField nonuniform List<{kind}> {len(values)}\n(".encode()
+        + struct.pack(f"<{len(flattened)}d", *flattened)
+        + b");\nboundaryField {}\n"
+    )
+    with gzip.open(path, "wb") as compressed:
+        compressed.write(payload)
+
+    assert field_io.resolve_field_names(time_dir, None) == [field_name]
+    data = field_io.read_field_values(time_dir / field_name)
+
+    assert data.name == field_name
+    assert data.path == path
+    assert data.values == values
+
+
+def test_compressed_ascii_field_is_read_by_fallback(tmp_path: Path) -> None:
+    path = tmp_path / "p.gz"
+    with gzip.open(path, "wb") as compressed:
+        compressed.write(
+            b"FoamFile { format ascii; class volScalarField; }\n"
+            b"internalField nonuniform List<scalar> 2 (1.25 -2.5);\nboundaryField {}\n",
+        )
+
+    data = field_io.read_field_values(path.with_suffix(""))
+
+    assert data.values == [(1.25,), (-2.5,)]
+
+
+def test_invalid_compressed_field_has_a_clear_error(tmp_path: Path) -> None:
+    path = tmp_path / "p.gz"
+    path.write_bytes(b"not a gzip stream")
+
+    with pytest.raises(ValueError, match=r"invalid compressed field: p\.gz"):
+        field_io.read_field_values(path)
+
+
+def test_decomposed_compressed_binary_fields_are_aggregated(tmp_path: Path) -> None:
+    paths = [tmp_path / f"processor{rank}" / "1" / "p.gz" for rank in range(2)]
+    for rank, path in enumerate(paths):
+        path.parent.mkdir(parents=True)
+        payload = (
+            b'FoamFile { format binary; arch "LSB;label=32;scalar=64"; class volScalarField; }\n'
+            b"internalField nonuniform List<scalar> 2\n("
+            + struct.pack("<2d", rank + 0.25, rank + 0.75)
+            + b");\nboundaryField {}\n"
+        )
+        with gzip.open(path, "wb") as compressed:
+            compressed.write(payload)
+
+    data = field_io.read_field_values(paths[0].with_suffix(""))
+
+    assert data.count == 4
+    assert data.declared_count == 4
+    assert data.values == [(0.25,), (0.75,), (1.25,), (1.75,)]
+
+
+def test_incomplete_decomposed_compressed_field_names_missing_processor(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    processor0 = case / "processor0" / "1"
+    processor1 = case / "processor1" / "1"
+    processor0.mkdir(parents=True)
+    processor1.mkdir(parents=True)
+    payload = (
+        b'FoamFile { format binary; arch "LSB;label=32;scalar=64"; class volScalarField; }\n'
+        b"internalField nonuniform List<scalar> 1 (" + struct.pack("<d", 1.25) + b");\nboundaryField {}\n"
+    )
+    with gzip.open(processor0 / "p.gz", "wb") as compressed:
+        compressed.write(payload)
+
+    with pytest.raises(ValueError, match="incomplete decomposed field p at 1; missing in processor1"):
+        field_io.read_field_values(processor0 / "p")
 
 
 def test_decomposed_binary_fields_are_aggregated(tmp_path: Path) -> None:

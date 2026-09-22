@@ -119,8 +119,12 @@ ofti run smoke CASE --iterations 20 --timeout 5m --out smoke --json
 ofti run smoke CASE --parallel 4 --reconstruct --json
 ```
 
-`run smoke --iterations N` works in a disposable copy, disables adaptive
-stepping, and accepts a run only when all requested evidence agrees:
+`run smoke --iterations N` works in a disposable copy and disables adaptive
+stepping. It preserves the case's field format and compression settings, and
+accepts a run only when all requested evidence agrees. OFTI verifies compressed
+ASCII and binary checkpoints as well as uncompressed fields. Some OpenFOAM
+versions disable compression when writing binary fields; smoke reports whether
+the files actually written are readable:
 
 - exactly `N` logged steps reached the expected final time;
 - the solver returned zero and wrote its clean `End` marker;

@@ -34,7 +34,7 @@ def build_boundary_matrix(case_path: Path) -> BoundaryMatrix:
     data: dict[str, dict[str, BoundaryCell]] = {patch: {} for patch in patches}
 
     for field in fields:
-        file_path = zero_dir(case_path) / field
+        file_path = field_file_path(zero_dir(case_path), field)
         try:
             subkeys = list_subkeys(file_path, "boundaryField")
         except OpenFOAMError:
@@ -76,17 +76,32 @@ def list_field_files(case_path: Path) -> list[str]:
     folder = zero_dir(case_path)
     if not folder.is_dir():
         return []
-    fields: list[str] = []
+    fields: set[str] = set()
     try:
         for entry in os.scandir(folder):
-            if not entry.is_file():
+            if not entry.is_file() or entry.name.startswith(".") or entry.name.endswith("~"):
                 continue
-            if entry.name.startswith(".") or entry.name.endswith("~"):
-                continue
-            fields.append(entry.name)
+            name = _logical_field_name(folder, entry.name)
+            if name is not None:
+                fields.add(name)
     except OSError:
         return []
     return sorted(fields)
+
+
+def _logical_field_name(folder: Path, name: str) -> str | None:
+    if not name.endswith(".gz") or not foamlib_integration.is_field_file(folder / name):
+        return name
+    return name.removesuffix(".gz")
+
+
+def field_file_path(folder: Path, field: str) -> Path:
+    """Resolve a logical field name to its stored plain or compressed path."""
+    path = folder / field
+    if path.is_file() or field.endswith(".gz"):
+        return path
+    compressed = folder / f"{field}.gz"
+    return compressed if compressed.is_file() else path
 
 
 def read_optional(file_path: Path, key: str) -> str | None:
@@ -146,7 +161,7 @@ def _rename_boundary_file(boundary_path: Path, old: str, new: str) -> tuple[bool
 
 def _rename_field_boundary_entries(case_path: Path, old: str, new: str) -> None:
     for field in list_field_files(case_path):
-        file_path = zero_dir(case_path) / field
+        file_path = field_file_path(zero_dir(case_path), field)
         try:
             foamlib_integration.rename_boundary_field_patch(file_path, old, new)
         except (OSError, ValueError):

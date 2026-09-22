@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ofti.core.boundary import list_field_files, zero_dir
+from ofti.core.boundary import field_file_path, list_field_files, zero_dir
 from ofti.core.entries import Entry
 from ofti.core.entry_io import read_entry
 from ofti.core.entry_meta import choose_validator, detect_type_with_foamlib
@@ -101,7 +101,7 @@ def initial_conditions_screen(stdscr: Any, case_path: Path) -> None:
 
 
 def _build_initial_rows(zero_path: Path, fields: list[str]) -> list[_InitialFieldRow]:
-    return [_build_initial_field_row(zero_path / field, field) for field in fields]
+    return [_build_initial_field_row(field_file_path(zero_path, field), field) for field in fields]
 
 
 def _build_initial_field_row(file_path: Path, field: str) -> _InitialFieldRow:

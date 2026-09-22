@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from ofti.core.boundary import list_field_files, zero_dir
+from ofti.core.boundary import field_file_path, list_field_files, zero_dir
 from ofti.core.case import (
     detect_mesh_stats,
     detect_parallel_settings,
@@ -105,7 +105,7 @@ def write_snapshot_manifest(
 def _field_snapshot(case_path: Path) -> dict[str, dict[str, str]]:
     fields: dict[str, dict[str, str]] = {}
     for name in list_field_files(case_path):
-        file_path = zero_dir(case_path) / name
+        file_path = field_file_path(zero_dir(case_path), name)
         try:
             dimensions = read_dimensions(file_path)
         except Exception:

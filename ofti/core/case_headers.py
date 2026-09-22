@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import gzip
 import re
+import zlib
 from pathlib import Path
 
 _MIN_HEADER_PARTS = 2
+_HEADER_SCAN_BYTES = 8192
 
 
 def detect_case_header_version(case_path: Path) -> str:
@@ -81,9 +84,15 @@ def extract_header_version(path: Path) -> str | None:
     if not path.is_file():
         return None
     try:
-        text = path.read_text()
-    except OSError:
+        if path.suffix == ".gz":
+            with gzip.open(path, "rb") as handle:
+                payload = handle.read(_HEADER_SCAN_BYTES)
+        else:
+            with path.open("rb") as handle:
+                payload = handle.read(_HEADER_SCAN_BYTES)
+    except (OSError, EOFError, zlib.error):
         return None
+    text = payload.decode("utf-8", errors="ignore")
     header_version = parse_header_comment_version(text)
     if header_version:
         return header_version

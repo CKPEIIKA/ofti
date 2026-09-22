@@ -1,3 +1,4 @@
+import gzip
 from pathlib import Path
 
 import pytest
@@ -37,6 +38,22 @@ def test_detect_case_header_returns_unknown_when_missing(tmp_path: Path) -> None
     text = "FoamFile\n{\n    format      ascii;\n}\n"
     case = _write_control_dict(tmp_path, text)
     assert detect_case_header_version(case) == "unknown"
+
+
+def test_detect_case_header_reads_compressed_binary_field_header(tmp_path: Path) -> None:
+    case = _write_control_dict(tmp_path, "application simpleFoam;\n")
+    initial = case / "0"
+    initial.mkdir()
+    field = initial / "U.gz"
+    payload = (
+        b"/* Version: v2512 */\n"
+        b"FoamFile { version 2.0; format binary; class volVectorField; }\n"
+        b"internalField nonuniform List<vector> 1 (\x00\xff\x80);\n"
+    )
+    with gzip.open(field, "wb") as compressed:
+        compressed.write(payload)
+
+    assert detect_case_header_version(case) == "v2512"
 
 
 @pytest.fixture(scope="module")

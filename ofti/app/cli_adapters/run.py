@@ -131,7 +131,8 @@ def _build_run_parser(
         description=(
             "Run an exact fixed-step solver smoke test. By default OFTI copies the case into "
             "an output directory, disables adaptive stepping, requires the requested iteration "
-            "count and a written checkpoint, and leaves the source case untouched."
+            "count and a written checkpoint, preserves field format and compression settings, "
+            "and leaves the source case untouched."
         ),
     )
     smoke.add_argument("case_dir", nargs="?", default=Path.cwd(), type=Path)

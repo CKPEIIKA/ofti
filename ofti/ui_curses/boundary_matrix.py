@@ -12,6 +12,7 @@ from ofti.core.boundary import (
     BoundaryMatrix,
     build_boundary_matrix,
     change_patch_type,
+    field_file_path,
     rename_boundary_patch,
     zero_dir,
 )
@@ -564,7 +565,7 @@ def _apply_boundary_cell(
     bc_type: str,
     bc_value: str,
 ) -> bool:
-    file_path = zero_dir(case_path) / field
+    file_path = field_file_path(zero_dir(case_path), field)
     type_key = f"boundaryField.{patch}.type"
     value_key = f"boundaryField.{patch}.value"
     edits: list[tuple[Path, list[str], str]] = [

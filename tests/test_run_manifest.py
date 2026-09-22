@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 from pathlib import Path
 from typing import cast
@@ -238,6 +239,23 @@ def test_build_manifest_marks_recorded_inputs_copy_flag(tmp_path: Path) -> None:
 
     assert manifest["launch"]["background"] is True
     assert manifest["inputs"]["recorded_inputs_copy"] is True
+
+
+def test_build_manifest_accepts_compressed_binary_initial_field(tmp_path: Path) -> None:
+    case = _make_case(tmp_path / "case")
+    (case / "0" / "U").unlink()
+    payload = (
+        b"/* Version: v2512 */\n"
+        b"FoamFile { version 2.0; format binary; class volVectorField; }\n"
+        b"internalField nonuniform List<vector> 1 (\x00\xff\x80);\n"
+    )
+    with gzip.open(case / "0" / "U.gz", "wb") as compressed:
+        compressed.write(payload)
+
+    manifest = build_run_manifest(case, options=_manifest_options())
+
+    assert manifest["snapshot"]["latest_time"] == "0"
+    assert any(row["path"] == "0/U.gz" for row in manifest["inputs"]["files"])
 
 
 def test_run_receipt_compat_aliases_point_to_manifest_api(tmp_path: Path) -> None:

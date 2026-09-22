@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import gzip
+import zlib
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
@@ -224,21 +226,26 @@ def _numeric_string_values(value: str) -> list[float] | None:
 
 
 def is_foam_file(path: Path) -> bool:
-    try:
-        head = path.read_text(errors="ignore")[:2048]
-    except OSError:
-        return False
-    return "FoamFile" in head
+    head = _read_text_prefix(path, 2048)
+    return head is not None and "FoamFile" in head
 
 
 def is_field_file(path: Path) -> bool:
-    if not is_foam_file(path):
-        return False
+    head = _read_text_prefix(path, 4096)
+    return head is not None and "FoamFile" in head and ("internalField" in head or "boundaryField" in head)
+
+
+def _read_text_prefix(path: Path, limit: int) -> str | None:
     try:
-        head = path.read_text(errors="ignore")[:4096]
-    except OSError:
-        return False
-    return "internalField" in head or "boundaryField" in head
+        if path.suffix == ".gz":
+            with gzip.open(path, "rb") as handle:
+                payload = handle.read(limit)
+        else:
+            with path.open("rb") as handle:
+                payload = handle.read(limit)
+    except (OSError, EOFError, zlib.error):
+        return None
+    return payload.decode("utf-8", errors="ignore")
 
 
 def _split_key(key: str) -> tuple[str, ...]:
