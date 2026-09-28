@@ -4,7 +4,6 @@ Unfinished work only. Completed work belongs in `DONE.md`.
 
 ## Runtime validation
 
-- [ ] Parallel prepare/resize must keep geometric decompositions consistent: when `method` is `simple` or `hierarchical`, rewriting `numberOfSubdomains` alone leaves `n (a b c)` with a different product and decomposePar fails (reproduced by the opt-in real tests on OpenFOAM v2206, whose cavity tutorial ships `hierarchical` `n (3 3 1)`).
 - [ ] Add result-pack remote-transfer smoke coverage when a portable target host is available.
 
 ## Deferred quality work

@@ -157,6 +157,14 @@ decomposition only after reconstruction is verified, update
 times are quarantined before old decomposition is removed; they are never
 treated as a valid resume point.
 
+Whenever OFTI changes the rank count (`run solver --parallel N` with the
+default `--sync-subdomains`, or `resize-parallel`), `simple` and
+`hierarchical` decompositions also get `n (nx ny nz)` rescaled so its product
+equals N: axes that were 1 stay 1 and prime factors are balanced over the
+others, e.g. `n (3 3 1)` becomes `(2 1 1)` for 2 ranks. Only that entry is
+edited. With `--no-sync-subdomains`, an inconsistent `n` blocks the launch
+with an explanation instead of failing inside decomposePar.
+
 ### Queues
 
 The default queue is sequential and advances immediately after a case finishes

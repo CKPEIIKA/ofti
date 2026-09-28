@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ofti.core import decomposition
 from ofti.core.case import read_number_of_subdomains, set_start_from_latest
 from ofti.core.case_snapshot import write_case_snapshot, write_snapshot_manifest
 from ofti.core.checkpoint import checkpoint_health, safe_reconstruct_time
@@ -155,8 +156,8 @@ def _execute_parallel_resize(
     _run_reconstruct_step(case_path, steps, reconstruct_time)
     _quarantine_partial_times(case_path, steps, time_health)
     _clean_processor_dirs(case_path, steps, enabled=clean_processors)
-    _set_subdomains(decompose_dict, to_ranks)
-    _mark_step(steps, "set-subdomains", "done")
+    geometric = _set_subdomains(decompose_dict, to_ranks)
+    _mark_step(steps, "set-subdomains", "done", **geometric)
     _resume_from_latest(case_path, latest=reconstruct_time)
     _mark_step(steps, "resume-from-latest", "done", latest=reconstruct_time)
     _run_tool_step(case_path, steps, "decompose", ["decomposePar", "-force", "-latestTime"])
@@ -256,7 +257,7 @@ def _add_plan_steps(
         ),
         ("quarantine-partial", "preserve incomplete newer processor writes", None),
         ("clean-processors", "remove old processor* directories", None),
-        ("set-subdomains", f"set numberOfSubdomains={to_ranks}", None),
+        ("set-subdomains", f"set numberOfSubdomains={to_ranks} (and simple/hierarchical n)", None),
         ("resume-from-latest", "set startFrom=latestTime and stopAt=endTime", None),
         ("decompose", "decompose reconstructed latest time", "decomposePar -force -latestTime"),
         ("start", f"start solver with np={to_ranks}", None),
@@ -470,7 +471,16 @@ def _reconstruct_command(time_name: str) -> list[str]:
     return ["reconstructPar", "-time", time_name]
 
 
-def _set_subdomains(decompose_dict: Path, to_ranks: int) -> None:
+def _set_subdomains(decompose_dict: Path, to_ranks: int) -> dict[str, Any]:
+    """Set the rank count and keep a geometric ``n`` consistent; returns step details."""
+    _set_subdomain_count(decompose_dict, to_ranks)
+    edit = decomposition.rescale_geometric_file(decompose_dict, ranks=to_ranks)
+    if edit is None:
+        return {}
+    return {"geometric_n": {"method": edit.method, "before": list(edit.before), "after": list(edit.after)}}
+
+
+def _set_subdomain_count(decompose_dict: Path, to_ranks: int) -> None:
     case_path = decompose_dict.parent.parent
     ok = apply_assignment_or_write(
         case_path,

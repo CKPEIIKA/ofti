@@ -275,3 +275,33 @@ def test_parallel_resize_requires_decomposed_case_for_execution(tmp_path: Path, 
     assert payload["ok"] is False
     assert payload["decomposed"] is False
     assert "processor* directories" in str(payload["error"])
+
+
+def test_parallel_resize_rescales_geometric_decomposition(tmp_path: Path, monkeypatch) -> None:
+    case = _case(tmp_path)
+    (case / "system" / "decomposeParDict").write_text(
+        "numberOfSubdomains 2;\nmethod hierarchical;\ncoeffs\n{\n    n (2 1 1);\n}\n",
+    )
+    monkeypatch.setattr(
+        parallel_resize_service.knife_service,
+        "current_payload",
+        lambda *_a, **_k: {"jobs_running": 0},
+    )
+
+    def _execute_case_command(_case, _name, command, **_kwargs):
+        if command[0] == "reconstructPar":
+            (case / "10" / "U").write_text("reconstructed\n")
+        return SimpleNamespace(returncode=0, stdout="", stderr="", log_path=None)
+
+    monkeypatch.setattr(parallel_resize_service.run_ops, "execute_case_command", _execute_case_command)
+
+    payload = parallel_resize_service.parallel_resize_payload(
+        case,
+        options=parallel_resize_service.ParallelResizeOptions(from_ranks=2, to_ranks=4, start=False),
+    )
+
+    assert payload["ok"] is True
+    # Only x was split before, so y/z (possibly empty or 2D directions) stay 1.
+    assert "n (4 1 1);" in (case / "system" / "decomposeParDict").read_text()
+    step = next(row for row in payload["steps"] if row["step"] == "set-subdomains")
+    assert step["geometric_n"] == {"method": "hierarchical", "before": [2, 1, 1], "after": [4, 1, 1]}

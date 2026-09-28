@@ -442,15 +442,23 @@ def _parse_uniform_value(value: str) -> object | None:
         inner = text[1:-1].strip()
         if not inner:
             return None
-        parts = inner.split()
         try:
-            return [float(part) for part in parts]
+            return [_parse_number(part) for part in inner.split()]
         except ValueError:
             return None
     try:
-        return float(text)
+        return _parse_number(text)
     except ValueError:
         return None
+
+
+def _parse_number(token: str) -> int | float:
+    # Keep integers integral: OpenFOAM label entries (numberOfSubdomains,
+    # nCorrectors, n (...)) reject "2.0", and foamlib writes floats with ".0".
+    try:
+        return int(token)
+    except ValueError:
+        return float(token)
 
 
 def write_entry(file_path: Path, key: str, value: str) -> bool:

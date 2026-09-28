@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypedDict
 
-from ofti.core import bundle_set
+from ofti.core import bundle_set, decomposition
 from ofti.core.case import read_number_of_subdomains
 from ofti.core.entry_io import write_entry
 from ofti.core.solver_checks import resolve_solver_name, validate_initial_fields
@@ -241,9 +241,11 @@ def prepare_parallel_case(
         "decompose_returncode": None,
         "dry_run": bool(dry_run),
         "applied": not bool(dry_run),
+        "geometric_n": None,
     }
     if dry_run:
         return payload
+    payload["geometric_n"] = _consistent_geometric_n(case_path, parallel=parallel)
     if clean_processors:
         _remove_processor_dirs(cleaned)
     result = execute_case_command(
@@ -371,12 +373,34 @@ def detect_mpi_launcher() -> str | None:
     return None
 
 
+def _consistent_geometric_n(case_path: Path, *, parallel: int) -> dict[str, Any] | None:
+    """Rescale simple/hierarchical ``n`` before decomposePar when only it disagrees.
+
+    A mismatched ``numberOfSubdomains`` is left to the explicit sync paths; here
+    the rank count already agrees, so ``n`` is the only thing decomposePar
+    would reject.
+    """
+    decompose_dict = case_path / "system" / "decomposeParDict"
+    if not decompose_dict.is_file() or _read_subdomains_value(decompose_dict) != parallel:
+        return None
+    edit = decomposition.rescale_geometric_file(decompose_dict, ranks=parallel)
+    if edit is None:
+        return None
+    return {"method": edit.method, "before": list(edit.before), "after": list(edit.after)}
+
+
 def _sync_parallel_subdomains(case_path: Path, *, requested: int) -> None:
     decompose_dict = case_path / "system" / "decomposeParDict"
     if not decompose_dict.is_file():
         raise ValueError(
             "Missing system/decomposeParDict for parallel run. Create it first or run without --parallel.",
         )
+    _sync_subdomain_count(case_path, decompose_dict, requested=requested)
+    # simple/hierarchical need n (nx ny nz) to multiply to the new rank count.
+    decomposition.rescale_geometric_file(decompose_dict, ranks=requested)
+
+
+def _sync_subdomain_count(case_path: Path, decompose_dict: Path, *, requested: int) -> None:
     initial = _read_subdomains_value(decompose_dict)
     if initial == requested:
         return
@@ -399,11 +423,13 @@ def _require_parallel_subdomains(case_path: Path, *, requested: int) -> None:
             "Missing system/decomposeParDict for parallel run. Create it first or run without --parallel.",
         )
     configured = _read_subdomains_value(decompose_dict)
-    if configured == requested:
-        return
-    raise ValueError(
-        _subdomains_precheck_error(case_path, requested=requested, configured=configured),
-    )
+    if configured != requested:
+        raise ValueError(
+            _subdomains_precheck_error(case_path, requested=requested, configured=configured),
+        )
+    reason = decomposition.mismatch_reason(decompose_dict.read_text(encoding="utf-8"), requested)
+    if reason is not None:
+        raise ValueError(f"Parallel launch blocked: {reason}. Run with --sync-subdomains or fix n.")
 
 
 def _read_subdomains_value(decompose_dict: Path) -> int | None:

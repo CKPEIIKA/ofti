@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from ofti.core import decomposition
 from ofti.core.case import detect_solver
 from ofti.foam.subprocess_utils import run_trusted
 from ofti.tools import knife_service, watch_service
@@ -148,6 +149,9 @@ class RealTutorialCase:
                 )["ok"]
                 is True
             )
+            # Tutorials such as v2206 cavity ship hierarchical n (3 3 1); keep n valid
+            # for tests that run decomposePar directly.
+            decomposition.rescale_geometric_file(path, ranks=ranks)
             return
         path.write_text(
             "\n".join(
