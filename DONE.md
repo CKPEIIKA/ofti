@@ -2,8 +2,9 @@
 
 Completed work only. Record meaningful outcomes and validation evidence, newest first.
 
-## 2026-09-28
+## 2026-09-28 — OFTI 0.9.7
 
+- Prepared OFTI 0.9.7: the full gate passes (`1129 passed, 57 skipped`, 85.62% coverage), the wheel and sdist verify as 0.9.7 `GPL-3.0-or-later`, and a clean install reports `ofti 0.9.7`. Opt-in real OpenFOAM v2206 runs: 40 passed, 1 skipped, 6 parallel scenarios failed because the v2206 cavity tutorial ships `hierarchical` `n (3 3 1)` and parallel prepare only rewrites `numberOfSubdomains` (tracked in TODO).
 - Fixed curses TUI defects without changing its layout or menus: the live solver view no longer stays "running" forever (own solver children are now reaped and keep their real exit code), a fresh log ending in `End` no longer reports a running case in `knife status` or the header, the header refreshes after actions and commands, fits 80 columns, and shows compact mesh counts, quality, human ETAs, and the real environment instead of the FoamFile `2.0` format version; viewers gained paging, sideways scroll, a position line, and wrap-around search, logs open at their tail; the boundary matrix sizes columns to its labels and scrolls consistently; the documented `:knife`/`:watch`/`:plot` command mode now exists; `!CMD` output waits for Enter. Regression tests fail before and pass after each fix.
 - Added one-shot per-profile relative threshold metrics, kept bare `--plain` at exit 2, and made plugin absence explicit with `plugins doctor --require`; an isolated core-plus-hy2Foam tool install discovers and validates the plugin.
 
