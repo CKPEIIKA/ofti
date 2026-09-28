@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -20,13 +21,29 @@ def list_payload(registry: PluginRegistry | None = None) -> dict[str, Any]:
     }
 
 
-def doctor_payload(registry: PluginRegistry | None = None) -> dict[str, Any]:
+def doctor_payload(
+    registry: PluginRegistry | None = None,
+    *,
+    required: Sequence[str] = (),
+) -> dict[str, Any]:
     payload = list_payload(registry)
+    required_names = tuple(dict.fromkeys(name.strip() for name in required if name.strip()))
+    loaded_names = {
+        str(value)
+        for row in payload["plugins"]
+        if row["status"] == "loaded"
+        for value in (row["name"], row["distribution"])
+        if value
+    }
+    missing = [name for name in required_names if name not in loaded_names]
     warnings = [
         f"{row['name']}: loaded but registered no OFTI surfaces"
         for row in payload["plugins"]
         if row["status"] == "loaded" and not row["registrations"]
     ]
+    payload["required_plugins"] = list(required_names)
+    payload["missing_required"] = missing
+    payload["errors"].extend(f"required plugin '{name}' is not loaded" for name in missing)
     payload["warnings"] = warnings
     payload["ok"] = not payload["errors"] and not warnings
     return payload

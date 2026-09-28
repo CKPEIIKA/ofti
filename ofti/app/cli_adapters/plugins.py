@@ -28,6 +28,13 @@ def _build_plugins_parser(
 
     doctor = commands.add_parser("doctor", help="Fail on plugin load or registration problems")
     doctor.add_argument("--json", action="store_true", help="Print result as JSON")
+    doctor.add_argument(
+        "--require",
+        action="append",
+        default=None,
+        metavar="NAME",
+        help="Also fail unless this entry-point or distribution name is loaded (repeatable)",
+    )
     doctor.set_defaults(func=_plugins_doctor)
 
 
@@ -38,7 +45,10 @@ def _plugins_list(args: argparse.Namespace) -> int:
 
 
 def _plugins_doctor(args: argparse.Namespace) -> int:
-    payload = plugin_service.doctor_payload(args.plugin_registry)
+    payload = plugin_service.doctor_payload(
+        args.plugin_registry,
+        required=getattr(args, "require", None) or (),
+    )
     _render_payload(payload, args)
     return 0 if payload["ok"] else 1
 
@@ -50,6 +60,7 @@ def _render_payload(payload: dict[str, Any], args: argparse.Namespace) -> None:
     print(
         f"plugins={payload['plugin_count']} loaded={payload['loaded']} failed={payload['failed']} ok={payload['ok']}",
     )
+    _print_empty_plugins_note(payload)
     for row in cast("list[dict[str, Any]]", payload["plugins"]):
         version = row.get("version") or "unknown"
         distribution = row.get("distribution") or "unknown"
@@ -65,3 +76,8 @@ def _render_payload(payload: dict[str, Any], args: argparse.Namespace) -> None:
         print(f"warning: {warning}")
     for error in payload["errors"]:
         print(f"error: {error}")
+
+
+def _print_empty_plugins_note(payload: dict[str, Any]) -> None:
+    if not payload["plugins"]:
+        print("note=no external plugins installed; core OFTI remains available")

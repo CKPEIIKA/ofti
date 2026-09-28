@@ -168,7 +168,7 @@ ofti knife metric CASE --field p --time latest --reduction mean --json
 ofti knife metric CASE --field wallHeatFlux --patch wall --reduction max --json
 ofti knife metric CASE postProcessing/probes/0/p --value-column 1 --json
 ofti knife metric CASE 'postProcessing/sets/*/line_p.xy' \
-  --threshold 0.3 --value-column 1 --window 20 --max-span 1e-4 --json
+  --relative-threshold 0.3 --value-column 1 --window 20 --max-span 1e-4 --json
 ```
 
 Start, inspect, and safely stop a solver:
@@ -192,6 +192,7 @@ Inspect plugin discovery:
 ```
 ofti plugins list --json
 ofti plugins doctor --json
+ofti plugins doctor --require hy2foam --json
 ```
 
 Move a minimal case to another host:

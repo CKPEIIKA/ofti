@@ -61,7 +61,7 @@ ofti knife metric CASE postProcessing/probes/0/p \
   --name stagnation-p --value-column 1 --json
 
 ofti knife metric CASE 'postProcessing/sets/*/line_p.xy' \
-  --name shock-x --threshold 0.3 --value-column 1 \
+  --name shock-x --relative-threshold 0.3 --value-column 1 \
   --window 20 --max-span 1e-4 --json
 ```
 
@@ -71,10 +71,12 @@ selected reduction as `value`. Multi-component fields default to magnitude;
 use `--component INDEX` for one component. Any nonfinite field value makes the
 command exit `1`.
 
-Plain-series mode reports the latest selected value. Threshold mode reports a
-crossing coordinate from each matched profile. Both table modes include
-`value`, `last_n_span`, sample counts, and `mature`; maturity remains `null`
-unless an explicit `--max-span` is supplied.
+Plain-series mode reports the latest selected value. `--threshold VALUE`
+tracks an absolute crossing. `--relative-threshold FRACTION` resolves
+`min + FRACTION * (max - min)` separately for each profile, then tracks that
+crossing; JSON includes the resolved thresholds by source. Both table modes
+include `value`, `last_n_span`, sample counts, and `mature`; maturity remains
+`null` unless an explicit `--max-span` is supplied.
 
 Mutating commands make intent explicit:
 
@@ -269,11 +271,14 @@ Plugin discovery is inspectable rather than implicit:
 ```bash
 ofti plugins list --json
 ofti plugins doctor --json
+ofti plugins doctor --require hy2foam --json
 ```
 
 `list` reports the entry-point name and source, installed distribution/version,
 registered surfaces, and load errors. `doctor` exits 1 for load/registration
-errors or for a loaded entry point that registered no OFTI surface.
+errors, for a loaded entry point that registered no OFTI surface, or when a
+`--require` name is not loaded. A core-only installation legitimately reports
+`plugin_count=0`.
 
 Plugins may register framework-neutral `CommandSpec` providers under `knife`,
 `run`, `watch`, and `result`, read-only progress metrics attached to status

@@ -265,11 +265,12 @@ _EXAMPLES_BY_PROG = {
           ofti knife metric CASE --field wallHeatFlux --patch wall --reduction max --json
           ofti knife metric CASE postProcessing/probes/0/p --name stagnation-p --value-column 1 --json
           ofti knife metric CASE 'postProcessing/sets/*/line_p.xy' --name shock-x \
-            --threshold 0.3 --value-column 1 --window 20 --max-span 1e-4 --json
+            --relative-threshold 0.3 --value-column 1 --window 20 --max-span 1e-4 --json
 
         --field reduces internal or patch values directly. Otherwise SOURCE is
-        a table: without --threshold rows form a scalar series; with it, every
-        matched file is a profile whose crossing is tracked over time.
+        a table: without a threshold rows form a scalar series; with
+        --threshold or --relative-threshold, every matched file is a profile
+        whose crossing is tracked over time.
         """,
     ),
     "ofti knife compare-fields": dedent(

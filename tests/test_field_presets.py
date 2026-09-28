@@ -3,20 +3,21 @@ from __future__ import annotations
 import pytest
 
 from ofti.core.field_presets import available_field_preset_names, resolve_field_preset
-from ofti.plugins import FieldPreset, PluginRegistry
+from ofti.plugins import FieldPreset, PluginRegistry, builtin_registry
 
 
 def test_builtin_field_presets_are_generic() -> None:
-    preset = resolve_field_preset("flow")
+    registry = builtin_registry()
+    preset = resolve_field_preset("flow", registry)
 
     assert preset.fields == ("p", "U", "rho", "T")
     assert preset.source == "core"
-    assert available_field_preset_names() == ["flow"]
+    assert available_field_preset_names(registry) == ["flow"]
 
 
 def test_unknown_field_preset_lists_available_names() -> None:
     with pytest.raises(ValueError, match="unknown field preset: plugin-preset; available: flow"):
-        resolve_field_preset("plugin-preset")
+        resolve_field_preset("plugin-preset", builtin_registry())
 
 
 def test_plugin_field_preset_resolves_through_registry(monkeypatch) -> None:

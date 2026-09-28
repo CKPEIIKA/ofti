@@ -25,6 +25,8 @@ Python 3.12 or newer is required. From a checkout:
 
 ```bash
 uv tool install .
+# Include the optional stock hy2Foam plugin:
+uv tool install --with ./plugins/ofti-hy2foam .
 # Development environment:
 uv sync --locked --group dev
 ```
@@ -154,7 +156,8 @@ diagnostics, preflight checks, and comparison helpers.
 
 Plugins declare framework-neutral `CommandSpec` objects and use the same JSON
 output contract as core commands. Inspect discovery with `ofti plugins list`
-and `ofti plugins doctor`. See the
+and require an expected plugin with `ofti plugins doctor --require hy2foam`.
+A core-only installation legitimately reports zero external plugins. See the
 [hy2Foam plugin README](plugins/ofti-hy2foam/README.md).
 
 ## Architecture and development

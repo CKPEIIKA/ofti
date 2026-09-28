@@ -9,7 +9,14 @@ targets **stock/original hy2Foam**; the modified/NN fork lives in a separate
 ## Install
 
 ```bash
-pip install ./plugins/ofti-hy2foam
+# Core OFTI plus this plugin, from the repository checkout:
+uv tool install --with ./plugins/ofti-hy2foam .
+
+# Or add it to the existing development environment:
+uv pip install --python .venv/bin/python -e ./plugins/ofti-hy2foam
+
+# Verify that discovery loaded the expected entry point:
+ofti plugins doctor --require hy2foam
 ```
 
 The plugin registers through the `ofti.plugins` entry point, so once installed

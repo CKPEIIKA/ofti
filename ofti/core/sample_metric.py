@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -68,6 +69,22 @@ def threshold_crossing(
     if not crossings:
         return None
     return crossings[-1] if pick == "last" else crossings[0]
+
+
+def relative_threshold_value(
+    rows: Sequence[tuple[float, ...]],
+    *,
+    value_column: int,
+    fraction: float,
+) -> float:
+    """Resolve a profile-relative threshold between its minimum and maximum."""
+    if not 0.0 <= fraction <= 1.0:
+        raise ValueError("--relative-threshold must be between 0 and 1")
+    if not rows:
+        raise ValueError("metric profile contains no usable samples")
+    values = [_column(row, value_column) for row in rows]
+    low = min(values)
+    return low + fraction * (max(values) - low)
 
 
 def summarize_metric(

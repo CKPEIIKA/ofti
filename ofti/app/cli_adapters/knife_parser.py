@@ -210,11 +210,19 @@ def _build_knife_parser(
         default=-1,
         help="Zero-based sampled value column (default: last)",
     )
-    metric.add_argument(
+    threshold_group = metric.add_mutually_exclusive_group()
+    threshold_group.add_argument(
         "--threshold",
         type=float,
         default=None,
-        help="Track x at this value crossing in each matched profile",
+        help="Track x at this absolute value crossing in each matched profile",
+    )
+    threshold_group.add_argument(
+        "--relative-threshold",
+        type=float,
+        default=None,
+        metavar="FRACTION",
+        help="Track x at min + FRACTION * (max - min) in each profile (0..1)",
     )
     metric.add_argument(
         "--direction",

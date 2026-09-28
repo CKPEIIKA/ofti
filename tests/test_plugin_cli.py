@@ -56,6 +56,20 @@ def test_plugins_list_reports_source_version_and_registrations(
     assert payload["plugins"][0]["registrations"]["run_commands"] == ["demo-run"]
 
 
+def test_plugins_list_explains_a_core_only_install(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("ofti.app.cli_adapters.main.discover_plugins", PluginRegistry)
+
+    code = cli_tools.main(["plugins", "list"])
+    output = capsys.readouterr().out
+
+    assert code == 0
+    assert "plugins=0 loaded=0 failed=0 ok=True" in output
+    assert "no external plugins installed; core OFTI remains available" in output
+
+
 def test_plugins_doctor_returns_nonzero_for_load_failure(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -82,6 +96,39 @@ def test_plugins_doctor_returns_nonzero_for_load_failure(
     assert payload["ok"] is False
     assert payload["failed"] == 1
     assert payload["errors"] == ["broken: import failed"]
+
+
+def test_plugins_doctor_can_require_an_external_plugin(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = PluginRegistry()
+    monkeypatch.setattr("ofti.app.cli_adapters.main.discover_plugins", lambda: registry)
+
+    code = cli_tools.main(["plugins", "doctor", "--require", "hy2foam", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 1
+    assert payload["ok"] is False
+    assert payload["required_plugins"] == ["hy2foam"]
+    assert payload["missing_required"] == ["hy2foam"]
+    assert payload["errors"] == ["required plugin 'hy2foam' is not loaded"]
+
+    registry.plugins.append(
+        PluginRecord(
+            name="hy2foam",
+            entry_point="ofti_hy2foam.plugin:register",
+            distribution="ofti-hy2foam",
+            version="0.2.0",
+            status="loaded",
+            registrations={"knife_commands": ("charge",)},
+        ),
+    )
+    code = cli_tools.main(["plugins", "doctor", "--require", "ofti-hy2foam", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["missing_required"] == []
 
 
 def test_run_watch_and_result_plugin_commands_dispatch(

@@ -12,6 +12,10 @@ def _knife_metric(args: argparse.Namespace) -> int:
     field = getattr(args, "field", None)
     if bool(source) == bool(field):
         raise ValueError("provide exactly one table SOURCE or --field FIELD")
+    if field and (
+        getattr(args, "threshold", None) is not None or getattr(args, "relative_threshold", None) is not None
+    ):
+        raise ValueError("--threshold and --relative-threshold apply only to a table SOURCE")
     payload = (
         _field_metric(args, str(field))
         if field
@@ -23,6 +27,7 @@ def _knife_metric(args: argparse.Namespace) -> int:
                 coordinate_column=int(args.coordinate_column),
                 value_column=int(args.value_column),
                 threshold=getattr(args, "threshold", None),
+                relative_threshold=getattr(args, "relative_threshold", None),
                 direction=str(args.direction),
                 pick=str(args.pick),
                 window=int(args.window),

@@ -9,6 +9,7 @@ from ofti.core.field_io import read_field_values, resolve_time_dir
 from ofti.core.sample_metric import (
     MetricSample,
     read_numeric_rows,
+    relative_threshold_value,
     series_samples,
     summarize_field_values,
     summarize_metric,
@@ -23,6 +24,7 @@ class MetricOptions:
     coordinate_column: int = 0
     value_column: int = -1
     threshold: float | None = None
+    relative_threshold: float | None = None
     direction: str = "any"
     pick: str = "first"
     window: int = 10
@@ -50,8 +52,10 @@ def metric_payload(
 ) -> dict[str, object]:
     case = require_case_dir(case_dir)
     files = _source_files(case, source)
+    _validate_thresholds(options.threshold, options.relative_threshold)
     warnings: list[str] = []
-    if options.threshold is None:
+    resolved_thresholds: dict[str, float] = {}
+    if options.threshold is None and options.relative_threshold is None:
         samples = _series_files(
             case,
             files,
@@ -65,14 +69,9 @@ def metric_payload(
         samples = _crossing_files(
             case,
             files,
-            coordinate_column=options.coordinate_column,
-            value_column=options.value_column,
-            threshold=options.threshold,
-            direction=options.direction,
-            pick=options.pick,
-            scale=options.scale,
-            offset=options.offset,
+            options=options,
             warnings=warnings,
+            resolved_thresholds=resolved_thresholds,
         )
         mode = "crossing"
     payload = summarize_metric(options.name, samples, window=options.window, max_span=options.max_span)
@@ -83,6 +82,8 @@ def metric_payload(
             "files": [path.relative_to(case).as_posix() for path in files],
             "mode": mode,
             "threshold": options.threshold,
+            "relative_threshold": options.relative_threshold,
+            "resolved_thresholds": resolved_thresholds,
             "coordinate_column": options.coordinate_column,
             "value_column": options.value_column,
             "scale": options.scale,
@@ -186,26 +187,24 @@ def _crossing_files(
     case: Path,
     files: list[Path],
     *,
-    coordinate_column: int,
-    value_column: int,
-    threshold: float,
-    direction: str,
-    pick: str,
-    scale: float,
-    offset: float,
+    options: MetricOptions,
     warnings: list[str],
+    resolved_thresholds: dict[str, float],
 ) -> list[MetricSample]:
     samples: list[MetricSample] = []
     for index, path in enumerate(files):
-        crossing = threshold_crossing(
-            read_numeric_rows(path),
-            coordinate_column=coordinate_column,
-            value_column=value_column,
-            threshold=threshold,
-            direction=direction,
-            pick=pick,
-        )
+        rows = read_numeric_rows(path)
         relative = path.relative_to(case).as_posix()
+        threshold = _profile_threshold(rows, options)
+        resolved_thresholds[relative] = threshold
+        crossing = threshold_crossing(
+            rows,
+            coordinate_column=options.coordinate_column,
+            value_column=options.value_column,
+            threshold=threshold,
+            direction=options.direction,
+            pick=options.pick,
+        )
         if crossing is None:
             warnings.append(f"no threshold crossing in {relative}")
             continue
@@ -213,11 +212,26 @@ def _crossing_files(
         samples.append(
             MetricSample(
                 coordinate=float(index) if source_time is None else source_time,
-                value=crossing * scale + offset,
+                value=crossing * options.scale + options.offset,
                 source=relative,
             ),
         )
     return samples
+
+
+def _profile_threshold(rows: list[tuple[float, ...]], options: MetricOptions) -> float:
+    if options.threshold is not None:
+        return options.threshold
+    if options.relative_threshold is None:
+        raise ValueError("crossing mode requires a threshold")
+    return relative_threshold_value(rows, value_column=options.value_column, fraction=options.relative_threshold)
+
+
+def _validate_thresholds(threshold: float | None, relative_threshold: float | None) -> None:
+    if threshold is not None and relative_threshold is not None:
+        raise ValueError("--threshold and --relative-threshold are mutually exclusive")
+    if relative_threshold is not None and not 0.0 <= relative_threshold <= 1.0:
+        raise ValueError("--relative-threshold must be between 0 and 1")
 
 
 def _file_sort_key(case: Path, path: Path) -> tuple[bool, float, str]:

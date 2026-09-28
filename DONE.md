@@ -2,6 +2,10 @@
 
 Completed work only. Record meaningful outcomes and validation evidence, newest first.
 
+## 2026-09-28
+
+- Added one-shot per-profile relative threshold metrics, kept bare `--plain` at exit 2, and made plugin absence explicit with `plugins doctor --require`; an isolated core-plus-hy2Foam tool install discovers and validates the plugin.
+
 ## 2026-09-23 — OFTI 0.9.6
 
 - OFTI field discovery and reads now accept gzip-compressed ASCII and binary

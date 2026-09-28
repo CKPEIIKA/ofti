@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from ofti.app import cli_tools
-from ofti.core.sample_metric import read_numeric_rows, threshold_crossing
+from ofti.core.sample_metric import read_numeric_rows, relative_threshold_value, threshold_crossing
 from ofti.tools.sample_metric_service import (
     FieldMetricOptions,
     MetricOptions,
@@ -99,6 +99,38 @@ def test_crossing_metric_tracks_profiles_by_numeric_time(tmp_path: Path) -> None
     assert payload["mature"] is True
 
 
+def test_relative_crossing_uses_each_profiles_value_band(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    first = case / "postProcessing" / "sets" / "1" / "line_p.xy"
+    second = case / "postProcessing" / "sets" / "2" / "line_p.xy"
+    first.parent.mkdir(parents=True)
+    second.parent.mkdir(parents=True)
+    first.write_text("0 10\n1 20\n", encoding="utf-8")
+    second.write_text("0 100\n1 300\n", encoding="utf-8")
+
+    payload = metric_payload(
+        case,
+        "postProcessing/sets/*/line_p.xy",
+        options=MetricOptions(
+            name="shock-x",
+            value_column=1,
+            relative_threshold=0.3,
+            window=2,
+            max_span=0.0,
+        ),
+    )
+
+    assert payload["mode"] == "crossing"
+    assert payload["relative_threshold"] == pytest.approx(0.3)
+    assert payload["resolved_thresholds"] == {
+        "postProcessing/sets/1/line_p.xy": pytest.approx(13.0),
+        "postProcessing/sets/2/line_p.xy": pytest.approx(160.0),
+    }
+    assert payload["value"] == pytest.approx(0.3)
+    assert payload["last_n_span"] == pytest.approx(0.0)
+    assert payload["mature"] is True
+
+
 def test_metric_requires_explicit_stationarity_limit(tmp_path: Path) -> None:
     case = tmp_path / "case"
     source = case / "probe.dat"
@@ -156,6 +188,19 @@ def test_threshold_crossing_supports_direction_and_pick(tmp_path: Path) -> None:
         threshold_crossing(rows, coordinate_column=0, value_column=1, threshold=0.5, direction="sideways")
 
 
+def test_relative_threshold_rejects_invalid_fraction_and_ambiguous_mode(tmp_path: Path) -> None:
+    rows = [(0.0, 10.0), (1.0, 20.0)]
+    assert relative_threshold_value(rows, value_column=1, fraction=0.3) == pytest.approx(13.0)
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        relative_threshold_value(rows, value_column=1, fraction=1.1)
+
+    case = tmp_path / "case"
+    case.mkdir()
+    (case / "line.xy").write_text("0 0\n1 1\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        metric_payload(case, "line.xy", options=MetricOptions(threshold=0.5, relative_threshold=0.3))
+
+
 def test_metric_cli_emits_stable_json(tmp_path: Path, capsys) -> None:
     case = tmp_path / "case"
     source = case / "postProcessing" / "probes" / "0" / "p"
@@ -185,6 +230,33 @@ def test_metric_cli_emits_stable_json(tmp_path: Path, capsys) -> None:
     assert payload["command"] == "knife metric"
     assert payload["name"] == "probe-p"
     assert payload["mature"] is True
+
+
+def test_relative_metric_cli_emits_resolved_threshold(tmp_path: Path, capsys) -> None:
+    case = tmp_path / "case"
+    source = case / "postProcessing" / "sets" / "1" / "line_p.xy"
+    source.parent.mkdir(parents=True)
+    source.write_text("0 10\n1 20\n", encoding="utf-8")
+
+    code = cli_tools.main(
+        [
+            "knife",
+            "metric",
+            str(case),
+            "postProcessing/sets/*/line_p.xy",
+            "--relative-threshold",
+            "0.3",
+            "--value-column",
+            "1",
+            "--json",
+        ],
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["command"] == "knife metric"
+    assert payload["value"] == pytest.approx(0.3)
+    assert payload["resolved_thresholds"] == {"postProcessing/sets/1/line_p.xy": pytest.approx(13.0)}
 
 
 def test_field_metric_reduces_internal_and_patch_values(tmp_path: Path) -> None:
@@ -251,6 +323,12 @@ def test_field_metric_cli_is_scriptable_and_rejects_ambiguous_sources(
 
     assert code == 2
     assert "exactly one" in error
+
+    code = cli_tools.main(
+        ["knife", "metric", str(case), "--field", "p", "--relative-threshold", "0.3"],
+    )
+    assert code == 2
+    assert "only to a table SOURCE" in capsys.readouterr().err
 
 
 def test_field_metric_reports_nonfinite_values_with_failure_status(
