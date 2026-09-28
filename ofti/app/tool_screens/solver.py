@@ -285,7 +285,8 @@ def _tail_process_log(
     job_id: str | None,
 ) -> None:
     cfg = get_config()
-    patterns = ["FATAL", "bounding", "Courant", "nan", "SIGFPE", "floating point exception"]
+    # Courant is summarized above the tail; marking every Courant line is noise.
+    patterns = ["FATAL", "bounding", "nan", "SIGFPE", "floating point exception"]
     stdscr.timeout(_LIVE_TAIL_POLL_MS)
     stopped_by_user = False
     try:
@@ -305,13 +306,15 @@ def _tail_process_log(
             stdscr.clear()
             height, width = stdscr.getmaxyx()
             back_hint = key_hint("back", "h")
-            running = process.poll() is None
+            # Sample once per frame: the frame shown while waiting for the
+            # final key press must reflect the exited process.
+            returncode = process.poll()
+            running = returncode is None
             status = "running" if running else "finished"
             header = f"{solver} ({status})  {back_hint}: {'stop' if running else 'back'}"
             with suppress(curses.error):
                 stdscr.addstr(header[: max(1, width - 1)] + "\n")
             fatal_line = fatal_log_line(lines)
-            returncode = process.poll()
             if returncode is not None and returncode != 0:
                 error_line = f"ERROR: exit {returncode}"
                 if fatal_line:
@@ -350,7 +353,7 @@ def _tail_process_log(
                         stdscr.attroff(curses.A_BOLD)
 
             stdscr.refresh()
-            if process.poll() is not None:
+            if not running:
                 stdscr.timeout(-1)
                 stdscr.getch()
                 return

@@ -150,7 +150,8 @@ def test_running_header_metadata_and_banner(monkeypatch: pytest.MonkeyPatch, tmp
 
     assert enriched["running"] == "yes"
     assert "Running: jobs=1 pids=2" in banner
-    assert "ETA end=10 criteria=5" in banner
+    assert "ETA end=10s criteria=5s" in banner
+    assert "s/iter=0.2" in banner
 
 
 def test_overview_branches_for_errors_and_empty_data(

@@ -82,6 +82,11 @@ def progress_evidence(
     }
 
 
+def log_ended_cleanly(log_path: Path | None) -> bool:
+    """Return whether a solver log tail carries OpenFOAM's final ``End`` line."""
+    return _clean_end_seen(_read_log_tail(log_path))
+
+
 def _newest_log(case_dir: Path) -> Path | None:
     logs = [path for path in case_dir.glob("log.*") if path.is_file()]
     return max(logs, key=lambda path: path.stat().st_mtime, default=None)

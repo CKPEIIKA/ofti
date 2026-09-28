@@ -4,7 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypedDict
 
-from ofti.core.progress import progress_evidence
+from ofti.core.progress import log_ended_cleanly, progress_evidence
 from ofti.foam.config import get_config
 from ofti.tools import plugin_service, process_scan_service
 
@@ -146,11 +146,14 @@ def status_payload(
     )
     latest_time_value = runtime["latest_time"]
     has_live_pids = bool(live_processes)
-    running_heuristic = has_live_pids or (solver is not None and bool(runtime["log_fresh"]))
+    progress_log = Path(runtime["log_path"]) if runtime["log_path"] else None
+    # A fresh log only implies a hidden live solver (remote host, no /proc
+    # access) while it has not yet printed OpenFOAM's final "End".
+    log_running = solver is not None and bool(runtime["log_fresh"]) and not log_ended_cleanly(progress_log)
+    running_heuristic = has_live_pids or log_running
     untracked_count = untracked_running_count(untracked_live)
     running_count = len(active_jobs) + untracked_count
     runs = canonical_run_rows(case_path, active_jobs, untracked_live)
-    progress_log = Path(runtime["log_path"]) if runtime["log_path"] else None
     progress = progress_evidence(
         case_path,
         process_live=running_heuristic,

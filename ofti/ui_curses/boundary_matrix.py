@@ -77,7 +77,7 @@ def _adjust_scroll(
 ) -> tuple[int, int]:
     height, width = stdscr.getmaxyx()
     visible_rows = max(1, height - 4)
-    visible_cols = max(1, (width - 24) // 14)
+    visible_cols = _boundary_matrix_layout(width, matrix).visible_cols
 
     if row < row_scroll:
         row_scroll = row
@@ -107,7 +107,7 @@ def _draw_boundary_matrix(
 ) -> None:
     stdscr.clear()
     height, width = stdscr.getmaxyx()
-    layout = _boundary_matrix_layout(width)
+    layout = _boundary_matrix_layout(width, matrix)
     fields = _draw_boundary_header(stdscr, matrix, col_scroll, layout, width, hide_special=hide_special)
     _draw_boundary_warnings(stdscr, matrix, width)
     _draw_boundary_rows(
@@ -287,13 +287,33 @@ class _BoundaryLayout:
     visible_cols: int
 
 
-def _boundary_matrix_layout(width: int) -> _BoundaryLayout:
-    patch_col = max(10, min(18, width // 5))
-    type_col = max(8, min(14, width // 8))
+def _boundary_matrix_layout(width: int, matrix: BoundaryMatrix | None = None) -> _BoundaryLayout:
+    # Size columns to their longest label so common BC names such as
+    # zeroGradient stay readable, but keep clamps so one very long name cannot
+    # push every field off-screen. Drawing and scrolling share this layout.
+    patches = matrix.patches if matrix else []
+    types = list(matrix.patch_types.values()) if matrix else []
+    labels = _cell_labels(matrix) if matrix else []
+    patch_col = _fit_width([*patches, "Patch"], low=10, high=max(10, width // 4))
+    type_col = _fit_width([*types, "Type"], low=8, high=16)
     remaining = max(12, width - patch_col - type_col - 2)
-    col_width = max(6, min(12, remaining // 4))
+    col_width = _fit_width([*labels, *(matrix.fields if matrix else [])], low=8, high=_MAX_CELL_WIDTH)
+    col_width = min(col_width, remaining)
     visible_cols = max(1, remaining // col_width)
     return _BoundaryLayout(patch_col, type_col, col_width, visible_cols)
+
+
+_MAX_CELL_WIDTH = 24
+
+
+def _fit_width(labels: list[str], *, low: int, high: int) -> int:
+    longest = max((len(label) for label in labels), default=0)
+    return max(low, min(high, longest + 1))
+
+
+def _cell_labels(matrix: BoundaryMatrix) -> list[str]:
+    cells = [cell for row in matrix.data.values() for cell in row.values()]
+    return [_format_cell_label(cell, _MAX_CELL_WIDTH + 1).rstrip() for cell in cells]
 
 
 def _load_boundary_matrix(
@@ -361,8 +381,8 @@ def _draw_boundary_rows(
         line_y = 3 + idx
         selected = row_scroll + idx == row
         patch_type = matrix.patch_types.get(patch, "")
-        patch_label = patch.ljust(layout.patch_col)
-        type_label = patch_type.ljust(layout.type_col)
+        patch_label = patch[: layout.patch_col - 1].ljust(layout.patch_col)
+        type_label = patch_type[: layout.type_col - 1].ljust(layout.type_col)
         with suppress(curses.error):
             attr = curses.color_pair(1) if selected else 0
             stdscr.addstr(line_y, 0, patch_label[: max(1, width - 1)], attr)

@@ -395,3 +395,26 @@ def test_watch_service_tracked_job_helpers(monkeypatch: pytest.MonkeyPatch, tmp_
     watch_service.finalize_tracked_job(case, job_id="job-2", returncode=0, stopped_by_user=False)
     assert finished[0] == ("job-1", None, True)
     assert finished[1] == ("job-2", 0, False)
+
+
+def test_tracked_job_process_reaps_own_child_and_keeps_exit_status(tmp_path: Path) -> None:
+    import subprocess
+    import sys
+    import time
+
+    case = tmp_path / "case"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "controlDict").write_text("application icoFoam;\n")
+    child = subprocess.Popen([sys.executable, "-c", "raise SystemExit(3)"])
+    proc = watch_service.tracked_job_process(case, pid=child.pid, job_id=None)
+
+    deadline = time.monotonic() + 10
+    while (returncode := proc.poll()) is None and time.monotonic() < deadline:
+        time.sleep(0.02)
+
+    # A finished own child used to linger as a zombie that kill(0) reports
+    # alive, so the live view never ended and failures looked like success.
+    assert returncode == 3
+    assert proc.wait(timeout=1) == 3
+    assert not Path(f"/proc/{child.pid}").exists()
+    child.returncode = returncode  # already reaped; keep Popen.__del__ quiet

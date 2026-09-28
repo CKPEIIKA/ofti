@@ -366,3 +366,29 @@ def test_openfoam_env_helpers_and_screen(monkeypatch: pytest.MonkeyPatch, tmp_pa
     monkeypatch.setattr(ofenv, "_prompt_text", lambda *_a, **_k: str(tmp_path / "missing"))
     ofenv.openfoam_env_screen(screen)
     assert "Path not found" in shown[-1]
+
+
+def test_boundary_matrix_layout_fits_labels_and_matches_scroll() -> None:
+    long_patch = "inlet_upper_left_wall_region"
+    matrix = BoundaryMatrix(
+        fields=["U", "p", "k", "omega", "nut", "alphat"],
+        patches=[long_patch, "outlet"],
+        patch_types={long_patch: "patch", "outlet": "patch"},
+        data={
+            long_patch: {"p": BoundaryCell("OK", "zeroGradient", "")},
+            "outlet": {"U": BoundaryCell("OK", "fixedFluxPressure", "")},
+        },
+    )
+
+    layout = bm._boundary_matrix_layout(80, matrix)
+    assert layout.col_width >= len("fixedFluxPressure") + 1
+    assert bm._format_cell_label(BoundaryCell("OK", "zeroGradient", ""), layout.col_width).strip() == "zeroGradient"
+    assert layout.patch_col == 80 // 4
+
+    class _Screen:
+        def getmaxyx(self) -> tuple[int, int]:
+            return (24, 80)
+
+    last_field = len(matrix.fields) - 1
+    _row_scroll, col_scroll = bm._adjust_scroll(_Screen(), matrix.patches, matrix, 0, last_field, 0, 0)
+    assert col_scroll <= last_field < col_scroll + layout.visible_cols

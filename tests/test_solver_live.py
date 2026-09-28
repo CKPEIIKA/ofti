@@ -283,3 +283,40 @@ def test_tail_process_log_uses_bounded_reads_and_resets_timeout(
     assert seen["max_bytes"] == 256 * 1024
     assert screen.timeout_values[0] == 400
     assert screen.timeout_values[-1] == -1
+
+
+class FinishingProcess(FakeProcess):
+    """Running for the first poll, exited afterwards."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._polls = 0
+
+    def poll(self):
+        self._polls += 1
+        return None if self._polls == 1 else 0
+
+
+def test_tail_process_log_final_frame_shows_finished(tmp_path: Path) -> None:
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    log_path = case_dir / "log.icoFoam"
+    log_path.write_text("Time = 0.5\nCourant Number mean: 0.2 max: 0.8\nEnd\n")
+    # -1 is a poll timeout with no key; the next key dismisses the final frame.
+    screen = FakeScreen(keys=[-1, ord("x")])
+    process = FinishingProcess()
+
+    _tail_process_log(
+        screen,
+        case_dir,
+        "icoFoam",
+        cast("subprocess.Popen[str]", process),
+        log_path,
+        job_id=None,
+    )
+
+    frame = "\n".join(screen.lines)
+    assert "icoFoam (finished)" in frame
+    assert "(running)" not in frame
+    assert not process.terminated
+    assert not any(line.startswith("!! Courant") for line in screen.lines)

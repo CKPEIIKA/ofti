@@ -33,6 +33,10 @@ class CommandCallbacks:
     config_create: Callable[[Any, Path], None]
     config_search: Callable[[Any, Path, Any], None]
     config_check: Callable[[Any, Path, Any], None]
+    cli: Callable[[Any, Path, list[str]], None]
+
+
+_KNIFE_SUGGESTIONS = ("status", "current", "preflight", "doctor", "criteria", "eta", "report", "converge", "stability")
 
 
 def command_suggestions(case_path: Path) -> list[str]:
@@ -69,6 +73,8 @@ def command_suggestions(case_path: Path) -> list[str]:
         "config-check",
         "config-env",
     ]
+    base += [f"knife {name}" for name in _KNIFE_SUGGESTIONS]
+    base += ["watch jobs", "watch log", "watch status", "plot metrics", "plot residuals"]
     tool_names = list_tool_commands(case_path)
     base += [f"tool {name}" for name in tool_names]
     base += [f"tool {name} -b" for name in tool_names]
@@ -186,11 +192,18 @@ def handle_command(
         command_text = action.args[0] if action.args else ""
         callbacks.terminal(stdscr, case_path, command_text or None)
         return "handled"
+    if action.kind == CommandKind.CLI:
+        if action.error:
+            callbacks.show_message(stdscr, action.error)
+            return "handled"
+        callbacks.cli(stdscr, case_path, list(action.args))
+        return "handled"
     if action.kind == CommandKind.HELP:
         callbacks.show_message(
             stdscr,
-            "Commands: :check, :tools, :knife, :plot, :watch, :run, :solver, "
-            ":diag, :tasks, :search, :cancel <name>, :foamenv, :clone <name>, :tool <name>, :quit",
+            "Commands: :check, :tools, :run, :solver, :diag, :tasks, :search, :cancel <name>, "
+            ":foamenv, :clone <name>, :tool <name>, :quit. "
+            "CLI in the case directory: :knife ..., :watch ..., :plot ... (e.g. :knife status).",
         )
         return "handled"
 

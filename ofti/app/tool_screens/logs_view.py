@@ -56,7 +56,7 @@ def logs_screen(stdscr: Any, case_path: Path) -> None:
             _show_message(stdscr, f"Failed to read {path.name}: {exc}")
             continue
 
-        viewer = Viewer(stdscr, text)
+        viewer = Viewer(stdscr, text, start_at_end=True)
         viewer.display()
 
 

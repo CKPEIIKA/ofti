@@ -283,3 +283,48 @@ def test_attach_process_visibility_explains_limited_live_scan() -> None:
     visibility = cast(dict[str, object], payload["process_visibility"])
     assert visibility["limited"] is True
     assert "registry shows 1 tracked run" in str(visibility["message"])
+
+
+def _fresh_log_status(case: Path, log_text: str) -> svc.CaseStatusPayload:
+    log_path = case / "log.icoFoam"
+    log_path.write_text(log_text)
+
+    def _snapshot(_case: Path, _solver: str | None, **_kwargs: object) -> dict[str, object]:
+        return {
+            "latest_time": 0.5,
+            "latest_iteration": 100,
+            "latest_delta_t": None,
+            "sec_per_iter": 0.001,
+            "run_time_control": {"end_time": 0.5, "criteria_start": 0.0, "criteria": []},
+            "eta_to_criteria_start": 0.0,
+            "eta_to_end_time": 0.0,
+            "log_path": str(log_path),
+            "log_fresh": True,
+            "residual_fields": [],
+        }
+
+    return svc.status_payload(
+        case,
+        resolve_solver_name_fn=lambda _case: ("icoFoam", None),
+        refresh_jobs_fn=lambda _case: [],
+        running_job_pids_fn=lambda _jobs: [],
+        scan_proc_solver_processes_fn=lambda *_a, **_k: [],
+        runtime_control_snapshot_fn=_snapshot,
+        latest_solver_job_fn=lambda _case, _solver: None,
+        solver_status_text_fn=lambda _summary: "",
+        latest_time_fn=lambda _case: None,
+        lightweight=True,
+    )
+
+
+def test_status_payload_fresh_log_that_ended_is_not_running(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    case.mkdir()
+
+    finished = _fresh_log_status(case, "Time = 0.5\nExecutionTime = 0.2 s\n\nEnd\n\n")
+    assert finished["running"] is False
+    assert finished["progress"]["state"] == "FINISHED"
+
+    # Without the final End a fresh log still implies a hidden live solver.
+    solving = _fresh_log_status(case, "Time = 0.4\nExecutionTime = 0.2 s\n")
+    assert solving["running"] is True

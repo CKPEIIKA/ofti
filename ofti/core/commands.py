@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import shlex
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
 _MIN_COMMAND_PARTS = 2
+# Non-interactive CLI groups reachable from command mode; they run through the
+# same argparse adapters as `ofti GROUP ...` with the case as working directory.
+CLI_COMMAND_GROUPS = frozenset({"knife", "watch", "plot"})
 
 
 class CommandKind(StrEnum):
@@ -32,6 +36,7 @@ class CommandKind(StrEnum):
     CONFIG_CREATE = "config_create"
     CONFIG_SEARCH = "config_search"
     CONFIG_CHECK = "config_check"
+    CLI = "cli"
     UNKNOWN = "unknown"
 
 
@@ -179,6 +184,16 @@ def _terminal_command(name: str, raw: str, parts: list[str]) -> CommandAction | 
     return CommandAction(CommandKind.TERMINAL, raw=raw, args=(payload,))
 
 
+def _cli_command(name: str, raw: str) -> CommandAction | None:
+    if name not in CLI_COMMAND_GROUPS:
+        return None
+    try:
+        argv = shlex.split(raw)
+    except ValueError as exc:
+        return CommandAction(CommandKind.CLI, raw=raw, error=f"Cannot parse command: {exc}")
+    return CommandAction(CommandKind.CLI, raw=raw, args=tuple(argv))
+
+
 def _extract_background_flag(parts: list[str]) -> tuple[list[str], bool]:
     if not parts:
         return parts, False
@@ -226,7 +241,9 @@ def _named_command_action(
         lambda: _cancel_command(name, cmd, parts),
         lambda: _clone_command(name, cmd, parts),
         lambda: _terminal_command(name, cmd, parts),
+        # An exact tool preset named like a CLI group keeps precedence.
         lambda: _tool_name_command(cmd, parts, background=background, tool_set=tool_set),
+        lambda: _cli_command(name, cmd),
     ):
         action = resolver()
         if action is not None:

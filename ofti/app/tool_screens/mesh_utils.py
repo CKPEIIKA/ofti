@@ -81,4 +81,4 @@ def cfmesh_screen(stdscr: Any, case_path: Path) -> None:
         if not log_path.is_file():
             _show_message(stdscr, "log.cartesianMesh not found.")
             return
-        Viewer(stdscr, log_path.read_text(errors="ignore")).display()
+        Viewer(stdscr, log_path.read_text(errors="ignore"), start_at_end=True).display()

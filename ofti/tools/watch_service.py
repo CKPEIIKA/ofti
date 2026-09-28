@@ -593,11 +593,26 @@ class _TrackedJobProcess:
         self._case_path = case_path
         self._pid = int(pid)
         self._job_id = job_id
+        self._returncode: int | None = None
 
     def poll(self) -> int | None:
-        if _pid_running(self._pid):
+        if self._returncode is not None:
+            return self._returncode
+        try:
+            reaped, status = os.waitpid(self._pid, os.WNOHANG)
+        except ChildProcessError:
+            # Not our child (adopted, or already reaped elsewhere): kill(0) is
+            # the only liveness signal and the exit status is unknowable.
+            if _pid_running(self._pid):
+                return None
+            self._returncode = 0
+            return self._returncode
+        if reaped == 0:
             return None
-        return 0
+        # Our own child: reap it so it cannot linger as a zombie that kill(0)
+        # reports as alive, and keep its real exit status.
+        self._returncode = os.waitstatus_to_exitcode(status)
+        return self._returncode
 
     def terminate(self) -> None:
         if self._job_id:
@@ -619,7 +634,7 @@ class _TrackedJobProcess:
             if deadline is not None and time.monotonic() >= deadline:
                 raise subprocess.TimeoutExpired(cmd=str(self._pid), timeout=timeout or 0.0)
             time.sleep(0.05)
-        return 0
+        return self._returncode if self._returncode is not None else 0
 
 
 def tracked_job_process(case_dir: Path, *, pid: int, job_id: str | None) -> _TrackedJobProcess:

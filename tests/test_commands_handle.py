@@ -75,6 +75,9 @@ class DummyCallbacks:
     def config_check(self, *_args):
         self._record("config_check")
 
+    def cli(self, _stdscr, _case_path, argv):
+        self._record("cli:" + " ".join(argv))
+
 
 def _callbacks() -> tuple[CommandCallbacks, DummyCallbacks]:
     cb = DummyCallbacks()
@@ -100,6 +103,7 @@ def _callbacks() -> tuple[CommandCallbacks, DummyCallbacks]:
         config_create=cb.config_create,
         config_search=cb.config_search,
         config_check=cb.config_check,
+        cli=cb.cli,
     ), cb
 
 
@@ -171,3 +175,17 @@ def test_handle_command_cancel(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr("ofti.app.commands.list_tool_commands", lambda _: [])
     assert handle_command(None, case_path, state, "cancel check", cb) == "handled"
     assert any("msg:No running task named check_syntax." in msg for msg in record.called)
+
+
+def test_cli_groups_forward_argv_to_cli_callback(monkeypatch, tmp_path: Path) -> None:
+    cb, record = _callbacks()
+    monkeypatch.setattr("ofti.app.commands.list_tool_commands", lambda _: [])
+
+    assert handle_command(None, tmp_path, AppState(), ":knife status --json", cb) == "handled"
+    assert handle_command(None, tmp_path, AppState(), "watch log 'log.simple Foam'", cb) == "handled"
+    assert handle_command(None, tmp_path, AppState(), "plot residuals 'unbalanced", cb) == "handled"
+
+    assert record.called[0] == "cli:knife status --json"
+    assert record.called[1] == "cli:watch log log.simple Foam"
+    assert record.called[2].startswith("msg:Cannot parse command")
+    assert "knife status" in command_suggestions(tmp_path)

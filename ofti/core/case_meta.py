@@ -25,8 +25,6 @@ def case_metadata(case_path: Path) -> dict[str, str]:
     cells, faces, points = mesh_counts(case_path)
     header_version = detect_case_header_version(case_path)
     foam_version = detect_openfoam_version()
-    if foam_version == "unknown" and header_version != "unknown":
-        foam_version = header_version
     return {
         "case_name": case_path.name,
         "case_path": str(case_path),
@@ -51,8 +49,6 @@ def case_metadata_quick(case_path: Path) -> dict[str, str]:
     cells, faces, points = mesh_counts(case_path)
     header_version = detect_case_header_version(case_path)
     foam_version = detect_openfoam_version()
-    if foam_version == "unknown" and header_version != "unknown":
-        foam_version = header_version
     return {
         "case_name": case_path.name,
         "case_path": str(case_path),

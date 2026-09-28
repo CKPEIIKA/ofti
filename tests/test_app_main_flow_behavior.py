@@ -159,12 +159,20 @@ def test_tasks_and_terminal_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     monkeypatch.setattr(app.curses, "endwin", lambda: None)
     monkeypatch.setattr(app.curses, "reset_prog_mode", lambda: None)
     monkeypatch.setattr(app.subprocess, "run", lambda cmd, **_k: commands.append(list(cmd)))
+    prompts: list[str] = []
+    monkeypatch.setattr("builtins.input", lambda prompt="": prompts.append(prompt) or "")
     app._run_terminal(screen, case, "echo 1")
     assert commands[-1][:3] == ["bash", "--noprofile", "--norc"]
+    # One-shot command output stays visible until Enter.
+    assert prompts == ["\n[ofti] Press Enter to return "]
 
     monkeypatch.setenv("SHELL", "/bin/zsh")
     app._run_terminal(screen, case, None)
     assert commands[-1] == ["/bin/zsh"]
+    assert len(prompts) == 1
+
+    app._run_cli(screen, case, ["knife", "status"])
+    assert commands[-1][1:] == ["-m", "ofti.app.cli", "knife", "status"]
 
     monkeypatch.setattr(
         app.subprocess,

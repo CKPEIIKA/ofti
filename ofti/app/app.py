@@ -4,6 +4,7 @@ import curses
 import logging
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -260,30 +261,47 @@ def _tasks_screen(stdscr: Any, state: AppState) -> None:
 
 
 def _run_terminal(stdscr: Any, case_path: Path, command: str | None) -> None:
-    curses.def_prog_mode()
-    curses.endwin()
     env = os.environ.copy()
     env.pop("BASH_ENV", None)
     env.pop("ENV", None)
-    shell_cmd = command or ""
+    if command:
+        # A one-shot command's output is the point; keep it on screen until Enter.
+        _run_suspended(stdscr, ["bash", "--noprofile", "--norc", "-c", command], case_path, env, pause=True)
+        return
+    _run_suspended(stdscr, [env.get("SHELL") or "bash"], case_path, env, pause=False)
+    show_message(stdscr, "Returned from terminal.")
+
+
+def _run_cli(stdscr: Any, case_path: Path, argv: list[str]) -> None:
+    """Run `ofti GROUP ...` in the case directory through the CLI's own parser.
+
+    A child process keeps argparse exits, long `watch` follows, and Ctrl-C
+    isolated from the TUI while reusing the exact CLI behavior.
+    """
+    command = [sys.executable, "-m", "ofti.app.cli", *argv]
+    _run_suspended(stdscr, command, case_path, os.environ.copy(), pause=True)
+
+
+def _run_suspended(
+    stdscr: Any,
+    argv: list[str],
+    case_path: Path,
+    env: dict[str, str],
+    *,
+    pause: bool,
+) -> None:
+    curses.def_prog_mode()
+    curses.endwin()
     try:
-        if shell_cmd:
-            subprocess.run(
-                ["bash", "--noprofile", "--norc", "-c", shell_cmd],
-                cwd=case_path,
-                env=env,
-                check=False,
-            )
-        else:
-            shell = env.get("SHELL") or "bash"
-            subprocess.run([shell], cwd=case_path, env=env, check=False)
-    except KeyboardInterrupt:
+        subprocess.run(argv, cwd=case_path, env=env, check=False)
+        if pause:
+            input("\n[ofti] Press Enter to return ")
+    except (KeyboardInterrupt, EOFError):
         pass
     finally:
         curses.reset_prog_mode()
         stdscr.clear()
         stdscr.refresh()
-        show_message(stdscr, "Returned from terminal.")
 
 
 def _command_callbacks() -> CommandCallbacks:
@@ -419,6 +437,7 @@ def _command_callbacks() -> CommandCallbacks:
         config_create=create_missing_config_screen,
         config_search=search_screen_wrapper,
         config_check=check_screen_wrapper,
+        cli=_run_cli,
     )
 
 

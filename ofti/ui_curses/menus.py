@@ -314,10 +314,9 @@ class Menu:
             "  g/G            : jump to top/bottom",
             "  l or Enter     : select",
         ]
-        if isinstance(self, RootMenu):
-            lines.append("  q              : quit")
-        else:
-            lines.append("  h or q          : go back")
+        if not isinstance(self, RootMenu):
+            lines.append("  h or Esc       : go back")
+        lines.append("  q              : quit OFTI")
         lines.append("  !              : terminal")
         if self.command_handler is not None:
             lines.append("  :              : command line (Tab completes)")
@@ -329,6 +328,7 @@ class Menu:
         lines.append("Commands:")
         lines.append("  :check  :tools  :diag  :run  :tasks  :clean-all")
         lines.append("  :foamenv  :clone  :tool <name>  :cancel <name>  :quit")
+        lines.append("  :knife ...  :watch ...  :plot ...   (CLI in the case directory)")
         lines.append("  :config-editor  :config-create  :config-search  :config-check")
         if self.help_lines:
             lines.append("")

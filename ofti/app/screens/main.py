@@ -53,23 +53,23 @@ def main_menu_screen(
     quit_index = len(menu_options)
     menu_options.append("Quit")
 
-    banner_meta = running_header_metadata(case_path, case_metadata_cached(case_path, state))
-    overview_lines = case_overview_lines(banner_meta)
+    banner = _RootBanner(case_path, state)
+
+    def root_command(cmd: str) -> str | None:
+        result = handle_command(stdscr, case_path, state, cmd, command_callbacks)
+        # Commands can run tools or solvers; refresh the header afterwards.
+        banner.invalidate()
+        return result
+
     initial_index = state.menu_selection.get("menu:root", 0)
     root_menu = RootMenu(
         stdscr,
         "Main menu",
         menu_options,
-        extra_lines=overview_lines,
-        banner_lines=case_banner_lines(banner_meta),
+        extra_lines=case_overview_lines({}),
+        banner_provider=banner.lines,
         initial_index=initial_index,
-        command_handler=lambda cmd: handle_command(
-            stdscr,
-            case_path,
-            state,
-            cmd,
-            command_callbacks,
-        ),
+        command_handler=root_command,
         command_suggestions=lambda: command_suggestions(case_path),
         hint_provider=lambda idx: menu_hint("menu:root", menu_options[idx]) if 0 <= idx < len(menu_options) else "",
         status_line=root_status_line(state),
@@ -140,8 +140,30 @@ def main_menu_screen(
         ),
     ]
     if 0 <= choice < len(actions):
-        return actions[choice]()
+        next_screen = actions[choice]()
+        # Actions mutate the case (mesh, run, clean); re-read the header next time.
+        banner.invalidate()
+        return next_screen
     return Screen.MAIN_MENU
+
+
+class _RootBanner:
+    """Case header cached between key presses; process scans are not per-key cheap."""
+
+    def __init__(self, case_path: Path, state: AppState) -> None:
+        self._case_path = case_path
+        self._state = state
+        self._lines: list[str] | None = None
+
+    def lines(self) -> list[str]:
+        if self._lines is None:
+            meta = case_metadata_cached(self._case_path, self._state)
+            self._lines = case_banner_lines(running_header_metadata(self._case_path, meta))
+        return self._lines
+
+    def invalidate(self) -> None:
+        self._state.case_metadata = None
+        self._lines = None
 
 
 def _overview_action(stdscr: Any, case_path: Path) -> Screen:
